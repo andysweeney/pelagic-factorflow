@@ -3169,25 +3169,15 @@ export default function FactoringDashboard() {
             if (!chCompanyNo.trim() || !chApiKey) { setChError("Enter a company number and ensure API key is set."); return; }
             setChImportStep("loading"); setChError("");
             var num = chCompanyNo.trim().padStart(8, "0");
-            var apiUrl = "https://api.company-information.service.gov.uk/company/" + num;
-            // Try direct first, fall back to CORS proxy if blocked
-            function doFetch(url) {
-              return fetch(url, {
-                headers: { "Authorization": "Basic " + btoa(chApiKey + ":") }
-              });
-            }
-            doFetch(apiUrl).then(function(res) {
-              if (!res.ok) throw new Error("HTTP " + res.status);
+            // Companies House API requires Basic auth — encode key directly in URL for CORS proxy compatibility
+            var authUrl = "https://" + encodeURIComponent(chApiKey) + ":@api.company-information.service.gov.uk/company/" + num;
+            fetch("https://corsproxy.io/?" + encodeURIComponent(authUrl)).then(function(res) {
+              if (res.status === 404) throw new Error("Company " + num + " not found");
+              if (res.status === 401) throw new Error("Invalid API key");
+              if (!res.ok) throw new Error("Lookup failed (HTTP " + res.status + ")");
               return res.json();
-            }).catch(function() {
-              // Direct call failed (likely CORS) — try via proxy
-              return fetch("https://corsproxy.io/?" + encodeURIComponent(apiUrl), {
-                headers: { "Authorization": "Basic " + btoa(chApiKey + ":") }
-              }).then(function(res) {
-                if (!res.ok) throw new Error("Company not found (HTTP " + res.status + ")");
-                return res.json();
-              });
             }).then(function(data) {
+              if (!data || !data.company_name) throw new Error("Invalid response from Companies House");
               var addr = data.registered_office_address || {};
               setManageFields(function(prev) {
                 return Object.assign({}, prev, {
