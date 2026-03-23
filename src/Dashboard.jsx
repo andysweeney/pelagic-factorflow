@@ -181,7 +181,7 @@ var _dataLoaded = false;
 
 async function loadPersistedData() {
   try {
-    var result = { value: localStorage.getItem("factorflow-data") };
+    var result = await window.storage.get("factorflow-data");
     if (result && result.value) {
       var d = JSON.parse(result.value);
       if (d.invoices) { INVOICES_DB.length = 0; d.invoices.forEach(function(x) {
@@ -210,7 +210,7 @@ async function loadPersistedData() {
 
 async function savePersistedData() {
   try {
-    localStorage.setItem("factorflow-data", JSON.stringify({
+    await window.storage.set("factorflow-data", JSON.stringify({
       invoices: INVOICES_DB,
       payments: PAYMENTS_DB,
       holdbackPayments: HOLDBACK_PAYMENTS_DB,
@@ -1252,10 +1252,10 @@ export default function FactoringDashboard() {
           var collateralValue = 0;
           supInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending") return;
-            var is = inv.invoiceStatus;
-            if (is === "Received" || is === "Approved in Part" || is === "Approved in Full") {
+            var ist = inv.invoiceStatus;
+            if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") {
               collateralValue += inv.amount || 0;
-            } else if (is === "Settled") {
+            } else if (ist === "Settled") {
               collateralValue += inv.balanceOwed || 0;
             }
             collateralValue += inv.holdbackAvailable || 0;
@@ -1837,9 +1837,9 @@ export default function FactoringDashboard() {
               var collateralValue = 0;
               progInvs.forEach(function(inv) {
                 if (inv.fundingStatus === "pending") return;
-                var is = inv.invoiceStatus;
-                if (is === "Received" || is === "Approved in Part" || is === "Approved in Full") collateralValue += inv.amount || 0;
-                else if (is === "Settled") collateralValue += inv.balanceOwed || 0;
+                var ist = inv.invoiceStatus;
+                if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
+                else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
                 collateralValue += inv.holdbackAvailable || 0;
               });
               var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
@@ -4236,7 +4236,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Audit Log</div>
                     <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{AUDIT_LOG.length} entries</span>
                   </div>
-                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { window.storage.delete("factorflow-data").then(function() { window.location.reload(); }); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
                 </div>
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
                 {AUDIT_LOG.length > 0 && <div style={{ maxHeight: 600, overflowY: "auto" }}>
