@@ -181,7 +181,7 @@ var _dataLoaded = false;
 
 async function loadPersistedData() {
   try {
-    var result = await window.storage.get("factorflow-data");
+    var result = { value: localStorage.getItem("factorflow-data") };
     if (result && result.value) {
       var d = JSON.parse(result.value);
       if (d.invoices) { INVOICES_DB.length = 0; d.invoices.forEach(function(x) {
@@ -210,7 +210,7 @@ async function loadPersistedData() {
 
 async function savePersistedData() {
   try {
-    await window.storage.set("factorflow-data", JSON.stringify({
+    localStorage.setItem("factorflow-data", JSON.stringify({
       invoices: INVOICES_DB,
       payments: PAYMENTS_DB,
       holdbackPayments: HOLDBACK_PAYMENTS_DB,
@@ -3169,11 +3169,24 @@ export default function FactoringDashboard() {
             if (!chCompanyNo.trim() || !chApiKey) { setChError("Enter a company number and ensure API key is set."); return; }
             setChImportStep("loading"); setChError("");
             var num = chCompanyNo.trim().padStart(8, "0");
-            fetch("https://api.company-information.service.gov.uk/company/" + num, {
-              headers: { "Authorization": "Basic " + btoa(chApiKey + ":") }
-            }).then(function(res) {
-              if (!res.ok) throw new Error("Company not found (HTTP " + res.status + ")");
+            var apiUrl = "https://api.company-information.service.gov.uk/company/" + num;
+            // Try direct first, fall back to CORS proxy if blocked
+            function doFetch(url) {
+              return fetch(url, {
+                headers: { "Authorization": "Basic " + btoa(chApiKey + ":") }
+              });
+            }
+            doFetch(apiUrl).then(function(res) {
+              if (!res.ok) throw new Error("HTTP " + res.status);
               return res.json();
+            }).catch(function() {
+              // Direct call failed (likely CORS) — try via proxy
+              return fetch("https://corsproxy.io/?" + encodeURIComponent(apiUrl), {
+                headers: { "Authorization": "Basic " + btoa(chApiKey + ":") }
+              }).then(function(res) {
+                if (!res.ok) throw new Error("Company not found (HTTP " + res.status + ")");
+                return res.json();
+              });
             }).then(function(data) {
               var addr = data.registered_office_address || {};
               setManageFields(function(prev) {
@@ -3192,7 +3205,7 @@ export default function FactoringDashboard() {
               });
               setChImportStep("done");
             }).catch(function(err) {
-              setChError(err.message || "Lookup failed");
+              setChError(err.message || "Lookup failed. Check API key and company number.");
               setChImportStep("lookup");
             });
           }
@@ -4236,7 +4249,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Audit Log</div>
                     <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{AUDIT_LOG.length} entries</span>
                   </div>
-                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { window.storage.delete("factorflow-data").then(function() { window.location.reload(); }); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
                 </div>
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
                 {AUDIT_LOG.length > 0 && <div style={{ maxHeight: 600, overflowY: "auto" }}>
