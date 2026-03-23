@@ -453,6 +453,8 @@ export default function FactoringDashboard() {
     loadPersistedData().then(function() {
       _dataLoaded = true;
       setStorageLoading(false);
+      // Re-sync state with loaded data
+      if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
       setDataVer(function(v) { return v + 1; });
     });
   }, []);
@@ -4239,7 +4241,50 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Audit Log</div>
                     <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{AUDIT_LOG.length} entries</span>
                   </div>
-                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <button onClick={function() {
+                      var data = JSON.stringify({
+                        invoices: INVOICES_DB, payments: PAYMENTS_DB, holdbackPayments: HOLDBACK_PAYMENTS_DB,
+                        auditLog: AUDIT_LOG, supplierPaymentQueue: SUPPLIER_PAYMENT_QUEUE,
+                        suppliers: SUPPLIERS_DB, buyers: BUYERS_DB, fundingPrograms: FUNDING_PROGRAMS_DB,
+                        serviceProviders: SERVICE_PROVIDERS_DB, creditNotes: CREDIT_NOTES_DB,
+                        exportDate: new Date().toISOString(), exportVersion: "1.0"
+                      }, null, 2);
+                      var blob = new Blob([data], { type: "application/json" });
+                      var url = URL.createObjectURL(blob);
+                      var a = document.createElement("a");
+                      a.href = url; a.download = "pelagic-backup-" + new Date().toISOString().split("T")[0] + ".json";
+                      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                    }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #10b981", background: "#10b98110", color: "#10b981", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Export Data</button>
+                    <button onClick={function() { document.getElementById("pelagic-import-input").click(); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #0f4090", background: "#0f409010", color: "#0f4090", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Import Data</button>
+                    <input id="pelagic-import-input" type="file" accept=".json" style={{ display: "none" }} onChange={function(e) {
+                      var file = e.target.files[0];
+                      if (!file) return;
+                      var reader = new FileReader();
+                      reader.onload = function(ev) {
+                        try {
+                          var d = JSON.parse(ev.target.result);
+                          if (!d.invoices && !d.suppliers) { alert("Invalid backup file — no invoice or supplier data found."); return; }
+                          if (d.invoices) { INVOICES_DB.length = 0; d.invoices.forEach(function(x) { INVOICES_DB.push(x); }); }
+                          if (d.payments) { PAYMENTS_DB.length = 0; d.payments.forEach(function(x) { PAYMENTS_DB.push(x); }); }
+                          if (d.holdbackPayments) { HOLDBACK_PAYMENTS_DB.length = 0; d.holdbackPayments.forEach(function(x) { HOLDBACK_PAYMENTS_DB.push(x); }); }
+                          if (d.auditLog) { AUDIT_LOG.length = 0; d.auditLog.forEach(function(x) { AUDIT_LOG.push(x); }); }
+                          if (d.supplierPaymentQueue) { SUPPLIER_PAYMENT_QUEUE.length = 0; d.supplierPaymentQueue.forEach(function(x) { SUPPLIER_PAYMENT_QUEUE.push(x); }); }
+                          if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) { if (!x.rates) x.rates = [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }]; SUPPLIERS_DB.push(x); }); }
+                          if (d.buyers) { BUYERS_DB.length = 0; d.buyers.forEach(function(x) { BUYERS_DB.push(x); }); BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
+                          if (d.fundingPrograms) { FUNDING_PROGRAMS_DB.length = 0; d.fundingPrograms.forEach(function(x) { FUNDING_PROGRAMS_DB.push(x); }); }
+                          if (d.serviceProviders) { SERVICE_PROVIDERS_DB.length = 0; d.serviceProviders.forEach(function(x) { SERVICE_PROVIDERS_DB.push(x); }); }
+                          if (d.creditNotes) { CREDIT_NOTES_DB.length = 0; d.creditNotes.forEach(function(x) { CREDIT_NOTES_DB.push(x); }); }
+                          if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
+                          setDataVer(function(v) { return v + 1; });
+                          auditLog("Data Imported", "Backup imported: " + (d.invoices ? d.invoices.length : 0) + " invoices, " + (d.suppliers ? d.suppliers.length : 0) + " suppliers, " + (d.fundingPrograms ? d.fundingPrograms.length : 0) + " programs" + (d.exportDate ? " (exported " + d.exportDate.split("T")[0] + ")" : ""), { source: "import" });
+                        } catch (err) { alert("Failed to import: " + err.message); }
+                        e.target.value = "";
+                      };
+                      reader.readAsText(file);
+                    }} />
+                    <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                  </div>
                 </div>
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
                 {AUDIT_LOG.length > 0 && <div style={{ maxHeight: 600, overflowY: "auto" }}>
