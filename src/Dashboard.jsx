@@ -181,7 +181,7 @@ var _dataLoaded = false;
 
 async function loadPersistedData() {
   try {
-    var result = { value: localStorage.getItem("factorflow-data") };
+    var result = await window.storage.get("factorflow-data");
     if (result && result.value) {
       var d = JSON.parse(result.value);
       if (d.invoices) { INVOICES_DB.length = 0; d.invoices.forEach(function(x) {
@@ -210,7 +210,7 @@ async function loadPersistedData() {
 
 async function savePersistedData() {
   try {
-    localStorage.setItem("factorflow-data", JSON.stringify({
+    await window.storage.set("factorflow-data", JSON.stringify({
       invoices: INVOICES_DB,
       payments: PAYMENTS_DB,
       holdbackPayments: HOLDBACK_PAYMENTS_DB,
@@ -247,14 +247,12 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       });
     });
   });
-  // Credit note allocations work identically to payment allocations
+  // Credit notes only reduce invoice amount (dilution) — they do NOT flow through the payment waterfall
+  var cnDilutionByInvoice = new Map();
   CREDIT_NOTES_DB.forEach(function(cn) {
     if (cn.date > viewDate) return;
     if (cn.allocations) cn.allocations.forEach(function(a) {
-      if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
-      allocsByInvoice.get(a.invoiceId).push({
-        paymentId: cn.creditNoteId, amount: a.amount, date: cn.date, currency: cn.currency, isCreditNote: true
-      });
+      cnDilutionByInvoice.set(a.invoiceId, (cnDilutionByInvoice.get(a.invoiceId) || 0) + a.amount);
     });
   });
   // Build holdback disbursement/application maps per invoice
@@ -403,6 +401,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       writeOffTotal: r2(woTotalPen + woTotalInt + woTotalCap + woTotalHb),
       writeOffPenalty: r2(woTotalPen), writeOffInterest: r2(woTotalInt), writeOffCapital: r2(woTotalCap), writeOffHoldback: r2(woTotalHb),
       adjCreditTotal: r2(adjCreditPen + adjCreditInt + adjCreditCap), adjDebitTotal: r2(adjDebitPen + adjDebitInt + adjDebitCap),
+      dilutionTotal: r2(cnDilutionByInvoice.get(rawInv.id) || 0),
+      amountPostDilutions: r2(rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0)),
       totalFundsApplied: r2(annotatedPays.reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0)),
       penaltyDays: penaltyDays, penaltyStartDate: penaltyStartDate, payments: annotatedPays,
       holdbackApplications: hbApplications, holdbackPayments: annotatedHbPays
@@ -519,6 +519,8 @@ export default function FactoringDashboard() {
   var cns1 = useState(""), cnSearch = cns1[0], setCnSearch = cns1[1];
   var cnp1 = useState(""), cnProgFilter = cnp1[0], setCnProgFilter = cnp1[1];
   var cnsup1 = useState(""), cnSupFilter = cnsup1[0], setCnSupFilter = cnsup1[1];
+  var cnff1 = useState({ amount: "", currency: "GBP", date: new Date().toISOString().split("T")[0], reference: "" }), cnFormFields = cnff1[0], setCnFormFields = cnff1[1];
+  var rej1 = useState(null), rejectConfirm = rej1[0], setRejectConfirm = rej1[1];
   var aps1 = useState(""), allocProgFilter = aps1[0], setAllocProgFilter = aps1[1];
   var ass1 = useState(""), allocSupFilter = ass1[0], setAllocSupFilter = ass1[1];
   var wp1 = useState(""), woPenalty = wp1[0], setWoPenalty = wp1[1];
@@ -735,10 +737,20 @@ export default function FactoringDashboard() {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "approved") return;
     var oldProg = raw.fundingProgram;
+    var progName = "";
+    if (oldProg) { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === oldProg; }); if (fp) progName = fp.name; }
     raw.fundingStatus = "pending";
     raw.fundingProgram = null;
     raw.approvedDate = null;
-    auditLog("Invoice Approval Cancelled", invId + " approval cancelled, returned to funding queue", { invoiceId: invId, amount: raw.amount, currency: raw.currency, previousProgram: oldProg });
+    // Remove any associated payment queue entries for this invoice
+    var removed = [];
+    for (var qi = SUPPLIER_PAYMENT_QUEUE.length - 1; qi >= 0; qi--) {
+      if (SUPPLIER_PAYMENT_QUEUE[qi].invoiceId === invId && SUPPLIER_PAYMENT_QUEUE[qi].type === "funding") {
+        removed.push(SUPPLIER_PAYMENT_QUEUE[qi].id);
+        SUPPLIER_PAYMENT_QUEUE.splice(qi, 1);
+      }
+    }
+    auditLog("Invoice Approval Cancelled", invId + " rejected for funding" + (progName ? " from " + progName : "") + ", returned to funding queue" + (removed.length > 0 ? " (removed queue: " + removed.join(", ") + ")" : ""), { invoiceId: invId, amount: raw.amount, currency: raw.currency, previousProgram: oldProg, removedQueueEntries: removed });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -1246,6 +1258,75 @@ export default function FactoringDashboard() {
           });
           var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
 
+          // Supplier Dilution Rate
+          // Eligible invoices: Received, Approved in Full, Approved in Part, Disputed
+          var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
+          var dilNumerator = 0, dilDenominator = 0;
+          supInvs.forEach(function(inv) {
+            if (!dilEligibleStatuses[inv.invoiceStatus]) return;
+            var invAmt = inv.amount || 0;
+            dilDenominator += invAmt;
+            // Credit notes applied to this invoice
+            dilNumerator += inv.dilutionTotal || 0;
+            // Unapproved amount (invoice amount minus approved amount, if approved amount set and > 0)
+            if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) {
+              dilNumerator += (invAmt - inv.partialApprovedAmount);
+            }
+            // Full value of disputed invoices
+            if (inv.invoiceStatus === "Disputed") {
+              dilNumerator += invAmt;
+            }
+          });
+          var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
+
+          // Funded Invoice Dilution Rate
+          // Eligible: funded, partial_recovery, at_risk, overdue, recovery_mode
+          var fdilEligibleFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+          var fdilNumerator = 0, fdilDenominator = 0;
+          supInvs.forEach(function(inv) {
+            if (!fdilEligibleFS[inv.fundingStatus]) return;
+            var invAmt = inv.amount || 0;
+            fdilDenominator += invAmt;
+            // Credit notes applied to this invoice
+            fdilNumerator += inv.dilutionTotal || 0;
+            // Unapproved amount (for funded, part paid, at risk, overdue)
+            if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) {
+              fdilNumerator += (invAmt - inv.partialApprovedAmount);
+            }
+            // Full value of recovery mode invoices
+            if (inv.fundingStatus === "recovery_mode") {
+              fdilNumerator += invAmt;
+            }
+          });
+          var fdilutionRate = fdilDenominator > 0.01 ? (fdilNumerator / fdilDenominator) * 100 : 0;
+
+          // Period-based dilution rates (30 day, 90 day)
+          function calcPeriodDilution(days) {
+            var cutoff = new Date(viewDate + "T12:00:00");
+            cutoff.setDate(cutoff.getDate() - days);
+            var cutoffStr = cutoff.toISOString().split("T")[0];
+            var pNum = 0, pDen = 0;
+            var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
+            supInvs.forEach(function(inv) {
+              if (!inv.invoiceDate || inv.invoiceDate < cutoffStr) return;
+              var invAmt = inv.amount || 0;
+              pDen += invAmt;
+              // Credit notes
+              pNum += inv.dilutionTotal || 0;
+              // Unapproved amounts
+              if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) {
+                pNum += (invAmt - inv.partialApprovedAmount);
+              }
+              // Full value of disputed/cancelled/declined/buyer default invoices
+              if (badStatuses[inv.invoiceStatus]) {
+                pNum += invAmt;
+              }
+            });
+            return { numerator: r2(pNum), denominator: r2(pDen), rate: pDen > 0.01 ? (pNum / pDen) * 100 : 0 };
+          }
+          var dil30 = calcPeriodDilution(30);
+          var dil90 = calcPeriodDilution(90);
+
           // Funding status counts for donut (exclude fully repaid)
           var statusCounts = {};
           var donutInvs = supInvs.filter(function(inv) { return inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off"; });
@@ -1314,6 +1395,62 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
                     <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Collateral Cover</span>
                     <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: collateralCover >= 1 ? "#10b981" : "#ef4444" }}>{collateralCover > 0 ? (collateralCover * 100).toFixed(1) + "%" : "\u2014"}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: "var(--card)", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #f59e0b", minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Dilution Rate<span title={"Dilution Rate = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Total Invoice Amounts\n\nEligible invoices: Received, Approved in Full, Approved in Part, Disputed\n\nCredit Notes: sum of all credit notes applied to eligible invoices\nUnapproved Amounts: Invoice Amount minus Approved Amount (where partially approved)\nDisputed: full invoice value of disputed invoices"} style={{ fontSize: 12, color: "#f59e0b", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: dilutionRate > 10 ? "#ef4444" : dilutionRate > 5 ? "#f59e0b" : "#10b981", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Dilution Value</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b" }}>{money(r2(dilNumerator), displayCcy)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Invoice Base</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: "var(--card)", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #0f4090", minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution Rate<span title={"Funded Dilution Rate = (Credit Notes + Unapproved Amounts + Recovery Mode Invoice Values) \u00F7 Total Invoice Amounts\n\nEligible funding statuses: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\nCredit Notes: sum of all credit notes applied to eligible invoices\nUnapproved Amounts: Invoice Amount minus Approved Amount (where partially approved, on Funded/Part Paid/At Risk/Overdue invoices)\nRecovery Mode: full invoice value of recovery mode invoices"} style={{ fontSize: 12, color: "#0f4090", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: fdilutionRate > 10 ? "#ef4444" : fdilutionRate > 5 ? "#f59e0b" : "#10b981", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Dilution Value</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#0f4090" }}>{money(r2(fdilNumerator), displayCcy)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Invoice Base</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: "var(--card)", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #818cf8", minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> 30-Day Dilution<span title={"30-Day Dilution Rate = (Credit Notes + Unapproved Amounts + Disputed/Cancelled/Declined/Buyer Default Invoice Values) \u00F7 Total Invoice Amounts\n\nCovers invoices with Invoice Date in the last 30 days\n\nCredit Notes: sum of credit notes applied\nUnapproved: Invoice Amount minus Approved Amount (where partially approved)\nBad Status: full value of Disputed, Cancelled, Declined or Buyer Default invoices"} style={{ fontSize: 12, color: "#818cf8", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: dil30.rate > 10 ? "#ef4444" : dil30.rate > 5 ? "#f59e0b" : "#10b981", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.1 }}>{dil30.rate > 0 ? dil30.rate.toFixed(1) + "%" : "0.0%"}</div>
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Dilution Value</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#818cf8" }}>{money(dil30.numerator, displayCcy)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Invoice Base</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--text-secondary)" }}>{money(dil30.denominator, displayCcy)}</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: "var(--card)", borderRadius: 14, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #a855f7", minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> 90-Day Dilution<span title={"90-Day Dilution Rate = (Credit Notes + Unapproved Amounts + Disputed/Cancelled/Declined/Buyer Default Invoice Values) \u00F7 Total Invoice Amounts\n\nCovers invoices with Invoice Date in the last 90 days\n\nCredit Notes: sum of credit notes applied\nUnapproved: Invoice Amount minus Approved Amount (where partially approved)\nBad Status: full value of Disputed, Cancelled, Declined or Buyer Default invoices"} style={{ fontSize: 12, color: "#a855f7", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: dil90.rate > 10 ? "#ef4444" : dil90.rate > 5 ? "#f59e0b" : "#10b981", fontFamily: "'JetBrains Mono',monospace", lineHeight: 1.1 }}>{dil90.rate > 0 ? dil90.rate.toFixed(1) + "%" : "0.0%"}</div>
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Dilution Value</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#a855f7" }}>{money(dil90.numerator, displayCcy)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Invoice Base</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "var(--text-secondary)" }}>{money(dil90.denominator, displayCcy)}</span>
                   </div>
                 </div>
               </div>
@@ -1804,18 +1941,29 @@ export default function FactoringDashboard() {
                       var bal = cd === viewDate ? (inv.balanceOwed || 0) : (inv.capitalDue || 0);
                       if (bal < 0.01) return;
 
+                      // On the current view date, use the actual computed funding status
+                      if (cd === viewDate) {
+                        if (inv.fundingStatus === "recovery_mode") { recovery += bal; }
+                        else if (inv.fundingStatus === "at_risk") { atRisk += bal; }
+                        else if (inv.fundingStatus === "overdue") { overdue += bal; }
+                        else { insideDue += bal; }
+                        return;
+                      }
+
+                      // For historical dates, estimate status from conditions
                       var pastDue = inv.dueDate < cd;
                       var dOver = pastDue ? daysBetween(inv.dueDate, cd) : 0;
+                      var isRecovery = inv.invoiceStatus === "Buyer Default" || inv.invoiceStatus === "Declined" || dOver > thRecovery;
+                      // Check non-overdue recovery triggers
+                      if (!isRecovery && (inv.invoiceStatus === "Settled" || inv.invoiceStatus === "Cancelled") && inv.settledDate && inv.settledDate <= cd) isRecovery = true;
+                      if (!isRecovery && (inv.cancelledDate && inv.cancelledDate <= cd)) isRecovery = true;
+                      if (!isRecovery && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < inv.amount && inv.fundedDate) isRecovery = true;
+                      var isAtRisk = !isRecovery && (dOver > thAtRisk || (inv.invoiceStatus === "Disputed" && inv.disputedDate && inv.disputedDate <= cd));
 
-                      if (inv.invoiceStatus === "Buyer Default" || inv.invoiceStatus === "Declined" || dOver > thRecovery) {
-                        recovery += bal;
-                      } else if (dOver > thAtRisk) {
-                        atRisk += bal;
-                      } else if (pastDue && dOver >= thOverdue) {
-                        overdue += bal;
-                      } else {
-                        insideDue += bal;
-                      }
+                      if (isRecovery) { recovery += bal; }
+                      else if (isAtRisk) { atRisk += bal; }
+                      else if (pastDue && dOver >= thOverdue) { overdue += bal; }
+                      else { insideDue += bal; }
                     });
                     return { date: cd, insideDue: r2(insideDue), overdue: r2(overdue), atRisk: r2(atRisk), recovery: r2(recovery) };
                   });
@@ -2040,6 +2188,7 @@ export default function FactoringDashboard() {
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#076c64" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
+                                          <div style={row}><span style={lbl}>Amount Post Dilutions</span><span style={Object.assign({}, val, { color: inv.dilutionTotal > 0 ? "#f59e0b" : "var(--text)", fontWeight: inv.dilutionTotal > 0 ? 700 : 400 })}>{money(inv.amountPostDilutions, inv.currency)}{inv.dilutionTotal > 0 && <span style={{ fontSize: 9, color: "#ef4444", marginLeft: 4 }}>(-{money(inv.dilutionTotal, inv.currency)})</span>}</span></div>
                                           <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
                                           <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
                                           <div style={row}><span style={lbl}>Due Date</span><span style={Object.assign({}, val, { color: inv.dueDate < viewDate ? "#ef4444" : "var(--text)" })}>{fmt(inv.dueDate)}</span></div>
@@ -2096,7 +2245,7 @@ export default function FactoringDashboard() {
                                   </div>
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
-                                    <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>
+                                    {inv.fundingStatus === "approved" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#ef4444", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #ef4444", background: "#ef444410", color: "#ef4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #10b981", background: "#10b98110", color: "#10b981", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#78716c10", color: "#78716c", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #10b981", background: adjInv === inv.id && adjType === "credit" ? "#10b98120" : "transparent", color: "#10b981", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
@@ -2161,6 +2310,30 @@ export default function FactoringDashboard() {
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Type", "Reference", "Date", "Amount", "Description"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#076c64" : sp.type === "Holdback Return" ? "#0f4090" : "#f59e0b"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "#10b981", fontWeight: 600 }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "#10b981", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
+                                      </table>
+                                    </div>;
+                                  })()}
+                                  {/* Credit Notes Applied */}
+                                  {(function() {
+                                    var invCNs = [];
+                                    CREDIT_NOTES_DB.forEach(function(cn) {
+                                      if (cn.allocations) cn.allocations.forEach(function(a) {
+                                        if (a.invoiceId === inv.id) invCNs.push({ creditNoteId: cn.creditNoteId, date: cn.date, reference: cn.reference, totalAmount: cn.amount, allocatedAmount: a.amount, currency: cn.currency });
+                                      });
+                                    });
+                                    if (invCNs.length === 0) return null;
+                                    var totalDilution = invCNs.reduce(function(s, c) { return s + c.allocatedAmount; }, 0);
+                                    return <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#f59e0b", marginBottom: 6 }}>Credit Notes Applied ({invCNs.length})</div>
+                                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead><tr>{["CN ID", "Date", "Reference", "CN Amount", "Applied to Invoice"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                                        <tbody>{invCNs.map(function(c, ci) { return <tr key={ci} style={{ borderBottom: "1px solid var(--border)" }}>
+                                          <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "#f59e0b", fontWeight: 600 }}>{c.creditNoteId}</td>
+                                          <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(c.date)}</td>
+                                          <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{c.reference || "\u2014"}</td>
+                                          <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{money(c.totalAmount, c.currency)}</td>
+                                          <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "#ef4444", fontWeight: 600 }}>{money(c.allocatedAmount, c.currency)}</td>
+                                        </tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={4} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total Dilution:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "#ef4444", fontWeight: 700 }}>{money(r2(totalDilution), inv.currency)}</td></tr></tbody>
                                       </table>
                                     </div>;
                                   })()}
@@ -2689,8 +2862,7 @@ export default function FactoringDashboard() {
         {/* ========== CREDIT NOTES VIEW ========== */}
         {isCN && (function() {
           var cnmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
-          var cnFields = useState({ amount: "", currency: "GBP", date: new Date().toISOString().split("T")[0], reference: "" });
-          var cnf = cnFields[0], setCnf = cnFields[1];
+          var cnf = cnFormFields, setCnf = setCnFormFields;
 
           function createCreditNote() {
             var amt = r2(parseFloat(cnf.amount) || 0);
@@ -2777,22 +2949,20 @@ export default function FactoringDashboard() {
             {allocCN && (function() {
               var avail = getCNRemaining(allocCN);
               var allocTotal = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
-              var fullyRepaidIds = {};
-              viewData.invoices.forEach(function(inv) { if (inv.fundingStatus === "fully_repaid") fullyRepaidIds[inv.id] = true; });
-              var eligible = allocViewData ? allocViewData.invoices.filter(function(inv) {
-                if (inv.totalOutstanding < 0.01) return false;
+              // Credit notes can be applied to any invoice — no status or outstanding filter
+              var allInvs = viewData.invoices;
+              var eligible = allInvs.filter(function(inv) {
                 if (inv.currency !== allocCN.currency) return false;
-                if (fullyRepaidIds[inv.id]) return false;
                 if (cnProgFilter && inv.fundingProgram !== cnProgFilter) return false;
                 if (cnSupFilter && inv.supplierName !== cnSupFilter) return false;
                 if (cnSearch && inv.id.indexOf(cnSearch.toUpperCase()) === -1 && (inv.buyerName || "").toLowerCase().indexOf(cnSearch.toLowerCase()) === -1 && (inv.supplierName || "").toLowerCase().indexOf(cnSearch.toLowerCase()) === -1) return false;
                 return true;
-              }) : [];
-              // Get eligible programs and suppliers for dropdowns
+              });
+              // Build supplier list from all matching-currency invoices (before program filter)
               var eligProgs = FUNDING_PROGRAMS_DB.filter(function(fp) { return fp.currency === allocCN.currency; });
               var eligSups = [];
               var supSet = {};
-              eligible.forEach(function(inv) { if (!supSet[inv.supplierName]) { supSet[inv.supplierName] = true; eligSups.push(inv.supplierName); } });
+              allInvs.forEach(function(inv) { if (inv.currency === allocCN.currency && !supSet[inv.supplierName]) { supSet[inv.supplierName] = true; eligSups.push(inv.supplierName); } });
 
               return <div style={{ background: "var(--card)", borderRadius: 14, border: "2px solid var(--accent)", padding: "22px", marginBottom: 18 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -2809,16 +2979,20 @@ export default function FactoringDashboard() {
                 </div>
                 <div style={{ maxHeight: 300, overflowY: "auto", marginBottom: 14 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Invoice", "Supplier", "Buyer", "Outstanding", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{["Invoice", "Supplier", "Buyer", "Inv Amount", "Inv Status", "Fund Status", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{eligible.slice(0, 50).map(function(inv) {
                       var aa = allocs.find(function(a) { return a.invoiceId === inv.id; });
                       var aaAmt = aa ? aa.amount : 0;
-                      var mx = Math.min(inv.totalOutstanding, r2(avail - allocTotal + aaAmt));
+                      var mx = Math.min(inv.amount, r2(avail - allocTotal + aaAmt));
+                      var ist = IST[inv.invoiceStatus] || IST["Received"];
+                      var fst = FST[inv.fundingStatus] || FST.funded;
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{inv.id}</td>
                         <td style={{ padding: "6px 10px", fontSize: 11 }}>{inv.supplierName}</td>
                         <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                        <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.totalOutstanding, inv.currency)}</td>
+                        <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.amount, inv.currency)}</td>
+                        <td style={{ padding: "6px 10px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
+                        <td style={{ padding: "6px 10px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
                         <td style={{ padding: "6px 10px", display: "flex", gap: 4, alignItems: "center" }}>
                           <input type="number" step="0.01" value={aaAmt > 0 ? String(aaAmt) : ""} onChange={function(e) { var v = Math.min(r2(parseFloat(e.target.value) || 0), mx); setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (v > 0) f.push({ invoiceId: inv.id, amount: v }); return f; }); }} placeholder="0.00" style={{ padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 80 }} />
                           <button onClick={function() { setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); f.push({ invoiceId: inv.id, amount: mx }); return f; }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>Max</button>
@@ -3870,7 +4044,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Audit Log</div>
                     <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{AUDIT_LOG.length} entries</span>
                   </div>
-                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                  <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { window.storage.delete("factorflow-data").then(function() { window.location.reload(); }); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #ef444440", background: "transparent", color: "#f87171", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
                 </div>
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
                 {AUDIT_LOG.length > 0 && <div style={{ maxHeight: 600, overflowY: "auto" }}>
