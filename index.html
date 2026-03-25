@@ -8,6 +8,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Gadugi','Segoe UI',sans-serif; }
     #loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 16px; color: #2B4C7E; }
+    #error { padding: 40px; color: #C0392B; font-family: monospace; white-space: pre-wrap; display: none; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -15,16 +16,35 @@
 </head>
 <body>
   <div id="root"><div id="loading">Loading Pelagic FactorFlow...</div></div>
+  <div id="error"></div>
   <script>
-    fetch('Dashboard-github.jsx')
-      .then(function(r) { return r.text(); })
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      var el = document.getElementById('error');
+      el.style.display = 'block';
+      el.textContent = msg;
+    }
+
+    fetch('Dashboard-github.js')
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+        return r.text();
+      })
       .then(function(jsxCode) {
+        // Verify we got JSX, not an HTML error page
+        if (jsxCode.trim().charAt(0) === '<') {
+          throw new Error('Received HTML instead of JSX. Check that Dashboard-github.js exists in the repo root.');
+        }
         var fullCode = jsxCode + '\nvar root = ReactDOM.createRoot(document.getElementById("root"));\nroot.render(React.createElement(PelagicDashboard));';
-        var output = Babel.transform(fullCode, { presets: ['react'] });
-        (0, eval)(output.code);
+        try {
+          var output = Babel.transform(fullCode, { presets: ['react'] });
+          (0, eval)(output.code);
+        } catch(e) {
+          showError('Babel transform error:\n' + e.message + '\n\nFirst 200 chars of source:\n' + jsxCode.substring(0, 200));
+        }
       })
       .catch(function(err) {
-        document.getElementById('root').innerHTML = '<div style="padding:40px;color:red;font-family:monospace;">Error loading dashboard:<br><br>' + err.message + '</div>';
+        showError('Fetch error: ' + err.message);
       });
   </script>
 </body>
