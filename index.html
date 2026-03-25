@@ -6,11 +6,36 @@
   <title>Pelagic Solutions — FactorFlow</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Gadugi', 'Segoe UI', sans-serif; }
+    body { font-family: 'Gadugi','Segoe UI',sans-serif; }
+    @font-face { font-family: 'Franklin Gothic Heavy'; src: local('Franklin Gothic Heavy'), local('Arial Black'); }
+    @font-face { font-family: 'JetBrains Mono'; src: local('JetBrains Mono'), local('Consolas'), local('Courier New'); }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+  <script>
+    // Load and render the dashboard component
+    fetch('Dashboard-github.jsx')
+      .then(r => r.text())
+      .then(code => {
+        const script = document.createElement('script');
+        script.type = 'text/babel';
+        script.textContent = code + `
+          const root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(React.createElement(PelagicDashboard));
+        `;
+        document.body.appendChild(script);
+        // Re-trigger Babel to process the new script
+        if (window.Babel) {
+          window.Babel.transformScriptTags();
+        }
+      })
+      .catch(err => {
+        document.getElementById('root').innerHTML = '<div style="padding:40px;color:red;">Error loading dashboard: ' + err.message + '</div>';
+      });
+  </script>
 </body>
 </html>
