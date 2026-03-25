@@ -25,7 +25,7 @@
       el.textContent = msg;
     }
 
-    fetch('Dashboard-github.js')
+    fetch('Dashboard-github.jsx')
       .then(function(r) {
         if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.statusText);
         return r.text();
@@ -33,7 +33,7 @@
       .then(function(jsxCode) {
         // Verify we got JSX, not an HTML error page
         if (jsxCode.trim().charAt(0) === '<') {
-          throw new Error('Received HTML instead of JSX. Check that Dashboard-github.js exists in the repo root.');
+          throw new Error('Received HTML instead of JSX. Check that Dashboard-github.jsx exists in the repo root.');
         }
         var fullCode = jsxCode + '\nvar root = ReactDOM.createRoot(document.getElementById("root"));\nroot.render(React.createElement(PelagicDashboard));';
         try {
