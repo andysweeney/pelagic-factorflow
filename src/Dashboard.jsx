@@ -5904,14 +5904,10 @@ export default function FactoringDashboard() {
                             <div style={{ display: "flex", gap: 6 }}>
                               <button onClick={function() {
                                 var otherPending = pending.filter(function(p) { return p.supplierName === item.supplierName && p.currency === item.currency && p.id !== item.id; });
-                                if (otherPending.length > 0) {
-                                  var selected = {};
-                                  selected[item.id] = true;
-                                  otherPending.forEach(function(p) { selected[p.id] = true; });
-                                  setBundleDialog({ triggerId: item.id, supplierName: item.supplierName, currency: item.currency, items: [item].concat(otherPending), selected: selected });
-                                } else {
-                                  executeQueuedPayment(item.id);
-                                }
+                                var selected = {};
+                                selected[item.id] = true;
+                                otherPending.forEach(function(p) { selected[p.id] = true; });
+                                setBundleDialog({ triggerId: item.id, supplierName: item.supplierName, currency: item.currency, items: [item].concat(otherPending), selected: selected });
                               }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
                               {confirmCancelHbp === item.id ? <div style={{ display: "flex", gap: 4 }}>
                                 <button onClick={function() { cancelQueuedPayment(item.id); setConfirmCancelHbp(null); }} style={{ padding: "6px 12px", borderRadius: 7, border: "none", background: "#C0392B", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
@@ -5960,7 +5956,7 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Bundle Payments to {bundleDialog.supplierName}</div>
                       <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>There are multiple pending payments to this supplier in {bundleDialog.currency}. Select which to include in a single consolidated payment.</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{bundleDialog.items.length > 1 ? "There are " + bundleDialog.items.length + " pending payments to this supplier in " + bundleDialog.currency + ". Select which to include in a single consolidated payment." : "Confirm execution of this payment."}</div>
 
                     <div style={{ marginBottom: 16 }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
