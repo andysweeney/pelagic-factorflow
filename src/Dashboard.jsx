@@ -5984,7 +5984,6 @@ export default function FactoringDashboard() {
                     var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
                     if (item.type === "funding") {
-                      // Reverse each invoice back to approved status
                       var ids = item.invoiceIds || (item.invoiceId ? [item.invoiceId] : []);
                       ids.forEach(function(invId) {
                         var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
@@ -5997,7 +5996,6 @@ export default function FactoringDashboard() {
                       });
                       auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
                     } else if (item.type === "disbursal") {
-                      // Reverse each fund flow back to Pending
                       var fIds = item.flowIds || [];
                       fIds.forEach(function(flowId) {
                         FUNDING_PROGRAMS_DB.forEach(function(fp) {
@@ -6013,19 +6011,16 @@ export default function FactoringDashboard() {
                       });
                       auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency });
                     } else {
-                      // Holdback — return to pending
-                      item.status = "Pending";
-                      item.executedAt = null;
-                      item.executedDisplay = null;
-                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned to Pending Payments.", { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
-                      setManagePopup(null);
-                      setDataVer(function(v) { return v + 1; });
-                      return;
+                      // Holdback — create a new pending copy and mark this as failed
+                      var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                      SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
+                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
                     }
 
-                    // Remove the completed record (for funding/disbursal)
-                    var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(x) { return x.id === item.id; });
-                    if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1);
+                    // Mark the original record as Failed
+                    item.status = "Failed";
+                    item.failedAt = now.toISOString();
+                    item.failedDisplay = nowDisp;
                     setManagePopup(null);
                     setDataVer(function(v) { return v + 1; });
                   }
@@ -6099,6 +6094,39 @@ export default function FactoringDashboard() {
                       </div>
                     </div>
                   </div>}
+                  </div>;
+                })()}
+
+                {/* Failed Payments */}
+                {(function() {
+                  var failedPayments = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).slice().reverse();
+                  if (failedPayments.length === 0) return null;
+                  return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid #C0392B30", overflow: "hidden", marginTop: 18 }}>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#C0392B" }}></div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Failed Payments</div>
+                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{failedPayments.length} failed</span>
+                    </div>
+                    <div style={{ maxHeight: 300, overflowX: "auto", overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{failedPayments.map(function(item) {
+                          var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : "Holdback";
+                          var typeColor = item.type === "funding" ? "#2B4C7E" : item.type === "disbursal" ? "#7B5EA7" : "#2E8B57";
+                          var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
+                          return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)", background: "#C0392B06" }}>
+                            <td style={{ padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "#C0392B", fontWeight: 600 }}>{item.id}</td>
+                            <td style={{ padding: "9px 14px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{item.executedDisplay}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "#C0392B", fontWeight: 600 }}>{item.failedDisplay}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{recipient}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName || "\u2014"}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{money(item.amount, item.currency)}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>
                   </div>;
                 })()}
 
