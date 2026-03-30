@@ -4592,7 +4592,7 @@ export default function FactoringDashboard() {
                   })}
                 </div>
 
-                {/* Tab 1: Overview — Key Info + Filtered Tables */}
+                {/* Tab 1: Overview — Layout A: Refined Card Grid */}
                 {manageDetailTab === "overview" && (function() {
                   // Filtered data for overview
                   var attentionStatuses = { "pending": true, "at_risk": true, "recovery_mode": true };
@@ -4600,149 +4600,164 @@ export default function FactoringDashboard() {
                   var unallocPays = entityPays.filter(function(ep) { var al = 0; ep.allocs.forEach(function(a) { al += a.amount; }); return al < ep.pay.amount - 0.01; });
                   var attentionHbps = entityHbps.filter(function(hbp) { var disbAmt = 0; hbp.allocations.forEach(function(a) { if (a.type === "disbursement") disbAmt += a.amount; }); return disbAmt < 0.01; });
 
+                  var fieldLabel = { fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 };
+                  var fieldValue = { fontSize: 13, fontWeight: 500, color: "var(--text)" };
+                  var fieldMono = { fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono',monospace" };
+                  var sectionTitle = { fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F", marginBottom: 14, paddingBottom: 8, borderBottom: "2px solid var(--accent)" };
+                  var ovMc = { padding: "9px 12px", fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace" };
+                  var ovLink = function(color) { return { color: color, cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 3 }; };
+
                   return <div>
-                  {/* Key Information */}
-                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px", marginBottom: 18 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 14 }}>Key Information</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
-                      <div><span style={{ color: "var(--muted)" }}>ID: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{det.id}</span></div>
-                      <div style={{ gridColumn: "2 / -1" }}><span style={{ color: "var(--muted)" }}>Name: </span><strong>{det.name}</strong></div>
-                      {det.companyNumber && <div><span style={{ color: "var(--muted)" }}>Company Number: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{det.companyNumber}</span></div>}
-                      {det.companyStatus && <div><span style={{ color: "var(--muted)" }}>Company Status: </span><span>{det.companyStatus}</span></div>}
-                      {det.incorporationDate && <div><span style={{ color: "var(--muted)" }}>Incorporated: </span><span>{fmt(det.incorporationDate)}</span></div>}
-                      {det.street1 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Address: </span><span>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</span></div>}
+                  {/* Key Information — full width, generous padding */}
+                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "28px 32px", marginBottom: 20 }}>
+                    <div style={sectionTitle}>Key Information</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "18px 28px" }}>
+                      <div><div style={fieldLabel}>Entity ID</div><div style={fieldMono}>{det.id}</div></div>
+                      <div style={{ gridColumn: "2 / -1" }}><div style={fieldLabel}>Entity Name</div><div style={Object.assign({}, fieldValue, { fontSize: 15, fontWeight: 700 })}>{det.name}</div></div>
+                      {det.companyNumber && <div><div style={fieldLabel}>Company Number</div><div style={fieldMono}>{det.companyNumber}</div></div>}
+                      {det.companyStatus && <div><div style={fieldLabel}>Company Status</div><div style={fieldValue}>{det.companyStatus}</div></div>}
+                      {det.incorporationDate && <div><div style={fieldLabel}>Incorporated</div><div style={fieldValue}>{fmt(det.incorporationDate)}</div></div>}
+                      {det.street1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</div></div>}
                     </div>
-                    {(det.primaryContact || det.primaryEmail || det.primaryPhone) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 14, paddingTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
-                      {det.primaryContact && <div><span style={{ color: "var(--muted)" }}>Primary Contact: </span><span>{det.primaryContact}</span></div>}
-                      {det.primaryEmail && <div><span style={{ color: "var(--muted)" }}>Email: </span><span style={{ color: "var(--accent)" }}>{det.primaryEmail}</span></div>}
-                      {det.primaryPhone && <div><span style={{ color: "var(--muted)" }}>Phone: </span><span>{det.primaryPhone}</span></div>}
-                      {det.secondaryContact && <div><span style={{ color: "var(--muted)" }}>Secondary Contact: </span><span>{det.secondaryContact}</span></div>}
-                      {det.secondaryEmail && <div><span style={{ color: "var(--muted)" }}>Email: </span><span style={{ color: "var(--accent)" }}>{det.secondaryEmail}</span></div>}
-                      {det.secondaryPhone && <div><span style={{ color: "var(--muted)" }}>Phone: </span><span>{det.secondaryPhone}</span></div>}
+                    {/* Contacts */}
+                    {(det.primaryContact || det.primaryEmail || det.primaryPhone) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "18px 28px" }}>
+                      {det.primaryContact && <div><div style={fieldLabel}>Primary Contact</div><div style={fieldValue}>{det.primaryContact}</div></div>}
+                      {det.primaryEmail && <div><div style={fieldLabel}>Email</div><div style={Object.assign({}, fieldValue, { color: "var(--accent)" })}>{det.primaryEmail}</div></div>}
+                      {det.primaryPhone && <div><div style={fieldLabel}>Phone</div><div style={fieldValue}>{det.primaryPhone}</div></div>}
+                      {det.secondaryContact && <div><div style={fieldLabel}>Secondary Contact</div><div style={fieldValue}>{det.secondaryContact}</div></div>}
+                      {det.secondaryEmail && <div><div style={fieldLabel}>Email</div><div style={Object.assign({}, fieldValue, { color: "var(--accent)" })}>{det.secondaryEmail}</div></div>}
+                      {det.secondaryPhone && <div><div style={fieldLabel}>Phone</div><div style={fieldValue}>{det.secondaryPhone}</div></div>}
                     </div>}
-                    {isSup && (det.bankName || det.bankDetails) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 14, paddingTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
-                      {det.bankName && <div><span style={{ color: "var(--muted)" }}>Bank: </span><span>{det.bankName}</span></div>}
-                      {det.bankDetails && <div><span style={{ color: "var(--muted)" }}>Payment Details: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{det.bankDetails}</span></div>}
-                      <div><span style={{ color: "var(--muted)" }}>Verified: </span>{det.bankVerified ? <Badge label="Verified" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" icon={"\u2713"} /> : <Badge label="Unverified" bg="#C0392B14" color="#E05A4F" border="#C0392B30" icon="!" />}</div>
+                    {/* Bank Details */}
+                    {isSup && (det.bankName || det.bankDetails) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 20, paddingTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "18px 28px" }}>
+                      {det.bankName && <div><div style={fieldLabel}>Bank Name</div><div style={fieldValue}>{det.bankName}</div></div>}
+                      {det.bankDetails && <div><div style={fieldLabel}>Payment Details</div><div style={fieldMono}>{det.bankDetails}</div></div>}
+                      <div><div style={fieldLabel}>Verification</div><div style={{ marginTop: 2 }}>{det.bankVerified ? <Badge label="Verified" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" icon={"\u2713"} /> : <Badge label="Unverified" bg="#C0392B14" color="#E05A4F" border="#C0392B30" icon="!" />}</div></div>
                     </div>}
                   </div>
 
-                  {/* Notes */}
-                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px", marginBottom: 18 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 10 }}>Notes {det.entityNotes && det.entityNotes.length > 0 ? "(" + det.entityNotes.length + ")" : ""}</div>
-                    {det.entityNotes && det.entityNotes.length > 0 && <div style={{ maxHeight: 160, overflowY: "auto", marginBottom: 10 }}>
-                      {det.entityNotes.slice().reverse().map(function(n, ni) {
-                        return <div key={ni} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--bg)", marginBottom: 4, border: "1px solid var(--border)" }}>
-                          <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono',monospace", color: "var(--muted)", marginBottom: 2 }}>{n.display}</div>
-                          <div style={{ fontSize: 12, color: "var(--text)" }}>{n.text}</div>
-                        </div>;
-                      })}
-                    </div>}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
-                      <button onClick={function() { if (!noteText.trim() || !detEntity) return; if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
+                  {/* Notes & Files — side by side */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                    {/* Notes */}
+                    <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "24px 28px" }}>
+                      <div style={sectionTitle}>Notes {det.entityNotes && det.entityNotes.length > 0 ? "(" + det.entityNotes.length + ")" : ""}</div>
+                      {det.entityNotes && det.entityNotes.length > 0 && <div style={{ maxHeight: 180, overflowY: "auto", marginBottom: 12 }}>
+                        {det.entityNotes.slice().reverse().map(function(n, ni) {
+                          return <div key={ni} style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg)", marginBottom: 5, border: "1px solid var(--border)" }}>
+                            <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono',monospace", color: "var(--muted)", marginBottom: 3 }}>{n.display}</div>
+                            <div style={{ fontSize: 13, color: "var(--text)" }}>{n.text}</div>
+                          </div>;
+                        })}
+                      </div>}
+                      {(!det.entityNotes || det.entityNotes.length === 0) && <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 12, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
+                        <button onClick={function() { if (!noteText.trim() || !detEntity) return; if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
+                      </div>
+                    </div>
+
+                    {/* Files */}
+                    <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "24px 28px" }}>
+                      <div style={sectionTitle}>Files {det.entityFiles && det.entityFiles.length > 0 ? "(" + det.entityFiles.length + ")" : ""}</div>
+                      {det.entityFiles && det.entityFiles.length > 0 && <div style={{ maxHeight: 160, overflowY: "auto", marginBottom: 12 }}>
+                        {det.entityFiles.map(function(fl, fi) {
+                          return <div key={fi} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
+                            <div>
+                              <a href={fl.dataUrl} download={fl.fileName} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 }}>{fl.fileName}</a>
+                              {fl.label && <span style={{ fontSize: 11, color: "var(--text-secondary)", marginLeft: 10 }}>{fl.label}</span>}
+                              {fl.notes && <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 8 }}>{"\u2014"} {fl.notes}</span>}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 9, color: "var(--muted)" }}>{fl.uploadedAt}</span>
+                              <button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); auditLog("File Removed", "File \"" + fl.fileName + "\" removed from " + det.id, { entityId: det.id, fileName: fl.fileName }); setDataVer(function(v) { return v + 1; }); } }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
+                            </div>
+                          </div>;
+                        })}
+                      </div>}
+                      {(!det.entityFiles || det.entityFiles.length === 0) && <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 12, fontStyle: "italic", marginBottom: 10 }}>No files uploaded.</div>}
+                      <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <label style={fieldLabel}>File</label>
+                          <input type="file" id="entityFileUpload" style={{ fontSize: 11, color: "var(--text)" }} />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 100 }}>
+                          <label style={fieldLabel}>Label</label>
+                          <input type="text" id="entityFileLabel" placeholder="e.g. KYC Document" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 100 }}>
+                          <label style={fieldLabel}>Notes</label>
+                          <input type="text" id="entityFileNotes" placeholder="Optional notes" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
+                        </div>
+                        <button onClick={function() {
+                          var fileInput = document.getElementById("entityFileUpload");
+                          var labelInput = document.getElementById("entityFileLabel");
+                          var notesInput = document.getElementById("entityFileNotes");
+                          if (!fileInput || !fileInput.files || !fileInput.files[0] || !detEntity) return;
+                          var file = fileInput.files[0];
+                          var reader = new FileReader();
+                          reader.onload = function(e) {
+                            if (!detEntity.entityFiles) detEntity.entityFiles = [];
+                            var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+                            detEntity.entityFiles.push({ fileName: file.name, label: labelInput ? labelInput.value : "", notes: notesInput ? notesInput.value : "", dataUrl: e.target.result, uploadedAt: nd, size: file.size });
+                            auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, fileName: file.name, label: labelInput ? labelInput.value : "" });
+                            if (fileInput) fileInput.value = "";
+                            if (labelInput) labelInput.value = "";
+                            if (notesInput) notesInput.value = "";
+                            setDataVer(function(v) { return v + 1; });
+                          };
+                          reader.readAsDataURL(file);
+                        }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Upload</button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* File Uploads */}
-                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px", marginBottom: 18 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 10 }}>Files {det.entityFiles && det.entityFiles.length > 0 ? "(" + det.entityFiles.length + ")" : ""}</div>
-                    {det.entityFiles && det.entityFiles.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 10 }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["File", "Name/Label", "Notes", "Uploaded", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{det.entityFiles.map(function(fl, fi) {
-                          return <tr key={fi} style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={{ padding: "6px 10px", fontSize: 11.5 }}><a href={fl.dataUrl} download={fl.fileName} style={{ color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 }}>{fl.fileName}</a></td>
-                            <td style={{ padding: "6px 10px", fontSize: 11.5, fontWeight: 600 }}>{fl.label || "\u2014"}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{fl.notes || "\u2014"}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 10, color: "var(--muted)" }}>{fl.uploadedAt}</td>
-                            <td style={{ padding: "6px 10px" }}><button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); auditLog("File Removed", "File \"" + fl.fileName + "\" removed from " + det.id, { entityId: det.id, fileName: fl.fileName }); setDataVer(function(v) { return v + 1; }); } }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button></td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>}
-                    <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>File</label>
-                        <input type="file" id="entityFileUpload" style={{ fontSize: 11, color: "var(--text)" }} />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 120 }}>
-                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Label</label>
-                        <input type="text" id="entityFileLabel" placeholder="e.g. KYC Document" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 120 }}>
-                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Notes</label>
-                        <input type="text" id="entityFileNotes" placeholder="Optional notes" style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
-                      </div>
-                      <button onClick={function() {
-                        var fileInput = document.getElementById("entityFileUpload");
-                        var labelInput = document.getElementById("entityFileLabel");
-                        var notesInput = document.getElementById("entityFileNotes");
-                        if (!fileInput || !fileInput.files || !fileInput.files[0] || !detEntity) return;
-                        var file = fileInput.files[0];
-                        var reader = new FileReader();
-                        reader.onload = function(e) {
-                          if (!detEntity.entityFiles) detEntity.entityFiles = [];
-                          var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-                          detEntity.entityFiles.push({ fileName: file.name, label: labelInput ? labelInput.value : "", notes: notesInput ? notesInput.value : "", dataUrl: e.target.result, uploadedAt: nd, size: file.size });
-                          auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, fileName: file.name, label: labelInput ? labelInput.value : "" });
-                          if (fileInput) fileInput.value = "";
-                          if (labelInput) labelInput.value = "";
-                          if (notesInput) notesInput.value = "";
-                          setDataVer(function(v) { return v + 1; });
-                        };
-                        reader.readAsDataURL(file);
-                      }} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Upload</button>
-                    </div>
-                  </div>
-
-                  {/* Invoices — Attention Needed only (Suppliers only) */}
-                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                  <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Invoices \u2014 Attention Needed ({attentionInvs.length})</div>
+                  {/* Invoices — Attention Needed (Suppliers only) */}
+                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 20 }}>
+                  <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Invoices {"\u2014"} Attention Needed ({attentionInvs.length})</div>
                     <span style={{ fontSize: 10, color: "var(--muted)" }}>Pending, At Risk, Recovery Mode</span>
                   </div>
-                  {attentionInvs.length === 0 && <div style={{ padding: "18px 22px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No invoices requiring attention.</div>}
+                  {attentionInvs.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices requiring attention.</div>}
                   {attentionInvs.length > 0 && <div style={{ maxHeight: 350, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", isSup ? "Buyer" : "Supplier", "Amount", "CCY", "Due", "Inv Status", "Fund Status", "O/S"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Invoice", isSup ? "Buyer" : "Supplier", "Amount", "CCY", "Due", "Inv Status", "Fund Status", "O/S"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "9px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{attentionInvs.map(function(inv) {
                         var ist = IST[inv.invoiceStatus] || IST["Received"];
                         var fst = FST[inv.fundingStatus] || FST.funded;
                         return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setManagePopup({ type: "invoice", id: inv.id }); }}>
-                          <td style={Object.assign({}, mc, link("var(--accent)"))}>{inv.id}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{isSup ? inv.buyerName : inv.supplierName}</td>
-                          <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: inv.dueDate < viewDate ? "#E05A4F" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                          <td style={{ padding: "7px 10px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
-                          <td style={{ padding: "7px 10px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
-                          <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.totalOutstanding, inv.currency)}</td>
+                          <td style={Object.assign({}, ovMc, ovLink("var(--accent)"))}>{inv.id}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--text-secondary)" }}>{isSup ? inv.buyerName : inv.supplierName}</td>
+                          <td style={Object.assign({}, ovMc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--muted)" }}>{inv.currency}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: inv.dueDate < viewDate ? "#E05A4F" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                          <td style={{ padding: "9px 14px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
+                          <td style={{ padding: "9px 14px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
+                          <td style={Object.assign({}, ovMc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.totalOutstanding, inv.currency)}</td>
                         </tr>;
                       })}</tbody>
                     </table>
                   </div>}
                 </div>}
 
-                  {/* Payment Allocations — Unallocated only (Suppliers only) */}
-                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: isSup ? 18 : 0 }}>
-                  <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Payments \u2014 Unallocated ({unallocPays.length})</div>
+                  {/* Payments — Unallocated (Suppliers only) */}
+                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 20 }}>
+                  <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Payments {"\u2014"} Unallocated ({unallocPays.length})</div>
                     <span style={{ fontSize: 10, color: "var(--muted)" }}>Payments with remaining balance</span>
                   </div>
-                  {unallocPays.length === 0 && <div style={{ padding: "18px 22px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No unallocated payments.</div>}
+                  {unallocPays.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No unallocated payments.</div>}
                   {unallocPays.length > 0 && <div style={{ maxHeight: 300, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Payment ID", "Date", "Total Amt", "Allocated", "Remaining", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Payment ID", "Date", "Total Amt", "Allocated", "Remaining", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "9px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{unallocPays.map(function(ep) {
                         var al = 0; ep.allocs.forEach(function(a) { al += a.amount; }); var rem = r2(ep.pay.amount - al);
                         return <tr key={ep.pay.paymentId} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setManagePopup({ type: "payment", id: ep.pay.paymentId }); }}>
-                          <td style={Object.assign({}, mc, link("var(--accent)"))}>{ep.pay.paymentId}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
-                          <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
-                          <td style={Object.assign({}, mc, { color: "#2E8B57" })}>{money(al, ep.pay.currency)}</td>
-                          <td style={Object.assign({}, mc, { color: "#E05A4F", fontWeight: 600 })}>{money(rem, ep.pay.currency)}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--muted)" }}>{ep.pay.currency}</td>
+                          <td style={Object.assign({}, ovMc, ovLink("var(--accent)"))}>{ep.pay.paymentId}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
+                          <td style={Object.assign({}, ovMc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
+                          <td style={Object.assign({}, ovMc, { color: "#2E8B57" })}>{money(al, ep.pay.currency)}</td>
+                          <td style={Object.assign({}, ovMc, { color: "#E05A4F", fontWeight: 600 })}>{money(rem, ep.pay.currency)}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--muted)" }}>{ep.pay.currency}</td>
                         </tr>;
                       })}</tbody>
                     </table>
@@ -4751,22 +4766,22 @@ export default function FactoringDashboard() {
 
                   {/* Holdback Payments — Attention Needed */}
                 {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Holdback Payments \u2014 Attention Needed ({attentionHbps.length})</div>
+                  <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Holdback Payments {"\u2014"} Attention Needed ({attentionHbps.length})</div>
                     <span style={{ fontSize: 10, color: "var(--muted)" }}>Awaiting disbursement</span>
                   </div>
-                  {attentionHbps.length === 0 && <div style={{ padding: "18px 22px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No holdback payments requiring attention.</div>}
+                  {attentionHbps.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No holdback payments requiring attention.</div>}
                   {attentionHbps.length > 0 && <div style={{ maxHeight: 300, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "9px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{attentionHbps.map(function(hbp) {
                         return <tr key={hbp.hbPaymentId} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setManagePopup({ type: "holdback", id: hbp.hbPaymentId }); }}>
-                          <td style={Object.assign({}, mc, link("#2E8B57"))}>{hbp.hbPaymentId}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
-                          <td style={Object.assign({}, mc, { color: "var(--accent)" })}>{hbp.sourceInvoiceId}</td>
-                          <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(hbp.amount, hbp.currency)}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--muted)" }}>{hbp.currency}</td>
-                          <td style={{ padding: "7px 10px" }}><Badge label="Awaiting Disbursement" bg="#C08B3014" color="#C08B30" border="#C08B3030" /></td>
+                          <td style={Object.assign({}, ovMc, ovLink("#2E8B57"))}>{hbp.hbPaymentId}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
+                          <td style={Object.assign({}, ovMc, { color: "var(--accent)" })}>{hbp.sourceInvoiceId}</td>
+                          <td style={Object.assign({}, ovMc, { fontWeight: 600 })}>{money(hbp.amount, hbp.currency)}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--muted)" }}>{hbp.currency}</td>
+                          <td style={{ padding: "9px 14px" }}><Badge label="Awaiting Disbursement" bg="#C08B3014" color="#C08B30" border="#C08B3030" /></td>
                         </tr>;
                       })}</tbody>
                     </table>
