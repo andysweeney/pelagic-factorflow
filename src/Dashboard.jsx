@@ -2239,7 +2239,7 @@ export default function FactoringDashboard() {
                       {bFld("Primary Phone", "primaryPhone", "tel")}
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={function() { Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited", { entityType: "Buyer", entityId: buyer.id, name: buyer.name }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
+                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
                       <button onClick={function() { setExp(null); }} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                     </div>
                   </div>;
@@ -4211,7 +4211,24 @@ export default function FactoringDashboard() {
               if (ent) {
                 var oldCoNum = (ent.companyNumber || "").trim();
                 var newCoNum = (f.companyNumber || "").trim();
-                auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited", { entityType: entityLabel, entityId: manageEdit, name: f.name, fields: Object.assign({}, f) });
+                // Build field-level change log
+                var changes = [];
+                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", secondaryContact: "Secondary Contact", secondaryEmail: "Secondary Email", secondaryPhone: "Secondary Phone", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
+                Object.keys(trackFields).forEach(function(k) {
+                  var oldVal = ent[k] !== undefined && ent[k] !== null ? String(ent[k]) : "";
+                  var newVal = f[k] !== undefined && f[k] !== null ? String(f[k]) : "";
+                  if (oldVal !== newVal) {
+                    changes.push(trackFields[k] + ": \"" + (oldVal || "\u2014") + "\" \u2192 \"" + (newVal || "\u2014") + "\"");
+                  }
+                });
+                // Track director count changes
+                var oldDirCount = (ent.directors || []).length;
+                var newDirCount = (f.directors || []).length;
+                if (oldDirCount !== newDirCount) {
+                  changes.push("Directors: " + oldDirCount + " \u2192 " + newDirCount);
+                }
+                var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
+                auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
                 Object.assign(ent, f);
                 // If company number was added or changed, auto-fetch from CH
                 if (newCoNum && newCoNum !== oldCoNum) {
