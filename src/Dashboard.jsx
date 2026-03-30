@@ -604,6 +604,8 @@ export default function FactoringDashboard() {
   var ch1 = useState(""), chCompanyNo = ch1[0], setChCompanyNo = ch1[1];
   var ch2 = useState(null), chImportStep = ch2[0], setChImportStep = ch2[1]; // null, "lookup", "loading", "done", "skip"
   var ch3 = useState(""), chError = ch3[0], setChError = ch3[1];
+  var chLive1 = useState(null), chLiveData = chLive1[0], setChLiveData = chLive1[1];
+  var chLive2 = useState(false), chLiveLoading = chLive2[0], setChLiveLoading = chLive2[1];
   var aps1 = useState(""), allocProgFilter = aps1[0], setAllocProgFilter = aps1[1];
   var ass1 = useState(""), allocSupFilter = ass1[0], setAllocSupFilter = ass1[1];
   var wp1 = useState(""), woPenalty = wp1[0], setWoPenalty = wp1[1];
@@ -2205,6 +2207,14 @@ export default function FactoringDashboard() {
                   {buyer.primaryContact && <div><span style={{ color: "var(--muted)" }}>Contact: </span><span>{buyer.primaryContact}</span></div>}
                   {buyer.primaryEmail && <div><span style={{ color: "var(--muted)" }}>Email: </span><span style={{ color: "var(--accent)" }}>{buyer.primaryEmail}</span></div>}
                   {buyer.primaryPhone && <div><span style={{ color: "var(--muted)" }}>Phone: </span><span>{buyer.primaryPhone}</span></div>}
+                  {buyer.directors && buyer.directors.filter(function(d) { return !d.resignedDate; }).length > 0 && <div style={{ gridColumn: "1 / -1", marginTop: 6, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 6 }}>Active Directors</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {buyer.directors.filter(function(d) { return !d.resignedDate; }).map(function(d, di) {
+                        return <span key={di} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}>{d.name} <span style={{ color: "var(--muted)", fontSize: 10 }}>({d.role})</span></span>;
+                      })}
+                    </div>
+                  </div>}
                 </div>}
                 {buyer && exp === "buyerEdit" && (function() {
                   var f = manageFields;
@@ -4166,7 +4176,7 @@ export default function FactoringDashboard() {
           function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); }
           function startNewEntity() {
             setManageEdit(null);
-            setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "" }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
+            setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
             setShowNewEntity(true);
             // For suppliers, show the import step; for buyers/service providers, skip straight to form
             if (isSupTab) { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
@@ -4176,14 +4186,35 @@ export default function FactoringDashboard() {
             if (!chCompanyNo.trim()) { setChError("Enter a company number."); return; }
             setChImportStep("loading"); setChError("");
             var num = chCompanyNo.trim().padStart(8, "0");
-            fetch(CH_WORKER_URL + "/company/" + num).then(function(res) {
-              if (res.status === 404) throw new Error("Company " + num + " not found");
-              if (res.status === 401) throw new Error("API key not configured on worker");
-              if (!res.ok) throw new Error("Lookup failed (HTTP " + res.status + ")");
-              return res.json();
-            }).then(function(data) {
+            var companyUrl = CH_WORKER_URL + "/company/" + num;
+            var officersUrl = CH_WORKER_URL + "/company/" + num + "/officers";
+            Promise.all([
+              fetch(companyUrl).then(function(res) {
+                if (res.status === 404) throw new Error("Company " + num + " not found");
+                if (res.status === 401) throw new Error("API key not configured on worker");
+                if (!res.ok) throw new Error("Lookup failed (HTTP " + res.status + ")");
+                return res.json();
+              }),
+              fetch(officersUrl).then(function(res) {
+                if (!res.ok) return { items: [] };
+                return res.json();
+              }).catch(function() { return { items: [] }; })
+            ]).then(function(results) {
+              var data = results[0];
+              var officersData = results[1];
               if (!data || !data.company_name) throw new Error("Invalid response from Companies House");
               var addr = data.registered_office_address || {};
+              var directors = (officersData.items || []).map(function(o) {
+                return {
+                  name: o.name || "",
+                  role: o.officer_role ? o.officer_role.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "Director",
+                  appointedDate: o.appointed_on || "",
+                  resignedDate: o.resigned_on || "",
+                  dateOfBirth: o.date_of_birth ? { month: o.date_of_birth.month, year: o.date_of_birth.year } : null,
+                  nationality: o.nationality || "",
+                  source: "ch"
+                };
+              });
               setManageFields(function(prev) {
                 return Object.assign({}, prev, {
                   name: data.company_name || "",
@@ -4195,7 +4226,8 @@ export default function FactoringDashboard() {
                   city: addr.locality || "",
                   state: addr.region || "",
                   zip: addr.postal_code || "",
-                  country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom"
+                  country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
+                  directors: directors
                 });
               });
               setChImportStep("done");
@@ -4346,12 +4378,35 @@ export default function FactoringDashboard() {
               return <div>
                 {popupOverlay}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-                  <button onClick={function() { setManageDetail(null); setManagePopup(null); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
+                  <button onClick={function() { setManageDetail(null); setManagePopup(null); setChLiveData(null); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>{det.name}</div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} \u2014 {entityInvs.length} invoices \u2014 Total: {money(totalAmt, "GBP")} \u2014 Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
                 </div>
+
+                {/* Directors */}
+                {det.directors && det.directors.length > 0 && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                  <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Directors & Officers ({det.directors.length})</div>
+                  </div>
+                  <div style={{ maxHeight: 250, overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Name", "Role", "Appointed", "Resigned", "Status", "Source"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{det.directors.map(function(dir, di) {
+                        var isResigned = !!dir.resignedDate;
+                        return <tr key={di} style={{ borderBottom: "1px solid var(--border)", opacity: isResigned ? 0.6 : 1 }}>
+                          <td style={{ padding: "7px 10px", fontSize: 12, fontWeight: 600 }}>{dir.name}</td>
+                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{dir.role}</td>
+                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dir.appointedDate)}</td>
+                          <td style={{ padding: "7px 10px", fontSize: 12, color: isResigned ? "#E05A4F" : "var(--text-secondary)" }}>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</td>
+                          <td style={{ padding: "7px 10px" }}><Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#2E8B57"} border={isResigned ? "#6B728030" : "#2E8B5730"} /></td>
+                          <td style={{ padding: "7px 10px" }}>{dir.source === "ch" ? <span style={{ fontSize: 9, fontWeight: 600, color: "#567EBB", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span> : <span style={{ fontSize: 9, fontWeight: 600, color: "#C08B30", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}</td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                </div>}
 
                 {/* Invoices */}
                 <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
@@ -4432,6 +4487,138 @@ export default function FactoringDashboard() {
                     </table>
                   </div>}
                 </div>}
+
+                {/* Companies House Information */}
+                {det.companyNumber && (function() {
+                  var coNum = det.companyNumber;
+                  function fetchChLive() {
+                    setChLiveLoading(true); setChLiveData(null);
+                    var base = CH_WORKER_URL + "/company/" + coNum;
+                    Promise.all([
+                      fetch(base + "/filing-history?items_per_page=15").then(function(r) { return r.ok ? r.json() : { items: [] }; }).catch(function() { return { items: [] }; }),
+                      fetch(base + "/charges").then(function(r) { return r.ok ? r.json() : { items: [] }; }).catch(function() { return { items: [] }; }),
+                      fetch(base + "/insolvency").then(function(r) { return r.ok ? r.json() : { cases: [] }; }).catch(function() { return { cases: [] }; }),
+                      fetch(base + "/persons-with-significant-control").then(function(r) { return r.ok ? r.json() : { items: [] }; }).catch(function() { return { items: [] }; })
+                    ]).then(function(results) {
+                      setChLiveData({ filings: results[0], charges: results[1], insolvency: results[2], pscs: results[3] });
+                      setChLiveLoading(false);
+                    }).catch(function() { setChLiveLoading(false); });
+                  }
+                  var chTh = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" };
+                  var chTd = { padding: "6px 10px", fontSize: 11.5, borderBottom: "1px solid var(--border)" };
+                  var chLk = { color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 };
+
+                  return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginTop: 18 }}>
+                    <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Companies House Information</div>
+                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Co. {coNum} {"\u2014"} Live data from Companies House API</div>
+                      </div>
+                      <button onClick={fetchChLive} disabled={chLiveLoading} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: chLiveLoading ? "var(--border)" : "transparent", color: chLiveLoading ? "var(--muted)" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: chLiveLoading ? "default" : "pointer" }}>{chLiveLoading ? "Loading..." : chLiveData ? "\u21bb Refresh" : "Fetch from CH"}</button>
+                    </div>
+
+                    {!chLiveData && !chLiveLoading && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12 }}>Click "Fetch from CH" to load filing history, charges, insolvency, and PSC data.</div>}
+                    {chLiveLoading && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--text-secondary)", fontSize: 12 }}>Fetching data from Companies House...</div>}
+
+                    {chLiveData && <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+                      {/* Filing History */}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 8 }}>Filing History ({(chLiveData.filings.items || []).length}{chLiveData.filings.total_count > 15 ? " of " + chLiveData.filings.total_count : ""})</div>
+                        {(!chLiveData.filings.items || chLiveData.filings.items.length === 0) && <div style={{ color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>No filing history available.</div>}
+                        {chLiveData.filings.items && chLiveData.filings.items.length > 0 && <div style={{ maxHeight: 220, overflowY: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead><tr>{["Date", "Type", "Description", ""].map(function(h) { return <th key={h} style={chTh}>{h}</th>; })}</tr></thead>
+                            <tbody>{chLiveData.filings.items.map(function(f, fi) {
+                              var desc = f.description || "";
+                              if (f.description_values) { Object.keys(f.description_values).forEach(function(k) { desc = desc.replace("{" + k + "}", f.description_values[k]); }); }
+                              desc = desc.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                              var docUrl = f.transaction_id ? "https://find-and-update.company-information.service.gov.uk/company/" + coNum + "/filing-history/" + f.transaction_id : null;
+                              return <tr key={fi} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={Object.assign({}, chTd, { whiteSpace: "nowrap", color: "var(--text-secondary)" })}>{fmt(f.date)}</td>
+                                <td style={Object.assign({}, chTd, { fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "var(--muted)" })}>{f.type || "\u2014"}</td>
+                                <td style={Object.assign({}, chTd, { color: "var(--text)" })}>{desc || f.category || "\u2014"}</td>
+                                <td style={chTd}>{docUrl && <a href={docUrl} target="_blank" rel="noopener noreferrer" style={chLk}>View {"\u2197"}</a>}</td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
+                        </div>}
+                        {chLiveData.filings.total_count > 15 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>Showing most recent 15 of {chLiveData.filings.total_count}. <a href={"https://find-and-update.company-information.service.gov.uk/company/" + coNum + "/filing-history"} target="_blank" rel="noopener noreferrer" style={chLk}>View all on CH {"\u2197"}</a></div>}
+                      </div>
+
+                      {/* Charges */}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>Charges ({(chLiveData.charges.items || []).length})
+                          {chLiveData.charges.items && chLiveData.charges.items.some(function(c) { return !c.satisfied_on; }) && <Badge label="Outstanding" bg="#C0392B18" color="#E05A4F" border="#C0392B30" />}
+                          {chLiveData.charges.items && chLiveData.charges.items.length > 0 && !chLiveData.charges.items.some(function(c) { return !c.satisfied_on; }) && <Badge label="All Satisfied" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" />}
+                        </div>
+                        {(!chLiveData.charges.items || chLiveData.charges.items.length === 0) && <div style={{ color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>No charges registered.</div>}
+                        {chLiveData.charges.items && chLiveData.charges.items.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead><tr>{["Created", "Delivered", "Status", "Persons Entitled", "Particulars", ""].map(function(h) { return <th key={h} style={chTh}>{h}</th>; })}</tr></thead>
+                            <tbody>{chLiveData.charges.items.map(function(c, ci) {
+                              var isSatisfied = !!c.satisfied_on;
+                              var statusLabel = isSatisfied ? "Satisfied" : c.status === "part-satisfied" ? "Part Satisfied" : "Outstanding";
+                              var statusColor = isSatisfied ? "#2E8B57" : "#E05A4F";
+                              var entitled = (c.persons_entitled || []).map(function(p) { return p.name; }).join(", ");
+                              var partDesc = c.particulars ? (c.particulars.description || [c.particulars.contains_fixed_charge ? "Fixed" : null, c.particulars.contains_floating_charge ? "Floating" : null, c.particulars.contains_negative_pledge ? "Neg. Pledge" : null].filter(Boolean).join(", ") || "\u2014") : "\u2014";
+                              var chargeUrl = c.links && c.links.self ? "https://find-and-update.company-information.service.gov.uk" + c.links.self : null;
+                              return <tr key={ci} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={Object.assign({}, chTd, { whiteSpace: "nowrap", color: "var(--text-secondary)" })}>{fmt(c.created_on)}</td>
+                                <td style={Object.assign({}, chTd, { whiteSpace: "nowrap", color: "var(--text-secondary)" })}>{fmt(c.delivered_on)}</td>
+                                <td style={Object.assign({}, chTd, { fontWeight: 600, color: statusColor })}>{statusLabel}{isSatisfied ? " (" + fmt(c.satisfied_on) + ")" : ""}</td>
+                                <td style={Object.assign({}, chTd, { color: "var(--text)", maxWidth: 200 })}>{entitled || "\u2014"}</td>
+                                <td style={Object.assign({}, chTd, { color: "var(--text-secondary)", maxWidth: 180, fontSize: 10.5 })}>{partDesc}</td>
+                                <td style={chTd}>{chargeUrl && <a href={chargeUrl} target="_blank" rel="noopener noreferrer" style={chLk}>View {"\u2197"}</a>}</td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
+                        </div>}
+                      </div>
+
+                      {/* Insolvency */}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>Insolvency
+                          {chLiveData.insolvency.cases && chLiveData.insolvency.cases.length > 0 ? <Badge label={chLiveData.insolvency.cases.length + " Case" + (chLiveData.insolvency.cases.length > 1 ? "s" : "")} bg="#C0392B18" color="#E05A4F" border="#C0392B30" icon="!" /> : <Badge label="None" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" />}
+                        </div>
+                        {(!chLiveData.insolvency.cases || chLiveData.insolvency.cases.length === 0) && <div style={{ color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>No insolvency cases recorded.</div>}
+                        {chLiveData.insolvency.cases && chLiveData.insolvency.cases.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {chLiveData.insolvency.cases.map(function(ic, ici) {
+                            return <div key={ici} style={{ background: "#C0392B08", borderRadius: 8, border: "1px solid #C0392B20", padding: "10px 14px" }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#C0392B", marginBottom: 4 }}>Case {ic.number || ici + 1}: {(ic.type || "Unknown").replace(/-/g, " ").replace(/\b\w/g, function(ch) { return ch.toUpperCase(); })}</div>
+                              {ic.dates && ic.dates.map(function(d, di) { return <div key={di} style={{ fontSize: 11, color: "var(--text-secondary)" }}>{(d.type || "").replace(/-/g, " ").replace(/\b\w/g, function(ch) { return ch.toUpperCase(); })}: {fmt(d.date)}</div>; })}
+                              {ic.practitioners && ic.practitioners.length > 0 && <div style={{ marginTop: 4 }}>{ic.practitioners.map(function(p, pi) { return <div key={pi} style={{ fontSize: 11, color: "var(--text-secondary)" }}>{p.name}{p.address ? " \u2014 " + [p.address.address_line_1, p.address.locality, p.address.postal_code].filter(Boolean).join(", ") : ""}</div>; })}</div>}
+                            </div>;
+                          })}
+                        </div>}
+                      </div>
+
+                      {/* PSCs */}
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 8 }}>Persons with Significant Control ({(chLiveData.pscs.items || []).length})</div>
+                        {(!chLiveData.pscs.items || chLiveData.pscs.items.length === 0) && <div style={{ color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>No PSCs recorded.</div>}
+                        {chLiveData.pscs.items && chLiveData.pscs.items.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead><tr>{["Name", "Natures of Control", "Notified", "Ceased"].map(function(h) { return <th key={h} style={chTh}>{h}</th>; })}</tr></thead>
+                            <tbody>{chLiveData.pscs.items.map(function(p, pi) {
+                              var isCeased = !!p.ceased_on;
+                              var pName = p.name || (p.name_elements ? [p.name_elements.title, p.name_elements.forename, p.name_elements.surname].filter(Boolean).join(" ") : "\u2014");
+                              var natures = (p.natures_of_control || []).map(function(n) { return n.replace(/-/g, " ").replace(/\b\w/g, function(ch) { return ch.toUpperCase(); }); }).join("; ");
+                              return <tr key={pi} style={{ borderBottom: "1px solid var(--border)", opacity: isCeased ? 0.5 : 1 }}>
+                                <td style={Object.assign({}, chTd, { fontWeight: 600 })}>{pName}</td>
+                                <td style={Object.assign({}, chTd, { color: "var(--text-secondary)", fontSize: 10.5, maxWidth: 280 })}>{natures || "\u2014"}</td>
+                                <td style={Object.assign({}, chTd, { whiteSpace: "nowrap", color: "var(--text-secondary)" })}>{fmt(p.notified_on)}</td>
+                                <td style={Object.assign({}, chTd, { whiteSpace: "nowrap", color: isCeased ? "#E05A4F" : "var(--text-secondary)" })}>{p.ceased_on ? fmt(p.ceased_on) : "\u2014"}</td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
+                        </div>}
+                      </div>
+
+                      <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "right" }}>Data from <a href={"https://find-and-update.company-information.service.gov.uk/company/" + coNum} target="_blank" rel="noopener noreferrer" style={chLk}>Companies House {"\u2197"}</a></div>
+                    </div>}
+                  </div>;
+                })()}
               </div>;
             })()}
 
@@ -4492,6 +4679,49 @@ export default function FactoringDashboard() {
                   {fld("Bank Payment Details", "bankDetails")}
                 </div>
               </div>}
+              {/* Directors Section */}
+              <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)" }}>Directors & Officers {f.directors && f.directors.length > 0 ? "(" + f.directors.length + ")" : ""}</div>
+                  <button onClick={function() { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs.push({ name: "", role: "Director", appointedDate: "", resignedDate: "", dateOfBirth: null, nationality: "", source: "manual" }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>+ Add Director</button>
+                </div>
+                {(!f.directors || f.directors.length === 0) && <div style={{ padding: "12px 0", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No directors added. Import from Companies House or add manually.</div>}
+                {f.directors && f.directors.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {f.directors.map(function(dir, di) {
+                    var isResigned = !!dir.resignedDate;
+                    return <div key={di} style={{ background: isResigned ? "var(--bg)" : "var(--card-hover)", borderRadius: 10, border: "1px solid " + (isResigned ? "var(--border)" : "var(--accent)20"), padding: "12px 14px", opacity: isResigned ? 0.7 : 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#2E8B57"} border={isResigned ? "#6B728030" : "#2E8B5730"} />
+                          {dir.source === "ch" && <span style={{ fontSize: 9, fontWeight: 600, color: "#567EBB", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span>}
+                          {dir.source === "manual" && <span style={{ fontSize: 9, fontWeight: 600, color: "#C08B30", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}
+                        </div>
+                        <button onClick={function() { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs.splice(di, 1); return Object.assign({}, p, { directors: dirs }); }); }} style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{"\u2715"}</button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Name</label>
+                          <input type="text" value={dir.name} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { name: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Role</label>
+                          <select value={dir.role} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { role: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }}>
+                            <option>Director</option><option>Secretary</option><option>Corporate Director</option><option>Corporate Secretary</option><option>Nominee Director</option><option>Nominee Secretary</option><option>Llp Member</option><option>Llp Designated Member</option>
+                          </select>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Appointed</label>
+                          <input type="date" value={dir.appointedDate || ""} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { appointedDate: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Resigned</label>
+                          <input type="date" value={dir.resignedDate || ""} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { resignedDate: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
+                        </div>
+                      </div>
+                    </div>;
+                  })}
+                </div>}
+              </div>
               <div style={{ marginTop: 16 }}>
                 <button onClick={saveEntity} disabled={!f.name} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: f.name ? "pointer" : "default" }}>{manageEdit ? "Save Changes" : "Create"}</button>
               </div>
