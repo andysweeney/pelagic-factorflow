@@ -4469,7 +4469,7 @@ export default function FactoringDashboard() {
 
                 {/* Detail Sub-Tabs */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-                  {[{ key: "overview", label: "Overview" }, { key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") }, { key: "monitoring", label: "Monitoring" }, { key: "ch", label: "Companies House" }, { key: "auditlog", label: "Audit Log" }].map(function(t) {
+                  {[{ key: "overview", label: "Overview" }, { key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") }, { key: "monitoring", label: "Monitoring" }, { key: "ch", label: "Companies House" }, { key: "branches", label: "Branches" + (det.branches && det.branches.length > 0 ? " (" + det.branches.length + ")" : "") }, { key: "auditlog", label: "Audit Log" }].map(function(t) {
                     return <button key={t.key} onClick={function() { setManageDetailTab(t.key); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: manageDetailTab === t.key ? "var(--accent)" : "transparent", color: manageDetailTab === t.key ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer" }}>{t.label}</button>;
                   })}
                 </div>
@@ -4707,7 +4707,119 @@ export default function FactoringDashboard() {
                   </div>
                 </div>}
 
-                {/* Tab 5: Entity Audit Log */}
+                {/* Tab: Branches */}
+                {manageDetailTab === "branches" && (function() {
+                  var branches = det.branches || [];
+                  var editingBranch = managePopup && managePopup.type === "branchEdit" ? managePopup : null;
+                  var ebIdx = editingBranch ? editingBranch.idx : -1;
+                  var ebData = editingBranch ? editingBranch.data : null;
+
+                  function startBranchEdit(idx) {
+                    var br = idx >= 0 ? Object.assign({}, branches[idx]) : { branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, primaryContact: "", primaryEmail: "", primaryPhone: "", secondaryContact: "", secondaryEmail: "", secondaryPhone: "" };
+                    setManagePopup({ type: "branchEdit", idx: idx, data: br });
+                  }
+                  function saveBranch() {
+                    if (!ebData || !ebData.branchName || !detEntity) return;
+                    if (!detEntity.branches) detEntity.branches = [];
+                    if (ebIdx >= 0) {
+                      detEntity.branches[ebIdx] = ebData;
+                      auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
+                    } else {
+                      detEntity.branches.push(ebData);
+                      auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
+                    }
+                    setManagePopup(null);
+                    setDataVer(function(v) { return v + 1; });
+                  }
+                  function removeBranch(idx) {
+                    if (!detEntity || !detEntity.branches) return;
+                    var removed = detEntity.branches[idx];
+                    detEntity.branches.splice(idx, 1);
+                    auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
+                    setDataVer(function(v) { return v + 1; });
+                  }
+                  function bfld(label, key, type) {
+                    var val = ebData[key] || "";
+                    var bInp = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
+                    return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>{label}</label>
+                      {type === "country" ? <select value={val} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, (function() { var o = {}; o[key] = e.target.value; return o; })()) }); }); }} style={Object.assign({}, bInp, { cursor: "pointer" })}>{COUNTRIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                        : <input type={type || "text"} value={val} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, (function() { var o = {}; o[key] = e.target.value; return o; })()) }); }); }} style={bInp} />}
+                    </div>;
+                  }
+
+                  return <div>
+                    <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                      <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Branches ({branches.length})</div>
+                        <button onClick={function() { startBranchEdit(-1); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Add Branch</button>
+                      </div>
+                      {branches.length === 0 && <div style={{ padding: "24px 22px", color: "var(--muted)", fontSize: 12, textAlign: "center", fontStyle: "italic" }}>No branches added. Click "+ Add Branch" to create one.</div>}
+                      {branches.length > 0 && <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank", "Verified", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                          <tbody>{branches.map(function(br, bi) {
+                            return <tr key={bi} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "8px 14px", fontSize: 12, fontWeight: 600 }}>{br.branchName}</td>
+                              <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{br.city || "\u2014"}</td>
+                              <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{br.country || "\u2014"}</td>
+                              <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{br.primaryContact || "\u2014"}</td>
+                              <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{br.bankName || "\u2014"}</td>
+                              <td style={{ padding: "8px 14px" }}>{br.bankVerified ? <Badge label="Yes" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" /> : <Badge label="No" bg="#6B728014" color="#6B7280" border="#6B728030" />}</td>
+                              <td style={{ padding: "8px 14px", display: "flex", gap: 6 }}>
+                                <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                                <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
+                              </td>
+                            </tr>;
+                          })}</tbody>
+                        </table>
+                      </div>}
+                    </div>
+
+                    {/* Branch Edit Modal */}
+                    {editingBranch && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
+                      <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 700, width: "90%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={function(e) { e.stopPropagation(); }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>{ebIdx >= 0 ? "Edit Branch" : "New Branch"}</div>
+                          <button onClick={function() { setManagePopup(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px", marginBottom: 14 }}>
+                          <div style={{ gridColumn: "1 / -1" }}>{bfld("Branch Name", "branchName")}</div>
+                          {bfld("Street Address 1", "street1")}
+                          {bfld("Street Address 2", "street2")}
+                          {bfld("City", "city")}
+                          {bfld("State / County", "state")}
+                          {bfld("Country", "country", "country")}
+                          {bfld("ZIP / Postal Code", "zip")}
+                        </div>
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
+                          {bfld("Primary Contact", "primaryContact")}
+                          {bfld("Primary Email", "primaryEmail", "email")}
+                          {bfld("Primary Phone", "primaryPhone", "tel")}
+                          {bfld("Secondary Contact", "secondaryContact")}
+                          {bfld("Secondary Email", "secondaryEmail", "email")}
+                          {bfld("Secondary Phone", "secondaryPhone", "tel")}
+                        </div>
+                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
+                          {bfld("Bank Name", "bankName")}
+                          {bfld("Bank Payment Details", "bankDetails")}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 2, justifyContent: "end" }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0" }}>
+                              <div onClick={function() { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { bankVerified: !p.data.bankVerified }) }); }); }} style={{ width: 20, height: 20, borderRadius: 5, border: "2px solid " + (ebData.bankVerified ? "var(--accent)" : "var(--border)"), background: ebData.bankVerified ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>{ebData.bankVerified ? "\u2713" : ""}</div>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: ebData.bankVerified ? "#2E8B57" : "var(--text-secondary)" }}>Bank Details Verified</span>
+                            </label>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={saveBranch} disabled={!ebData.branchName} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: ebData.branchName ? "var(--accent)" : "var(--border)", color: ebData.branchName ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: ebData.branchName ? "pointer" : "default" }}>{ebIdx >= 0 ? "Save Changes" : "Add Branch"}</button>
+                          <button onClick={function() { setManagePopup(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      </div>
+                    </div>}
+                  </div>;
+                })()}
+
+                {/* Tab: Entity Audit Log */}
                 {manageDetailTab === "auditlog" && (function() {
                   var entityAudit = AUDIT_LOG.filter(function(log) {
                     var d = log.details || "";
