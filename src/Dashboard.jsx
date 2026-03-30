@@ -523,6 +523,7 @@ export default function FactoringDashboard() {
   var mn1 = useState(false), showNewEntity = mn1[0], setShowNewEntity = mn1[1];
   var md1 = useState(null), manageDetail = md1[0], setManageDetail = md1[1];
   var mp1 = useState(null), managePopup = mp1[0], setManagePopup = mp1[1];
+  var mdt1 = useState("overview"), manageDetailTab = mdt1[0], setManageDetailTab = mdt1[1];
   var ap2 = useState(null), auditPopup = ap2[0], setAuditPopup = ap2[1];
   var st1 = useState("overview"), supTab = st1[0], setSupTab = st1[1];
   var pt1 = useState("overview"), progTab = pt1[0], setProgTab = pt1[1];
@@ -4380,37 +4381,46 @@ export default function FactoringDashboard() {
               return <div>
                 {popupOverlay}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
-                  <button onClick={function() { setManageDetail(null); setManagePopup(null); setChLiveData(null); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
+                  <button onClick={function() { setManageDetail(null); setManagePopup(null); setChLiveData(null); setManageDetailTab("overview"); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>{det.name}</div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} \u2014 {entityInvs.length} invoices \u2014 Total: {money(totalAmt, "GBP")} \u2014 Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
                 </div>
 
-                {/* Directors */}
-                {det.directors && det.directors.length > 0 && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                  <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Directors & Officers ({det.directors.length})</div>
-                  </div>
-                  <div style={{ maxHeight: 250, overflowY: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Name", "Role", "Appointed", "Resigned", "Status", "Source"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{det.directors.map(function(dir, di) {
-                        var isResigned = !!dir.resignedDate;
-                        return <tr key={di} style={{ borderBottom: "1px solid var(--border)", opacity: isResigned ? 0.6 : 1 }}>
-                          <td style={{ padding: "7px 10px", fontSize: 12, fontWeight: 600 }}>{dir.name}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{dir.role}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dir.appointedDate)}</td>
-                          <td style={{ padding: "7px 10px", fontSize: 12, color: isResigned ? "#E05A4F" : "var(--text-secondary)" }}>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</td>
-                          <td style={{ padding: "7px 10px" }}><Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#2E8B57"} border={isResigned ? "#6B728030" : "#2E8B5730"} /></td>
-                          <td style={{ padding: "7px 10px" }}>{dir.source === "ch" ? <span style={{ fontSize: 9, fontWeight: 600, color: "#567EBB", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span> : <span style={{ fontSize: 9, fontWeight: 600, color: "#C08B30", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}</td>
-                        </tr>;
-                      })}</tbody>
-                    </table>
-                  </div>
-                </div>}
+                {/* Detail Sub-Tabs */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+                  {[{ key: "overview", label: "Overview" }, { key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") }, { key: "ch", label: "Companies House" }].map(function(t) {
+                    return <button key={t.key} onClick={function() { setManageDetailTab(t.key); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: manageDetailTab === t.key ? "var(--accent)" : "transparent", color: manageDetailTab === t.key ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer" }}>{t.label}</button>;
+                  })}
+                </div>
 
-                {/* Invoices */}
+                {/* Tab 1: Overview — Key Info + Invoices + Payments + HBPs */}
+                {manageDetailTab === "overview" && <div>
+                  {/* Key Information */}
+                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px", marginBottom: 18 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 14 }}>Key Information</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
+                      <div><span style={{ color: "var(--muted)" }}>ID: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{det.id}</span></div>
+                      <div style={{ gridColumn: "2 / -1" }}><span style={{ color: "var(--muted)" }}>Name: </span><strong>{det.name}</strong></div>
+                      {det.companyNumber && <div><span style={{ color: "var(--muted)" }}>Company Number: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{det.companyNumber}</span></div>}
+                      {det.companyStatus && <div><span style={{ color: "var(--muted)" }}>Company Status: </span><span>{det.companyStatus}</span></div>}
+                      {det.incorporationDate && <div><span style={{ color: "var(--muted)" }}>Incorporated: </span><span>{fmt(det.incorporationDate)}</span></div>}
+                      {det.street1 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Address: </span><span>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</span></div>}
+                    </div>
+                    {(det.primaryContact || det.primaryEmail || det.primaryPhone) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 14, paddingTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
+                      {det.primaryContact && <div><span style={{ color: "var(--muted)" }}>Primary Contact: </span><span>{det.primaryContact}</span></div>}
+                      {det.primaryEmail && <div><span style={{ color: "var(--muted)" }}>Email: </span><span style={{ color: "var(--accent)" }}>{det.primaryEmail}</span></div>}
+                      {det.primaryPhone && <div><span style={{ color: "var(--muted)" }}>Phone: </span><span>{det.primaryPhone}</span></div>}
+                      {det.secondaryContact && <div><span style={{ color: "var(--muted)" }}>Secondary Contact: </span><span>{det.secondaryContact}</span></div>}
+                      {det.secondaryEmail && <div><span style={{ color: "var(--muted)" }}>Email: </span><span style={{ color: "var(--accent)" }}>{det.secondaryEmail}</span></div>}
+                      {det.secondaryPhone && <div><span style={{ color: "var(--muted)" }}>Phone: </span><span>{det.secondaryPhone}</span></div>}
+                    </div>}
+                    {isSup && (det.bankName || det.bankDetails) && <div style={{ borderTop: "1px solid var(--border)", marginTop: 14, paddingTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
+                      {det.bankName && <div><span style={{ color: "var(--muted)" }}>Bank: </span><span>{det.bankName}</span></div>}
+                      {det.bankDetails && <div><span style={{ color: "var(--muted)" }}>Payment Details: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{det.bankDetails}</span></div>}
+                    </div>}
+                  </div>
                 <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                   <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Invoices ({entityInvs.length})</div>
@@ -4489,9 +4499,41 @@ export default function FactoringDashboard() {
                     </table>
                   </div>}
                 </div>}
+                </div>}
 
-                {/* Companies House Information */}
-                {det.companyNumber && (function() {
+                {/* Tab 2: Directors & Officers */}
+                {manageDetailTab === "directors" && <div>
+                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                    <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Directors & Officers {det.directors && det.directors.length > 0 ? "(" + det.directors.length + ")" : ""}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {det.directors && det.directors.length > 0 && <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{det.directors.filter(function(d) { return !d.resignedDate; }).length} active, {det.directors.filter(function(d) { return !!d.resignedDate; }).length} resigned</span>}
+                      </div>
+                    </div>
+                    {(!det.directors || det.directors.length === 0) && <div style={{ padding: "30px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12 }}>No directors on record. Import from Companies House when creating/editing this entity, or add manually via the Edit form.</div>}
+                    {det.directors && det.directors.length > 0 && <div style={{ maxHeight: 500, overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["Name", "Role", "Nationality", "Appointed", "Resigned", "Status", "Source"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{det.directors.map(function(dir, di) {
+                          var isResigned = !!dir.resignedDate;
+                          return <tr key={di} style={{ borderBottom: "1px solid var(--border)", opacity: isResigned ? 0.6 : 1 }}>
+                            <td style={{ padding: "8px 14px", fontSize: 12, fontWeight: 600 }}>{dir.name}</td>
+                            <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{dir.role}</td>
+                            <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{dir.nationality || "\u2014"}</td>
+                            <td style={{ padding: "8px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dir.appointedDate)}</td>
+                            <td style={{ padding: "8px 14px", fontSize: 12, color: isResigned ? "#E05A4F" : "var(--text-secondary)" }}>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</td>
+                            <td style={{ padding: "8px 14px" }}><Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#2E8B57"} border={isResigned ? "#6B728030" : "#2E8B5730"} /></td>
+                            <td style={{ padding: "8px 14px" }}>{dir.source === "ch" ? <span style={{ fontSize: 9, fontWeight: 600, color: "#567EBB", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span> : <span style={{ fontSize: 9, fontWeight: 600, color: "#C08B30", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
+                  </div>
+                </div>}
+
+                {/* Tab 3: Companies House Information */}
+                {manageDetailTab === "ch" && <div>
+                {det.companyNumber ? (function() {
                   var coNum = det.companyNumber;
                   function fetchChLive() {
                     setChLiveLoading(true); setChLiveData(null);
@@ -4620,7 +4662,8 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "right" }}>Data from <a href={"https://find-and-update.company-information.service.gov.uk/company/" + coNum} target="_blank" rel="noopener noreferrer" style={chLk}>Companies House {"\u2197"}</a></div>
                     </div>}
                   </div>;
-                })()}
+                })() : <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "30px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12 }}>No company number on record for this entity. Add one via Edit to enable Companies House lookups.</div>}
+                </div>}
               </div>;
             })()}
 
