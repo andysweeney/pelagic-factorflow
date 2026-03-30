@@ -5572,15 +5572,18 @@ export default function FactoringDashboard() {
                         var selProgObj = selProg ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selProg; }) : null;
                         var dispCap = selProgObj ? money(r2(Math.min(inv.amount * selProgObj.maxAdvanceRate, inv.capitalDue)), inv.currency) : money(inv.capitalDue, inv.currency);
                         var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
-                        // Build ineligibility reasons
+                        // Build ineligibility reasons for ALL programs
                         var reasons = [];
                         var badInvSt = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
                         if (badInvSt[inv.invoiceStatus]) {
                           reasons.push("Invoice Status: " + inv.invoiceStatus);
-                        } else if (eligProgs.length === 0 && FUNDING_PROGRAMS_DB.length > 0) {
+                        } else {
                           var supRate = getSupplierRate(inv.supplierName);
                           var dr = supDilRates[inv.supplierName] || {};
+                          var eligProgIds = {};
+                          eligProgs.forEach(function(fp) { eligProgIds[fp.id] = true; });
                           FUNDING_PROGRAMS_DB.forEach(function(fp) {
+                            if (eligProgIds[fp.id]) return; // skip eligible ones
                             var r = [];
                             if (supRate.annualRate < fp.minInterestRate - 0.0001) r.push("Rate " + (supRate.annualRate * 100).toFixed(1) + "% < min " + (fp.minInterestRate * 100).toFixed(1) + "%");
                             if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) r.push("Advance " + (supRate.advanceRate * 100).toFixed(0) + "% > max " + (fp.maxAdvanceRate * 100).toFixed(0) + "%");
@@ -5605,7 +5608,7 @@ export default function FactoringDashboard() {
                           <td style={Object.assign({}, fqmc, { color: "var(--accent)" })}>{dispCap}</td>
                           <td style={Object.assign({}, fqmc)}>{term}d</td>
                           <td style={{ padding: "9px 14px", fontSize: 12, color: inv.dueDate < REF_DATE ? "#E05A4F" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                          <td style={{ padding: "9px 14px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 130 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : <div><span style={{ fontSize: 10, color: "#C0392B", fontWeight: 600 }}>Ineligible</span>{reasons.length > 0 && <div style={{ fontSize: 9, color: "#C0392B", marginTop: 2 }}>{reasons.map(function(r, ri) { return <div key={ri}>{r}</div>; })}</div>}</div>}</td>
+                          <td style={{ padding: "9px 14px" }}>{eligProgs.length > 0 ? <div><select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 130 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>{reasons.length > 0 && <div style={{ fontSize: 9, color: "#C0392B", marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 3 }}><span style={{ fontWeight: 600 }}>Ineligible for:</span>{reasons.map(function(r, ri) { return <div key={ri}>{r}</div>; })}</div>}</div> : <div><span style={{ fontSize: 10, color: "#C0392B", fontWeight: 600 }}>Ineligible</span>{reasons.length > 0 && <div style={{ fontSize: 9, color: "#C0392B", marginTop: 2 }}>{reasons.map(function(r, ri) { return <div key={ri}>{r}</div>; })}</div>}</div>}</td>
                           <td style={{ padding: "9px 14px" }}>
                             <button onClick={function() { openFundPopup(inv, selProg); }} disabled={!selProg} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: selProg ? "#2E8B57" : "var(--border)", color: selProg ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: selProg ? "pointer" : "default", boxShadow: selProg ? "0 2px 10px #2E8B5730" : "none" }}>Fund</button>
                           </td>
