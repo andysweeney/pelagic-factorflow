@@ -4257,6 +4257,8 @@ export default function FactoringDashboard() {
             {manageDetail && (function() {
               var det = manageDetail;
               var isSup = det.type === "supplier";
+              var detEntity = isSup ? SUPPLIERS_DB.find(function(s) { return s.name === det.name; }) : det.type === "service_provider" ? SERVICE_PROVIDERS_DB.find(function(s) { return s.name === det.name; }) : BUYERS_DB.find(function(b) { return b.name === det.name; });
+              if (detEntity) det = Object.assign({}, det, detEntity);
               var entityInvs = viewData.invoices.filter(function(inv) { return isSup ? inv.supplierName === det.name : inv.buyerName === det.name; });
               var totalAmt = 0, totalOS = 0;
               entityInvs.forEach(function(inv) { totalAmt += inv.amount; totalOS += inv.totalOutstanding; });
