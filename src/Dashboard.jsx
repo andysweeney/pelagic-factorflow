@@ -873,7 +873,21 @@ export default function FactoringDashboard() {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
-    auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplier: raw.supplierName, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName });
+    var supplier = SUPPLIERS_DB.find(function(s) { return s.name === raw.supplierName; });
+    var now = new Date();
+    var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    SUPPLIER_PAYMENT_QUEUE.push({
+      id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
+      supplierName: raw.supplierName, supplierId: supplier ? supplier.id : "",
+      bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
+      amount: raw.capitalDue, currency: raw.currency, status: "Completed",
+      programId: raw.fundingProgram, programName: progName,
+      createdAt: now.toISOString(),
+      createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+      executedAt: now.toISOString(),
+      executedDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    });
+    auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ")", { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplier: raw.supplierName, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -5958,33 +5972,135 @@ export default function FactoringDashboard() {
                   </div>}
                 </div>
 
-                {/* Completed */}
-                <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Completed Payments</div>
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{completed.length} executed</span>
+                {/* Completed Payments — All Types */}
+                {(function() {
+                  var allCompleted = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; }).slice().reverse();
+                  var cpPopup = managePopup && managePopup.type === "completedPayment" ? managePopup : null;
+                  var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
+
+                  function paymentFailed(item) {
+                    if (!item) return;
+                    var now = new Date();
+                    var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+                    if (item.type === "funding") {
+                      // Reverse each invoice back to approved status
+                      var ids = item.invoiceIds || (item.invoiceId ? [item.invoiceId] : []);
+                      ids.forEach(function(invId) {
+                        var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+                        if (raw && raw.fundingStatus === "funded") {
+                          raw.fundingStatus = "approved";
+                          raw.fundedDate = null;
+                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+                          if (prog) prog.currentFundedBalance = r2(Math.max(0, (prog.currentFundedBalance || 0) - raw.capitalDue));
+                        }
+                      });
+                      auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
+                    } else if (item.type === "disbursal") {
+                      // Reverse each fund flow back to Pending
+                      var fIds = item.flowIds || [];
+                      fIds.forEach(function(flowId) {
+                        FUNDING_PROGRAMS_DB.forEach(function(fp) {
+                          if (!fp.fundFlows) return;
+                          fp.fundFlows.forEach(function(ff) {
+                            if (ff.flowId === flowId && ff.status === "Completed") {
+                              ff.status = "Pending";
+                              ff.executedAt = null;
+                              ff.executedDisplay = null;
+                            }
+                          });
+                        });
+                      });
+                      auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency });
+                    } else {
+                      // Holdback — return to pending
+                      item.status = "Pending";
+                      item.executedAt = null;
+                      item.executedDisplay = null;
+                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned to Pending Payments.", { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
+                      setManagePopup(null);
+                      setDataVer(function(v) { return v + 1; });
+                      return;
+                    }
+
+                    // Remove the completed record (for funding/disbursal)
+                    var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(x) { return x.id === item.id; });
+                    if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1);
+                    setManagePopup(null);
+                    setDataVer(function(v) { return v + 1; });
+                  }
+
+                  return <div>
+                  <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Completed Payments</div>
+                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{allCompleted.length} executed</span>
+                    </div>
+                    {allCompleted.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No completed payments yet.</div>}
+                    {allCompleted.length > 0 && <div style={{ maxHeight: 400, overflowX: "auto", overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["Queue ID", "Type", "Executed", "Recipient", "Program", "Details", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{allCompleted.map(function(item) {
+                          var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : "Holdback";
+                          var typeColor = item.type === "funding" ? "#2B4C7E" : item.type === "disbursal" ? "#7B5EA7" : "#2E8B57";
+                          var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
+                          var details = item.type === "funding" ? ((item.invoiceIds || []).join(", ") || item.invoiceId || "\u2014") + (item.isBundle ? " (bundle)" : "") : item.type === "disbursal" ? ((item.flowIds || []).join(", ")) + (item.isBundle ? " (bundle)" : "") : (item.hbPaymentId || "\u2014") + " / " + (item.sourceInvoiceId || "");
+                          return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600, cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 })} onClick={function() { setManagePopup({ type: "completedPayment", id: item.id }); }}>{item.id}</td>
+                            <td style={{ padding: "9px 14px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "#2E8B57", fontWeight: 600 }}>{item.executedDisplay}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text)" }}>{recipient}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName || "\u2014"}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{details}</td>
+                            <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
                   </div>
-                  {completed.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No completed payments yet.</div>}
-                  {completed.length > 0 && <div style={{ maxHeight: 400, overflowX: "auto", overflowY: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Queue ID", "Created", "Executed", "HBP ID", "Source Inv", "Supplier", "Bank", "Account", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{completed.slice().reverse().map(function(item) {
-                        return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={Object.assign({}, qmc, { color: "#2E8B57", fontWeight: 600 })}>{item.id}</td>
-                          <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{item.createdDisplay}</td>
-                          <td style={{ padding: "9px 14px", fontSize: 11, color: "#2E8B57", fontWeight: 600 }}>{item.executedDisplay}</td>
-                          <td style={Object.assign({}, qmc, { color: "#2E8B57" })}>{item.hbPaymentId}</td>
-                          <td style={Object.assign({}, qmc, { color: "var(--accent)" })}>{item.sourceInvoiceId}</td>
-                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName}</td>
-                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{item.bankName || "\u2014"}</td>
-                          <td style={Object.assign({}, qmc, { color: "var(--text-secondary)" })}>{item.bankDetails || "\u2014"}</td>
-                          <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
-                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                        </tr>;
-                      })}</tbody>
-                    </table>
+
+                  {/* Completed Payment Detail Popup */}
+                  {cpItem && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
+                    <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 620, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Payment Details: {cpItem.id}</div>
+                        <button onClick={function() { setManagePopup(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", fontSize: 12, marginBottom: 16 }}>
+                        <div><span style={{ color: "var(--muted)" }}>Type: </span><Badge label={cpItem.type === "funding" ? "Funding" : cpItem.type === "disbursal" ? "Disbursal" : "Holdback"} bg={(cpItem.type === "funding" ? "#2B4C7E" : cpItem.type === "disbursal" ? "#7B5EA7" : "#2E8B57") + "14"} color={cpItem.type === "funding" ? "#2B4C7E" : cpItem.type === "disbursal" ? "#7B5EA7" : "#2E8B57"} border={(cpItem.type === "funding" ? "#2B4C7E" : cpItem.type === "disbursal" ? "#7B5EA7" : "#2E8B57") + "30"} /></div>
+                        <div><span style={{ color: "var(--muted)" }}>Amount: </span><strong style={{ fontFamily: "'JetBrains Mono',monospace" }}>{money(cpItem.amount, cpItem.currency)}</strong></div>
+                        <div><span style={{ color: "var(--muted)" }}>Recipient: </span>{cpItem.type === "disbursal" ? cpItem.serviceProvider : cpItem.supplierName}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Currency: </span>{cpItem.currency}</div>
+                        {cpItem.programName && <div><span style={{ color: "var(--muted)" }}>Program: </span>{cpItem.programName}</div>}
+                        {cpItem.bankName && <div><span style={{ color: "var(--muted)" }}>Bank: </span>{cpItem.bankName}</div>}
+                        {cpItem.bankDetails && <div><span style={{ color: "var(--muted)" }}>Account: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{cpItem.bankDetails}</span></div>}
+                        <div><span style={{ color: "var(--muted)" }}>Executed: </span><span style={{ color: "#2E8B57", fontWeight: 600 }}>{cpItem.executedDisplay}</span></div>
+                        <div><span style={{ color: "var(--muted)" }}>Created: </span>{cpItem.createdDisplay}</div>
+                        {cpItem.isBundle && <div><span style={{ color: "var(--muted)" }}>Bundle: </span><span style={{ color: "var(--accent)", fontWeight: 600 }}>Yes</span></div>}
+                      </div>
+                      {cpItem.type === "funding" && cpItem.invoiceIds && cpItem.invoiceIds.length > 0 && <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 6 }}>Invoices ({cpItem.invoiceIds.length})</div>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Invoice", "Buyer", "Capital"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{cpItem.invoiceIds.map(function(iid) { var inv = INVOICES_DB.find(function(x) { return x.id === iid; }); return <tr key={iid} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{iid}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv ? inv.buyerName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{inv ? money(inv.capitalDue, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
+                      </div>}
+                      {cpItem.type === "disbursal" && cpItem.flowIds && cpItem.flowIds.length > 0 && <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 6 }}>Disbursals ({cpItem.flowIds.length})</div>
+                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{cpItem.flowIds.join(", ")}</div>
+                      </div>}
+                      {cpItem.type !== "funding" && cpItem.type !== "disbursal" && cpItem.hbPaymentId && <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 6 }}>Holdback Details</div>
+                        <div style={{ fontSize: 12 }}><span style={{ color: "var(--muted)" }}>HBP ID: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#2E8B57" }}>{cpItem.hbPaymentId}</span></div>
+                        <div style={{ fontSize: 12 }}><span style={{ color: "var(--muted)" }}>Source Invoice: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{cpItem.sourceInvoiceId}</span></div>
+                      </div>}
+                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", gap: 10 }}>
+                        <button onClick={function() { paymentFailed(cpItem); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #C0392B", background: "#C0392B10", color: "#C0392B", fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer" }}>Payment Failed</button>
+                        <span style={{ fontSize: 10, color: "var(--muted)", alignSelf: "center", fontStyle: "italic" }}>Returns {cpItem.isBundle ? "all items in bundle" : "this payment"} to the original queue</span>
+                      </div>
+                    </div>
                   </div>}
-                </div>
+                  </div>;
+                })()}
 
                 {/* Batch Execution Confirmation Modal */}
                 {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
@@ -6027,20 +6143,64 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: batchConfirm.type === "funding" ? "#2B4C7E" : "#7B5EA7" }}>Total: {money(r2(batchConfirm.items.reduce(function(s, item) { return s + (batchConfirm.type === "funding" ? item.capitalDue : item.amount); }, 0)), batchConfirm.items[0] ? batchConfirm.items[0].currency : "GBP")}</div>
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={function() {
+                          var now = new Date();
+                          var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                           if (batchConfirm.type === "funding") {
-                            batchConfirm.items.forEach(function(inv) { executeFunding(inv.id); });
+                            // Create single bundled completion record
+                            var totalCap = 0;
+                            var invIds = [];
+                            batchConfirm.items.forEach(function(inv) {
+                              executeFunding(inv.id);
+                              totalCap += inv.capitalDue;
+                              invIds.push(inv.id);
+                            });
+                            // If bundle (>1), create an additional bundle record and remove individual ones
+                            if (batchConfirm.items.length > 1) {
+                              // Remove the individual records just created
+                              var individualIds = [];
+                              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "funding" && invIds.indexOf(q.invoiceId) >= 0 && q.executedDisplay === nowDisp) individualIds.push(q.id); });
+                              individualIds.forEach(function(rid) { var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; }); if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1); });
+                              var bundleId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                              var firstInv = batchConfirm.items[0];
+                              var supplier = SUPPLIERS_DB.find(function(s) { return s.name === firstInv.supplierName; });
+                              var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === firstInv.fundingProgram; });
+                              SUPPLIER_PAYMENT_QUEUE.push({
+                                id: bundleId, type: "funding", isBundle: true, invoiceIds: invIds,
+                                supplierName: firstInv.supplierName, supplierId: supplier ? supplier.id : "",
+                                bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
+                                amount: r2(totalCap), currency: firstInv.currency, status: "Completed",
+                                programId: firstInv.fundingProgram, programName: prog ? prog.name : "",
+                                createdAt: now.toISOString(), createdDisplay: nowDisp,
+                                executedAt: now.toISOString(), executedDisplay: nowDisp
+                              });
+                            }
                             setFeqSelected({});
                           } else {
+                            var disTotalAmt = 0;
+                            var disFlowIds = [];
                             batchConfirm.items.forEach(function(dis) {
                               var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
                               if (!fp || !fp.fundFlows) return;
                               var ff = fp.fundFlows[dis.flowIndex];
                               if (ff) {
                                 ff.status = "Completed";
-                                ff.executedAt = new Date().toISOString();
-                                ff.executedDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                                ff.executedAt = now.toISOString();
+                                ff.executedDisplay = nowDisp;
+                                disTotalAmt += dis.amount;
+                                disFlowIds.push(dis.flowId);
                                 auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
                               }
+                            });
+                            // Create completion record for disbursals
+                            var disId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                            var firstDis = batchConfirm.items[0];
+                            SUPPLIER_PAYMENT_QUEUE.push({
+                              id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
+                              serviceProvider: firstDis.serviceProvider,
+                              programId: firstDis.programId, programName: firstDis.programName,
+                              amount: r2(disTotalAmt), currency: firstDis.currency, status: "Completed",
+                              createdAt: now.toISOString(), createdDisplay: nowDisp,
+                              executedAt: now.toISOString(), executedDisplay: nowDisp
                             });
                             setDeqSelected({});
                             setDataVer(function(v) { return v + 1; });
