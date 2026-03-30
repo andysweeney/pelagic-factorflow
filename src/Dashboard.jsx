@@ -1782,20 +1782,21 @@ export default function FactoringDashboard() {
 
             {/* Supplier Details + Rates */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 22 }}>
-              {/* Supplier Info */}
-              <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 14, color: "var(--text)" }}>Supplier Details</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px", fontSize: 12 }}>
-                  <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Name: </span><strong style={{ fontSize: 14 }}>{supplier ? supplier.name : "\u2014"}</strong></div>
-                  <div><span style={{ color: "var(--muted)" }}>ID: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{supplier ? supplier.id : "\u2014"}</span></div>
-                  <div><span style={{ color: "var(--muted)" }}>Primary Contact: </span>{supplier ? supplier.primaryContact || "\u2014" : "\u2014"}</div>
-                  <div><span style={{ color: "var(--muted)" }}>Email: </span>{supplier ? supplier.primaryEmail || "\u2014" : "\u2014"}</div>
-                  <div><span style={{ color: "var(--muted)" }}>Phone: </span>{supplier ? supplier.primaryPhone || "\u2014" : "\u2014"}</div>
-                  <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}><span style={{ color: "var(--muted)" }}>Address: </span>{supplier ? [supplier.street1, supplier.street2, supplier.city, supplier.state, supplier.zip, supplier.country].filter(Boolean).join(", ") : "\u2014"}</div>
-                  {supplier && supplier.secondaryContact && <div><span style={{ color: "var(--muted)" }}>Secondary Contact: </span>{supplier.secondaryContact}</div>}
-                  {supplier && supplier.secondaryEmail && <div><span style={{ color: "var(--muted)" }}>Secondary Email: </span>{supplier.secondaryEmail}</div>}
-                  <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}><span style={{ color: "var(--muted)" }}>Bank: </span><strong>{supplier ? supplier.bankName || "\u2014" : "\u2014"}</strong></div>
-                  <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Account Details: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{supplier ? supplier.bankDetails || "\u2014" : "\u2014"}</span></div>
+              {/* Supplier Info — Layout A */}
+              <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "28px 32px" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid var(--accent)", color: "#1E3A5F" }}>Supplier Details</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 28px" }}>
+                  <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Name</div><div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{supplier ? supplier.name : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Entity ID</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)", fontFamily: "'JetBrains Mono',monospace" }}>{supplier ? supplier.id : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Primary Contact</div><div style={{ fontSize: 13, color: "var(--text)" }}>{supplier ? supplier.primaryContact || "\u2014" : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Email</div><div style={{ fontSize: 13, color: "var(--accent)" }}>{supplier ? supplier.primaryEmail || "\u2014" : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Phone</div><div style={{ fontSize: 13, color: "var(--text)" }}>{supplier ? supplier.primaryPhone || "\u2014" : "\u2014"}</div></div>
+                  <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 14, marginTop: 2 }}><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Address</div><div style={{ fontSize: 13, color: "var(--text)" }}>{supplier ? [supplier.street1, supplier.street2, supplier.city, supplier.state, supplier.zip, supplier.country].filter(Boolean).join(", ") : "\u2014"}</div></div>
+                  {supplier && supplier.secondaryContact && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Secondary Contact</div><div style={{ fontSize: 13, color: "var(--text)" }}>{supplier.secondaryContact}</div></div>}
+                  {supplier && supplier.secondaryEmail && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Secondary Email</div><div style={{ fontSize: 13, color: "var(--accent)" }}>{supplier.secondaryEmail}</div></div>}
+                  <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 14, marginTop: 2 }}><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Bank</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{supplier ? supplier.bankName || "\u2014" : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Account Details</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono',monospace", color: "var(--text)" }}>{supplier ? supplier.bankDetails || "\u2014" : "\u2014"}</div></div>
+                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 3 }}>Verification</div><div style={{ marginTop: 2 }}>{supplier && supplier.bankVerified ? <Badge label="Verified" bg="#2E8B5714" color="#2E8B57" border="#2E8B5730" icon={"\u2713"} /> : <Badge label="Unverified" bg="#C0392B14" color="#E05A4F" border="#C0392B30" icon="!" />}</div></div>
                 </div>
               </div>
 
@@ -1816,9 +1817,9 @@ export default function FactoringDashboard() {
                   setDataVer(function(v) { return v + 1; });
                 }
 
-                return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "22px" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--text)" }}>Rates & Current Balances</div>
+                return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "28px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid #C08B30" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Rates & Current Balances</div>
                   <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#C0392B40" : "var(--accent)"), background: "transparent", color: showRateChange ? "#E05A4F" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>
                 </div>
                 {showRateChange && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
@@ -1898,9 +1899,9 @@ export default function FactoringDashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
               {/* Pending Invoices */}
               <div style={{ background: "var(--card)", borderRadius: 14, border: pendingInvs.length > 0 ? "1px solid #C08B3040" : "1px solid var(--border)", overflow: "hidden" }}>
-                <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
                   {pendingInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#C08B30" }}></div>}
-                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Pending Funding ({pendingInvs.length})</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Pending Funding ({pendingInvs.length})</div>
                 </div>
                 {pendingInvs.length === 0 && <div style={{ padding: "18px 22px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No invoices awaiting funding.</div>}
                 {pendingInvs.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto" }}>
@@ -1924,9 +1925,9 @@ export default function FactoringDashboard() {
 
               {/* Holdback Available */}
               <div style={{ background: "var(--card)", borderRadius: 14, border: hbAvailInvs.length > 0 ? "1px solid #2E8B5740" : "1px solid var(--border)", overflow: "hidden" }}>
-                <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
                   {hbAvailInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2E8B57" }}></div>}
-                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Holdback Available ({hbAvailInvs.length})</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F" }}>Holdback Available ({hbAvailInvs.length})</div>
                 </div>
                 {hbAvailInvs.length === 0 && <div style={{ padding: "18px 22px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No invoices with holdback available for disbursement.</div>}
                 {hbAvailInvs.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto" }}>
