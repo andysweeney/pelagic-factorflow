@@ -532,6 +532,9 @@ export default function FactoringDashboard() {
   var ffa1 = useState(""), ffAmount = ffa1[0], setFfAmount = ffa1[1];
   var ffd1 = useState(""), ffDate = ffd1[0], setFfDate = ffd1[1];
   var fff1 = useState(""), ffServiceProvider = fff1[0], setFfServiceProvider = fff1[1];
+  var feqSel1 = useState({}), feqSelected = feqSel1[0], setFeqSelected = feqSel1[1]; // Funding Execution Queue selections
+  var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Disbursal Execution Queue selections
+  var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
   var ffr1 = useState(""), ffReason = ffr1[0], setFfReason = ffr1[1];
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].name : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
   var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
@@ -5779,20 +5782,31 @@ export default function FactoringDashboard() {
                 {(function() {
                   var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "approved"; });
                   var aqmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
+                  var feqSelCount = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }).length;
+                  var feqSelTotal = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }).reduce(function(s, inv) { return s + inv.capitalDue; }, 0);
+                  var allFeqSelected = approvedInvs.length > 0 && feqSelCount === approvedInvs.length;
                   return <div style={{ background: "var(--card)", borderRadius: 14, border: approvedInvs.length > 0 ? "1px solid #818cf840" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      {approvedInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7BA0D4" }}></div>}
-                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Funding Execution Queue</div>
-                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{approvedInvs.length} approved, awaiting execution</span>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {approvedInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7BA0D4" }}></div>}
+                        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Funding Execution Queue</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{approvedInvs.length} approved, awaiting execution</span>
+                      </div>
+                      {feqSelCount > 0 && <button onClick={function() { var items = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }); setBatchConfirm({ type: "funding", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) \u2014 {money(r2(feqSelTotal), approvedInvs[0] ? approvedInvs[0].currency : "GBP")}</button>}
                     </div>
                     {approvedInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No approved invoices awaiting funding execution.</div>}
                     {approvedInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Invoice", "Approved", "Supplier", "Buyer", "Amount", "Capital", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>
+                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { var n = {}; if (!allFeqSelected) approvedInvs.forEach(function(inv) { n[inv.id] = true; }); setFeqSelected(n); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
+                          {["Invoice", "Approved", "Supplier", "Buyer", "Amount", "Capital", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                        </tr></thead>
                         <tbody>{approvedInvs.map(function(inv) {
                           var supplier = SUPPLIERS_DB.find(function(s) { return s.name === inv.supplierName; });
                           var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                          return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                          var isSel = !!feqSelected[inv.id];
+                          return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent" }}>
+                            <td style={{ padding: "9px 14px" }}><div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[inv.id]) delete n[inv.id]; else n[inv.id] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div></td>
                             <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.approvedDate)}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12 }}>{inv.supplierName}</td>
@@ -5805,7 +5819,7 @@ export default function FactoringDashboard() {
                             <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{supplier ? supplier.bankDetails : "\u2014"}</td>
                             <td style={{ padding: "9px 14px" }}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={function() { executeFunding(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
+                                <button onClick={function() { setBatchConfirm({ type: "funding", items: [inv] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
                                 <button onClick={function() { cancelApproval(inv.id); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
                               </div>
                             </td>
@@ -5828,18 +5842,29 @@ export default function FactoringDashboard() {
                     });
                   });
                   var dqmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
+                  var deqSelCount = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }).length;
+                  var deqSelTotal = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }).reduce(function(s, d) { return s + d.amount; }, 0);
+                  var allDeqSelected = pendingDisbursals.length > 0 && deqSelCount === pendingDisbursals.length;
                   return <div style={{ background: "var(--card)", borderRadius: 14, border: pendingDisbursals.length > 0 ? "1px solid #7B5EA740" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7B5EA7" }}></div>}
-                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Disbursal Execution Queue</div>
-                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{pendingDisbursals.length} pending disbursals</span>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7B5EA7" }}></div>}
+                        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Disbursal Execution Queue</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{pendingDisbursals.length} pending disbursals</span>
+                      </div>
+                      {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7B5EA7", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
                     </div>
                     {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No pending disbursals. Disbursals created from Program Overview will appear here.</div>}
                     {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>
+                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { var n = {}; if (!allDeqSelected) pendingDisbursals.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7B5EA7" : "var(--border)"), background: allDeqSelected ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
+                          {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                        </tr></thead>
                         <tbody>{pendingDisbursals.map(function(dis) {
-                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: "#7B5EA706" }}>
+                          var isSel = !!deqSelected[dis.flowId];
+                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#7B5EA708" : "#7B5EA704" }}>
+                            <td style={{ padding: "9px 14px" }}><div onClick={function() { setDeqSelected(function(p) { var n = Object.assign({}, p); if (n[dis.flowId]) delete n[dis.flowId]; else n[dis.flowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "#7B5EA7" : "var(--border)"), background: isSel ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div></td>
                             <td style={Object.assign({}, dqmc, { color: "#7B5EA7", fontWeight: 600 })}>{dis.flowId}</td>
                             <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.display}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12, fontWeight: 600 }}>{dis.programName}</td>
@@ -5850,18 +5875,7 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.reason || "\u2014"}</td>
                             <td style={{ padding: "9px 14px" }}>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={function() {
-                                  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
-                                  if (!fp || !fp.fundFlows) return;
-                                  var ff = fp.fundFlows[dis.flowIndex];
-                                  if (ff) {
-                                    ff.status = "Completed";
-                                    ff.executedAt = new Date().toISOString();
-                                    ff.executedDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                                    auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
-                                    setDataVer(function(v) { return v + 1; });
-                                  }
-                                }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Executed</button>
+                                <button onClick={function() { setBatchConfirm({ type: "disbursal", items: [dis] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#7B5EA7", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute</button>
                                 <button onClick={function() {
                                   var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
                                   if (!fp || !fp.fundFlows) return;
@@ -5948,6 +5962,73 @@ export default function FactoringDashboard() {
                     </table>
                   </div>}
                 </div>
+
+                {/* Batch Execution Confirmation Modal */}
+                {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: batchConfirm.type === "funding" ? "#2B4C7E" : "#7B5EA7" }}>{batchConfirm.type === "funding" ? "Execute Funding" : "Execute Disbursals"}</div>
+                      <button onClick={function() { setBatchConfirm(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Confirm execution of {batchConfirm.items.length} {batchConfirm.type === "funding" ? "funding payment" + (batchConfirm.items.length > 1 ? "s" : "") : "disbursal" + (batchConfirm.items.length > 1 ? "s" : "")}.</div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{(batchConfirm.type === "funding" ? ["Invoice", "Supplier", "Buyer", "Capital", "CCY", "Program"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{batchConfirm.items.map(function(item, ii) {
+                          if (batchConfirm.type === "funding") {
+                            var bProg = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.fundingProgram; });
+                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)", fontWeight: 600 }}>{item.id}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.supplierName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.buyerName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#2B4C7E" }}>{money(item.capitalDue, item.currency)}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{bProg ? bProg.name : "\u2014"}</td>
+                            </tr>;
+                          } else {
+                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "#7B5EA7", fontWeight: 600 }}>{item.flowId}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.programName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.serviceProvider}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700 }}>{money(item.amount, item.currency)}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(item.date)}</td>
+                            </tr>;
+                          }
+                        })}</tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: batchConfirm.type === "funding" ? "#2B4C7E" : "#7B5EA7" }}>Total: {money(r2(batchConfirm.items.reduce(function(s, item) { return s + (batchConfirm.type === "funding" ? item.capitalDue : item.amount); }, 0)), batchConfirm.items[0] ? batchConfirm.items[0].currency : "GBP")}</div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={function() {
+                          if (batchConfirm.type === "funding") {
+                            batchConfirm.items.forEach(function(inv) { executeFunding(inv.id); });
+                            setFeqSelected({});
+                          } else {
+                            batchConfirm.items.forEach(function(dis) {
+                              var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
+                              if (!fp || !fp.fundFlows) return;
+                              var ff = fp.fundFlows[dis.flowIndex];
+                              if (ff) {
+                                ff.status = "Completed";
+                                ff.executedAt = new Date().toISOString();
+                                ff.executedDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                                auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
+                              }
+                            });
+                            setDeqSelected({});
+                            setDataVer(function(v) { return v + 1; });
+                          }
+                          setBatchConfirm(null);
+                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: batchConfirm.type === "funding" ? "#2E8B57" : "#7B5EA7", color: "#fff", fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer", boxShadow: "0 4px 15px " + (batchConfirm.type === "funding" ? "#2E8B5740" : "#7B5EA740") }}>Confirm Execution</button>
+                        <button onClick={function() { setBatchConfirm(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>}
 
                 {/* Bundle Payment Dialog */}
                 {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
