@@ -4305,7 +4305,8 @@ export default function FactoringDashboard() {
                   state: addr.region || "",
                   zip: addr.postal_code || "",
                   country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
-                  directors: directors
+                  directors: directors,
+                  entitySource: "ch"
                 });
               });
               setChImportStep("done");
@@ -4317,11 +4318,12 @@ export default function FactoringDashboard() {
 
           var editing = manageEdit || showNewEntity;
           var f = manageFields;
-          function fld(label, key, type) {
+          function fld(label, key, type, readOnly) {
             var val = f[key] || "";
             return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <label style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}</label>
-              {type === "country" ? <select value={val} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={Object.assign({}, inp, { cursor: "pointer" })}>{COUNTRIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+              <label style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", letterSpacing: "0.08em", color: "var(--muted)" }}>{label}{readOnly ? " \ud83d\udd12" : ""}</label>
+              {readOnly ? <div style={Object.assign({}, inp, { background: "var(--bg)", opacity: 0.7, cursor: "default" })}>{val || "\u2014"}</div>
+                : type === "country" ? <select value={val} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={Object.assign({}, inp, { cursor: "pointer" })}>{COUNTRIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                 : <input type={type || "text"} value={val} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={inp} />}
             </div>;
           }
@@ -4901,25 +4903,67 @@ export default function FactoringDashboard() {
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Looking up company {chCompanyNo.trim().padStart(8, "0")}...</div>
               </div>}
               {/* Main form — shown when: not supplier new, or skip, or done, or editing existing */}
-              {(!isSupTab || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && <div>
+              {(!isSupTab || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
+              var isCh = f.entitySource === "ch";
+              var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, street1: true, street2: true, city: true, state: true, country: true, zip: true };
+              function chRefreshEntity() {
+                var num = (f.companyNumber || "").trim();
+                if (!num) return;
+                num = num.padStart(8, "0");
+                var companyUrl = CH_WORKER_URL + "/company/" + num;
+                var officersUrl = CH_WORKER_URL + "/company/" + num + "/officers";
+                Promise.all([
+                  fetch(companyUrl).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }),
+                  fetch(officersUrl).then(function(r) { return r.ok ? r.json() : { items: [] }; }).catch(function() { return { items: [] }; })
+                ]).then(function(results) {
+                  var data = results[0];
+                  var officersData = results[1];
+                  if (!data || !data.company_name) return;
+                  var addr = data.registered_office_address || {};
+                  var directors = (officersData.items || []).map(function(o) {
+                    return { name: o.name || "", role: o.officer_role ? o.officer_role.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "Director", appointedDate: o.appointed_on || "", resignedDate: o.resigned_on || "", dateOfBirth: o.date_of_birth ? { month: o.date_of_birth.month, year: o.date_of_birth.year } : null, nationality: o.nationality || "", source: "ch" };
+                  });
+                  var manualDirs = (f.directors || []).filter(function(d) { return d.source === "manual"; });
+                  setManageFields(function(prev) {
+                    return Object.assign({}, prev, {
+                      name: data.company_name || prev.name,
+                      companyNumber: data.company_number || num,
+                      incorporationDate: data.date_of_creation || prev.incorporationDate,
+                      companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : prev.companyStatus,
+                      street1: addr.address_line_1 || prev.street1,
+                      street2: addr.address_line_2 || prev.street2,
+                      city: addr.locality || prev.city,
+                      state: addr.region || prev.state,
+                      zip: addr.postal_code || prev.zip,
+                      country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : prev.country,
+                      directors: directors.concat(manualDirs)
+                    });
+                  });
+                }).catch(function() {});
+              }
+              return <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>{manageEdit ? "Edit" : "New"} {entityLabel}</div>
                   {chImportStep === "done" && <div style={{ fontSize: 10, color: "#2E8B57", fontWeight: 600, marginTop: 2 }}>Imported from Companies House</div>}
+                  {isCh && manageEdit && <div style={{ fontSize: 10, color: "#567EBB", fontWeight: 600, marginTop: 2 }}>CH-sourced entity {"\u2014"} company details and CH directors are read-only</div>}
                 </div>
-                <button onClick={function() { setManageEdit(null); setShowNewEntity(false); setManageFields({}); setChImportStep(null); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {isCh && manageEdit && f.companyNumber && <button onClick={chRefreshEntity} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #567EBB", background: "transparent", color: "#567EBB", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{"\u21bb"} Refresh from CH</button>}
+                  <button onClick={function() { setManageEdit(null); setShowNewEntity(false); setManageFields({}); setChImportStep(null); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
-                <div style={{ gridColumn: "1 / -1" }}>{fld("Company Name", "name")}</div>
-                {isSupLike && fld("Company Number", "companyNumber")}
-                {isSupLike && fld("Incorporation Date", "incorporationDate", "date")}
-                {isSupLike && fld("Company Status", "companyStatus")}
-                {fld("Street Address 1", "street1")}
-                {fld("Street Address 2", "street2")}
-                {fld("City", "city")}
-                {fld("State / County", "state")}
-                {fld("Country", "country", "country")}
-                {fld("ZIP / Postal Code", "zip")}
+                <div style={{ gridColumn: "1 / -1" }}>{fld("Company Name", "name", null, isCh && manageEdit)}</div>
+                {isSupLike && fld("Company Number", "companyNumber", null, isCh && manageEdit)}
+                {isSupLike && fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
+                {isSupLike && fld("Company Status", "companyStatus", null, isCh && manageEdit)}
+                {fld("Street Address 1", "street1", null, isCh && manageEdit)}
+                {fld("Street Address 2", "street2", null, isCh && manageEdit)}
+                {fld("City", "city", null, isCh && manageEdit)}
+                {fld("State / County", "state", null, isCh && manageEdit)}
+                {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
+                {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
@@ -4953,16 +4997,23 @@ export default function FactoringDashboard() {
                 {f.directors && f.directors.length > 0 && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {f.directors.map(function(dir, di) {
                     var isResigned = !!dir.resignedDate;
+                    var isChDir = dir.source === "ch" && isCh;
                     return <div key={di} style={{ background: isResigned ? "var(--bg)" : "var(--card-hover)", borderRadius: 10, border: "1px solid " + (isResigned ? "var(--border)" : "var(--accent)20"), padding: "12px 14px", opacity: isResigned ? 0.7 : 1 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#2E8B57"} border={isResigned ? "#6B728030" : "#2E8B5730"} />
                           {dir.source === "ch" && <span style={{ fontSize: 9, fontWeight: 600, color: "#567EBB", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span>}
                           {dir.source === "manual" && <span style={{ fontSize: 9, fontWeight: 600, color: "#C08B30", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}
+                          {isChDir && <span style={{ fontSize: 9, color: "var(--muted)", fontStyle: "italic" }}>{"\ud83d\udd12"} Read-only</span>}
                         </div>
-                        <button onClick={function() { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs.splice(di, 1); return Object.assign({}, p, { directors: dirs }); }); }} style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{"\u2715"}</button>
+                        {!isChDir && <button onClick={function() { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs.splice(di, 1); return Object.assign({}, p, { directors: dirs }); }); }} style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{"\u2715"}</button>}
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px" }}>
+                      {isChDir ? <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px", fontSize: 12 }}>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Name</span><div>{dir.name}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Role</span><div>{dir.role}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Appointed</span><div>{fmt(dir.appointedDate)}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Resigned</span><div>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</div></div>
+                      </div> : <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                           <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Name</label>
                           <input type="text" value={dir.name} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { name: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
@@ -4981,7 +5032,7 @@ export default function FactoringDashboard() {
                           <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Resigned</label>
                           <input type="date" value={dir.resignedDate || ""} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { resignedDate: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
                         </div>
-                      </div>
+                      </div>}
                     </div>;
                   })}
                 </div>}
@@ -4989,7 +5040,8 @@ export default function FactoringDashboard() {
               <div style={{ marginTop: 16 }}>
                 <button onClick={saveEntity} disabled={!f.name} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: f.name ? "pointer" : "default" }}>{manageEdit ? "Save Changes" : "Create"}</button>
               </div>
-              </div>}
+              </div>;
+              })()}
             </div>}
 
             {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
