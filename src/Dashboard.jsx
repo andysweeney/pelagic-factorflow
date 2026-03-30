@@ -4942,15 +4942,22 @@ export default function FactoringDashboard() {
                   var entityAudit = AUDIT_LOG.filter(function(log) {
                     var d = log.details || "";
                     var c = log.context || {};
-                    // Match on entity ID, name, or any invoice/payment IDs related to this entity
+                    // Match on entity ID or name in details text
                     if (d.indexOf(det.id) >= 0) return true;
                     if (d.indexOf(det.name) >= 0) return true;
+                    // Match on context fields — check all name variants
                     if (c.entityId === det.id || c.entityName === det.name) return true;
                     if (c.supplierName === det.name || c.buyerName === det.name) return true;
-                    // Check invoice IDs
+                    if (c.supplier === det.name || c.buyer === det.name) return true;
+                    if (c.serviceProvider === det.name) return true;
+                    // Check completed payment IDs
+                    if (c.completedPaymentId && d.indexOf(det.name) >= 0) return true;
+                    // Check invoice IDs — any audit entry referencing this entity's invoices
                     var invIdSet = {};
                     entityInvs.forEach(function(inv) { invIdSet[inv.id] = true; });
                     if (c.invoiceId && invIdSet[c.invoiceId]) return true;
+                    if (c.sourceInvoiceId && invIdSet[c.sourceInvoiceId]) return true;
+                    if (c.invoiceIds && c.invoiceIds.some(function(id) { return invIdSet[id]; })) return true;
                     if (d.match && entityInvs.some(function(inv) { return d.indexOf(inv.id) >= 0; })) return true;
                     return false;
                   }).slice().reverse();
