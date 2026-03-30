@@ -543,6 +543,7 @@ export default function FactoringDashboard() {
   var he1 = useState(null), expHbPay = he1[0], setExpHbPay = he1[1];
   var hf1 = useState("all"), hbFilter = hf1[0], setHbFilter = hf1[1];
   var hcc1 = useState(null), confirmCancelHbp = hcc1[0], setConfirmCancelHbp = hcc1[1];
+  var bnd1 = useState(null), bundleDialog = bnd1[0], setBundleDialog = bnd1[1];
   var rc1 = useState(false), showRateChange = rc1[0], setShowRateChange = rc1[1];
   var rn1 = useState(""), newRateAnnual = rn1[0], setNewRateAnnual = rn1[1];
   var rp1 = useState(""), newRatePenalty = rp1[0], setNewRatePenalty = rp1[1];
@@ -5901,7 +5902,17 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                           <td style={{ padding: "9px 14px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
-                              <button onClick={function() { executeQueuedPayment(item.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Executed</button>
+                              <button onClick={function() {
+                                var otherPending = pending.filter(function(p) { return p.supplierName === item.supplierName && p.currency === item.currency && p.id !== item.id; });
+                                if (otherPending.length > 0) {
+                                  var selected = {};
+                                  selected[item.id] = true;
+                                  otherPending.forEach(function(p) { selected[p.id] = true; });
+                                  setBundleDialog({ triggerId: item.id, supplierName: item.supplierName, currency: item.currency, items: [item].concat(otherPending), selected: selected });
+                                } else {
+                                  executeQueuedPayment(item.id);
+                                }
+                              }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
                               {confirmCancelHbp === item.id ? <div style={{ display: "flex", gap: 4 }}>
                                 <button onClick={function() { cancelQueuedPayment(item.id); setConfirmCancelHbp(null); }} style={{ padding: "6px 12px", borderRadius: 7, border: "none", background: "#C0392B", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
                                 <button onClick={function() { setConfirmCancelHbp(null); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>No</button>
@@ -5941,6 +5952,70 @@ export default function FactoringDashboard() {
                     </table>
                   </div>}
                 </div>
+
+                {/* Bundle Payment Dialog */}
+                {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Bundle Payments to {bundleDialog.supplierName}</div>
+                      <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>There are multiple pending payments to this supplier in {bundleDialog.currency}. Select which to include in a single consolidated payment.</div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["", "Queue ID", "HBP ID", "Source Inv", "Amount", "Bank", "Account"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "7px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{bundleDialog.items.map(function(bi) {
+                          var isSel = !!bundleDialog.selected[bi.id];
+                          var isTrigger = bi.id === bundleDialog.triggerId;
+                          return <tr key={bi.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent" }}>
+                            <td style={{ padding: "7px 10px" }}>
+                              <div onClick={function() { if (isTrigger) return; setBundleDialog(function(prev) { var s = Object.assign({}, prev.selected); if (s[bi.id]) delete s[bi.id]; else s[bi.id] = true; return Object.assign({}, prev, { selected: s }); }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: isTrigger ? "default" : "pointer", opacity: isTrigger ? 0.6 : 1 }}>{isSel ? "\u2713" : ""}</div>
+                            </td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "#C08B30", fontWeight: 600 }}>{bi.id}{isTrigger ? " *" : ""}</td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "#2E8B57" }}>{bi.hbPaymentId}</td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{bi.sourceInvoiceId}</td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{money(bi.amount, bi.currency)}</td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{bi.bankName || "\u2014"}</td>
+                            <td style={{ padding: "7px 10px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", color: "var(--text-secondary)" }}>{bi.bankDetails || "\u2014"}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>
+
+                    {(function() {
+                      var selItems = bundleDialog.items.filter(function(bi) { return bundleDialog.selected[bi.id]; });
+                      var totalAmt = 0;
+                      selItems.forEach(function(si) { totalAmt += si.amount; });
+                      return <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: "1px solid var(--border)", marginBottom: 14 }}>
+                          <div>
+                            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{selItems.length} payment{selItems.length !== 1 ? "s" : ""} selected</span>
+                            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                              <button onClick={function() { var s = {}; bundleDialog.items.forEach(function(bi) { s[bi.id] = true; }); setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--accent)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Select All</button>
+                              <button onClick={function() { var s = {}; s[bundleDialog.triggerId] = true; setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Original Only</button>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Consolidated Total</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: "#2E8B57" }}>{money(r2(totalAmt), bundleDialog.currency)}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={function() {
+                            selItems.forEach(function(si) { executeQueuedPayment(si.id); });
+                            if (selItems.length > 1) {
+                              var bundledIds = selItems.map(function(si) { return si.id; });
+                              auditLog("Bundled Payment Executed", selItems.length + " payments bundled for " + bundleDialog.supplierName + ": " + money(r2(totalAmt), bundleDialog.currency) + " (" + bundledIds.join(", ") + ")", { supplierName: bundleDialog.supplierName, totalAmount: r2(totalAmt), currency: bundleDialog.currency, queueIds: bundledIds, count: selItems.length });
+                            }
+                            setBundleDialog(null);
+                          }} disabled={selItems.length === 0} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: selItems.length > 0 ? "#2E8B57" : "var(--border)", color: selItems.length > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: selItems.length > 0 ? "pointer" : "default", boxShadow: selItems.length > 0 ? "0 2px 10px #2E8B5730" : "none" }}>{selItems.length > 1 ? "Execute Bundled Payment (" + selItems.length + ")" : "Execute Payment"}</button>
+                          <button onClick={function() { setBundleDialog(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      </div>;
+                    })()}
+                  </div>
+                </div>}
               </div>;
             })()}
 
