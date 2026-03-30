@@ -5782,9 +5782,19 @@ export default function FactoringDashboard() {
                 {(function() {
                   var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "approved"; });
                   var aqmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
-                  var feqSelCount = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }).length;
-                  var feqSelTotal = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }).reduce(function(s, inv) { return s + inv.capitalDue; }, 0);
-                  var allFeqSelected = approvedInvs.length > 0 && feqSelCount === approvedInvs.length;
+                  // Determine locked supplier+program from first selection
+                  var feqLockSup = null, feqLockProg = null;
+                  approvedInvs.forEach(function(inv) {
+                    if (feqSelected[inv.id] && !feqLockSup) { feqLockSup = inv.supplierName; feqLockProg = inv.fundingProgram; }
+                  });
+                  var feqEligible = approvedInvs.filter(function(inv) {
+                    if (!feqLockSup) return true;
+                    return inv.supplierName === feqLockSup && inv.fundingProgram === feqLockProg;
+                  });
+                  var feqSelCount = feqEligible.filter(function(inv) { return feqSelected[inv.id]; }).length;
+                  var feqSelTotal = feqEligible.filter(function(inv) { return feqSelected[inv.id]; }).reduce(function(s, inv) { return s + inv.capitalDue; }, 0);
+                  var allFeqSelected = feqEligible.length > 0 && feqSelCount === feqEligible.length;
+                  var feqLockProgName = feqLockProg ? (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === feqLockProg; }); return fp ? fp.name : ""; })() : "";
                   return <div style={{ background: "var(--card)", borderRadius: 14, border: approvedInvs.length > 0 ? "1px solid #818cf840" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5792,21 +5802,26 @@ export default function FactoringDashboard() {
                         <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Funding Execution Queue</div>
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{approvedInvs.length} approved, awaiting execution</span>
                       </div>
-                      {feqSelCount > 0 && <button onClick={function() { var items = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }); setBatchConfirm({ type: "funding", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) \u2014 {money(r2(feqSelTotal), approvedInvs[0] ? approvedInvs[0].currency : "GBP")}</button>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {feqLockSup && <span style={{ fontSize: 10, color: "#567EBB", fontWeight: 600 }}>Bundling: {feqLockSup} / {feqLockProgName}</span>}
+                        {feqSelCount > 0 && <button onClick={function() { setFeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                        {feqSelCount > 0 && <button onClick={function() { var items = approvedInvs.filter(function(inv) { return feqSelected[inv.id]; }); setBatchConfirm({ type: "funding", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), approvedInvs[0] ? approvedInvs[0].currency : "GBP")}</button>}
+                      </div>
                     </div>
                     {approvedInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No approved invoices awaiting funding execution.</div>}
                     {approvedInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { var n = {}; if (!allFeqSelected) approvedInvs.forEach(function(inv) { n[inv.id] = true; }); setFeqSelected(n); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
+                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; feqEligible.forEach(function(inv) { n[inv.id] = true; }); setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
                           {["Invoice", "Approved", "Supplier", "Buyer", "Amount", "Capital", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
                         </tr></thead>
                         <tbody>{approvedInvs.map(function(inv) {
                           var supplier = SUPPLIERS_DB.find(function(s) { return s.name === inv.supplierName; });
                           var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                           var isSel = !!feqSelected[inv.id];
-                          return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent" }}>
-                            <td style={{ padding: "9px 14px" }}><div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[inv.id]) delete n[inv.id]; else n[inv.id] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div></td>
+                          var isLocked = feqLockSup && (inv.supplierName !== feqLockSup || inv.fundingProgram !== feqLockProg);
+                          return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
+                            <td style={{ padding: "9px 14px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[inv.id]) delete n[inv.id]; else n[inv.id] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
                             <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.approvedDate)}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12 }}>{inv.supplierName}</td>
@@ -5818,10 +5833,7 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{supplier ? supplier.bankName : "\u2014"}</td>
                             <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{supplier ? supplier.bankDetails : "\u2014"}</td>
                             <td style={{ padding: "9px 14px" }}>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={function() { setBatchConfirm({ type: "funding", items: [inv] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
-                                <button onClick={function() { cancelApproval(inv.id); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                              </div>
+                              {!isLocked && <button onClick={function() { cancelApproval(inv.id); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
                             </td>
                           </tr>;
                         })}</tbody>
@@ -5842,9 +5854,18 @@ export default function FactoringDashboard() {
                     });
                   });
                   var dqmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
-                  var deqSelCount = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }).length;
-                  var deqSelTotal = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }).reduce(function(s, d) { return s + d.amount; }, 0);
-                  var allDeqSelected = pendingDisbursals.length > 0 && deqSelCount === pendingDisbursals.length;
+                  // Lock to program+service provider from first selection
+                  var deqLockProg = null, deqLockSP = null;
+                  pendingDisbursals.forEach(function(d) {
+                    if (deqSelected[d.flowId] && !deqLockProg) { deqLockProg = d.programId; deqLockSP = d.serviceProvider; }
+                  });
+                  var deqEligible = pendingDisbursals.filter(function(d) {
+                    if (!deqLockProg) return true;
+                    return d.programId === deqLockProg && d.serviceProvider === deqLockSP;
+                  });
+                  var deqSelCount = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).length;
+                  var deqSelTotal = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).reduce(function(s, d) { return s + d.amount; }, 0);
+                  var allDeqSelected = deqEligible.length > 0 && deqSelCount === deqEligible.length;
                   return <div style={{ background: "var(--card)", borderRadius: 14, border: pendingDisbursals.length > 0 ? "1px solid #7B5EA740" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5852,19 +5873,24 @@ export default function FactoringDashboard() {
                         <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Disbursal Execution Queue</div>
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{pendingDisbursals.length} pending disbursals</span>
                       </div>
-                      {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7B5EA7", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {deqLockProg && <span style={{ fontSize: 10, color: "#7B5EA7", fontWeight: 600 }}>Bundling: {deqLockSP} / {(function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === deqLockProg; }); return fp ? fp.name : ""; })()}</span>}
+                        {deqSelCount > 0 && <button onClick={function() { setDeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                        {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7B5EA7", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
+                      </div>
                     </div>
                     {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No pending disbursals. Disbursals created from Program Overview will appear here.</div>}
                     {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { var n = {}; if (!allDeqSelected) pendingDisbursals.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7B5EA7" : "var(--border)"), background: allDeqSelected ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
+                          <th style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allDeqSelected) { setDeqSelected({}); } else { var n = {}; deqEligible.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7B5EA7" : "var(--border)"), background: allDeqSelected ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
                           {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
                         </tr></thead>
                         <tbody>{pendingDisbursals.map(function(dis) {
                           var isSel = !!deqSelected[dis.flowId];
-                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#7B5EA708" : "#7B5EA704" }}>
-                            <td style={{ padding: "9px 14px" }}><div onClick={function() { setDeqSelected(function(p) { var n = Object.assign({}, p); if (n[dis.flowId]) delete n[dis.flowId]; else n[dis.flowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "#7B5EA7" : "var(--border)"), background: isSel ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div></td>
+                          var isLocked = deqLockProg && (dis.programId !== deqLockProg || dis.serviceProvider !== deqLockSP);
+                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#7B5EA708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
+                            <td style={{ padding: "9px 14px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setDeqSelected(function(p) { var n = Object.assign({}, p); if (n[dis.flowId]) delete n[dis.flowId]; else n[dis.flowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "#7B5EA7" : "var(--border)"), background: isSel ? "#7B5EA7" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
                             <td style={Object.assign({}, dqmc, { color: "#7B5EA7", fontWeight: 600 })}>{dis.flowId}</td>
                             <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.display}</td>
                             <td style={{ padding: "9px 14px", fontSize: 12, fontWeight: 600 }}>{dis.programName}</td>
@@ -5874,16 +5900,13 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dis.date)}</td>
                             <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.reason || "\u2014"}</td>
                             <td style={{ padding: "9px 14px" }}>
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <button onClick={function() { setBatchConfirm({ type: "disbursal", items: [dis] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#7B5EA7", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute</button>
-                                <button onClick={function() {
+                              {!isLocked && <button onClick={function() {
                                   var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
                                   if (!fp || !fp.fundFlows) return;
                                   fp.fundFlows.splice(dis.flowIndex, 1);
                                   auditLog("Disbursal Cancelled", dis.flowId + " cancelled: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
                                   setDataVer(function(v) { return v + 1; });
-                                }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                              </div>
+                              }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
                             </td>
                           </tr>;
                         })}</tbody>
