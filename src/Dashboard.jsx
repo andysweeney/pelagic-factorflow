@@ -4256,8 +4256,8 @@ export default function FactoringDashboard() {
             setManageEdit(null);
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
             setShowNewEntity(true);
-            // For suppliers, show the import step; for buyers/service providers, skip straight to form
-            if (isSupTab) { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
+            // Show CH import step for suppliers and buyers
+            if (isSupTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
             else { setChImportStep(null); }
           }
           function chLookup() {
@@ -4578,8 +4578,8 @@ export default function FactoringDashboard() {
                     </div>
                   </div>
 
-                  {/* Invoices — Attention Needed only */}
-                <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                  {/* Invoices — Attention Needed only (Suppliers only) */}
+                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                   <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Invoices \u2014 Attention Needed ({attentionInvs.length})</div>
                     <span style={{ fontSize: 10, color: "var(--muted)" }}>Pending, At Risk, Recovery Mode</span>
@@ -4604,10 +4604,10 @@ export default function FactoringDashboard() {
                       })}</tbody>
                     </table>
                   </div>}
-                </div>
+                </div>}
 
-                  {/* Payment Allocations — Unallocated only */}
-                <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: isSup ? 18 : 0 }}>
+                  {/* Payment Allocations — Unallocated only (Suppliers only) */}
+                  {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden", marginBottom: isSup ? 18 : 0 }}>
                   <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Payments \u2014 Unallocated ({unallocPays.length})</div>
                     <span style={{ fontSize: 10, color: "var(--muted)" }}>Payments with remaining balance</span>
@@ -4629,7 +4629,7 @@ export default function FactoringDashboard() {
                       })}</tbody>
                     </table>
                   </div>}
-                </div>
+                </div>}
 
                   {/* Holdback Payments — Attention Needed */}
                 {isSup && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -4885,8 +4885,8 @@ export default function FactoringDashboard() {
             {/* Normal manage content (hidden when detail is open) */}
             {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && editing && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--accent)", padding: "22px", marginBottom: 16 }}>
               {/* Companies House Import Step (suppliers only, new entity only) */}
-              {isSupTab && !manageEdit && chImportStep === "lookup" && <div>
-                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 4 }}>New Supplier</div>
+              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 4 }}>New {entityLabel}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Import company details from Companies House or enter manually.</div>
                 <div style={{ display: "flex", gap: 10, alignItems: "end", marginBottom: 12 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, maxWidth: 260 }}>
@@ -4899,11 +4899,11 @@ export default function FactoringDashboard() {
                 </div>
                 {chError && <div style={{ fontSize: 11, color: "#C0392B", marginTop: 4 }}>{chError}</div>}
               </div>}
-              {isSupTab && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
+              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Looking up company {chCompanyNo.trim().padStart(8, "0")}...</div>
               </div>}
               {/* Main form — shown when: not supplier new, or skip, or done, or editing existing */}
-              {(!isSupTab || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
+              {((!isSupTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
               var isCh = f.entitySource === "ch";
               var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, street1: true, street2: true, city: true, state: true, country: true, zip: true };
               function chRefreshEntity() {
@@ -4955,9 +4955,9 @@ export default function FactoringDashboard() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
                 <div style={{ gridColumn: "1 / -1" }}>{fld("Company Name", "name", null, isCh && manageEdit)}</div>
-                {isSupLike && fld("Company Number", "companyNumber", null, isCh && manageEdit)}
-                {isSupLike && fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
-                {isSupLike && fld("Company Status", "companyStatus", null, isCh && manageEdit)}
+                {fld("Company Number", "companyNumber", null, isCh && manageEdit)}
+                {fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
+                {fld("Company Status", "companyStatus", null, isCh && manageEdit)}
                 {fld("Street Address 1", "street1", null, isCh && manageEdit)}
                 {fld("Street Address 2", "street2", null, isCh && manageEdit)}
                 {fld("City", "city", null, isCh && manageEdit)}
