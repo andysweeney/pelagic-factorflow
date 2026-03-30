@@ -2464,8 +2464,8 @@ export default function FactoringDashboard() {
                 balanceOwed += inv.balanceOwed || 0;
                 fundedBalance += inv.capitalDue || 0;
               });
-              var funderInflows = 0, totalDisbursed = 0;
-              if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else totalDisbursed += ff.amount; });
+              var funderInflows = 0, totalDisbursed = 0, pendingDisbursals = 0;
+              if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursals += ff.amount; else totalDisbursed += ff.amount; });
               // Sum buyer payments received against program invoices — full amount including holdback
               var buyerReceipts = 0, holdbackReceived = 0;
               progInvs.forEach(function(inv) {
@@ -2476,7 +2476,7 @@ export default function FactoringDashboard() {
               });
               var totalInflows = r2(funderInflows + buyerReceipts);
               var totalFundsOut = r2(totalDisbursed + fundedBalance);
-              var avail = r2(totalInflows - totalFundsOut);
+              var avail = r2(totalInflows - totalFundsOut - pendingDisbursals);
               var utilisationDenom = r2(fundedBalance + Math.max(0, avail));
               var utilisation = utilisationDenom > 0.01 ? (fundedBalance / utilisationDenom * 100).toFixed(1) : "0.0";
 
@@ -2562,6 +2562,10 @@ export default function FactoringDashboard() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                         <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#C08B30" }}>Awaiting Funding</div>
                         <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: approvedCapital > 0 ? "#C08B30" : "var(--muted)" }}>{approvedCapital > 0 ? money(r2(approvedCapital), displayCcy) : "\u2014"}</div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#7B5EA7" }}>Awaiting Disbursal</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: pendingDisbursals > 0 ? "#7B5EA7" : "var(--muted)" }}>{pendingDisbursals > 0 ? money(r2(pendingDisbursals), displayCcy) : "\u2014"}</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                         <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Collateral Value</div>
@@ -2952,7 +2956,7 @@ export default function FactoringDashboard() {
                       <div><span style={{ color: "var(--muted)" }}>Buyer Receipts: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#2E8B57" }}>{money(r2(buyerReceipts), prog.currency)}</span></div>
                       <div style={{ paddingLeft: 12 }}><span style={{ color: "var(--muted)", fontStyle: "italic" }}>of which Holdback: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#1E3A5F" }}>{money(r2(holdbackReceived), prog.currency)}</span></div>
                       <div><span style={{ color: "var(--muted)" }}>Total Funds In: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#2E8B57", fontWeight: 600 }}>{money(r2(totalInflows), prog.currency)}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Disbursed Funds: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C08B30" }}>{money(r2(totalDisbursed), prog.currency)}</span></div>
+                      <div><span style={{ color: "var(--muted)" }}>Disbursed Funds: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C08B30" }}>{money(r2(totalDisbursed), prog.currency)}</span>{pendingDisbursals > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#7B5EA7" }}> ({money(r2(pendingDisbursals), prog.currency)} pending)</span>}</div>
                       <div><span style={{ color: "var(--muted)" }}>Capital Advanced: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#1E3A5F" }}>{money(r2(fundedBalance), prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#7BA0D4" }}> (+{money(r2(approvedCapital), prog.currency)} approved)</span>}</div>
                       <div><span style={{ color: "var(--muted)" }}>Total Funds Out: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C0392B", fontWeight: 600 }}>{money(r2(totalFundsOut), prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#7BA0D4" }}> (+{money(r2(approvedCapital), prog.currency)})</span>}</div>
                       <div><span style={{ color: "var(--muted)" }}>Available: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: avail > 0 ? "#2E8B57" : "#C0392B", fontWeight: 700 }}>{money(avail, prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#7BA0D4" }}> ({money(r2(avail - approvedCapital), prog.currency)} after approved)</span>}</div>
@@ -3069,8 +3073,16 @@ export default function FactoringDashboard() {
                       if (amt <= 0 || !ffDate || !ffServiceProvider) return;
                       if (!prog.fundFlows) prog.fundFlows = [];
                       var now = new Date();
-                      prog.fundFlows.push({ type: showFundFlow === "add" ? "inflow" : "outflow", amount: amt, date: ffDate, serviceProvider: ffServiceProvider, reason: ffReason.trim(), timestamp: now.toISOString(), display: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) });
-                      auditLog(showFundFlow === "add" ? "Program Funds Added" : "Program Funds Disbursed", prog.name + ": " + money(amt, prog.currency) + " " + (showFundFlow === "add" ? "from" : "to") + " " + ffServiceProvider + " on " + ffDate + (ffReason.trim() ? " — " + ffReason.trim() : ""), { programId: prog.id, programName: prog.name, type: showFundFlow, amount: amt, currency: prog.currency, serviceProvider: ffServiceProvider, reason: ffReason.trim(), date: ffDate });
+                      var flowEntry = { type: showFundFlow === "add" ? "inflow" : "outflow", amount: amt, date: ffDate, serviceProvider: ffServiceProvider, reason: ffReason.trim(), timestamp: now.toISOString(), display: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) };
+                      if (showFundFlow === "disburse") {
+                        flowEntry.status = "Pending";
+                        flowEntry.flowId = "DIS-" + String(prog.fundFlows.filter(function(f) { return f.type === "outflow"; }).length + 1).padStart(5, "0");
+                        flowEntry.programId = prog.id;
+                        flowEntry.programName = prog.name;
+                        flowEntry.currency = prog.currency;
+                      }
+                      prog.fundFlows.push(flowEntry);
+                      auditLog(showFundFlow === "add" ? "Program Funds Added" : "Program Funds Disbursed", prog.name + ": " + money(amt, prog.currency) + " " + (showFundFlow === "add" ? "from" : "to") + " " + ffServiceProvider + " on " + ffDate + (ffReason.trim() ? " \u2014 " + ffReason.trim() : "") + (showFundFlow === "disburse" ? " (Pending)" : ""), { programId: prog.id, programName: prog.name, type: showFundFlow, amount: amt, currency: prog.currency, serviceProvider: ffServiceProvider, reason: ffReason.trim(), date: ffDate, flowId: flowEntry.flowId || null });
                       setShowFundFlow(null); setFfAmount(""); setFfDate(""); setFfServiceProvider(""); setFfReason("");
                       setDataVer(function(v) { return v + 1; });
                     }} disabled={!(parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider)} style={{ padding: "7px 18px", borderRadius: 7, border: "none", background: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? (showFundFlow === "add" ? "#2E8B57" : "#C08B30") : "var(--border)", color: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? "pointer" : "default" }}>Confirm</button>
@@ -3175,6 +3187,94 @@ export default function FactoringDashboard() {
                   {(piSearch || piSupFilter || piBuyFilter || piInvStFilter || piFundStFilter) && <button onClick={function() { setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
                   <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{fInvs.length} of {progInvs.length}</span>
                 </div>
+
+                {/* Approved — Awaiting Funding */}
+                {(function() {
+                  var approvedInvs = progInvs.filter(function(inv) { return inv.fundingStatus === "approved"; });
+                  if (approvedInvs.length === 0) return null;
+                  return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid #567EBB30", overflow: "hidden", marginBottom: 18 }}>
+                    <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Approved {"\u2014"} Awaiting Funding ({approvedInvs.length})</div>
+                        <Badge label="Approved" bg="#567EBB14" color="#7BA0D4" border="#567EBB30" />
+                      </div>
+                      <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono',monospace", fontWeight: 700, color: "#C08B30" }}>{money(approvedInvs.reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0), displayCcy)} capital awaiting</div>
+                    </div>
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
+                        <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2 }}>{h}</th>; })}</tr></thead>
+                        {approvedInvs.map(function(inv) {
+                          var aIsExp = exp === "appr-" + inv.id;
+                          var aIst = IST[inv.invoiceStatus] || IST["Received"];
+                          var aTerm = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
+                          var aDp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
+                          return (
+                            <tbody key={"appr-" + inv.id}>
+                              <tr style={{ borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : "#567EBB04" }}>
+                                <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
+                                <td style={{ padding: "9px 14px", fontSize: 12 }}>{inv.supplierName}</td>
+                                <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                                <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                                <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
+                                <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
+                                <td style={Object.assign({}, pimc, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</td>
+                                <td style={Object.assign({}, pimc)}>{aTerm}d</td>
+                                <td style={{ padding: "9px 14px", fontSize: 12, color: aDp ? "#E05A4F" : "var(--text-secondary)", fontWeight: aDp ? 600 : 400 }}>{fmt(inv.dueDate)}</td>
+                                <td style={{ padding: "9px 14px" }}><Badge label={inv.invoiceStatus} bg={aIst.bg} color={aIst.color} border={aIst.border} icon={aIst.icon} /></td>
+                                <td style={{ padding: "9px 14px" }}><button onClick={function() { setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid " + (aIsExp ? "var(--accent)" : "var(--border)"), background: aIsExp ? "var(--accent)" : "transparent", color: aIsExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>{aIsExp ? "\u25b4" : "\u25be"}</button></td>
+                              </tr>
+                              {aIsExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F3F5F9" }}>
+                                <div style={{ padding: "16px 22px" }}>
+                                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                                    <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#567EBB", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #567EBB" }}>Invoice Information</div>
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
+                                        <div><span style={{ color: "var(--muted)" }}>Invoice: </span><span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{inv.id}</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Amount: </span><strong style={{ fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.amount, inv.currency)}</strong></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{inv.supplierName}</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Buyer: </span>{inv.buyerName}</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Invoice Date: </span>{fmt(inv.invoiceDate)}</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Due Date: </span><span style={{ color: aDp ? "#E05A4F" : "var(--text)", fontWeight: aDp ? 600 : 400 }}>{fmt(inv.dueDate)}</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Term: </span>{aTerm}d</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Program: </span><span style={{ color: "#567EBB", fontWeight: 600 }}>{prog.name}</span></div>
+                                        {inv.buyerRef && <div><span style={{ color: "var(--muted)" }}>Buyer Ref: </span>{inv.buyerRef}</div>}
+                                        {inv.supplierRef && <div><span style={{ color: "var(--muted)" }}>Supplier Ref: </span>{inv.supplierRef}</div>}
+                                        {inv.poNumber && <div><span style={{ color: "var(--muted)" }}>PO Number: </span>{inv.poNumber}</div>}
+                                      </div>
+                                    </div>
+                                    <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#1E3A5F", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Financial Breakdown</div>
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
+                                        <div><span style={{ color: "var(--muted)" }}>Advance Rate: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{((inv.advanceRate || 0.9) * 100).toFixed(0)}%</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Annual Rate: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{((inv.annualRate || 0.15) * 100).toFixed(1)}%</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Capital Due: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{money(inv.capitalDue, inv.currency)}</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Holdback: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.holdback, inv.currency)}</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Interest Charged: </span><span style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C08B30" }}>{money(inv.interestCharged, inv.currency)}</span></div>
+                                        <div><span style={{ color: "var(--muted)" }}>Deferred Payment: </span><span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.deferredPayment, inv.currency)}</span></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center" }}>
+                                    {rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#C0392B", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#C0392B", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#C0392B", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>}
+                                    <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Invoice is read-only while in Approved status</span>
+                                  </div>
+                                  {inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 && <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px" }}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", marginBottom: 6 }}>Status History</div>
+                                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                                      {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
+                                    </div>
+                                  </div>}
+                                </div>
+                              </td></tr>}
+                            </tbody>
+                          );
+                        })}
+                      </table>
+                    </div>
+                  </div>;
+                })()}
+
+                {/* All Invoices (filtered) */}
                 <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", overflow: "hidden" }}>
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1300 }}>
@@ -5403,9 +5503,9 @@ export default function FactoringDashboard() {
                           if (inv.fundingStatus !== "pending") pFundedBal += inv.capitalDue || 0;
                           if (inv.payments) inv.payments.forEach(function(p) { pBuyerReceipts += (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); });
                         });
-                        var pIn = 0, pOut = 0;
-                        if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") pIn += ff.amount; else pOut += ff.amount; });
-                        var avail = r2(pIn + pBuyerReceipts - pOut - pFundedBal);
+                        var pIn = 0, pOut = 0, pPendDis = 0;
+                        if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") pIn += ff.amount; else if (ff.status === "Pending") pPendDis += ff.amount; else pOut += ff.amount; });
+                        var avail = r2(pIn + pBuyerReceipts - pOut - pFundedBal - pPendDis);
                         return <tr key={prog.id || idx} style={{ borderBottom: "1px solid var(--border)" }}>
                           <td style={Object.assign({}, mc, { color: "var(--accent)", fontWeight: 600 })}>{prog.name}</td>
                           <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{prog.currency}</td>
@@ -5706,6 +5806,68 @@ export default function FactoringDashboard() {
                               <div style={{ display: "flex", gap: 6 }}>
                                 <button onClick={function() { executeFunding(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute</button>
                                 <button onClick={function() { cancelApproval(inv.id); }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                              </div>
+                            </td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
+                  </div>;
+                })()}
+
+                {/* Disbursal Execution Queue */}
+                {(function() {
+                  var pendingDisbursals = [];
+                  FUNDING_PROGRAMS_DB.forEach(function(fp) {
+                    if (!fp.fundFlows) return;
+                    fp.fundFlows.forEach(function(ff, ffi) {
+                      if (ff.type === "outflow" && ff.status === "Pending") {
+                        pendingDisbursals.push(Object.assign({}, ff, { programId: fp.id, programName: fp.name, currency: fp.currency, flowIndex: ffi }));
+                      }
+                    });
+                  });
+                  var dqmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
+                  return <div style={{ background: "var(--card)", borderRadius: 14, border: pendingDisbursals.length > 0 ? "1px solid #7B5EA740" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                      {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7B5EA7" }}></div>}
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Disbursal Execution Queue</div>
+                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{pendingDisbursals.length} pending disbursals</span>
+                    </div>
+                    {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No pending disbursals. Disbursals created from Program Overview will appear here.</div>}
+                    {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{pendingDisbursals.map(function(dis) {
+                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: "#7B5EA706" }}>
+                            <td style={Object.assign({}, dqmc, { color: "#7B5EA7", fontWeight: 600 })}>{dis.flowId}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.display}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, fontWeight: 600 }}>{dis.programName}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{dis.serviceProvider}</td>
+                            <td style={Object.assign({}, dqmc, { fontWeight: 700, color: "var(--text)" })}>{money(dis.amount, dis.currency)}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{dis.currency}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dis.date)}</td>
+                            <td style={{ padding: "9px 14px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.reason || "\u2014"}</td>
+                            <td style={{ padding: "9px 14px" }}>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button onClick={function() {
+                                  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
+                                  if (!fp || !fp.fundFlows) return;
+                                  var ff = fp.fundFlows[dis.flowIndex];
+                                  if (ff) {
+                                    ff.status = "Completed";
+                                    ff.executedAt = new Date().toISOString();
+                                    ff.executedDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                                    auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
+                                    setDataVer(function(v) { return v + 1; });
+                                  }
+                                }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Executed</button>
+                                <button onClick={function() {
+                                  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
+                                  if (!fp || !fp.fundFlows) return;
+                                  fp.fundFlows.splice(dis.flowIndex, 1);
+                                  auditLog("Disbursal Cancelled", dis.flowId + " cancelled: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
+                                  setDataVer(function(v) { return v + 1; });
+                                }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#E05A4F", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
                               </div>
                             </td>
                           </tr>;
