@@ -119,6 +119,18 @@ function getEligiblePrograms(inv, supDilRates) {
   });
 }
 
+// Compute the maximum capital any eligible program could offer for this invoice
+function getMaxAvailableCapital(inv, supDilRates) {
+  var eligible = getEligiblePrograms(inv, supDilRates);
+  if (eligible.length === 0) return 0;
+  var maxCap = 0;
+  eligible.forEach(function(fp) {
+    var cap = r2(inv.amount * fp.maxAdvanceRate);
+    if (cap > maxCap) maxCap = cap;
+  });
+  return maxCap;
+}
+
 function generateData(count) {
   var rand = makeRng(42), invoices = [], rawPayments = [], payId = 0;
   for (var i = 0; i < count; i++) {
@@ -361,8 +373,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var disputedDate = dispEntry ? dispEntry.date : null;
     var daysOverdue = pastDue ? daysBetween(rawInv.dueDate, viewDate) : 0;
     var daysDisputed = (statusAsOfDate === "Disputed" && disputedDate) ? daysBetween(disputedDate, viewDate) : 0;
-    var intBal = rawInv.interestCharged, penBal = 0, capBal = rawInv.capitalDue;
-    var hbBal = rawInv.deferredPayment;
+    // Capital/interest/holdback balances only apply once the invoice is actually funded (money advanced)
+    var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
+    var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
+    var hbBal = isFunded ? rawInv.deferredPayment : 0;
     var hbRecd = 0;
     var penaltyAccrued = 0;
     var annotatedPays = [];
@@ -496,6 +510,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       // Re-evaluate funding status since settled with balance triggers recovery
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && balOwed > 0.01) fs = "recovery_mode";
     }
+    // For unfunded invoices, compute max available capital from eligible programs and unallocated payment total
+    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv) : 0;
+    var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
@@ -505,6 +522,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       holdbackOutstanding: r2(hbBal),
       totalOutstanding: r2(intBal + penBal + capBal + hbBal),
       balanceOwed: r2(capBal + intBal + penBal),
+      maxAvailableCapital: r2(maxAvailCap),
+      unallocatedPayments: r2(unallocatedPayments),
       writeOffTotal: r2(woTotalPen + woTotalInt + woTotalCap + woTotalHb),
       writeOffPenalty: r2(woTotalPen), writeOffInterest: r2(woTotalInt), writeOffCapital: r2(woTotalCap), writeOffHoldback: r2(woTotalHb),
       adjCreditTotal: r2(adjCreditPen + adjCreditInt + adjCreditCap), adjDebitTotal: r2(adjDebitPen + adjDebitInt + adjDebitCap),
@@ -1252,7 +1271,7 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>
                       <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>
                       <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                      {!isB && <td style={Object.assign({}, mc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>}
+                      {!isB && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
                       {!isB && <td style={Object.assign({}, mc, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</td>}
                       {!isB && <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#C0392B" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>}
                       <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{fmt(inv.invoiceDate)}</td>
@@ -1326,7 +1345,9 @@ export default function FactoringDashboard() {
                                         var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
                                         var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past maturity";
                                         var matColor = daysToMat >= 0 ? "#2E8B57" : "#C0392B";
+                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundedDate;
                                         return <div>
+                                          {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</span></div>
@@ -1336,6 +1357,12 @@ export default function FactoringDashboard() {
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#1E3A5F" : "#2E8B57", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Total Funds Applied</span><span style={Object.assign({}, val, { color: "#2E8B57" })}>{money(inv.totalFundsApplied || 0, inv.currency)}</span></div>
+                                          </> : <>{/* Unfunded invoice — show potential capital and unallocated payments */}
+                                          {inv.fundingStatus === "approved" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
+                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "approved" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
+                                          {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#2E8B57" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
+                                          {inv.fundingStatus === "pending" && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#C08B3008", border: "1px solid #C08B3020", fontSize: 10, color: "#C08B30", fontStyle: "italic" }}>Capital and interest will be set when funding is approved and executed</div>}
+                                          </>}
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Funded Date</span><span style={val}>{inv.fundedDate ? fmt(inv.fundedDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
@@ -3432,7 +3459,9 @@ export default function FactoringDashboard() {
                                         var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
                                         var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past maturity";
                                         var matColor = daysToMat >= 0 ? "#2E8B57" : "#C0392B";
+                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundedDate;
                                         return <div>
+                                          {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</span></div>
@@ -3442,6 +3471,12 @@ export default function FactoringDashboard() {
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#1E3A5F" : "#2E8B57", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Total Funds Applied</span><span style={Object.assign({}, val, { color: "#2E8B57" })}>{money(inv.totalFundsApplied || 0, inv.currency)}</span></div>
+                                          </> : <>{/* Unfunded invoice — show potential capital and unallocated payments */}
+                                          {inv.fundingStatus === "approved" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
+                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "approved" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
+                                          {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#2E8B57" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
+                                          {inv.fundingStatus === "pending" && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#C08B3008", border: "1px solid #C08B3020", fontSize: 10, color: "#C08B30", fontStyle: "italic" }}>Capital and interest will be set when funding is approved and executed</div>}
+                                          </>}
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Funded Date</span><span style={val}>{inv.fundedDate ? fmt(inv.fundedDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
@@ -5653,15 +5688,11 @@ export default function FactoringDashboard() {
                 var newId = "INV-" + String(INVOICES_DB.length + 2001).padStart(7, "0");
                 var hist = [{ status: "Received", date: nf.invoiceDate }];
                 var supRate = getSupplierRate(nf.supplier);
-                var supDailyRate = supRate.annualRate / 360;
-                var cap = r2(amt * supRate.advanceRate);
-                var hold = r2(r2(amt) - cap);
-                var intChg = r2(cap * supDailyRate * days);
-                var def = r2(hold - intChg);
+                // Capital/interest/holdback are NOT set at creation — they are set when funding is approved via the Fund popup
                 INVOICES_DB.push({
                   id: newId, supplierName: nf.supplier, buyerName: nf.buyer,
-                  amount: r2(amt), currency: nf.currency, capitalDue: cap, holdback: hold,
-                  interestCharged: intChg, deferredPayment: def, daysToMaturity: days,
+                  amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
+                  interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
                   advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
                   buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", poNumber: nf.poNumber || "",
                   doNotFund: nf.doNotFund || false,
@@ -5670,7 +5701,7 @@ export default function FactoringDashboard() {
                   fullyRepaidDate: null, invoiceStatus: "Received", invoiceStatusHistory: hist,
                   fundingStatus: "pending", partialApprovedAmount: 0
                 });
-                auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + nf.supplier + " / " + nf.buyer + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplier: nf.supplier, buyer: nf.buyer, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: cap, holdback: hold, interestCharged: intChg, deferredPayment: def, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
+                auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + nf.supplier + " / " + nf.buyer + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplier: nf.supplier, buyer: nf.buyer, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
                 setNewInvFields({ supplier: nf.supplier, buyer: nf.buyer, amount: "", currency: nf.currency, invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
                 setDataVer(function(v) { return v + 1; });
               }
@@ -5783,12 +5814,12 @@ export default function FactoringDashboard() {
                   {pendingInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices pending approval. Created invoices will appear here for funding.</div>}
                   {pendingInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Term", "Due Date", "Program", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Potential Capital", "Term", "Due Date", "Program", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{pendingInvs.map(function(inv) {
                         var selProg = fundProgSelections[inv.id] || "";
                         var eligProgs = getEligiblePrograms(inv, supDilRates);
                         var selProgObj = selProg ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selProg; }) : null;
-                        var dispCap = selProgObj ? money(r2(Math.min(inv.amount * selProgObj.maxAdvanceRate, inv.capitalDue)), inv.currency) : money(inv.capitalDue, inv.currency);
+                        var dispCap = selProgObj ? money(r2(inv.amount * selProgObj.maxAdvanceRate), inv.currency) : (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014");
                         var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
                         // Build ineligibility reasons for ALL programs
                         var reasons = [];
