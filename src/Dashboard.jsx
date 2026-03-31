@@ -6149,19 +6149,32 @@ export default function FactoringDashboard() {
                           var now = new Date();
                           var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                           if (batchConfirm.type === "outbound") {
-                            // Apply deductions first — waterfall against invoices
+                            // Apply deductions — create credit adjustments on target invoices using outstanding balances
                             var deductTotal = 0;
                             batchDeductions.forEach(function(d) {
                               var raw = INVOICES_DB.find(function(x) { return x.id === d.invoiceId; });
                               if (!raw) return;
+                              // Use OUTSTANDING amounts from viewData for the waterfall
+                              var vInv = viewData.invoices.find(function(x) { return x.id === d.invoiceId; });
+                              var osPen = vInv ? vInv.penaltyInterest : 0;
+                              var osInt = vInv ? vInv.interestOutstanding : 0;
+                              var osCap = vInv ? vInv.capitalOutstanding : 0;
+                              var isOverdue = (vInv ? vInv.fundingStatus : raw.fundingStatus) === "overdue";
                               var rm = d.amount;
-                              var isOverdue = raw.fundingStatus === "overdue";
                               var dPen = 0, dInt = 0, dCap = 0;
-                              if (rm > 0 && raw.penaltyInterest > 0.001) { dPen = Math.min(rm, raw.penaltyInterest); raw.penaltyInterest = r2(raw.penaltyInterest - dPen); rm = r2(rm - dPen); }
+                              // Waterfall: penalty -> interest -> capital
+                              if (rm > 0 && osPen > 0.001) { dPen = r2(Math.min(rm, osPen)); rm = r2(rm - dPen); }
                               if (!isOverdue) {
-                                if (rm > 0 && raw.interestCharged > 0.001) { dInt = Math.min(rm, raw.interestCharged); raw.interestCharged = r2(raw.interestCharged - dInt); rm = r2(rm - dInt); }
-                                if (rm > 0 && raw.capitalDue > 0.001) { dCap = Math.min(rm, raw.capitalDue); raw.capitalDue = r2(raw.capitalDue - dCap); rm = r2(rm - dCap); }
+                                if (rm > 0 && osInt > 0.001) { dInt = r2(Math.min(rm, osInt)); rm = r2(rm - dInt); }
+                                if (rm > 0 && osCap > 0.001) { dCap = r2(Math.min(rm, osCap)); rm = r2(rm - dCap); }
                               }
+                              // Store as credit adjustment on the raw invoice
+                              if (!raw.adjustments) raw.adjustments = [];
+                              raw.adjustments.push({
+                                type: "credit", date: now.toISOString().split("T")[0], timestamp: now.toISOString(),
+                                display: nowDisp, penalty: dPen, interest: dInt, capital: dCap,
+                                total: r2(dPen + dInt + dCap), source: "outbound_deduction"
+                              });
                               deductTotal += d.amount;
                               auditLog("Outbound Deduction", d.invoiceId + ": " + money(d.amount, batchConfirm.currency) + " deducted (Pen " + money(dPen, batchConfirm.currency) + ", Int " + money(dInt, batchConfirm.currency) + ", Cap " + money(dCap, batchConfirm.currency) + ")", { invoiceId: d.invoiceId, deductAmount: d.amount, penalty: dPen, interest: dInt, capital: dCap, currency: batchConfirm.currency, supplierName: batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "" });
                             });
