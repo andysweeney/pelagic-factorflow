@@ -481,7 +481,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   var mo = {};
   processed.forEach(function(inv) { if (!inv.fundedDate) return; var k = inv.fundedDate.substring(0, 7); mo[k] = (mo[k] || 0) + inv.capitalDue; });
   var chartData = Object.entries(mo).sort(function(a, b) { return a[0].localeCompare(b[0]); }).map(function(e) { return { k: e[0], v: e[1] }; });
-  return { invoices: processed, stats: Object.assign({ total: t, capitalAdvanced: cap, totalPenalty: totPen, n: processed.length }, counts), chartData: chartData };
+  return { invoices: processed, stats: Object.assign({ total: t, capitalAdvanced: cap, totalPenalty: totPen, n: processed.length }, counts), chartData: chartData, cnUnallocBySupplier: cnUnallocBySupplier, cnUnallocByBuyer: cnUnallocByBuyer, cnUnallocBySupBuyer: cnUnallocBySupBuyer };
 }
 
 var IST = { "Received": { bg: "#8C9AB514", color: "#8C9AB5", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5714", color: "#3DA873", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3014", color: "#D4A03A", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5720", color: "#2E8B57", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728014", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B18", color: "#E05A4F", border: "#C0392B30", icon: "\u2715" }, "Disputed": { bg: "#7B5EA718", color: "#9B80C4", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B20", color: "#C0392B", border: "#C0392B40", icon: "\u2716" } };
@@ -664,7 +664,7 @@ export default function FactoringDashboard() {
       var dN = 0, dD = 0;
       invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
       // Add unallocated credit note amounts for this supplier
-      var supUnalloc = cnUnallocBySupplier.get(sup) || 0;
+      var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(sup) || 0) : 0;
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
       var fN = 0, fD = 0;
@@ -2149,7 +2149,7 @@ export default function FactoringDashboard() {
                   var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
                   var bdN = 0, bdD = 0;
                   buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; bdN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) bdN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") bdN += a; });
-                  var buyUnalloc = cnUnallocByBuyer.get(selectedBuyer) || 0;
+                  var buyUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(selectedBuyer) || 0) : 0;
                   if (buyUnalloc > 0) bdN += buyUnalloc;
                   var bdRate = bdD > 0.01 ? (bdN / bdD) * 100 : 0;
                   // Period dilution
