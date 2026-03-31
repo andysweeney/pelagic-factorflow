@@ -4,24 +4,13 @@ var LOGO_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA58AAAB9CAYAAAAldd
 var COUNTRIES = ["United Kingdom","United States","Germany","France","Netherlands","Ireland","Spain","Italy","Belgium","Switzerland","Canada","Australia","Japan","Singapore","Hong Kong","UAE","Other"];
 var EMPTY_ADDR = { street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", primaryContact: "", primaryEmail: "", primaryPhone: "", secondaryContact: "", secondaryEmail: "", secondaryPhone: "" };
 
-var SUPPLIERS_DB = [
-  Object.assign({ id: "SUP-0042", name: "Meridian Components Ltd", bankName: "Barclays", bankDetails: "Sort: 20-00-00 Acc: 12345678", rates: [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }] }, EMPTY_ADDR, { street1: "14 Industrial Park", city: "Manchester", state: "Greater Manchester", zip: "M1 2AB", primaryContact: "Sarah Mitchell", primaryEmail: "s.mitchell@meridian.co.uk", primaryPhone: "+44 161 555 0100" })
-];
+var SUPPLIERS_DB = [];
 
 var SERVICE_PROVIDERS_DB = [];
 
-var BUYERS_DB = [
-  Object.assign({ id: "BUY-001", name: "Apex Manufacturing Co" }, EMPTY_ADDR, { street1: "100 Factory Lane", city: "Birmingham", state: "West Midlands", zip: "B1 1AA", primaryContact: "James Ward", primaryEmail: "j.ward@apex.co.uk" }),
-  Object.assign({ id: "BUY-002", name: "Sterling Industries PLC" }, EMPTY_ADDR, { street1: "55 Commerce St", city: "London", state: "Greater London", zip: "EC1A 1BB", primaryContact: "Emma Clarke", primaryEmail: "e.clarke@sterling.co.uk" }),
-  Object.assign({ id: "BUY-003", name: "Northgate Electronics" }, EMPTY_ADDR, { street1: "8 Tech Park", city: "Leeds", state: "West Yorkshire", zip: "LS1 3CC", primaryContact: "Tom Hughes", primaryEmail: "t.hughes@northgate.co.uk" }),
-  Object.assign({ id: "BUY-004", name: "Cascade Systems Group" }, EMPTY_ADDR, { street1: "22 Innovation Dr", city: "Bristol", state: "Bristol", zip: "BS1 4DD", primaryContact: "Lucy Brown", primaryEmail: "l.brown@cascade.co.uk" }),
-  Object.assign({ id: "BUY-005", name: "Ridgeline Fabrication" }, EMPTY_ADDR, { street1: "3 Steel Way", city: "Sheffield", state: "South Yorkshire", zip: "S1 5EE", primaryContact: "Mark Taylor", primaryEmail: "m.taylor@ridgeline.co.uk" }),
-  Object.assign({ id: "BUY-006", name: "Summit Precision Ltd" }, EMPTY_ADDR, { street1: "17 Precision Rd", city: "Coventry", state: "West Midlands", zip: "CV1 6FF", primaryContact: "Anna Green", primaryEmail: "a.green@summit.co.uk" }),
-  Object.assign({ id: "BUY-007", name: "Ironclad Engineering" }, EMPTY_ADDR, { street1: "40 Forge St", city: "Newcastle", state: "Tyne and Wear", zip: "NE1 7GG", primaryContact: "David Wilson", primaryEmail: "d.wilson@ironclad.co.uk" }),
-  Object.assign({ id: "BUY-008", name: "Vanguard Automotive" }, EMPTY_ADDR, { street1: "90 Motor Way", city: "Sunderland", state: "Tyne and Wear", zip: "SR1 8HH", primaryContact: "Kate Evans", primaryEmail: "k.evans@vanguard.co.uk" }),
-];
+var BUYERS_DB = [];
 
-var SUPPLIER = SUPPLIERS_DB[0];
+var SUPPLIER = SUPPLIERS_DB[0] || null;
 var BUYERS = BUYERS_DB.map(function(b) { return b.name; });
 var CURRENCIES = ["GBP","EUR","USD"];
 var CUR = { GBP: "\u00a3", EUR: "\u20ac", USD: "$" };
@@ -182,9 +171,8 @@ function generateData(count) {
   return { invoices: invoices, payments: rawPayments };
 }
 
-var DATA = generateData(INVOICE_COUNT);
-var INVOICES_DB = DATA.invoices;
-var PAYMENTS_DB = DATA.payments;
+var INVOICES_DB = [];
+var PAYMENTS_DB = [];
 var HOLDBACK_PAYMENTS_DB = [];
 var AUDIT_LOG = [];
 var SUPPLIER_PAYMENT_QUEUE = [];
