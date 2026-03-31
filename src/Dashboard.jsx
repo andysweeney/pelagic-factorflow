@@ -5682,12 +5682,14 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Supplier</label>
                     <select value={nf.supplier} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                      <option value="">Select supplier...</option>
                       {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
                     </select>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Buyer</label>
                     <select value={nf.buyer} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyer: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                      <option value="">Select buyer...</option>
                       {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.name}>{b.name}</option>; })}
                     </select>
                   </div>
