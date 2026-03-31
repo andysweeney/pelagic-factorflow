@@ -31,8 +31,55 @@ function addDays(s, n) { var d = new Date(s + "T00:00:00"); d.setDate(d.getDate(
 function daysBetween(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
 function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 
+// Branch helpers
+// Returns the parent supplier name for a given name (which could be "Parent" or "Parent — Branch")
+function getParentSupplierName(name) {
+  if (!name) return name;
+  var sep = name.indexOf(" \u2014 ");
+  return sep >= 0 ? name.substring(0, sep) : name;
+}
+// Returns the branch part, or null if it's a parent
+function getBranchName(name) {
+  if (!name) return null;
+  var sep = name.indexOf(" \u2014 ");
+  return sep >= 0 ? name.substring(sep + 3) : null;
+}
+// Returns the parent supplier object for a given name
+function getParentSupplier(name) {
+  var pn = getParentSupplierName(name);
+  return SUPPLIERS_DB.find(function(s) { return s.name === pn; }) || null;
+}
+// Returns true if the given invoice belongs to the same parent supplier
+function isSameParentSupplier(invSupName, parentName) {
+  return getParentSupplierName(invSupName) === getParentSupplierName(parentName);
+}
+// Build a list of all supplier entities (parents + branches) for dropdowns
+// Returns [{ value: "Parent Name", label: "Parent Name" }, { value: "Parent Name — Branch", label: "Parent Name — Branch" }, ...]
+function getAllSupplierEntities() {
+  var result = [];
+  SUPPLIERS_DB.forEach(function(s) {
+    result.push({ value: s.name, label: s.name });
+    if (s.branches) s.branches.forEach(function(br) {
+      var fullName = s.name + " \u2014 " + br.branchName;
+      result.push({ value: fullName, label: fullName });
+    });
+  });
+  return result;
+}
+// Get bank details for a supplier name — checks branch first, falls back to parent
+function getSupplierBankDetails(name) {
+  var parent = getParentSupplier(name);
+  if (!parent) return { bankName: "", bankDetails: "", bankVerified: false };
+  var brName = getBranchName(name);
+  if (brName && parent.branches) {
+    var br = parent.branches.find(function(b) { return b.branchName === brName; });
+    if (br && br.bankName) return { bankName: br.bankName, bankDetails: br.bankDetails || "", bankVerified: br.bankVerified || false };
+  }
+  return { bankName: parent.bankName || "", bankDetails: parent.bankDetails || "", bankVerified: parent.bankVerified || false };
+}
+
 function getSupplierRate(supplierName, asOfTimestamp) {
-  var supplier = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+  var supplier = getParentSupplier(supplierName);
   if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
   var ts = asOfTimestamp || new Date().toISOString();
   var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
@@ -46,20 +93,22 @@ function getSupplierRate(supplierName, asOfTimestamp) {
 
 function getEligiblePrograms(inv, supDilRates) {
   var supRate = getSupplierRate(inv.supplierName);
+  var parentSup = getParentSupplierName(inv.supplierName);
   var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
   // Ineligible invoice statuses
   var badInvStatuses = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
   if (badInvStatuses[inv.invoiceStatus]) return [];
-  var dr = supDilRates ? (supDilRates[inv.supplierName] || {}) : {};
+  var dr = supDilRates ? (supDilRates[parentSup] || {}) : {};
   return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    // Eligible suppliers check — uses parent name
+    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0 && fp.eligibleSuppliers.indexOf(parentSup) === -1) return false;
+    // Eligible buyers check
+    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0 && fp.eligibleBuyers.indexOf(inv.buyerName) === -1) return false;
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
     if (term > fp.maxInvoiceTerm) return false;
-    // Minimum invoice tenor
     if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) return false;
-    // Minimum invoice size
     if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) return false;
-    // Dilution rate checks
     if (fp.maxSupDilLive && dr.dilRate > fp.maxSupDilLive) return false;
     if (fp.maxSupDil30 && dr.dil30 > fp.maxSupDil30) return false;
     if (fp.maxSupDil90 && dr.dil90 > fp.maxSupDil90) return false;
@@ -227,12 +276,19 @@ async function savePersistedData() {
 }
 function auditLog(action, details, context) {
   var now = new Date();
+  var ctx = context || {};
+  // Auto-enrich with branch name if supplier name contains a branch
+  var supField = ctx.supplierName || ctx.supplier || "";
+  if (supField && supField.indexOf(" \u2014 ") >= 0) {
+    ctx.parentSupplier = getParentSupplierName(supField);
+    ctx.branchName = getBranchName(supField);
+  }
   AUDIT_LOG.push({
     timestamp: now.toISOString(),
     displayTime: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
     action: action,
     details: details,
-    context: context || {}
+    context: ctx
   });
 }
 
@@ -262,9 +318,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     });
     var unalloc = r2(cn.amount - allocated);
     if (unalloc > 0.01 && cn.supplierName) {
-      cnUnallocBySupplier.set(cn.supplierName, (cnUnallocBySupplier.get(cn.supplierName) || 0) + unalloc);
+      var cnParent = getParentSupplierName(cn.supplierName);
+      cnUnallocBySupplier.set(cnParent, (cnUnallocBySupplier.get(cnParent) || 0) + unalloc);
       if (cn.buyerName) {
-        var key = cn.supplierName + "|" + cn.buyerName;
+        var key = cnParent + "|" + cn.buyerName;
         cnUnallocBySupBuyer.set(key, (cnUnallocBySupBuyer.get(key) || 0) + unalloc);
         cnUnallocByBuyer.set(cn.buyerName, (cnUnallocByBuyer.get(cn.buyerName) || 0) + unalloc);
       }
@@ -539,6 +596,7 @@ export default function FactoringDashboard() {
   var st1 = useState("overview"), supTab = st1[0], setSupTab = st1[1];
   var pt1 = useState("overview"), progTab = pt1[0], setProgTab = pt1[1];
   var pv1 = useState(""), selectedProgram = pv1[0], setSelectedProgram = pv1[1];
+  var psf1 = useState(""), progSupFilter = psf1[0], setProgSupFilter = psf1[1];
   var ff1 = useState(null), showFundFlow = ff1[0], setShowFundFlow = ff1[1];
   var ffa1 = useState(""), ffAmount = ffa1[0], setFfAmount = ffa1[1];
   var ffd1 = useState(""), ffDate = ffd1[0], setFfDate = ffd1[1];
@@ -639,8 +697,9 @@ export default function FactoringDashboard() {
     var rates = {};
     var bySupplier = {};
     viewData.invoices.forEach(function(inv) {
-      if (!bySupplier[inv.supplierName]) bySupplier[inv.supplierName] = [];
-      bySupplier[inv.supplierName].push(inv);
+      var parentName = getParentSupplierName(inv.supplierName);
+      if (!bySupplier[parentName]) bySupplier[parentName] = [];
+      bySupplier[parentName].push(inv);
     });
     var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
     var dilElig = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
@@ -678,7 +737,14 @@ export default function FactoringDashboard() {
 
   var filtered = useMemo(function() {
     var d = viewData.invoices;
-    if (isS && selectedSupplier) d = d.filter(function(x) { return x.supplierName === selectedSupplier; });
+    if (isS && selectedSupplier) {
+      var selBranch = getBranchName(selectedSupplier);
+      if (selBranch) {
+        d = d.filter(function(x) { return x.supplierName === selectedSupplier; });
+      } else {
+        d = d.filter(function(x) { return getParentSupplierName(x.supplierName) === selectedSupplier; });
+      }
+    }
     if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
@@ -889,13 +955,14 @@ export default function FactoringDashboard() {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
-    var supplier = SUPPLIERS_DB.find(function(s) { return s.name === raw.supplierName; });
+    var supplier = getParentSupplier(raw.supplierName);
+    var bankInfo = getSupplierBankDetails(raw.supplierName);
     var now = new Date();
     var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
       supplierName: raw.supplierName, supplierId: supplier ? supplier.id : "",
-      bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
+      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
       createdAt: now.toISOString(),
@@ -1056,12 +1123,13 @@ export default function FactoringDashboard() {
     var hbpCounter = maxHbpNum + 1;
     var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
-    var supplier = SUPPLIERS_DB.find(function(s) { return s.name === hbDisburseInv.supplierName; });
+    var supplier = getParentSupplier(hbDisburseInv.supplierName);
+    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierName);
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
       supplierName: hbDisburseInv.supplierName, supplierId: supplier ? supplier.id : "",
-      bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
+      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
       createdAt: new Date().toISOString(),
       createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
@@ -1127,7 +1195,7 @@ export default function FactoringDashboard() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "'Gadugi','Segoe UI',sans-serif", outline: "none", cursor: "pointer", minWidth: 220 }}>
-              {SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}
+              {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
             </select>
             <select value={supCurrency} onChange={function(e) { setSupCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "'Gadugi','Segoe UI',sans-serif", outline: "none", cursor: "pointer" }}>
               <option value="all">All Currencies</option>
@@ -1418,9 +1486,9 @@ export default function FactoringDashboard() {
 
         {/* Supplier Overview Tab */}
         {isS && supTab === "overview" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { return inv.supplierName === selectedSupplier && (supCurrency === "all" || inv.currency === supCurrency); });
+          var supInvs = viewData.invoices.filter(function(inv) { var selBr = getBranchName(selectedSupplier); var match = selBr ? inv.supplierName === selectedSupplier : getParentSupplierName(inv.supplierName) === selectedSupplier; return match && (supCurrency === "all" || inv.currency === supCurrency); });
           var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
-          var supplier = SUPPLIERS_DB.find(function(s) { return s.name === selectedSupplier; });
+          var supplier = getParentSupplier(selectedSupplier);
 
           // Compute balances (exclude pending)
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
@@ -1924,7 +1992,7 @@ export default function FactoringDashboard() {
 
         {/* Supplier Payment Allocations Tab */}
         {isS && supTab === "allocations" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { return inv.supplierName === selectedSupplier && (supCurrency === "all" || inv.currency === supCurrency); });
+          var supInvs = viewData.invoices.filter(function(inv) { var selBr = getBranchName(selectedSupplier); var match = selBr ? inv.supplierName === selectedSupplier : getParentSupplierName(inv.supplierName) === selectedSupplier; return match && (supCurrency === "all" || inv.currency === supCurrency); });
           var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
@@ -1984,7 +2052,7 @@ export default function FactoringDashboard() {
 
         {/* Supplier Holdback Payments Tab */}
         {isS && supTab === "holdback" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { return inv.supplierName === selectedSupplier && (supCurrency === "all" || inv.currency === supCurrency); });
+          var supInvs = viewData.invoices.filter(function(inv) { var selBr = getBranchName(selectedSupplier); var match = selBr ? inv.supplierName === selectedSupplier : getParentSupplierName(inv.supplierName) === selectedSupplier; return match && (supCurrency === "all" || inv.currency === supCurrency); });
           var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
@@ -2428,10 +2496,14 @@ export default function FactoringDashboard() {
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
               {["overview", "invoices", "allocations", "holdback"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (progTab === t ? "var(--accent)" : "var(--border)"), cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", letterSpacing: "0.03em", background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", boxShadow: progTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
             </div>
-            <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setPg(0); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "'Gadugi','Segoe UI',sans-serif", outline: "none", cursor: "pointer", minWidth: 240 }}>
+            <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "'Gadugi','Segoe UI',sans-serif", outline: "none", cursor: "pointer", minWidth: 240 }}>
               <option value="">Select Program...</option>
               {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
             </select>
+            {selectedProgram && <select value={progSupFilter} onChange={function(e) { setProgSupFilter(e.target.value); setPg(0); }} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "'Gadugi','Segoe UI',sans-serif", outline: "none", cursor: "pointer", minWidth: 200 }}>
+              <option value="">All Suppliers</option>
+              {(function() { var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; }); var sups = prog && prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 ? prog.eligibleSuppliers : SUPPLIERS_DB.map(function(s) { return s.name; }); var opts = []; sups.forEach(function(sn) { opts.push({ value: sn, label: sn }); var sup = SUPPLIERS_DB.find(function(s) { return s.name === sn; }); if (sup && sup.branches) sup.branches.forEach(function(br) { opts.push({ value: sn + " \u2014 " + br.branchName, label: sn + " \u2014 " + br.branchName }); }); }); return opts; })().map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+            </select>}
           </div>
 
           {!selectedProgram && <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--border)", padding: "40px 28px", textAlign: "center" }}>
@@ -2442,14 +2514,15 @@ export default function FactoringDashboard() {
           {selectedProgram && (function() {
             var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; });
             if (!prog) return null;
-            var progInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
+            var allProgInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
+            var progInvs = progSupFilter ? allProgInvs.filter(function(inv) { var selBr = getBranchName(progSupFilter); return selBr ? inv.supplierName === progSupFilter : getParentSupplierName(inv.supplierName) === progSupFilter; }) : allProgInvs;
             var displayCcy = prog.currency;
 
             // Overview
             if (progTab === "overview") {
               var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0, fundedBalance = 0;
               var approvedCapital = 0;
-              progInvs.forEach(function(inv) {
+              allProgInvs.forEach(function(inv) {
                 if (inv.fundingStatus === "pending") return;
                 if (inv.fundingStatus === "approved") { approvedCapital += inv.capitalDue || 0; return; }
                 totalCapOS += inv.capitalOutstanding || 0;
@@ -2462,7 +2535,7 @@ export default function FactoringDashboard() {
               if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursals += ff.amount; else totalDisbursed += ff.amount; });
               // Sum buyer payments received against program invoices — full amount including holdback
               var buyerReceipts = 0, holdbackReceived = 0;
-              progInvs.forEach(function(inv) {
+              allProgInvs.forEach(function(inv) {
                 if (inv.payments) inv.payments.forEach(function(p) {
                   buyerReceipts += (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0);
                   holdbackReceived += (p.appliedToHoldback || 0);
@@ -2488,7 +2561,7 @@ export default function FactoringDashboard() {
               // Supplier Dilution Rate (by invoice status)
               var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
               var dilNum = 0, dilDen = 0;
-              progInvs.forEach(function(inv) {
+              allProgInvs.forEach(function(inv) {
                 if (!dilEligible[inv.invoiceStatus]) return;
                 var a = inv.amount || 0; dilDen += a;
                 dilNum += inv.dilutionTotal || 0;
@@ -2500,7 +2573,7 @@ export default function FactoringDashboard() {
               // Funded Dilution Rate (by funding status)
               var fdilFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
               var fdilNum = 0, fdilDen = 0;
-              progInvs.forEach(function(inv) {
+              allProgInvs.forEach(function(inv) {
                 if (!fdilFS[inv.fundingStatus]) return;
                 var a = inv.amount || 0; fdilDen += a;
                 fdilNum += inv.dilutionTotal || 0;
@@ -2514,7 +2587,7 @@ export default function FactoringDashboard() {
               function pDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
                 var n = 0, d = 0;
-                progInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
+                allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
               }
               var pdil30 = pDil(30), pdil90 = pDil(90);
@@ -2524,8 +2597,8 @@ export default function FactoringDashboard() {
               function fpDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
                 var n = 0, d = 0, inc = {};
-                progInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
-                progInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
+                allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
+                allProgInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
               }
               var fpdil30 = fpDil(30), fpdil90 = fpDil(90);
@@ -4071,7 +4144,7 @@ export default function FactoringDashboard() {
             <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", marginBottom: 14 }}>Create Credit Note</div>
               <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Supplier</label><select value={cnf.supplier} onChange={function(e) { setCnf(Object.assign({}, cnf, { supplier: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select supplier...</option>{SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}</select></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Supplier</label><select value={cnf.supplier} onChange={function(e) { setCnf(Object.assign({}, cnf, { supplier: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select supplier...</option>{getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{BUYERS_DB.map(function(b) { return <option key={b.id} value={b.name}>{b.name}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Amount</label><input type="number" step="0.01" value={cnf.amount} onChange={function(e) { setCnf(Object.assign({}, cnf, { amount: e.target.value })); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 140 }} /></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Currency</label><select value={cnf.currency} onChange={function(e) { setCnf(Object.assign({}, cnf, { currency: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select></div>
@@ -4209,7 +4282,11 @@ export default function FactoringDashboard() {
               var allInvs = viewData.invoices;
               var eligible = allInvs.filter(function(inv) {
                 if (inv.currency !== allocCN.currency) return false;
-                if (inv.supplierName !== allocCN.supplierName) return false;
+                if (allocCN.supplierName) {
+                  var cnBranch = getBranchName(allocCN.supplierName);
+                  if (cnBranch) { if (inv.supplierName !== allocCN.supplierName) return false; }
+                  else { if (getParentSupplierName(inv.supplierName) !== allocCN.supplierName) return false; }
+                }
                 if (allocCN.buyerName && inv.buyerName !== allocCN.buyerName) return false;
                 if (cnSearch && inv.id.indexOf(cnSearch.toUpperCase()) === -1 && (inv.buyerName || "").toLowerCase().indexOf(cnSearch.toLowerCase()) === -1) return false;
                 return true;
@@ -5605,7 +5682,7 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)" }}>Supplier</label>
                     <select value={nf.supplier} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
-                      {SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}
+                      {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
                     </select>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -5819,9 +5896,10 @@ export default function FactoringDashboard() {
                   // Build unified rows: funding + holdback
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
-                    var supplier = SUPPLIERS_DB.find(function(s) { return s.name === inv.supplierName; });
+                    var supplier = getParentSupplier(inv.supplierName);
+                    var bankInfo = getSupplierBankDetails(inv.supplierName);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "", date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
+                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
@@ -5833,11 +5911,11 @@ export default function FactoringDashboard() {
                   // Lock to supplier+program from first selection
                   var feqLockSup = null, feqLockProg = null;
                   outboundRows.forEach(function(row) {
-                    if (feqSelected[row.rowId] && !feqLockSup) { feqLockSup = row.supplierName; feqLockProg = row.programId; }
+                    if (feqSelected[row.rowId] && !feqLockSup) { feqLockSup = getParentSupplierName(row.supplierName); feqLockProg = row.programId; }
                   });
                   var feqEligible = outboundRows.filter(function(row) {
                     if (!feqLockSup) return true;
-                    return row.supplierName === feqLockSup && row.programId === feqLockProg;
+                    return getParentSupplierName(row.supplierName) === feqLockSup && row.programId === feqLockProg;
                   });
                   var feqSelCount = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).length;
                   var feqSelTotal = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).reduce(function(s, row) { return s + row.amount; }, 0);
@@ -5871,7 +5949,7 @@ export default function FactoringDashboard() {
                         </tr></thead>
                         <tbody>{outboundRows.map(function(row) {
                           var isSel = !!feqSelected[row.rowId];
-                          var isLocked = feqLockSup && (row.supplierName !== feqLockSup || row.programId !== feqLockProg);
+                          var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
                           var typeColor = row.rowType === "funding" ? "#2B4C7E" : "#C08B30";
                           var typeLabel = row.rowType === "funding" ? "Funding" : "Holdback";
                           return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
@@ -6176,12 +6254,12 @@ export default function FactoringDashboard() {
                         var deductTotal = batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0);
                         var grossTotal = batchConfirm.totalAmount;
                         var netPayout = r2(grossTotal - deductTotal);
-                        var deductSupplier = batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "";
+                        var deductSupplier = batchConfirm.items[0] ? getParentSupplierName(batchConfirm.items[0].supplierName) : "";
                         var deductProgramId = batchConfirm.items[0] ? batchConfirm.items[0].programId : "";
                         var deductCcy = batchConfirm.currency;
-                        // Get eligible invoices: same supplier, same program, recovery_mode or overdue
+                        // Get eligible invoices: same parent supplier, same program, recovery_mode or overdue
                         var eligibleDeduct = viewData.invoices.filter(function(inv) {
-                          if (inv.supplierName !== deductSupplier) return false;
+                          if (getParentSupplierName(inv.supplierName) !== deductSupplier) return false;
                           if (inv.currency !== deductCcy) return false;
                           if (inv.fundingProgram !== deductProgramId) return false;
                           if (inv.fundingStatus !== "recovery_mode" && inv.fundingStatus !== "overdue") return false;
