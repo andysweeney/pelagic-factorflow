@@ -305,6 +305,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var intBal = rawInv.interestCharged, penBal = 0, capBal = rawInv.capitalDue;
     var hbBal = rawInv.deferredPayment;
     var hbRecd = 0;
+    var penaltyAccrued = 0;
     var annotatedPays = [];
     var penaltyStartDate = null;
     if (declinedDate && declinedDate < viewDate) penaltyStartDate = declinedDate;
@@ -333,7 +334,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       while (payIdx < paysForInv.length && paysForInv[payIdx].date <= penaltyStartDate) { applyPay(paysForInv[payIdx], false); payIdx++; }
       for (var d = 1; d <= penaltyDays; d++) {
         var today = addDays(penaltyStartDate, d);
-        if (capBal > 0.01) penBal += capBal * invPenaltyDailyRate;
+        if (capBal > 0.01) { var dayPen = capBal * invPenaltyDailyRate; penBal += dayPen; penaltyAccrued += dayPen; }
         while (payIdx < paysForInv.length && paysForInv[payIdx].date <= today) { applyPay(paysForInv[payIdx], true); payIdx++; }
       }
       while (payIdx < paysForInv.length) { applyPay(paysForInv[payIdx], true); payIdx++; }
@@ -431,7 +432,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
-      penaltyInterest: r2(penBal), interestOutstanding: r2(intBal),
+      penaltyInterest: r2(penBal), penaltyAccrued: r2(penaltyAccrued), interestOutstanding: r2(intBal),
       capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd),
       holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
       holdbackOutstanding: r2(hbBal),
@@ -1248,7 +1249,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#C08B30" : "#2E8B57" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#C0392B" })}>{money(inv.penaltyInterest + (inv.writeOffPenalty || 0) + (inv.adjCreditTotal > 0 ? 0 : 0), inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#C0392B" })}>{money(inv.penaltyAccrued || inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#C0392B" : "#2E8B57" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#1E3A5F" : "#2E8B57", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
@@ -1287,7 +1288,7 @@ export default function FactoringDashboard() {
                                       var isCredit = adjType === "credit";
                                       var adjInpStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 100 };
                                       var maxBtnStyle = { padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 700, cursor: "pointer", marginTop: 2 };
-                                      function clampCredit(setter, max, val) { var v = parseFloat(val) || 0; if (isCredit && v > max) v = max; setter(v > 0 ? String(r2(v)) : val); }
+                                      function clampCredit(setter, max, val) { var v = parseFloat(val) || 0; if (isCredit && v > max) v = max; setter(v > 0 ? String(r2(v)) : (val === "" ? "" : "0")); }
                                       return <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#C0392B" }}>Penalty</label>{isCredit && <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono',monospace", color: "var(--muted)" }}>max {money(maxPen, inv.currency)}</span>}</div>
@@ -2703,7 +2704,7 @@ export default function FactoringDashboard() {
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
                           <th style={Object.assign({}, ihdr, { textAlign: "left" })}>Initial Interest Charged</th>
-                          <th style={ihdr}>Penalty Interest Charged</th>
+                          <th style={ihdr}>Pen Charged</th>
                           <th style={ihdr}>Initial WA Interest Rate</th>
                           <th style={ihdr}>Current WA Interest Rate</th>
                         </tr></thead>
@@ -3346,7 +3347,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#2E8B57" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#C08B30" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#C08B30" : "#2E8B57" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#C0392B" })}>{money(inv.penaltyInterest + (inv.writeOffPenalty || 0) + (inv.adjCreditTotal > 0 ? 0 : 0), inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#C0392B" })}>{money(inv.penaltyAccrued || inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#C0392B" : "#2E8B57" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#1E3A5F" : "#2E8B57", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
@@ -3385,7 +3386,7 @@ export default function FactoringDashboard() {
                                       var isCredit = adjType === "credit";
                                       var adjInpStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 100 };
                                       var maxBtnStyle = { padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 700, cursor: "pointer", marginTop: 2 };
-                                      function clampCredit(setter, max, val) { var v = parseFloat(val) || 0; if (isCredit && v > max) v = max; setter(v > 0 ? String(r2(v)) : val); }
+                                      function clampCredit(setter, max, val) { var v = parseFloat(val) || 0; if (isCredit && v > max) v = max; setter(v > 0 ? String(r2(v)) : (val === "" ? "" : "0")); }
                                       return <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#C0392B" }}>Penalty</label>{isCredit && <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono',monospace", color: "var(--muted)" }}>max {money(maxPen, inv.currency)}</span>}</div>
