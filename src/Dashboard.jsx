@@ -535,6 +535,7 @@ export default function FactoringDashboard() {
   var feqSel1 = useState({}), feqSelected = feqSel1[0], setFeqSelected = feqSel1[1]; // Funding Execution Queue selections
   var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Disbursal Execution Queue selections
   var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
+  var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ffr1 = useState(""), ffReason = ffr1[0], setFfReason = ffr1[1];
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].name : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
   var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
@@ -1034,70 +1035,26 @@ export default function FactoringDashboard() {
   function executeHbDisburse() {
     if (!hbDisburseInv) return;
     var supAmt = r2(parseFloat(hbSupplierAmt) || 0);
-    if (supAmt <= 0 && hbAllocs.length === 0) return;
+    if (supAmt <= 0) return;
     var maxHbpNum = 0;
     HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
-    var hbpCounter = maxHbpNum;
-
-    // Group invoice allocations by supplier
-    var allocsBySup = {};
-    hbAllocs.forEach(function(a) {
-      var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
-      var sn = inv ? inv.supplierName : hbDisburseInv.supplierName;
-      if (!allocsBySup[sn]) allocsBySup[sn] = [];
-      allocsBySup[sn].push(a);
+    var hbpCounter = maxHbpNum + 1;
+    var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
+    var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
+    var supplier = SUPPLIERS_DB.find(function(s) { return s.name === hbDisburseInv.supplierName; });
+    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    SUPPLIER_PAYMENT_QUEUE.push({
+      id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
+      supplierName: hbDisburseInv.supplierName, supplierId: supplier ? supplier.id : "",
+      bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
+      amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
+      createdAt: new Date().toISOString(),
+      createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+      executedAt: null, executedDisplay: null
     });
-
-    var createdHbps = [];
-    var totalDisbursed = 0;
-    var logParts = [];
-
-    // HBP for supplier return (always from source invoice's supplier)
-    if (supAmt > 0 || allocsBySup[hbDisburseInv.supplierName]) {
-      hbpCounter++;
-      var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
-      var allocations = [];
-      if (supAmt > 0) {
-        allocations.push({ type: "disbursement", targetId: null, amount: supAmt });
-        var supplier = SUPPLIERS_DB.find(function(s) { return s.name === hbDisburseInv.supplierName; });
-        var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
-        SUPPLIER_PAYMENT_QUEUE.push({
-          id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
-          supplierName: hbDisburseInv.supplierName, supplierId: supplier ? supplier.id : "",
-          bankName: supplier ? supplier.bankName : "", bankDetails: supplier ? supplier.bankDetails : "",
-          amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
-          createdAt: new Date().toISOString(),
-          createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
-          executedAt: null, executedDisplay: null
-        });
-        logParts.push(money(supAmt, hbDisburseInv.currency) + " returned to " + hbDisburseInv.supplierName);
-      }
-      var sameSupAllocs = allocsBySup[hbDisburseInv.supplierName] || [];
-      var sameSupTotal = supAmt;
-      sameSupAllocs.forEach(function(a) { allocations.push({ type: "invoice", targetId: a.invoiceId, amount: a.amount }); sameSupTotal += a.amount; logParts.push(money(a.amount, hbDisburseInv.currency) + " applied to " + a.invoiceId); });
-      HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, amount: r2(sameSupTotal), date: viewDate, currency: hbDisburseInv.currency, allocations: allocations });
-      totalDisbursed += sameSupTotal;
-      createdHbps.push(hbId);
-      auditLog("Holdback Disbursed", hbId + " from " + hbDisburseInv.id + " (" + hbDisburseInv.supplierName + "): " + (supAmt > 0 ? money(supAmt, hbDisburseInv.currency) + " supplier return" : "") + (sameSupAllocs.length > 0 ? (supAmt > 0 ? "; " : "") + sameSupAllocs.map(function(a) { return money(a.amount, hbDisburseInv.currency) + " to " + a.invoiceId; }).join("; ") : ""), { hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, supplierName: hbDisburseInv.supplierName, amount: r2(sameSupTotal), currency: hbDisburseInv.currency });
-      delete allocsBySup[hbDisburseInv.supplierName];
-    }
-
-    // Separate HBPs for other suppliers' invoice allocations
-    Object.keys(allocsBySup).forEach(function(supName) {
-      var supAllocs = allocsBySup[supName];
-      if (supAllocs.length === 0) return;
-      hbpCounter++;
-      var hbId2 = "HBP-" + String(hbpCounter).padStart(7, "0");
-      var allocations2 = [];
-      var supTotal = 0;
-      supAllocs.forEach(function(a) { allocations2.push({ type: "invoice", targetId: a.invoiceId, amount: a.amount }); supTotal += a.amount; logParts.push(money(a.amount, hbDisburseInv.currency) + " applied to " + a.invoiceId + " (" + supName + ")"); });
-      HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId2, sourceInvoiceId: hbDisburseInv.id, amount: r2(supTotal), date: viewDate, currency: hbDisburseInv.currency, allocations: allocations2 });
-      totalDisbursed += supTotal;
-      createdHbps.push(hbId2);
-      auditLog("Holdback Disbursed", hbId2 + " from " + hbDisburseInv.id + " (" + supName + "): " + supAllocs.map(function(a) { return money(a.amount, hbDisburseInv.currency) + " to " + a.invoiceId; }).join("; "), { hbPaymentId: hbId2, sourceInvoiceId: hbDisburseInv.id, supplierName: supName, amount: r2(supTotal), currency: hbDisburseInv.currency });
-    });
-
-    setHbSuccessMsg({ hbId: createdHbps.join(", "), sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: hbAllocs, currency: hbDisburseInv.currency, total: r2(totalDisbursed) });
+    HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, amount: supAmt, date: viewDate, currency: hbDisburseInv.currency, allocations: allocations });
+    auditLog("Holdback Disbursed", hbId + " from " + hbDisburseInv.id + " (" + hbDisburseInv.supplierName + "): " + money(supAmt, hbDisburseInv.currency) + " returned to supplier", { hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, supplierName: hbDisburseInv.supplierName, amount: supAmt, currency: hbDisburseInv.currency });
+    setHbSuccessMsg({ hbId: hbId, sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: [], currency: hbDisburseInv.currency, total: supAmt });
     setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt("");
     setDataVer(function(v) { return v + 1; });
     setTimeout(function() { setHbSuccessMsg(null); }, 12000);
@@ -3741,27 +3698,11 @@ export default function FactoringDashboard() {
           var srcInv = viewData.invoices.find(function(x) { return x.id === hbDisburseInv.id; }) || hbDisburseInv;
           var pool = srcInv.holdbackAvailable;
           var supAmt = r2(parseFloat(hbSupplierAmt) || 0);
-          var invAllocTotal = hbAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
-          var totalUsed = r2(supAmt + invAllocTotal);
+          var totalUsed = r2(supAmt);
           var remaining = r2(Math.max(0, pool - totalUsed));
 
-          var eligible = viewData.invoices.filter(function(inv) {
-            if (inv.id === srcInv.id) return false;
-            if (inv.supplierName !== srcInv.supplierName) return false;
-            if (inv.currency !== srcInv.currency) return false;
-            if (inv.fundingStatus !== "recovery_mode" && inv.fundingStatus !== "overdue") return false;
-            // When in Program view, restrict to same program
-            if (isF && selectedProgram && inv.fundingProgram !== selectedProgram) return false;
-            return true;
-          }).slice().sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0; });
-
-          function getMaxForInv(inv) {
-            if (inv.fundingStatus === "overdue") return r2(inv.penaltyInterest);
-            return r2(inv.penaltyInterest + inv.interestOutstanding + inv.capitalOutstanding);
-          }
-
           return <div id="hb-disburse-panel" style={{ marginTop: 22, background: "var(--card)", borderRadius: 14, border: "1px solid #2E8B57", overflow: "hidden" }}>
-            <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Disburse Holdback: {srcInv.id}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Available: {money(pool, srcInv.currency)} from {srcInv.buyerName}</div>
@@ -3776,79 +3717,28 @@ export default function FactoringDashboard() {
             </div>
 
             {/* Return to Supplier */}
-            <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "#2E8B5708" }}>
+            <div style={{ padding: "16px 28px", background: "#2E8B5708" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Return to Supplier</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Amount to Return to Supplier</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <input type="number" step="0.01" min="0" max={r2(pool - invAllocTotal)} value={hbSupplierAmt} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, r2(pool - invAllocTotal)); setHbSupplierAmt(val > 0.001 ? String(r2(val)) : ""); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #2E8B5740", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 140 }} />
-                    {remaining > 0.01 && supAmt < 0.01 && <button onClick={function() { setHbSupplierAmt(String(r2(pool - invAllocTotal))); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>All remaining</button>}
+                    <input type="number" step="0.01" min="0" max={pool} value={hbSupplierAmt} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, pool); setHbSupplierAmt(val > 0.001 ? String(r2(val)) : ""); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #2E8B5740", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 140 }} />
+                    {remaining > 0.01 && supAmt < 0.01 && <button onClick={function() { setHbSupplierAmt(String(r2(pool))); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>All available</button>}
                     {supAmt > 0 && <span style={{ fontSize: 12, color: "#2E8B57", fontWeight: 600 }}>{money(supAmt, srcInv.currency)} to {srcInv.supplierName}</span>}
                   </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Deductions against recovery/overdue invoices can be made when executing from the Payment Queue.</div>
                 </div>
               </div>
             </div>
 
-            {/* Invoice allocations */}
-            <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Apply to Invoices (Recovery Mode & Overdue)</div>
-              {eligible.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "12px 0" }}>No eligible invoices found in the same currency.</div>}
-              {eligible.length > 0 && <div style={{ maxHeight: 350, overflowY: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Invoice", "Buyer", "Status", "Due", "Pen O/S", "Int O/S", "Cap O/S", "Max", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{eligible.map(function(inv) {
-                    var ex = hbAllocs.find(function(a) { return a.invoiceId === inv.id; });
-                    var aa = ex ? ex.amount : 0;
-                    var maxForThis = getMaxForInv(inv);
-                    var mx = r2(Math.min(maxForThis, remaining + aa));
-                    var isOverdue = inv.fundingStatus === "overdue";
-                    var fst = FST[inv.fundingStatus] || FST.funded;
-
-                    var prP = 0, prI = 0, prC = 0;
-                    if (aa > 0) {
-                      var rm = aa;
-                      if (rm > 0 && inv.penaltyInterest > 0.001) { var x = Math.min(rm, inv.penaltyInterest); prP = x; rm -= x; }
-                      if (!isOverdue) {
-                        if (rm > 0 && inv.interestOutstanding > 0.001) { var x2 = Math.min(rm, inv.interestOutstanding); prI = x2; rm -= x2; }
-                        if (rm > 0 && inv.capitalOutstanding > 0.001) { prC = Math.min(rm, inv.capitalOutstanding); }
-                      }
-                    }
-
-                    var ms = { padding: "9px 14px", fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace" };
-                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#2E8B5708" : "transparent" }}>
-                      <td style={Object.assign({}, ms, { color: "var(--accent)" })}>{inv.id}</td>
-                      <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                      <td style={{ padding: "9px 14px" }}><span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: fst.color }}>{fst.label}</span></td>
-                      <td style={Object.assign({}, ms, { color: "var(--text-secondary)" })}>{fmt(inv.dueDate)}</td>
-                      <td style={Object.assign({}, ms, { color: inv.penaltyInterest > 0 ? "#C0392B" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: inv.interestOutstanding > 0 ? "#C08B30" : "var(--muted)" })}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prI, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: "var(--text)" })}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: isOverdue ? "#C0392B" : "#9B80C4", fontWeight: 600 })}>{money(maxForThis, inv.currency)}</td>
-                      <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setHbAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "#2E8B57" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 90 }} />
-                        {mx > 0 && remaining > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(maxForThis, remaining)); var iid = inv.id; setHbAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
-                        {aa > 0 && <button onClick={function() { var iid = inv.id; setHbAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#C0392B", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
-                      </div></td>
-                    </tr>;
-                  })}</tbody>
-                </table>
-              </div>}
-            </div>
-
-            {/* Summary & Confirm */}
-            {totalUsed > 0.01 && <div style={{ padding: "16px 22px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ fontSize: 13 }}>
-                  <span style={{ color: "var(--muted)" }}>Disbursing: </span>
-                  <span style={{ color: "#2E8B57", fontWeight: 600 }}>{money(totalUsed, srcInv.currency)}</span>
-                  <span style={{ color: "var(--muted)" }}> of {money(pool, srcInv.currency)}</span>
-                  {supAmt > 0 && <span style={{ color: "var(--muted)" }}> ({money(supAmt, srcInv.currency)} to supplier</span>}
-                  {supAmt > 0 && hbAllocs.length > 0 && <span style={{ color: "var(--muted)" }}>, {money(invAllocTotal, srcInv.currency)} to {hbAllocs.length} invoice{hbAllocs.length !== 1 ? "s" : ""})</span>}
-                  {supAmt > 0 && hbAllocs.length === 0 && <span style={{ color: "var(--muted)" }}>)</span>}
-                  {supAmt <= 0 && hbAllocs.length > 0 && <span style={{ color: "var(--muted)" }}> to {hbAllocs.length} invoice{hbAllocs.length !== 1 ? "s" : ""}</span>}
-                </div>
-                <button onClick={executeHbDisburse} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#2E8B57", color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer", boxShadow: "0 2px 14px #2E8B5740" }}>Confirm Disbursement</button>
+            {/* Confirm */}
+            {supAmt > 0.01 && <div style={{ padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 13 }}>
+                <span style={{ color: "var(--muted)" }}>Disbursing: </span>
+                <span style={{ color: "#2E8B57", fontWeight: 600 }}>{money(supAmt, srcInv.currency)}</span>
+                <span style={{ color: "var(--muted)" }}> of {money(pool, srcInv.currency)} to {srcInv.supplierName}</span>
               </div>
+              <button onClick={executeHbDisburse} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#2E8B57", color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", cursor: "pointer", boxShadow: "0 2px 14px #2E8B5740" }}>Confirm Disbursement</button>
             </div>}
           </div>;
         })()}
@@ -5859,6 +5749,7 @@ export default function FactoringDashboard() {
                           var selRows = outboundRows.filter(function(r) { return feqSelected[r.rowId]; });
                           var fundingItems = selRows.filter(function(r) { return r.rowType === "funding"; }).map(function(r) { return r.inv; });
                           var holdbackItems = selRows.filter(function(r) { return r.rowType === "holdback"; }).map(function(r) { return r.spqItem; });
+                          setBatchDeductions([]);
                           setBatchConfirm({ type: "outbound", fundingItems: fundingItems, holdbackItems: holdbackItems, items: selRows, totalAmount: r2(feqSelTotal), currency: selRows[0] ? selRows[0].currency : "GBP" });
                         }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#2E8B57", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
                       </div>
@@ -6171,13 +6062,111 @@ export default function FactoringDashboard() {
                       </table>
                     </div>
 
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                      {/* Deductions section — only for outbound payments */}
+                      {batchConfirm.type === "outbound" && (function() {
+                        var deductTotal = batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0);
+                        var grossTotal = batchConfirm.totalAmount;
+                        var netPayout = r2(grossTotal - deductTotal);
+                        var deductSupplier = batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "";
+                        var deductProgramId = batchConfirm.items[0] ? batchConfirm.items[0].programId : "";
+                        var deductCcy = batchConfirm.currency;
+                        // Get eligible invoices: same supplier, same program, recovery_mode or overdue
+                        var eligibleDeduct = viewData.invoices.filter(function(inv) {
+                          if (inv.supplierName !== deductSupplier) return false;
+                          if (inv.currency !== deductCcy) return false;
+                          if (inv.fundingProgram !== deductProgramId) return false;
+                          if (inv.fundingStatus !== "recovery_mode" && inv.fundingStatus !== "overdue") return false;
+                          // Exclude any invoices that are part of the outbound batch itself
+                          if (batchConfirm.fundingItems && batchConfirm.fundingItems.some(function(fi) { return fi.id === inv.id; })) return false;
+                          return true;
+                        }).sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
+                        function getMaxForInv(inv) {
+                          if (inv.fundingStatus === "overdue") return r2(inv.penaltyInterest);
+                          return r2(inv.penaltyInterest + inv.interestOutstanding + inv.capitalOutstanding);
+                        }
+                        var deductRemaining = r2(grossTotal - deductTotal);
+
+                        return <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "#C0392B", marginBottom: 8 }}>Deductions (Recovery Mode & Overdue)</div>
+                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>Deduct amounts against invoices in Recovery Mode or Overdue for this supplier and program before sending payment.</div>
+                          {eligibleDeduct.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0", fontStyle: "italic", marginBottom: 10 }}>No eligible invoices for deduction.</div>}
+                          {eligibleDeduct.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto", marginBottom: 12 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                              <thead><tr>{["Invoice", "Buyer", "Status", "Pen O/S", "Int O/S", "Cap O/S", "Max", "Deduct"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                              <tbody>{eligibleDeduct.map(function(inv) {
+                                var ex = batchDeductions.find(function(d) { return d.invoiceId === inv.id; });
+                                var aa = ex ? ex.amount : 0;
+                                var maxForThis = getMaxForInv(inv);
+                                var mx = r2(Math.min(maxForThis, deductRemaining + aa));
+                                var isOverdue = inv.fundingStatus === "overdue";
+                                var fst = FST[inv.fundingStatus] || FST.funded;
+                                var prP = 0, prI = 0, prC = 0;
+                                if (aa > 0) {
+                                  var rm = aa;
+                                  if (rm > 0 && inv.penaltyInterest > 0.001) { var x = Math.min(rm, inv.penaltyInterest); prP = x; rm -= x; }
+                                  if (!isOverdue) {
+                                    if (rm > 0 && inv.interestOutstanding > 0.001) { var x2 = Math.min(rm, inv.interestOutstanding); prI = x2; rm -= x2; }
+                                    if (rm > 0 && inv.capitalOutstanding > 0.001) { prC = Math.min(rm, inv.capitalOutstanding); }
+                                  }
+                                }
+                                return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#C0392B06" : "transparent" }}>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: "var(--accent)" }}>{inv.id}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                                  <td style={{ padding: "5px 8px" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: fst.color }}>{fst.label}</span></td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: inv.penaltyInterest > 0 ? "#C0392B" : "var(--muted)" }}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#2E8B57", fontSize: 9 }}> -{money(prP, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: inv.interestOutstanding > 0 ? "#C08B30" : "var(--muted)" }}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#2E8B57", fontSize: 9 }}> -{money(prI, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace" }}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#2E8B57", fontSize: 9 }}> -{money(prC, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: isOverdue ? "#C0392B" : "#9B80C4", fontWeight: 600 }}>{money(maxForThis, inv.currency)}</td>
+                                  <td style={{ padding: "5px 8px" }}><div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setBatchDeductions(function(prev) { var w = prev.filter(function(d) { return d.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (aa > 0 ? "#C0392B" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 80 }} />
+                                    {mx > 0 && deductRemaining > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(maxForThis, deductRemaining)); var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Max</button>}
+                                    {aa > 0 && <button onClick={function() { var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "#C0392B", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
+                                  </div></td>
+                                </tr>;
+                              })}</tbody>
+                            </table>
+                          </div>}
+                          {deductTotal > 0 && <div style={{ background: "#C0392B08", borderRadius: 8, padding: "10px 14px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Deductions: <strong style={{ fontFamily: "'JetBrains Mono',monospace", color: "#C0392B" }}>{money(deductTotal, deductCcy)}</strong> against {batchDeductions.length} invoice{batchDeductions.length !== 1 ? "s" : ""}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace" }}>Net Payout: <span style={{ color: "#2E8B57" }}>{money(netPayout, deductCcy)}</span></div>
+                          </div>}
+                        </div>;
+                      })()}
+                    </div>
+
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: batchConfirm.type === "outbound" ? "#2B4C7E" : "#7B5EA7" }}>Total: {money(r2(batchConfirm.type === "outbound" ? batchConfirm.totalAmount : batchConfirm.items.reduce(function(s, item) { return s + item.amount; }, 0)), batchConfirm.currency || "GBP")}</div>
+                      {(function() {
+                        var deductTotal = batchConfirm.type === "outbound" ? batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0) : 0;
+                        var grossTotal = batchConfirm.type === "outbound" ? batchConfirm.totalAmount : batchConfirm.items.reduce(function(s, item) { return s + item.amount; }, 0);
+                        var netTotal = r2(grossTotal - deductTotal);
+                        return <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace", color: batchConfirm.type === "outbound" ? "#2B4C7E" : "#7B5EA7" }}>
+                          {deductTotal > 0 ? <span>Gross: {money(grossTotal, batchConfirm.currency || "GBP")} {"\u2014"} Deductions: <span style={{ color: "#C0392B" }}>{money(deductTotal, batchConfirm.currency || "GBP")}</span> {"\u2014"} Net: <span style={{ color: "#2E8B57" }}>{money(netTotal, batchConfirm.currency || "GBP")}</span></span> : <span>Total: {money(grossTotal, batchConfirm.currency || "GBP")}</span>}
+                        </div>;
+                      })()}
                       <div style={{ display: "flex", gap: 8 }}>
                         <button onClick={function() {
                           var now = new Date();
                           var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                           if (batchConfirm.type === "outbound") {
+                            // Apply deductions first — waterfall against invoices
+                            var deductTotal = 0;
+                            batchDeductions.forEach(function(d) {
+                              var raw = INVOICES_DB.find(function(x) { return x.id === d.invoiceId; });
+                              if (!raw) return;
+                              var rm = d.amount;
+                              var isOverdue = raw.fundingStatus === "overdue";
+                              var dPen = 0, dInt = 0, dCap = 0;
+                              if (rm > 0 && raw.penaltyInterest > 0.001) { dPen = Math.min(rm, raw.penaltyInterest); raw.penaltyInterest = r2(raw.penaltyInterest - dPen); rm = r2(rm - dPen); }
+                              if (!isOverdue) {
+                                if (rm > 0 && raw.interestCharged > 0.001) { dInt = Math.min(rm, raw.interestCharged); raw.interestCharged = r2(raw.interestCharged - dInt); rm = r2(rm - dInt); }
+                                if (rm > 0 && raw.capitalDue > 0.001) { dCap = Math.min(rm, raw.capitalDue); raw.capitalDue = r2(raw.capitalDue - dCap); rm = r2(rm - dCap); }
+                              }
+                              deductTotal += d.amount;
+                              auditLog("Outbound Deduction", d.invoiceId + ": " + money(d.amount, batchConfirm.currency) + " deducted (Pen " + money(dPen, batchConfirm.currency) + ", Int " + money(dInt, batchConfirm.currency) + ", Cap " + money(dCap, batchConfirm.currency) + ")", { invoiceId: d.invoiceId, deductAmount: d.amount, penalty: dPen, interest: dInt, capital: dCap, currency: batchConfirm.currency, supplierName: batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "" });
+                            });
+
+                            var netAmount = r2(batchConfirm.totalAmount - deductTotal);
                             // Execute funding items
                             var fundingInvIds = [];
                             (batchConfirm.fundingItems || []).forEach(function(inv) {
@@ -6206,7 +6195,8 @@ export default function FactoringDashboard() {
                                 id: bundleId, type: "funding", isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
                                 supplierName: firstRow.supplierName, supplierId: "",
                                 bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
-                                amount: r2(batchConfirm.totalAmount), currency: batchConfirm.currency, status: "Completed",
+                                amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
+                                currency: batchConfirm.currency, status: "Completed",
                                 programId: firstRow.programId, programName: firstRow.programName,
                                 createdAt: now.toISOString(), createdDisplay: nowDisp,
                                 executedAt: now.toISOString(), executedDisplay: nowDisp
