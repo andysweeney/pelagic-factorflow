@@ -379,7 +379,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     // Capital/interest/holdback balances only apply once the invoice is actually funded (money advanced)
     var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
     var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
-    var hbBal = isFunded ? rawInv.deferredPayment : 0;
+    var hbBal = isFunded ? (rawInv.deferredPayment !== undefined && rawInv.deferredPayment !== null ? rawInv.deferredPayment : r2((rawInv.holdback || 0) - (rawInv.interestCharged || 0))) : 0;
     var hbRecd = 0;
     var penaltyAccrued = 0;
     var annotatedPays = [];
