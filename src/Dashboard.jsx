@@ -475,8 +475,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (rawInv.fundingStatus === "pending") fs = "pending";
     else if (rawInv.fundingStatus === "approved" && !terminalInvStatus) fs = "approved";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
-    else if (rawInv.fundingStatus === "write_off" && balOwed < 0.02) fs = "fully_repaid";
-    else if (balOwed < 0.02 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
+    else if (rawInv.fundingStatus === "write_off" && balOwed < 0.02 && hbBal < 0.02) fs = "fully_repaid";
+    else if (balOwed < 0.02 && hbBal < 0.02 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
     else if ((statusAsOfDate === "Settled" || statusAsOfDate === "Cancelled") && balOwed > 0.01) fs = "recovery_mode";
     else if (statusAsOfDate === "Declined") fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < initialCapPlusInt - 0.01) fs = "recovery_mode";
