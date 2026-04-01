@@ -315,7 +315,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     pay.allocations.forEach(function(a) {
       if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
       allocsByInvoice.get(a.invoiceId).push({
-        paymentId: pay.paymentId, amount: a.amount, date: pay.date, currency: pay.currency
+        paymentId: pay.paymentId, amount: a.amount, date: a.allocDate || pay.date, currency: pay.currency
       });
     });
   });
@@ -810,9 +810,9 @@ export default function FactoringDashboard() {
       }
       // Remove any existing allocations from this payment to the target invoices
       pay.allocations = pay.allocations.filter(function(a) { return !aff[a.invoiceId]; });
-      allocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount }); });
+      allocs.forEach(function(a) { var entry = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) entry.allocDate = a.allocDate; pay.allocations.push(entry); });
     }
-    var allocSnapshot = allocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; });
+    var allocSnapshot = allocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
     auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + allocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
@@ -4161,30 +4161,43 @@ export default function FactoringDashboard() {
                 if (allocSearch) { var s = allocSearch.toLowerCase(); eligible = eligible.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) >= 0 || inv.buyerName.toLowerCase().indexOf(s) >= 0; }); }
                 eligible.sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
                 return <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Invoice", "Buyer", "Status", "Pen O/S", "Int O/S", "Cap O/S", "Total O/S", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  <thead><tr>{["Invoice", "Buyer", "Status", "Alloc Date", "Pen O/S", "Int O/S", "Cap O/S", "Total O/S", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                   <tbody>{eligible.map(function(inv) {
                     var ex = allocs.find(function(a) { return a.invoiceId === inv.id; });
                     var aa = ex ? ex.amount : 0;
+                    var allocDate = ex ? ex.allocDate || allocPay.date : allocPay.date;
                     // For unfunded or zero-funded invoices with genuinely no debt, max allocation is the invoice amount
                     var isNoDebt = inv.totalOutstanding < 0.01 && inv.holdbackOverdrawn < 0.01;
-                    var invMax = isNoDebt ? inv.amount : inv.totalOutstanding;
+                    // Recalculate penalty interest if allocation date differs from viewDate
+                    var adjPen = inv.penaltyInterest;
+                    if (allocDate < viewDate && inv.penaltyInterest > 0 && inv.capitalOutstanding > 0.01) {
+                      // Penalty accrued up to allocDate instead of viewDate — reduce by days saved
+                      var invPenRate = inv.penaltyRate || 0;
+                      var daysSaved = daysBetween(allocDate, viewDate);
+                      var dailyPen = inv.capitalOutstanding * (invPenRate / 360);
+                      adjPen = r2(Math.max(0, inv.penaltyInterest - (dailyPen * daysSaved)));
+                    }
+                    var adjTotal = isNoDebt ? inv.amount : r2(adjPen + inv.interestOutstanding + inv.capitalOutstanding + Math.max(inv.holdbackOutstanding || 0, inv.holdbackOverdrawn || 0));
+                    var invMax = isNoDebt ? inv.amount : adjTotal;
                     var mx = r2(Math.min(invMax, avail + aa));
                     var prP = 0, prI = 0, prC = 0;
-                    if (aa > 0 && !isNoDebt) { var rm = aa, pB = inv.penaltyInterest, iB = inv.interestOutstanding, cB = inv.capitalOutstanding; if (rm > 0 && pB > 0.001) { var x = Math.min(rm, pB); prP = x; rm -= x; } if (rm > 0 && iB > 0.001) { var x2 = Math.min(rm, iB); prI = x2; rm -= x2; } if (rm > 0 && cB > 0.001) { prC = Math.min(rm, cB); } }
+                    if (aa > 0 && !isNoDebt) { var rm = aa, pB = adjPen, iB = inv.interestOutstanding, cB = inv.capitalOutstanding; if (rm > 0 && pB > 0.001) { var x = Math.min(rm, pB); prP = x; rm -= x; } if (rm > 0 && iB > 0.001) { var x2 = Math.min(rm, iB); prI = x2; rm -= x2; } if (rm > 0 && cB > 0.001) { prC = Math.min(rm, cB); } }
                     var ms = { padding: "9px 14px", fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace" };
                     var fst = FST[inv.fundingStatus] || FST.funded;
                     var noDebtLabel = inv.fundingStatus === "pending" ? "Unfunded" : inv.capitalDue === 0 ? "Zero funded" : "\u2014";
+                    var dateChanged = allocDate !== allocPay.date;
                     return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#2B4C7E08" : "transparent" }}>
                       <td style={Object.assign({}, ms, { color: "var(--accent)" })}>{inv.id}</td>
                       <td style={{ padding: "9px 14px", fontSize: 13, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
                       <td style={{ padding: "9px 14px" }}><span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: fst.color }}>{fst.label}</span></td>
-                      <td style={Object.assign({}, ms, { color: inv.penaltyInterest > 0 ? "#C0392B" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
+                      <td style={{ padding: "5px 8px" }}><input type="date" value={allocDate} onChange={function(e) { var newDate = e.target.value; if (!newDate) return; var iid = inv.id; setAllocs(function(prev) { var exists = prev.find(function(a) { return a.invoiceId === iid; }); if (exists) { return prev.map(function(a) { return a.invoiceId === iid ? Object.assign({}, a, { allocDate: newDate }) : a; }); } else { return prev.concat([{ invoiceId: iid, amount: 0, allocDate: newDate }]); } }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (dateChanged ? "#C08B30" : "var(--border)"), background: dateChanged ? "#C08B3008" : "var(--bg)", color: dateChanged ? "#C08B30" : "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 110 }} /></td>
+                      <td style={Object.assign({}, ms, { color: adjPen > 0 ? "#C0392B" : "var(--muted)" })}>{adjPen > 0 ? money(adjPen, inv.currency) : "\u2014"}{dateChanged && inv.penaltyInterest !== adjPen && <span style={{ color: "#C08B30", fontSize: 9, display: "block" }}>was {money(inv.penaltyInterest, inv.currency)}</span>}{prP > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
                       <td style={Object.assign({}, ms, { color: inv.interestOutstanding > 0 ? "#C08B30" : "var(--muted)" })}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prI, inv.currency)}</span>}</td>
                       <td style={Object.assign({}, ms, { color: "var(--text)" })}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : money(inv.totalOutstanding, inv.currency)}</td>
+                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : money(adjTotal, inv.currency)}</td>
                       <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 90 }} />
-                        {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
+                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); var entry = { invoiceId: iid, amount: r2(val) }; if (ad !== allocPay.date) entry.allocDate = ad; return val > 0.001 ? w.concat([entry]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 90 }} />
+                        {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var entry = { invoiceId: iid, amount: val }; if (ad !== allocPay.date) entry.allocDate = ad; return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([entry]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
                         {aa > 0 && <button onClick={function() { var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#C0392B", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
                       </div></td>
                     </tr>;
