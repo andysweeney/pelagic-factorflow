@@ -456,7 +456,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       }));
     });
     cleanBal();
-    var balOwed = r2(capBal + intBal + penBal);
+    var hbDisbursed = r2(hbDisbursedByInvoice.get(rawInv.id) || 0);
+    var hbAvailable = r2(hbRecd - hbDisbursed); // Can go negative if payment unallocated after HBP disbursement
+    var holdbackOverdrawn = r2(Math.max(0, hbDisbursed - hbRecd)); // Supplier owes this back
+    var balOwed = r2(capBal + intBal + penBal + holdbackOverdrawn);
     var dilTotal = r2(cnDilutionByInvoice.get(rawInv.id) || 0);
     var amtPostDil = r2(rawInv.amount - dilTotal);
     var initialCapPlusInt = r2(rawInv.capitalDue + rawInv.interestCharged);
@@ -488,8 +491,6 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       else if (pastDue && daysOverdue >= thOverdue) fs = "overdue";
       else fs = "funded";
     }
-    var hbDisbursed = r2(hbDisbursedByInvoice.get(rawInv.id) || 0);
-    var hbAvailable = r2(Math.max(0, hbRecd - hbDisbursed));
     var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
     // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
     var settleThreshold = rawInv.amount;
@@ -519,9 +520,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       penaltyInterest: r2(penBal), penaltyAccrued: r2(penaltyAccrued), interestOutstanding: r2(intBal),
       capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd),
       holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
-      holdbackOutstanding: r2(hbBal),
-      totalOutstanding: r2(intBal + penBal + capBal + hbBal),
-      balanceOwed: r2(capBal + intBal + penBal),
+      holdbackOutstanding: r2(hbBal), holdbackOverdrawn: holdbackOverdrawn,
+      totalOutstanding: r2(intBal + penBal + capBal + hbBal + holdbackOverdrawn),
+      balanceOwed: r2(capBal + intBal + penBal + holdbackOverdrawn),
       maxAvailableCapital: r2(maxAvailCap),
       unallocatedPayments: r2(unallocatedPayments),
       writeOffTotal: r2(woTotalPen + woTotalInt + woTotalCap + woTotalHb),
@@ -1371,8 +1372,9 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.holdback || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#C08B30" : "#2E8B57" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Holdback Available</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text)" })}>{money(inv.holdbackAvailable, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>{inv.holdbackAvailable < -0.01 ? "Holdback Overdrawn" : "Holdback Available"}</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable < -0.01 ? "#C0392B" : inv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text)" })}>{inv.holdbackAvailable < -0.01 ? money(Math.abs(inv.holdbackAvailable), inv.currency) : money(inv.holdbackAvailable, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Disbursed</span><span style={val}>{money(inv.holdbackDisbursed, inv.currency)}</span></div>
+                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#C0392B" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#C0392B", fontWeight: 700 }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#C0392B", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
                                           {inv.writeOffTotal > 0 && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#78716c08", border: "1px solid #78716c20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Written Off: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#6B7280" }}>Pen {money(inv.writeOffPenalty, inv.currency)} | Int {money(inv.writeOffInterest, inv.currency)} | Cap {money(inv.writeOffCapital, inv.currency)} = {money(inv.writeOffTotal, inv.currency)}</span></div>}
                                         </div>;
                                       })()}
@@ -3502,8 +3504,9 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.holdback || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#C08B30" : "#2E8B57" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Holdback Available</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text)" })}>{money(inv.holdbackAvailable, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>{inv.holdbackAvailable < -0.01 ? "Holdback Overdrawn" : "Holdback Available"}</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable < -0.01 ? "#C0392B" : inv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text)" })}>{inv.holdbackAvailable < -0.01 ? money(Math.abs(inv.holdbackAvailable), inv.currency) : money(inv.holdbackAvailable, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Disbursed</span><span style={val}>{money(inv.holdbackDisbursed, inv.currency)}</span></div>
+                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#C0392B" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#C0392B", fontWeight: 700 }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#C0392B", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
                                           {inv.writeOffTotal > 0 && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#78716c08", border: "1px solid #78716c20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Written Off: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono',monospace", color: "#6B7280" }}>Pen {money(inv.writeOffPenalty, inv.currency)} | Int {money(inv.writeOffInterest, inv.currency)} | Cap {money(inv.writeOffCapital, inv.currency)} = {money(inv.writeOffTotal, inv.currency)}</span></div>}
                                         </div>;
                                       })()}
@@ -4639,7 +4642,7 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>Int O/S: </span>{money(pInv.interestOutstanding, pInv.currency)}</div>
                         <div><span style={{ color: "var(--muted)" }}>Holdback Recd: </span><span style={{ color: pInv.holdbackReceived > 0 ? "#2E8B57" : "var(--text-secondary)" }}>{money(pInv.holdbackReceived, pInv.currency)}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Holdback Disbursed: </span><span style={{ color: pInv.holdbackDisbursed > 0 ? "#C08B30" : "var(--text-secondary)" }}>{money(pInv.holdbackDisbursed, pInv.currency)}</span></div>
-                        <div><span style={{ color: "var(--muted)" }}>Holdback Available: </span><span style={{ color: pInv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text-secondary)" }}>{money(pInv.holdbackAvailable, pInv.currency)}</span></div>
+                        <div><span style={{ color: "var(--muted)" }}>{pInv.holdbackAvailable < -0.01 ? "Holdback Overdrawn: " : "Holdback Available: "}</span><span style={{ color: pInv.holdbackAvailable < -0.01 ? "#C0392B" : pInv.holdbackAvailable > 0 ? "#2E8B57" : "var(--text-secondary)" }}>{pInv.holdbackAvailable < -0.01 ? money(Math.abs(pInv.holdbackAvailable), pInv.currency) : money(pInv.holdbackAvailable, pInv.currency)}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Total O/S: </span><strong style={{ color: pInv.totalOutstanding > 0 ? "#C08B30" : "#2E8B57" }}>{money(pInv.totalOutstanding, pInv.currency)}</strong></div>
                       </div>
                       {pInv.payments.length > 0 && <div style={{ marginBottom: 14 }}>
