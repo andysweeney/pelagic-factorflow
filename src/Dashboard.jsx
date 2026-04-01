@@ -311,11 +311,12 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   var processed = [];
   var allocsByInvoice = new Map();
   paymentsDb.forEach(function(pay) {
-    if (pay.date > viewDate) return;
     pay.allocations.forEach(function(a) {
+      var effDate = a.allocDate || pay.date;
+      if (effDate > viewDate) return;
       if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
       allocsByInvoice.get(a.invoiceId).push({
-        paymentId: pay.paymentId, amount: a.amount, date: a.allocDate || pay.date, currency: pay.currency
+        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency
       });
     });
   });
