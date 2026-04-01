@@ -495,6 +495,17 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       else if (pastDue && daysOverdue >= thOverdue) fs = "overdue";
       else fs = "funded";
     }
+    // Set fullyRepaidDate when invoice transitions to fully_repaid
+    if (fs === "fully_repaid" && !rawInv.fullyRepaidDate) {
+      // Find the date of the last payment that brought balance to zero
+      var lastPayDate = viewDate;
+      if (paysForInv.length > 0) lastPayDate = paysForInv[paysForInv.length - 1].date;
+      if (hbAppsForInv.length > 0 && hbAppsForInv[hbAppsForInv.length - 1].date > lastPayDate) lastPayDate = hbAppsForInv[hbAppsForInv.length - 1].date;
+      rawInv.fullyRepaidDate = lastPayDate;
+    } else if (fs !== "fully_repaid" && rawInv.fullyRepaidDate) {
+      // Clear if no longer fully repaid (e.g. payment unallocated)
+      rawInv.fullyRepaidDate = null;
+    }
     var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
     // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
     var settleThreshold = rawInv.amount;
@@ -2610,6 +2621,14 @@ export default function FactoringDashboard() {
               });
               var funderInflows = 0, totalDisbursed = 0, pendingDisbursals = 0;
               if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursals += ff.amount; else totalDisbursed += ff.amount; });
+              // Add pending holdback payments from supplier payment queue for this program's invoices
+              var progInvIdSet = {};
+              allProgInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
+              SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                if (spq.status === "Pending" && spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+                  pendingDisbursals += spq.amount || 0;
+                }
+              });
               // Sum buyer payments received against program invoices — full amount including holdback
               var buyerReceipts = 0, holdbackReceived = 0, totalHoldbackDisbursed = 0;
               allProgInvs.forEach(function(inv) {
@@ -2923,9 +2942,7 @@ export default function FactoringDashboard() {
                   var d = minDate;
                   while (d <= maxDate) {
                     chartDates.push(d);
-                    var dt = new Date(d + "T12:00:00");
-                    dt.setDate(dt.getDate() + step);
-                    d = dt.toISOString().split("T")[0];
+                    d = addDays(d, step);
                   }
                   if (chartDates.length > 0 && chartDates[chartDates.length - 1] !== maxDate) chartDates.push(maxDate);
                   if (chartDates.length < 2) return null;
@@ -3039,7 +3056,7 @@ export default function FactoringDashboard() {
                   var step = totalDays > 365 ? Math.ceil(totalDays / 365) : 1;
                   var chartDates = [];
                   var d = minDate;
-                  while (d <= maxDate) { chartDates.push(d); var dt = new Date(d + "T12:00:00"); dt.setDate(dt.getDate() + step); d = dt.toISOString().split("T")[0]; }
+                  while (d <= maxDate) { chartDates.push(d); d = addDays(d, step); }
                   if (chartDates.length > 0 && chartDates[chartDates.length - 1] !== maxDate) chartDates.push(maxDate);
                   if (chartDates.length < 2) return null;
 
