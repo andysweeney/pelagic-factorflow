@@ -4154,9 +4154,12 @@ export default function FactoringDashboard() {
                   <tbody>{eligible.map(function(inv) {
                     var ex = allocs.find(function(a) { return a.invoiceId === inv.id; });
                     var aa = ex ? ex.amount : 0;
-                    var mx = r2(Math.min(inv.totalOutstanding, avail + aa));
+                    // For zero-funded invoices, max allocation is the full invoice amount (money to be returned to supplier)
+                    var isZeroFunded = inv.capitalDue === 0 && inv.fundedDate && inv.fundingStatus !== "pending";
+                    var invMax = isZeroFunded ? inv.amount : inv.totalOutstanding;
+                    var mx = r2(Math.min(invMax, avail + aa));
                     var prP = 0, prI = 0, prC = 0;
-                    if (aa > 0) { var rm = aa, pB = inv.penaltyInterest, iB = inv.interestOutstanding, cB = inv.capitalOutstanding; if (rm > 0 && pB > 0.001) { var x = Math.min(rm, pB); prP = x; rm -= x; } if (rm > 0 && iB > 0.001) { var x2 = Math.min(rm, iB); prI = x2; rm -= x2; } if (rm > 0 && cB > 0.001) { prC = Math.min(rm, cB); } }
+                    if (aa > 0 && !isZeroFunded) { var rm = aa, pB = inv.penaltyInterest, iB = inv.interestOutstanding, cB = inv.capitalOutstanding; if (rm > 0 && pB > 0.001) { var x = Math.min(rm, pB); prP = x; rm -= x; } if (rm > 0 && iB > 0.001) { var x2 = Math.min(rm, iB); prI = x2; rm -= x2; } if (rm > 0 && cB > 0.001) { prC = Math.min(rm, cB); } }
                     var ms = { padding: "9px 14px", fontSize: 12.5, fontFamily: "'JetBrains Mono',monospace" };
                     var fst = FST[inv.fundingStatus] || FST.funded;
                     return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#2B4C7E08" : "transparent" }}>
@@ -4166,10 +4169,10 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, ms, { color: inv.penaltyInterest > 0 ? "#C0392B" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
                       <td style={Object.assign({}, ms, { color: inv.interestOutstanding > 0 ? "#C08B30" : "var(--muted)" })}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prI, inv.currency)}</span>}</td>
                       <td style={Object.assign({}, ms, { color: "var(--text)" })}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#2E8B57", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{money(inv.totalOutstanding, inv.currency)}</td>
+                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isZeroFunded ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>Zero funded</span> : money(inv.totalOutstanding, inv.currency)}</td>
                       <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono',monospace", outline: "none", width: 90 }} />
-                        {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(inv.totalOutstanding, avail)); var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
+                        {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
                         {aa > 0 && <button onClick={function() { var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#C0392B", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
                       </div></td>
                     </tr>;
