@@ -524,7 +524,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd),
       holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
       holdbackOutstanding: r2(hbBal), holdbackOverdrawn: holdbackOverdrawn,
-      totalOutstanding: r2(intBal + penBal + capBal + hbBal + holdbackOverdrawn),
+      totalOutstanding: r2(intBal + penBal + capBal + Math.max(hbBal, holdbackOverdrawn)),
       balanceOwed: r2(capBal + intBal + penBal + holdbackOverdrawn),
       maxAvailableCapital: r2(maxAvailCap),
       unallocatedPayments: r2(unallocatedPayments),
@@ -2610,15 +2610,16 @@ export default function FactoringDashboard() {
               var funderInflows = 0, totalDisbursed = 0, pendingDisbursals = 0;
               if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursals += ff.amount; else totalDisbursed += ff.amount; });
               // Sum buyer payments received against program invoices — full amount including holdback
-              var buyerReceipts = 0, holdbackReceived = 0;
+              var buyerReceipts = 0, holdbackReceived = 0, totalHoldbackDisbursed = 0;
               allProgInvs.forEach(function(inv) {
                 if (inv.payments) inv.payments.forEach(function(p) {
                   buyerReceipts += (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0);
                   holdbackReceived += (p.appliedToHoldback || 0);
                 });
+                totalHoldbackDisbursed += inv.holdbackDisbursed || 0;
               });
               var totalInflows = r2(funderInflows + buyerReceipts);
-              var totalFundsOut = r2(totalDisbursed + fundedBalance);
+              var totalFundsOut = r2(totalDisbursed + fundedBalance + totalHoldbackDisbursed);
               var avail = r2(totalInflows - totalFundsOut - pendingDisbursals);
               var utilisationDenom = r2(fundedBalance + Math.max(0, avail));
               var utilisation = utilisationDenom > 0.01 ? (fundedBalance / utilisationDenom * 100).toFixed(1) : "0.0";
