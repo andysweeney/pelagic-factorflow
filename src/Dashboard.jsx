@@ -27,8 +27,8 @@ function fmt(d) { if (!d) return "\u2014"; var dt = new Date(d + "T00:00:00"); r
 function money(v, c) { return (CUR[c] || "") + v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function r6(v) { return Math.round(v * 1000000) / 1000000; }
 function r2(v) { return Math.round(v * 100) / 100; }
-function addDays(s, n) { var d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; }
-function daysBetween(a, b) { return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000); }
+function addDays(s, n) { var p = s.split("-"); var d = new Date(Date.UTC(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]))); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().split("T")[0]; }
+function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); return Math.round((Date.UTC(parseInt(pb[0]), parseInt(pb[1]) - 1, parseInt(pb[2])) - Date.UTC(parseInt(pa[0]), parseInt(pa[1]) - 1, parseInt(pa[2]))) / 86400000); }
 function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 
 // Branch helpers
