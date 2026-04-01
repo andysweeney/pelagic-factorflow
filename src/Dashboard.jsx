@@ -1554,6 +1554,9 @@ export default function FactoringDashboard() {
             if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) dilNumerator += (invAmt - inv.partialApprovedAmount);
             if (inv.invoiceStatus === "Disputed") dilNumerator += invAmt;
           });
+          // Include unallocated credit notes in dilution numerator
+          var supUnallocCN = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(getParentSupplierName(selectedSupplier)) || 0) : 0;
+          if (supUnallocCN > 0) dilNumerator += supUnallocCN;
           var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
 
           // Current Funded Dilution Rate
@@ -1567,6 +1570,8 @@ export default function FactoringDashboard() {
             if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) fdilNumerator += (invAmt - inv.partialApprovedAmount);
             if (inv.fundingStatus === "recovery_mode") fdilNumerator += invAmt;
           });
+          // Include unallocated credit notes in funded dilution numerator
+          if (supUnallocCN > 0) fdilNumerator += supUnallocCN;
           var fdilutionRate = fdilDenominator > 0.01 ? (fdilNumerator / fdilDenominator) * 100 : 0;
 
           // Period-based Supplier Dilution (by invoice date)
@@ -1583,6 +1588,7 @@ export default function FactoringDashboard() {
               if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) pNum += (invAmt - inv.partialApprovedAmount);
               if (badStatuses[inv.invoiceStatus]) pNum += invAmt;
             });
+            if (supUnallocCN > 0) pNum += supUnallocCN;
             return { numerator: r2(pNum), denominator: r2(pDen), rate: pDen > 0.01 ? (pNum / pDen) * 100 : 0 };
           }
           var dil30 = calcPeriodDilution(30);
@@ -1613,6 +1619,7 @@ export default function FactoringDashboard() {
                 pNum += invAmt;
               }
             });
+            if (supUnallocCN > 0) pNum += supUnallocCN;
             return { numerator: r2(pNum), denominator: r2(pDen), rate: pDen > 0.01 ? (pNum / pDen) * 100 : 0 };
           }
           var fdil30 = calcFundedPeriodDilution(30);
@@ -2595,6 +2602,12 @@ export default function FactoringDashboard() {
                 if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dilNum += (a - inv.partialApprovedAmount);
                 if (inv.invoiceStatus === "Disputed") dilNum += a;
               });
+              // Include unallocated credit notes from all suppliers in this program
+              var progSuppliers = {};
+              allProgInvs.forEach(function(inv) { progSuppliers[getParentSupplierName(inv.supplierName)] = true; });
+              var progUnallocCN = 0;
+              if (viewData.cnUnallocBySupplier) Object.keys(progSuppliers).forEach(function(s) { progUnallocCN += viewData.cnUnallocBySupplier.get(s) || 0; });
+              if (progUnallocCN > 0) dilNum += progUnallocCN;
               var dilRate = dilDen > 0.01 ? (dilNum / dilDen) * 100 : 0;
 
               // Funded Dilution Rate (by funding status)
@@ -2607,6 +2620,8 @@ export default function FactoringDashboard() {
                 if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) fdilNum += (a - inv.partialApprovedAmount);
                 if (inv.fundingStatus === "recovery_mode") fdilNum += a;
               });
+              // Include unallocated credit notes in funded dilution
+              if (progUnallocCN > 0) fdilNum += progUnallocCN;
               var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
 
               // Period dilution (by invoice date)
@@ -2615,6 +2630,7 @@ export default function FactoringDashboard() {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
                 var n = 0, d = 0;
                 allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
+                if (progUnallocCN > 0) n += progUnallocCN;
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
               }
               var pdil30 = pDil(30), pdil90 = pDil(90);
@@ -2626,6 +2642,7 @@ export default function FactoringDashboard() {
                 var n = 0, d = 0, inc = {};
                 allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
                 allProgInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
+                if (progUnallocCN > 0) n += progUnallocCN;
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
               }
               var fpdil30 = fpDil(30), fpdil90 = fpDil(90);
