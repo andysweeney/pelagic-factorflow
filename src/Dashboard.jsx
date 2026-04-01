@@ -5954,7 +5954,7 @@ export default function FactoringDashboard() {
                   var inv = fundPopup.inv, prog = fundPopup.prog;
                   var cap = r2(parseFloat(fundPopupFields.capitalDue) || 0);
                   var rate = parseFloat(fundPopupFields.annualRate) / 100;
-                  if (cap <= 0 || cap > fundPopupFields.maxCap + 0.01) return;
+                  if (cap < 0 || cap > fundPopupFields.maxCap + 0.01) return;
                   if (rate < fundPopupFields.minRate - 0.0001) return;
                   // Update the raw invoice with final funding terms
                   var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
@@ -5967,7 +5967,7 @@ export default function FactoringDashboard() {
                   var term = raw.daysToMaturity || daysBetween(raw.invoiceDate, raw.dueDate);
                   raw.interestCharged = r2(cap * dailyRate * term);
                   raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
-                  raw.advanceRate = cap / raw.amount;
+                  raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                   fundInvoice(inv.id, prog.id);
                   setFundPopup(null); setFundPopupFields({});
                 }
@@ -6080,6 +6080,88 @@ export default function FactoringDashboard() {
                   </div>}
                 </div>;
               })()}
+
+              {/* Do Not Fund List */}
+              {(function() {
+                var dnfInvs = viewData.invoices.filter(function(x) { return x.fundingStatus === "pending" && x.doNotFund; });
+                if (dnfInvs.length === 0) return null;
+                var dnfmc = { padding: "9px 14px", fontSize: 12, fontFamily: "'JetBrains Mono',monospace" };
+                return <div style={{ background: "var(--card)", borderRadius: 14, border: "1px solid #6B728030", overflow: "hidden", marginTop: 18 }}>
+                  <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6B7280" }}></div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif" }}>Do Not Fund ({dnfInvs.length})</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{dnfInvs.length} invoice{dnfInvs.length !== 1 ? "s" : ""} excluded from funding</span>
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Inv Date", "Due Date", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 14px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{dnfInvs.map(function(inv) {
+                        var ist = IST[inv.invoiceStatus] || IST["Received"];
+                        var isExpanded = exp === "dnf-" + inv.id;
+                        return <React.Fragment key={inv.id}>
+                        <tr onClick={function() { setExp(isExpanded ? null : "dnf-" + inv.id); }} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer", background: isExpanded ? "var(--card-hover)" : "transparent" }}>
+                          <td style={Object.assign({}, dnfmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.supplierName}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{inv.buyerName}</td>
+                          <td style={Object.assign({}, dnfmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.invoiceDate)}</td>
+                          <td style={{ padding: "9px 14px", fontSize: 12, color: inv.dueDate < viewDate ? "#E05A4F" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                          <td style={{ padding: "9px 14px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} /></td>
+                          <td style={{ padding: "9px 14px", textAlign: "right" }}>
+                            <button onClick={function(e) { e.stopPropagation(); var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = false; auditLog("Do Not Fund Cleared", inv.id + " returned to funding queue", { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2E8B57", background: "transparent", color: "#2E8B57", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Return to Queue</button>
+                          </td>
+                        </tr>
+                        {isExpanded && <tr><td colSpan={9} style={{ padding: 0 }}>
+                          <div style={{ padding: "18px 22px", background: "var(--card-hover)", borderBottom: "2px solid var(--accent)20" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                              <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", letterSpacing: "0.08em", color: "#1E3A5F", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Invoice Details</div>
+                                {(function() {
+                                  var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600 };
+                                  var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono',monospace", color: "var(--text)" };
+                                  var row = { display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #f0f1f5" };
+                                  return <div>
+                                    <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{inv.id}</span></div>
+                                    <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
+                                    <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
+                                    <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                    <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
+                                    <div style={row}><span style={lbl}>Due Date</span><span style={val}>{fmt(inv.dueDate)}</span></div>
+                                    <div style={row}><span style={lbl}>Term</span><span style={val}>{inv.daysToMaturity || 0}d</span></div>
+                                    {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Ref</span><span style={val}>{inv.buyerRef}</span></div>}
+                                    {inv.supplierRef && <div style={row}><span style={lbl}>Supplier Ref</span><span style={val}>{inv.supplierRef}</span></div>}
+                                    {inv.poNumber && <div style={row}><span style={lbl}>PO Number</span><span style={val}>{inv.poNumber}</span></div>}
+                                    <div style={row}><span style={lbl}>Potential Capital</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
+                                    {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#2E8B57" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
+                                  </div>;
+                                })()}
+                              </div>
+                              <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontFamily: "'Franklin Gothic Heavy','Arial Black',sans-serif", letterSpacing: "0.08em", color: "#1E3A5F", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Actions</div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                  <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = false; auditLog("Do Not Fund Cleared", inv.id + " returned to funding queue", { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#2E8B57", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{"\u21b6"} Return to Funding Queue</button>
+                                  <button onClick={function() { startEdit(inv); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{"\u270e"} Edit Invoice</button>
+                                </div>
+                                <div style={{ marginTop: 14, padding: "8px 10px", borderRadius: 6, background: "#6B728008", border: "1px solid #6B728020" }}>
+                                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280", marginBottom: 4 }}>Status History</div>
+                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                    {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </td></tr>}
+                        </React.Fragment>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                </div>;
+              })()}
+
             </div>;
             })()}
 
