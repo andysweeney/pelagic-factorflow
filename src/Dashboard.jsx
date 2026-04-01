@@ -801,6 +801,13 @@ export default function FactoringDashboard() {
     later.forEach(function(l) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === l.pid; }); if (p) { auditLog("Payment Unallocated", l.pid + " unallocated from " + l.invs.join(", ") + " (superseded by " + allocPay.paymentId + ")", { paymentId: l.pid, invoiceIds: l.invs, reason: "superseded", supersededBy: allocPay.paymentId }); p.allocations = p.allocations.filter(function(a) { return !aff[a.invoiceId]; }); } });
     var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === allocPay.paymentId; });
     if (pay) {
+      // Log removal of existing allocations from THIS payment before replacing
+      var removedAllocs = pay.allocations.filter(function(a) { return aff[a.invoiceId]; });
+      if (removedAllocs.length > 0) {
+        removedAllocs.forEach(function(a) {
+          auditLog("Payment Unallocated", allocPay.paymentId + " (" + money(a.amount, allocPay.currency) + ") unallocated from " + a.invoiceId + " (reallocation)", { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, amount: a.amount, currency: allocPay.currency, reason: "reallocation" });
+        });
+      }
       // Remove any existing allocations from this payment to the target invoices
       pay.allocations = pay.allocations.filter(function(a) { return !aff[a.invoiceId]; });
       allocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount }); });
@@ -4157,8 +4164,8 @@ export default function FactoringDashboard() {
                   <tbody>{eligible.map(function(inv) {
                     var ex = allocs.find(function(a) { return a.invoiceId === inv.id; });
                     var aa = ex ? ex.amount : 0;
-                    // For unfunded or zero-funded invoices, max allocation is the invoice amount (money to be returned to supplier)
-                    var isNoDebt = inv.totalOutstanding < 0.01;
+                    // For unfunded or zero-funded invoices with genuinely no debt, max allocation is the invoice amount
+                    var isNoDebt = inv.totalOutstanding < 0.01 && inv.holdbackOverdrawn < 0.01;
                     var invMax = isNoDebt ? inv.amount : inv.totalOutstanding;
                     var mx = r2(Math.min(invMax, avail + aa));
                     var prP = 0, prI = 0, prC = 0;
