@@ -883,6 +883,52 @@ function StatCard(p) { return (<div style={{ background: "var(--card)", borderRa
 function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" }} labelStyle={{ color: "#94A3B8" }} /></AreaChart></ResponsiveContainer></div>); }
 
 export default function FactoringDashboard() {
+  // Auth state
+  var authS = useState(null), session = authS[0], setSession = authS[1];
+  var upS = useState(null), userProfile = upS[0], setUserProfile = upS[1];
+  var alS = useState(true), authLoading = alS[0], setAuthLoading = alS[1];
+  var leS = useState(""), loginEmail = leS[0], setLoginEmail = leS[1];
+  var lpS = useState(""), loginPassword = lpS[0], setLoginPassword = lpS[1];
+  var lrS = useState(""), loginError = lrS[0], setLoginError = lrS[1];
+  var liS = useState(false), loggingIn = liS[0], setLoggingIn = liS[1];
+
+  function loadUserProfile(userId) {
+    supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
+      if (result.data) setUserProfile(result.data);
+    });
+  }
+
+  useEffect(function() {
+    supabase.auth.getSession().then(function(result) {
+      setSession(result.data.session);
+      if (result.data.session) loadUserProfile(result.data.session.user.id);
+      setAuthLoading(false);
+    });
+    var sub = supabase.auth.onAuthStateChange(function(_event, sess) {
+      setSession(sess);
+      if (sess) loadUserProfile(sess.user.id);
+      else { setUserProfile(null); }
+    });
+    return function() { sub.data.subscription.unsubscribe(); };
+  }, []);
+
+  function handleLogin() {
+    setLoginError("");
+    setLoggingIn(true);
+    supabase.auth.signInWithPassword({ email: loginEmail, password: loginPassword }).then(function(result) {
+      setLoggingIn(false);
+      if (result.error) setLoginError(result.error.message);
+    });
+  }
+
+  function handleLogout() {
+    supabase.auth.signOut().then(function() {
+      setSession(null);
+      setUserProfile(null);
+      window.location.reload();
+    });
+  }
+
   var lo1 = useState(!_dataLoaded), storageLoading = lo1[0], setStorageLoading = lo1[1];
   var vs = useState(REF_DATE), viewDate = vs[0], setViewDate = vs[1];
   function auditLog(action, details, context) { _auditLog(action, details, context, viewDate !== REF_DATE ? viewDate : undefined); }
@@ -1533,7 +1579,29 @@ export default function FactoringDashboard() {
   return (
     <div style={rootStyle}>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      {storageLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
+      {authLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
+        <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
+        <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading...</div>
+      </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A", flexDirection: "column" }}>
+        <div style={{ width: 380, padding: "40px 36px", background: "#1E293B", borderRadius: 16, border: "1px solid #334155", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, marginBottom: 16, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#E2E8F0", marginBottom: 4 }}>FactorFlow</div>
+            <div style={{ fontSize: 12, color: "#64748B" }}>Sign in to continue</div>
+          </div>
+          {loginError && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#EF444420", border: "1px solid #EF444440", color: "#FCA5A5", fontSize: 12, marginBottom: 16, textAlign: "center" }}>{loginError}</div>}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Email</label>
+            <input type="email" value={loginEmail} onChange={function(e) { setLoginEmail(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="you@company.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Password</label>
+            <input type="password" value={loginPassword} onChange={function(e) { setLoginPassword(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <button onClick={handleLogin} disabled={loggingIn || !loginEmail || !loginPassword} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: loggingIn ? "#0E7490" : "#0EA5E9", color: "#FFF", fontSize: 14, fontWeight: 700, cursor: loggingIn ? "not-allowed" : "pointer", opacity: (!loginEmail || !loginPassword) ? 0.5 : 1, transition: "all 0.15s" }}>{loggingIn ? "Signing in..." : "Sign In"}</button>
+        </div>
+        <div style={{ marginTop: 24, fontSize: 11, color: "#475569" }}>Pelagic Solutions Ltd</div>
+      </div> : storageLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
         <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading FactorFlow...</div>
         <div style={{ width: 120, height: 2, background: "#1E293B", borderRadius: 1, overflow: "hidden" }}><div style={{ width: "40%", height: "100%", background: "#0EA5E9", borderRadius: 1, animation: "pulse 1.5s infinite" }} /></div>
@@ -1570,6 +1638,11 @@ export default function FactoringDashboard() {
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
             {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#64748B", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+          </div>
+          <div style={{ padding: "12px 20px", borderTop: "1px solid #1E293B" }}>
+            <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
+            <div style={{ fontSize: 10, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
+            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "#64748B", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
           </div>
         </div>
         {/* Main Content */}
