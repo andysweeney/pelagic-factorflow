@@ -4475,9 +4475,10 @@ export default function FactoringDashboard() {
         </div>;
         })()}
 
-        {/* Allocation Panel */}
           </div>}
         </div>}
+
+        {/* Allocation Panel */}
         {isP && allocPay && <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
           <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Allocating: {allocPay.paymentId}</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{money(allocPay.amount, allocPay.currency)} - {fmt(allocPay.date)}</div></div>
@@ -7433,7 +7434,7 @@ export default function FactoringDashboard() {
           </div>;
         })()}
       </div>
-    </div></div></div></>}
+    </div></div></>}
     <style dangerouslySetInnerHTML={{ __html: "\n@media (min-width: 769px) { .ff-sidebar-mobile { display: none !important; } .ff-sidebar-overlay { display: none !important; } .ff-menu-btn { display: none !important; } }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } .ff-menu-btn { display: flex !important; } .ff-sidebar-mobile { display: flex !important; } .ff-sidebar-close { display: flex !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: var(--card-hover); }\ninput:focus, select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" }} />
     </div>
   );
