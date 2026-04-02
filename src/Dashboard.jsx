@@ -255,14 +255,16 @@ async function loadPersistedData() {
         SUPPLIERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-            country: row.country || "United Kingdom", zip: row.zip || "",
-            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
-            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
-            contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
-            contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
-            contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false },
-          bankDetails: { bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "", accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "" },
+          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+          country: row.country || "United Kingdom", zip: row.zip || "",
+          primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          bankName: row.bank_name || "", bankDetails: row.account_name ? [row.sort_code, row.account_number, row.iban, row.bic].filter(Boolean).join(" / ") : "",
+          accountName: row.account_name || "", sortCode: row.sort_code || "", accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
+          bankVerified: false,
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
           branches: row.branches || []
         });
@@ -276,13 +278,13 @@ async function loadPersistedData() {
         BUYERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-            country: row.country || "United Kingdom", zip: row.zip || "",
-            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
-            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
-            contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
-            contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
-            contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false }
+          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+          country: row.country || "United Kingdom", zip: row.zip || "",
+          primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -295,10 +297,10 @@ async function loadPersistedData() {
         SERVICE_PROVIDERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, role: row.role, notes: row.notes,
-          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-            country: row.country || "United Kingdom", zip: row.zip || "",
-            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
-            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false }
+          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+          country: row.country || "United Kingdom", zip: row.zip || "",
+          primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false
         });
       });
     }
@@ -425,21 +427,19 @@ async function savePersistedData() {
   try {
     // Save suppliers
     var supRows = SUPPLIERS_DB.map(function(s) {
-      var addr = s.address || {};
-      var bank = s.bankDetails || {};
       return {
         id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
         jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
         onboarding_date: s.onboardingDate || null, notes: s.notes || null,
-        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
-        country: addr.country || "United Kingdom", zip: addr.zip || null,
-        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
-        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false,
-        contact3_name: addr.contact3Name || null, contact3_email: addr.contact3Email || null, contact3_phone: addr.contact3Phone || null, contact3_signatory: addr.contact3Signatory || false,
-        contact4_name: addr.contact4Name || null, contact4_email: addr.contact4Email || null, contact4_phone: addr.contact4Phone || null, contact4_signatory: addr.contact4Signatory || false,
-        contact5_name: addr.contact5Name || null, contact5_email: addr.contact5Email || null, contact5_phone: addr.contact5Phone || null, contact5_signatory: addr.contact5Signatory || false,
-        bank_name: bank.bankName || null, account_name: bank.accountName || null, sort_code: bank.sortCode || null,
-        account_number: bank.accountNumber || null, iban: bank.iban || null, bic: bank.bic || null,
+        street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
+        country: s.country || "United Kingdom", zip: s.zip || null,
+        primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
+        secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
+        contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
+        contact4_name: s.contact4Name || null, contact4_email: s.contact4Email || null, contact4_phone: s.contact4Phone || null, contact4_signatory: s.contact4Signatory || false,
+        contact5_name: s.contact5Name || null, contact5_email: s.contact5Email || null, contact5_phone: s.contact5Phone || null, contact5_signatory: s.contact5Signatory || false,
+        bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
+        account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
         rates: s.rates || [], branches: s.branches || []
       };
     });
@@ -447,32 +447,30 @@ async function savePersistedData() {
 
     // Save buyers
     var buyRows = BUYERS_DB.map(function(b) {
-      var addr = b.address || {};
       return {
         id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
         jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
         onboarding_date: b.onboardingDate || null, notes: b.notes || null,
-        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
-        country: addr.country || "United Kingdom", zip: addr.zip || null,
-        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
-        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false,
-        contact3_name: addr.contact3Name || null, contact3_email: addr.contact3Email || null, contact3_phone: addr.contact3Phone || null, contact3_signatory: addr.contact3Signatory || false,
-        contact4_name: addr.contact4Name || null, contact4_email: addr.contact4Email || null, contact4_phone: addr.contact4Phone || null, contact4_signatory: addr.contact4Signatory || false,
-        contact5_name: addr.contact5Name || null, contact5_email: addr.contact5Email || null, contact5_phone: addr.contact5Phone || null, contact5_signatory: addr.contact5Signatory || false
+        street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
+        country: b.country || "United Kingdom", zip: b.zip || null,
+        primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
+        secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
+        contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
+        contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
+        contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
 
     // Save service providers
     var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
-      var addr = sp.address || {};
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
         jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
-        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
-        country: addr.country || "United Kingdom", zip: addr.zip || null,
-        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
-        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false
+        street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
+        country: sp.country || "United Kingdom", zip: sp.zip || null,
+        primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
+        secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
       };
     });
     if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
