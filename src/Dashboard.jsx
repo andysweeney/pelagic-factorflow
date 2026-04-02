@@ -1635,12 +1635,15 @@ export default function FactoringDashboard() {
         var spDisplayCcy = "GBP";
 
         // Stats
-        var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
+        var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spIntOS = 0, spPenOS = 0, spBalanceOwed = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
         spInvs.forEach(function(inv) {
           spTotalInvoiced += inv.amount || 0;
           if (inv.fundingStatus !== "pending") {
             spCapAdvanced += inv.capitalDue || 0;
             spCapOS += inv.capitalOutstanding || 0;
+            spIntOS += inv.interestOutstanding || 0;
+            spPenOS += inv.penaltyInterest || 0;
+            spBalanceOwed += inv.balanceOwed || 0;
             spHoldbackAvail += inv.holdbackAvailable || 0;
           }
           spTotalRepaid += inv.totalRepaid || 0;
@@ -1726,10 +1729,10 @@ export default function FactoringDashboard() {
             spPortalTab === "company" && React.createElement("div", null,
               React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
               React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 } },
-                React.createElement(PortalStat, { label: "Total Invoiced", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
+                React.createElement(PortalStat, { label: "Total Invoiced via Pelagic", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
                 React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
-                React.createElement(PortalStat, { label: "Capital Outstanding", value: money(r2(spCapOS), spDisplayCcy), color: spAmber }),
-                React.createElement(PortalStat, { label: "Holdback Available", value: money(r2(spHoldbackAvail), spDisplayCcy), color: "#8B5CF6" })
+                React.createElement(PortalStat, { label: "Outstanding Balance", value: money(r2(spBalanceOwed), spDisplayCcy), color: spAmber }),
+                React.createElement(PortalStat, { label: "Capital O/S", value: money(r2(spCapOS), spDisplayCcy), sub: "Interest: " + money(r2(spIntOS), spDisplayCcy) + " | Penalty: " + money(r2(spPenOS), spDisplayCcy), color: "#8B5CF6" })
               ),
               /* Invoice status breakdown */
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
