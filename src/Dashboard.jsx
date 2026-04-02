@@ -1765,10 +1765,10 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
                 spInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No invoices yet.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
-                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
-                        ["Invoice", "Buyer", "Amount", "Status", "Funded", "Due", "Capital Due", "Balance"].map(function(h) {
+                        ["Invoice", "Buyer", "Amount", "Status", "Funded", "Due", "Capital Due", "Balance", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
                       )
@@ -1776,17 +1776,79 @@ export default function FactoringDashboard() {
                     React.createElement("tbody", null,
                       spInvs.slice(0, 200).map(function(inv) {
                         var fst = FST[inv.fundingStatus] || FST.funded;
-                        return React.createElement("tr", { key: inv.id },
-                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
-                          React.createElement("td", { style: portalTd }, inv.buyerName),
-                          React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
-                          React.createElement("td", { style: portalTd },
-                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
+                        var isExpanded = exp === "sp-" + inv.id;
+                        var spLbl = { fontSize: 10, color: spMuted, fontWeight: 600 };
+                        var spVal = { fontSize: 12, fontFamily: spMono, color: spText };
+                        var spRow = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid " + spBorder + "80" };
+                        var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
+                        var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past due";
+                        var matColor = daysToMat >= 0 ? spGreen : spRed;
+                        return React.createElement("tbody", { key: inv.id },
+                          React.createElement("tr", { style: { cursor: "pointer", borderBottom: isExpanded ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isExpanded ? null : "sp-" + inv.id); } },
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
+                            React.createElement("td", { style: portalTd }, inv.buyerName),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
+                            React.createElement("td", { style: portalTd },
+                              React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
+                            ),
+                            React.createElement("td", { style: portalTd }, fmt(inv.fundedDate)),
+                            React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText }) }, fmt(inv.dueDate)),
+                            React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: (inv.balanceOwed || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.balanceOwed || 0, inv.currency)),
+                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
+                              React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpanded ? "\u25B2" : "\u25BC")
+                            )
                           ),
-                          React.createElement("td", { style: portalTd }, fmt(inv.fundedDate)),
-                          React.createElement("td", { style: portalTd }, fmt(inv.dueDate)),
-                          React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
-                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: (inv.balanceOwed || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.balanceOwed || 0, inv.currency))
+                          isExpanded ? React.createElement("tr", null,
+                            React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
+                                  /* Invoice Details */
+                                  React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid " + spAccent + "40" } }, "Invoice Details"),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Invoice ID"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAccent, fontWeight: 600 }) }, inv.id)),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Supplier"), React.createElement("span", { style: spVal }, inv.supplierName)),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Buyer"), React.createElement("span", { style: spVal }, inv.buyerName)),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Invoice Amount"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.amount, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Currency"), React.createElement("span", { style: spVal }, inv.currency)),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Invoice Date"), React.createElement("span", { style: spVal }, fmt(inv.invoiceDate))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Due Date"), React.createElement("span", { style: Object.assign({}, spVal, { color: matColor }) }, fmt(inv.dueDate))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Term"), React.createElement("span", { style: spVal }, (inv.daysToMaturity || 0) + " days")),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Maturity"), React.createElement("span", { style: Object.assign({}, spVal, { color: matColor, fontWeight: 600 }) }, matLabel)),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Invoice Status"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 600 }) }, inv.invoiceStatus)),
+                                    inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Reference"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
+                                    inv.purchaseOrder ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Purchase Order"), React.createElement("span", { style: spVal }, inv.purchaseOrder)) : null
+                                  ),
+                                  /* Funding Details */
+                                  React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10B981", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #10B98140" } }, "Funding Details"),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funding Status"), React.createElement("span", null, React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funded Date"), React.createElement("span", { style: spVal }, fmt(inv.fundedDate))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Due"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.capitalDue || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback"), React.createElement("span", { style: spVal }, money(inv.holdback || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.interestCharged || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.capitalOutstanding || 0) > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(inv.capitalOutstanding || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Balance Owed"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700 }) }, money(inv.balanceOwed || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : spMuted }) }, money(inv.holdbackAvailable || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Total Repaid"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, money(inv.totalRepaid || 0, inv.currency))),
+                                    inv.fullyRepaidDate ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Fully Repaid Date"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, fmt(inv.fullyRepaidDate))) : null
+                                  )
+                                ),
+                                /* Status History */
+                                inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                  React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Status History"),
+                                  React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+                                    inv.invoiceStatusHistory.map(function(h, hi) {
+                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#1A2744", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
+                                        React.createElement("span", { style: { color: spMuted, marginRight: 6 } }, fmt(h.date)),
+                                        React.createElement("span", { style: { color: spText, fontWeight: 600 } }, h.status)
+                                      );
+                                    })
+                                  )
+                                ) : null
+                              )
+                            )
+                          ) : null
                         );
                       })
                     )
@@ -1805,7 +1867,7 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
                 spAllPaysToPelagic.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No payments recorded.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
-                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
                         ["Payment ID", "Date", "Total Amount", "CCY", "Allocated", "Invoices"].map(function(h) {
@@ -1843,7 +1905,7 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
                 spAllPaymentsToYou.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No payments received yet.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
-                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
                         ["ID", "Type", "Date", "Amount", "CCY", "Reference", "Status"].map(function(h) {
@@ -1938,7 +2000,7 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
                 spAuditLog.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No activity recorded yet.") :
                 React.createElement("div", { style: { overflowX: "auto", maxHeight: 600, overflowY: "auto" } },
-                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
                         ["Time", "Action", "Details"].map(function(h) {
@@ -1960,7 +2022,7 @@ export default function FactoringDashboard() {
               )
             )
           ),
-          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: #1A274440; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
