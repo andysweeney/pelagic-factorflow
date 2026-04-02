@@ -1744,6 +1744,60 @@ export default function FactoringDashboard() {
                 React.createElement(PortalStat, { label: "Outstanding Balance", value: money(r2(spBalanceOwed), spDisplayCcy), color: spAmber }),
                 React.createElement(PortalStat, { label: "Capital O/S", value: money(r2(spCapOS), spDisplayCcy), sub: "Interest: " + money(r2(spIntOS), spDisplayCcy) + " | Penalty: " + money(r2(spPenOS), spDisplayCcy), color: "#8B5CF6" })
               ),
+              /* Capital outstanding over time chart */
+              (function() {
+                if (spInvs.length === 0) return null;
+                // Find earliest funded date
+                var startDate = null;
+                spInvs.forEach(function(inv) {
+                  if (inv.fundedDate && (!startDate || inv.fundedDate < startDate)) startDate = inv.fundedDate;
+                });
+                if (!startDate) return null;
+                // Build monthly snapshots from start to current viewDate
+                var chartData = [];
+                var cursor = startDate.substring(0, 7); // YYYY-MM
+                var endMonth = viewDate.substring(0, 7);
+                while (cursor <= endMonth) {
+                  var snapshotDate = cursor + "-28"; // end of month approx
+                  if (cursor === endMonth) snapshotDate = viewDate;
+                  var snapshot = processForDate(snapshotDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
+                  var capOS = 0;
+                  snapshot.invoices.filter(function(inv) {
+                    return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
+                  }).forEach(function(inv) {
+                    if (inv.fundingStatus !== "pending") capOS += inv.capitalOutstanding || 0;
+                  });
+                  var label = new Date(cursor + "-15").toLocaleDateString("en-GB", { month: "short", year: "2-digit" });
+                  chartData.push({ name: label, value: r2(capOS) });
+                  // Advance to next month
+                  var parts = cursor.split("-");
+                  var yr = parseInt(parts[0]), mo = parseInt(parts[1]) + 1;
+                  if (mo > 12) { mo = 1; yr++; }
+                  cursor = yr + "-" + (mo < 10 ? "0" : "") + mo;
+                }
+                if (chartData.length === 0) return null;
+                return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
+                  React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 4, fontFamily: spFont } }, "Funds Advanced to " + spSupName),
+                  React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 16, fontFamily: spFont } }, "Capital outstanding at each month end"),
+                  React.createElement("div", { style: { width: "100%", height: 220 } },
+                    React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
+                      React.createElement(AreaChart, { data: chartData, margin: { top: 8, right: 16, left: 16, bottom: 8 } },
+                        React.createElement("defs", null,
+                          React.createElement("linearGradient", { id: "spCapGrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+                            React.createElement("stop", { offset: "0%", stopColor: "#0EA5E9", stopOpacity: 0.25 }),
+                            React.createElement("stop", { offset: "100%", stopColor: "#0EA5E9", stopOpacity: 0.02 })
+                          )
+                        ),
+                        React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1C2A4280", vertical: false }),
+                        React.createElement(XAxis, { dataKey: "name", tick: { fontSize: 10, fill: "#64748B", fontFamily: "'Inter', sans-serif" }, axisLine: { stroke: "#1C2A42" }, tickLine: false }),
+                        React.createElement(YAxis, { tick: { fontSize: 10, fill: "#64748B", fontFamily: "'JetBrains Mono', monospace" }, axisLine: false, tickLine: false, tickFormatter: function(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + "m" : v >= 1000 ? (v / 1000).toFixed(0) + "k" : v; } }),
+                        React.createElement(Tooltip, { contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val) { return [money(val, spDisplayCcy), "Capital O/S"]; } }),
+                        React.createElement(Area, { type: "monotone", dataKey: "value", stroke: "#0EA5E9", strokeWidth: 2.5, fill: "url(#spCapGrad)", dot: { r: 3, fill: "#0EA5E9", stroke: "#131C2E", strokeWidth: 2 }, activeDot: { r: 5, fill: "#0EA5E9", stroke: "#fff", strokeWidth: 2 } })
+                      )
+                    )
+                  )
+                );
+              })(),
               /* Invoice status breakdown */
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
                 React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Invoice Status"),
