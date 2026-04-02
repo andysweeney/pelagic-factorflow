@@ -1723,7 +1723,17 @@ export default function FactoringDashboard() {
             )
           ),
           /* Main content */
-          React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "32px 36px", maxWidth: 1200 } },
+          React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "0", maxWidth: 1200 } },
+            /* Top bar with date picker */
+            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History" }[spPortalTab] || ""),
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "View as of"),
+                React.createElement("input", { type: "date", value: viewDate, onChange: function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); } }, style: { padding: "6px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, fontFamily: spMono, outline: "none", cursor: "pointer" } }),
+                viewDate !== REF_DATE ? React.createElement("button", { onClick: function() { setViewDate(REF_DATE); }, style: { padding: "5px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: spFont } }, "Reset") : null
+              )
+            ),
+            React.createElement("div", { style: { padding: "28px 36px" } },
 
             /* OVERVIEW TAB */
             spPortalTab === "company" && React.createElement("div", null,
@@ -2038,6 +2048,7 @@ export default function FactoringDashboard() {
                   )
                 )
               )
+            )
             )
           ),
           React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
