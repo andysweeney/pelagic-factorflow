@@ -1784,8 +1784,7 @@ export default function FactoringDashboard() {
                         })
                       )
                     ),
-                    React.createElement("tbody", null,
-                      spInvs.slice(0, 200).map(function(inv) {
+                    spInvs.slice(0, 200).map(function(inv) {
                         var fst = FST[inv.fundingStatus] || FST.funded;
                         var isExpanded = exp === "sp-" + inv.id;
                         var spLbl = { fontSize: 10, color: spMuted, fontWeight: 600 };
@@ -1862,7 +1861,6 @@ export default function FactoringDashboard() {
                           ) : null
                         );
                       })
-                    )
                   )
                 )
               )
