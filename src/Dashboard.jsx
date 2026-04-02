@@ -1352,7 +1352,7 @@ export default function FactoringDashboard() {
     if (!raw || raw.fundingStatus !== "pending") return;
     if (!programId) return;
     raw.fundingStatus = "approved";
-    raw.approvedDate = new Date().toISOString().split("T")[0];
+    raw.approvedDate = viewDate;
     raw.fundingProgram = programId;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     var progName = prog ? prog.name : programId;
@@ -1364,13 +1364,14 @@ export default function FactoringDashboard() {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "approved") return;
     raw.fundingStatus = "funded";
-    raw.fundedDate = new Date().toISOString().split("T")[0];
+    raw.fundedDate = viewDate;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
     var supplier = getParentSupplier(raw.supplierName);
     var bankInfo = getSupplierBankDetails(raw.supplierName);
     var now = new Date();
+    var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
@@ -1379,9 +1380,9 @@ export default function FactoringDashboard() {
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
       createdAt: now.toISOString(),
-      createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+      createdDisplay: useDisplay,
       executedAt: now.toISOString(),
-      executedDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+      executedDisplay: useDisplay
     });
     auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ")", { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplier: raw.supplierName, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId });
     setDataVer(function(v) { return v + 1; });
