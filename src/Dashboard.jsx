@@ -1599,11 +1599,369 @@ export default function FactoringDashboard() {
           <button onClick={handleLogin} disabled={loggingIn || !loginEmail || !loginPassword} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: loggingIn ? "#0E7490" : "#0EA5E9", color: "#FFF", fontSize: 14, fontWeight: 700, cursor: loggingIn ? "not-allowed" : "pointer", opacity: (!loginEmail || !loginPassword) ? 0.5 : 1, transition: "all 0.15s" }}>{loggingIn ? "Signing in..." : "Sign In"}</button>
         </div>
         <div style={{ marginTop: 24, fontSize: 11, color: "#475569" }}>Pelagic Solutions Ltd</div>
-      </div> : storageLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
+      </div> : storageLoading || !userProfile ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
         <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading FactorFlow...</div>
         <div style={{ width: 120, height: 2, background: "#1E293B", borderRadius: 1, overflow: "hidden" }}><div style={{ width: "40%", height: "100%", background: "#0EA5E9", borderRadius: 1, animation: "pulse 1.5s infinite" }} /></div>
-      </div> : <><div style={{ display: "flex", minHeight: "100vh" }}>
+      </div> : userProfile && userProfile.role === "supplier" ? (function() {
+        /* ====================================================================
+           SUPPLIER PORTAL
+           ==================================================================== */
+        var spPortalTab = view;
+        var spFont = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        var spMono = "'JetBrains Mono', monospace";
+        var spBg = "#0B1120";
+        var spCard = "#131C2E";
+        var spBorder = "#1C2A42";
+        var spText = "#E2E8F0";
+        var spMuted = "#64748B";
+        var spAccent = "#0EA5E9";
+        var spGreen = "#10B981";
+        var spRed = "#EF4444";
+        var spAmber = "#F59E0B";
+
+        var spSupName = userProfile.supplier_name || "";
+        var spSupplier = SUPPLIERS_DB.find(function(s) { return s.name === spSupName; });
+        var spInvs = viewData.invoices.filter(function(inv) {
+          return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
+        });
+        var spDisplayCcy = "GBP";
+
+        // Stats
+        var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
+        spInvs.forEach(function(inv) {
+          spTotalInvoiced += inv.amount || 0;
+          if (inv.fundingStatus !== "pending") {
+            spCapAdvanced += inv.capitalDue || 0;
+            spCapOS += inv.capitalOutstanding || 0;
+            spHoldbackAvail += inv.holdbackAvailable || 0;
+          }
+          spTotalRepaid += inv.totalRepaid || 0;
+        });
+
+        // Payments to you — merge funding + holdback
+        var spInvIds = {};
+        spInvs.forEach(function(inv) { spInvIds[inv.id] = true; });
+
+        var spFundingPays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
+          return q.type === "funding" && (spInvIds[q.invoiceId] || (q.invoiceIds && q.invoiceIds.some(function(iid) { return spInvIds[iid]; })));
+        }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.invoiceId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
+
+        var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) { return spInvIds[h.sourceInvoiceId]; }).map(function(h) {
+          var supReturn = 0;
+          (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
+          return { id: h.hbPaymentId, type: "Holdback Return", date: fmt(h.date), amount: supReturn > 0 ? supReturn : h.amount, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: "", sortDate: h.date };
+        });
+
+        var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
+
+        // Payments to Pelagic — incoming allocations
+        var spAllPaysToPelagic = [];
+        PAYMENTS_DB.forEach(function(p) {
+          var matchAllocs = p.allocations.filter(function(a) { return spInvIds[a.invoiceId]; });
+          if (matchAllocs.length > 0) spAllPaysToPelagic.push({ pay: p, allocs: matchAllocs });
+        });
+        spAllPaysToPelagic.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
+
+        // Audit log for supplier
+        var spAuditLog = AUDIT_LOG.filter(function(e) {
+          var c = e.context || {};
+          return c.supplier === spSupName || c.supplierName === spSupName || (e.details || "").indexOf(spSupName) > -1;
+        }).slice().reverse();
+
+        // Stat card for portal
+        function PortalStat(ps) {
+          return React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+            React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: ps.color || spAccent } }),
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 500, color: spMuted, letterSpacing: "0.04em", marginBottom: 10, fontFamily: spFont } }, ps.label),
+            React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, ps.value),
+            ps.sub ? React.createElement("div", { style: { fontSize: 11, color: spMuted, marginTop: 8, fontFamily: spFont } }, ps.sub) : null
+          );
+        }
+
+        // Nav items
+        var spNavItems = [
+          { k: "company", l: "Overview", icon: React.createElement(BarChart3, { size: 17 }) },
+          { k: "supplier", l: "Invoices", icon: React.createElement(FileText, { size: 17 }) },
+          { k: "payments", l: "Payments to Pelagic", icon: React.createElement(ArrowUpRight, { size: 17 }) },
+          { k: "program", l: "Payments to You", icon: React.createElement(ArrowDownRight, { size: 17 }) },
+          { k: "manage", l: "Your Information", icon: React.createElement(Users, { size: 17 }) },
+          { k: "creditnotes", l: "Your History", icon: React.createElement(Clock, { size: 17 }) }
+        ];
+
+        var portalTh = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont };
+        var portalTd = { padding: "12px 12px", fontSize: 13, color: spText, borderBottom: "1px solid " + spBorder, fontFamily: spFont };
+        var portalTdMono = { padding: "12px 12px", fontSize: 12, color: spText, borderBottom: "1px solid " + spBorder, fontFamily: spMono };
+
+        return React.createElement("div", { style: { minHeight: "100vh", background: spBg, color: spText, fontFamily: spFont, display: "flex" } },
+          /* Sidebar */
+          React.createElement("div", { style: { width: 220, background: "#0D1526", borderRight: "1px solid " + spBorder, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
+            React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spBorder } },
+              React.createElement("img", { src: LOGO_URL, alt: "Pelagic Solutions", style: { height: 32, filter: "drop-shadow(0 0 8px rgba(14,165,233,0.3))" } }),
+              React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
+            ),
+            React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
+              spNavItems.map(function(item) {
+                var active = spPortalTab === item.k;
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+              })
+            ),
+            React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
+              React.createElement("div", { style: { fontSize: 12, color: "#CBD5E1", fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
+              React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 10, fontFamily: spFont } }, spSupName),
+              React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
+            )
+          ),
+          /* Main content */
+          React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "32px 36px", maxWidth: 1200 } },
+
+            /* OVERVIEW TAB */
+            spPortalTab === "company" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
+              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 } },
+                React.createElement(PortalStat, { label: "Total Invoiced", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
+                React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
+                React.createElement(PortalStat, { label: "Capital Outstanding", value: money(r2(spCapOS), spDisplayCcy), color: spAmber }),
+                React.createElement(PortalStat, { label: "Holdback Available", value: money(r2(spHoldbackAvail), spDisplayCcy), color: "#8B5CF6" })
+              ),
+              /* Invoice status breakdown */
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
+                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Invoice Status"),
+                React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+                  (function() {
+                    var counts = {};
+                    spInvs.forEach(function(inv) { var s = inv.invoiceStatus || "Pending"; counts[s] = (counts[s] || 0) + 1; });
+                    return Object.entries(counts).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) {
+                      return React.createElement("div", { key: e[0], style: { padding: "8px 16px", borderRadius: 8, background: "#1A2744", border: "1px solid " + spBorder, fontFamily: spFont } },
+                        React.createElement("span", { style: { fontSize: 12, color: spMuted } }, e[0] + ": "),
+                        React.createElement("span", { style: { fontSize: 14, fontWeight: 700, color: spText, fontFamily: spMono } }, e[1])
+                      );
+                    });
+                  })()
+                )
+              ),
+              /* Funding status breakdown */
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px" } },
+                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Funding Status"),
+                React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+                  (function() {
+                    var fCounts = {};
+                    spInvs.forEach(function(inv) { var fs = inv.fundingStatus || "pending"; var fst = FST[fs] || FST.funded; fCounts[fst.label] = (fCounts[fst.label] || 0) + 1; });
+                    return Object.entries(fCounts).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) {
+                      return React.createElement("div", { key: e[0], style: { padding: "8px 16px", borderRadius: 8, background: "#1A2744", border: "1px solid " + spBorder, fontFamily: spFont } },
+                        React.createElement("span", { style: { fontSize: 12, color: spMuted } }, e[0] + ": "),
+                        React.createElement("span", { style: { fontSize: 14, fontWeight: 700, color: spText, fontFamily: spMono } }, e[1])
+                      );
+                    });
+                  })()
+                )
+              )
+            ),
+
+            /* INVOICES TAB */
+            spPortalTab === "supplier" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Invoices"),
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                spInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No invoices yet.") :
+                React.createElement("div", { style: { overflowX: "auto" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                    React.createElement("thead", null,
+                      React.createElement("tr", null,
+                        ["Invoice", "Buyer", "Amount", "Status", "Funded", "Due", "Capital Due", "Balance"].map(function(h) {
+                          return React.createElement("th", { key: h, style: portalTh }, h);
+                        })
+                      )
+                    ),
+                    React.createElement("tbody", null,
+                      spInvs.slice(0, 200).map(function(inv) {
+                        var fst = FST[inv.fundingStatus] || FST.funded;
+                        return React.createElement("tr", { key: inv.id },
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
+                          React.createElement("td", { style: portalTd }, inv.buyerName),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
+                          React.createElement("td", { style: portalTd },
+                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
+                          ),
+                          React.createElement("td", { style: portalTd }, fmt(inv.fundedDate)),
+                          React.createElement("td", { style: portalTd }, fmt(inv.dueDate)),
+                          React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: (inv.balanceOwed || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.balanceOwed || 0, inv.currency))
+                        );
+                      })
+                    )
+                  )
+                )
+              )
+            ),
+
+            /* PAYMENTS TO PELAGIC TAB */
+            spPortalTab === "payments" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Payments to Pelagic"),
+              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 } },
+                React.createElement(PortalStat, { label: "Total Payments", value: String(spAllPaysToPelagic.length), color: spAccent }),
+                React.createElement(PortalStat, { label: "Total Allocated", value: money(spAllPaysToPelagic.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0), spDisplayCcy), color: spGreen })
+              ),
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                spAllPaysToPelagic.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No payments recorded.") :
+                React.createElement("div", { style: { overflowX: "auto" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                    React.createElement("thead", null,
+                      React.createElement("tr", null,
+                        ["Payment ID", "Date", "Total Amount", "CCY", "Allocated", "Invoices"].map(function(h) {
+                          return React.createElement("th", { key: h, style: portalTh }, h);
+                        })
+                      )
+                    ),
+                    React.createElement("tbody", null,
+                      spAllPaysToPelagic.map(function(ep) {
+                        var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                        return React.createElement("tr", { key: ep.pay.paymentId },
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, ep.pay.paymentId),
+                          React.createElement("td", { style: portalTd }, fmt(ep.pay.date)),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(ep.pay.amount, ep.pay.currency)),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { color: spMuted }) }, ep.pay.currency),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spGreen, fontWeight: 600 }) }, money(r2(totalAlloc), ep.pay.currency)),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 11, color: spMuted }) }, ep.allocs.map(function(a) { return a.invoiceId; }).join(", "))
+                        );
+                      })
+                    )
+                  )
+                )
+              )
+            ),
+
+            /* PAYMENTS TO YOU TAB */
+            spPortalTab === "program" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Payments to You"),
+              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 } },
+                React.createElement(PortalStat, { label: "Total Payments", value: String(spAllPaymentsToYou.length), color: spAccent }),
+                React.createElement(PortalStat, { label: "Total Received", value: money(r2(spAllPaymentsToYou.reduce(function(s, p) { return s + p.amount; }, 0)), spDisplayCcy), color: spGreen }),
+                React.createElement(PortalStat, { label: "Funding Payments", value: String(spFundingPays.length), color: "#3B82F6" }),
+                React.createElement(PortalStat, { label: "Holdback Returns", value: String(spHoldbackPays.length), color: "#8B5CF6" })
+              ),
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                spAllPaymentsToYou.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No payments received yet.") :
+                React.createElement("div", { style: { overflowX: "auto" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                    React.createElement("thead", null,
+                      React.createElement("tr", null,
+                        ["ID", "Type", "Date", "Amount", "CCY", "Reference", "Status"].map(function(h) {
+                          return React.createElement("th", { key: h, style: portalTh }, h);
+                        })
+                      )
+                    ),
+                    React.createElement("tbody", null,
+                      spAllPaymentsToYou.map(function(p) {
+                        var typeColor = p.type === "Funding" ? "#3B82F6" : "#8B5CF6";
+                        var typeBg = p.type === "Funding" ? "#3B82F614" : "#8B5CF614";
+                        return React.createElement("tr", { key: p.id },
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600, fontSize: 11 }) }, p.id),
+                          React.createElement("td", { style: portalTd },
+                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: typeBg, color: typeColor, border: "1px solid " + typeColor + "30", fontFamily: spMono } }, p.type)
+                          ),
+                          React.createElement("td", { style: portalTd }, p.date),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600, color: spGreen }) }, money(p.amount, p.currency)),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { color: spMuted }) }, p.currency),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontSize: 11 }) }, p.reference),
+                          React.createElement("td", { style: portalTd },
+                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: p.status === "Completed" ? spGreen : spAmber } }, p.status)
+                          )
+                        );
+                      })
+                    )
+                  )
+                )
+              )
+            ),
+
+            /* YOUR INFORMATION TAB */
+            spPortalTab === "manage" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Your Information"),
+              spSupplier ? React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
+                /* Company Details */
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Company Details"),
+                  [["Company Name", spSupplier.name], ["Company Number", spSupplier.companyNumber || "\u2014"], ["VAT Number", spSupplier.vatNumber || "\u2014"], ["Jurisdiction", spSupplier.jurisdiction || "\u2014"], ["Status", spSupplier.status || "\u2014"], ["Onboarding Date", fmt(spSupplier.onboardingDate)]].map(function(row) {
+                    return React.createElement("div", { key: row[0], style: { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid " + spBorder + "60" } },
+                      React.createElement("span", { style: { fontSize: 12, color: spMuted, fontFamily: spFont } }, row[0]),
+                      React.createElement("span", { style: { fontSize: 13, color: spText, fontWeight: 500, fontFamily: spFont, textAlign: "right" } }, row[1])
+                    );
+                  }),
+                  React.createElement("div", { style: { marginTop: 14 } },
+                    React.createElement("div", { style: { fontSize: 12, color: spMuted, marginBottom: 4 } }, "Address"),
+                    React.createElement("div", { style: { fontSize: 13, color: spText, lineHeight: 1.6 } }, [spSupplier.street1, spSupplier.street2, spSupplier.city, spSupplier.state, spSupplier.zip, spSupplier.country].filter(Boolean).join(", ") || "\u2014")
+                  )
+                ),
+                /* Contacts & Signatories */
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Contacts & Authorised Signatories"),
+                  (function() {
+                    var contacts = [
+                      { name: spSupplier.primaryContact, email: spSupplier.primaryEmail, phone: spSupplier.primaryPhone, sig: spSupplier.primarySignatory },
+                      { name: spSupplier.secondaryContact, email: spSupplier.secondaryEmail, phone: spSupplier.secondaryPhone, sig: spSupplier.secondarySignatory },
+                      { name: spSupplier.contact3Name, email: spSupplier.contact3Email, phone: spSupplier.contact3Phone, sig: spSupplier.contact3Signatory },
+                      { name: spSupplier.contact4Name, email: spSupplier.contact4Email, phone: spSupplier.contact4Phone, sig: spSupplier.contact4Signatory },
+                      { name: spSupplier.contact5Name, email: spSupplier.contact5Email, phone: spSupplier.contact5Phone, sig: spSupplier.contact5Signatory }
+                    ].filter(function(c) { return c.name; });
+                    if (contacts.length === 0) return React.createElement("div", { style: { color: spMuted, fontSize: 13, fontStyle: "italic" } }, "No contacts on file.");
+                    return contacts.map(function(c, ci) {
+                      return React.createElement("div", { key: ci, style: { padding: "14px 0", borderBottom: ci < contacts.length - 1 ? "1px solid " + spBorder + "60" : "none" } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 6 } },
+                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: spText } }, c.name),
+                          c.sig ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#0EA5E914", color: spAccent, border: "1px solid #0EA5E930", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Signatory") : null
+                        ),
+                        c.email ? React.createElement("div", { style: { fontSize: 12, color: spMuted, marginBottom: 2 } }, c.email) : null,
+                        c.phone ? React.createElement("div", { style: { fontSize: 12, color: spMuted } }, c.phone) : null
+                      );
+                    });
+                  })()
+                ),
+                /* Bank Details */
+                React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Bank Details"),
+                  React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px 28px" } },
+                    [["Bank Name", spSupplier.bankName || "\u2014"], ["Sort Code", spSupplier.sortCode || "\u2014"], ["Account Number", spSupplier.accountNumber || "\u2014"], ["IBAN", spSupplier.iban || "\u2014"], ["BIC", spSupplier.bic || "\u2014"], ["Account Name", spSupplier.accountName || "\u2014"]].map(function(row) {
+                      return React.createElement("div", { key: row[0] },
+                        React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 4, fontFamily: spFont } }, row[0]),
+                        React.createElement("div", { style: { fontSize: 13, color: spText, fontFamily: spMono } }, row[1])
+                      );
+                    })
+                  )
+                )
+              ) : React.createElement("div", { style: { color: spMuted, fontSize: 13 } }, "Supplier information not available.")
+            ),
+
+            /* YOUR HISTORY TAB */
+            spPortalTab === "creditnotes" && React.createElement("div", null,
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Your History"),
+              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                spAuditLog.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No activity recorded yet.") :
+                React.createElement("div", { style: { overflowX: "auto", maxHeight: 600, overflowY: "auto" } },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                    React.createElement("thead", null,
+                      React.createElement("tr", null,
+                        ["Time", "Action", "Details"].map(function(h) {
+                          return React.createElement("th", { key: h, style: Object.assign({}, portalTh, { position: "sticky", top: 0, background: spCard }) }, h);
+                        })
+                      )
+                    ),
+                    React.createElement("tbody", null,
+                      spAuditLog.slice(0, 500).map(function(e, ei) {
+                        return React.createElement("tr", { key: ei },
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { fontSize: 11, color: spMuted, whiteSpace: "nowrap" }) }, e.displayTime),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontWeight: 600, color: spAccent, fontSize: 12 }) }, e.action),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 12, color: "#94A3B8" }) }, e.details)
+                        );
+                      })
+                    )
+                  )
+                )
+              )
+            )
+          ),
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: #1A274440; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
+        );
+      })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
         <div style={{ width: 240, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: sidebarOpen ? 0 : -240, height: "100vh", zIndex: 50, transition: "left 0.3s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.3)" : "none" }} className="ff-sidebar-mobile">
           <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
