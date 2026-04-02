@@ -244,6 +244,7 @@ var SUPPLIER_PAYMENT_QUEUE = [];
 var CREDIT_NOTES_DB = [];
 var FUNDING_PROGRAMS_DB = [];
 var _dataLoaded = false;
+var _lastSavedAuditIndex = 0;
 
 async function loadPersistedData() {
   try {
@@ -418,6 +419,7 @@ async function loadPersistedData() {
         });
       });
     }
+    _lastSavedAuditIndex = AUDIT_LOG.length;
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
   return false;
@@ -582,15 +584,19 @@ async function savePersistedData() {
     });
     if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
 
-    // Save audit log — delete all and re-insert
-    var auditRows = AUDIT_LOG.map(function(a) {
-      return {
-        timestamp: a.timestamp, display_time: a.displayTime,
-        action: a.action, details: a.details, context: a.context || {}
-      };
-    });
-    await supabase.from("audit_log").delete().gte("id", 0);
-    if (auditRows.length > 0) await supabase.from("audit_log").insert(auditRows);
+    // Save audit log — append only (insert entries added since last save)
+    if (AUDIT_LOG.length > _lastSavedAuditIndex) {
+      var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(function(a) {
+        return {
+          timestamp: a.timestamp, display_time: a.displayTime,
+          action: a.action, details: a.details, context: a.context || {}
+        };
+      });
+      if (newAuditRows.length > 0) {
+        var auditResult = await supabase.from("audit_log").insert(newAuditRows);
+        if (!auditResult.error) _lastSavedAuditIndex = AUDIT_LOG.length;
+      }
+    }
   } catch (e) { console.error("Supabase save error:", e); }
 }
 function _auditLog(action, details, context, dateOverride) {
