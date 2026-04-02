@@ -1765,7 +1765,18 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
                 spInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No invoices yet.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
-                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
+                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }, className: "sp-table" },
+                    React.createElement("colgroup", null,
+                      React.createElement("col", { style: { width: "11%" } }),
+                      React.createElement("col", { style: { width: "16%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "10%" } }),
+                      React.createElement("col", { style: { width: "11%" } }),
+                      React.createElement("col", { style: { width: "11%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "5%" } })
+                    ),
                     React.createElement("thead", null,
                       React.createElement("tr", null,
                         ["Invoice", "Buyer", "Amount", "Status", "Funded", "Due", "Capital Due", "Balance", ""].map(function(h) {
