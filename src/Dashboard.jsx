@@ -4475,7 +4475,6 @@ export default function FactoringDashboard() {
         </div>;
         })()}
 
-          </div>}
         </div>}
 
         {/* Allocation Panel */}
