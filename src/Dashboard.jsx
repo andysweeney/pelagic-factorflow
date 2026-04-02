@@ -1620,8 +1620,9 @@ export default function FactoringDashboard() {
         var spRed = "#EF4444";
         var spAmber = "#F59E0B";
 
-        var spSupName = userProfile.supplier_name || "";
-        var spSupplier = SUPPLIERS_DB.find(function(s) { return s.name === spSupName; });
+        var spSupId = userProfile.supplier_id || "";
+        var spSupplier = SUPPLIERS_DB.find(function(s) { return s.id === spSupId; });
+        var spSupName = spSupplier ? spSupplier.name : "";
         var spInvs = viewData.invoices.filter(function(inv) {
           return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
         });
