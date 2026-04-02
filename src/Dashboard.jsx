@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
 
@@ -246,48 +247,353 @@ var _dataLoaded = false;
 
 async function loadPersistedData() {
   try {
-    var result = { value: localStorage.getItem("factorflow-data") };
-    if (result && result.value) {
-      var d = JSON.parse(result.value);
-      if (d.invoices) { INVOICES_DB.length = 0; d.invoices.forEach(function(x) {
-        // Migrate old statuses
-        if (x.invoiceStatus === "Paid in Full" || x.invoiceStatus === "Paid in Part") x.invoiceStatus = "Settled";
-        if (x.invoiceStatusHistory) x.invoiceStatusHistory.forEach(function(h) { if (h.status === "Paid in Full" || h.status === "Paid in Part") h.status = "Settled"; });
-        INVOICES_DB.push(x);
-      }); }
-      if (d.payments) { PAYMENTS_DB.length = 0; d.payments.forEach(function(x) { PAYMENTS_DB.push(x); }); }
-      if (d.holdbackPayments) { HOLDBACK_PAYMENTS_DB.length = 0; d.holdbackPayments.forEach(function(x) { HOLDBACK_PAYMENTS_DB.push(x); }); }
-      if (d.auditLog) { AUDIT_LOG.length = 0; d.auditLog.forEach(function(x) { AUDIT_LOG.push(x); }); }
-      if (d.supplierPaymentQueue) { SUPPLIER_PAYMENT_QUEUE.length = 0; d.supplierPaymentQueue.forEach(function(x) { SUPPLIER_PAYMENT_QUEUE.push(x); }); }
-      if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) {
-        if (!x.rates) x.rates = [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }];
-        SUPPLIERS_DB.push(x);
-      }); }
-      if (d.buyers) { BUYERS_DB.length = 0; d.buyers.forEach(function(x) { BUYERS_DB.push(x); }); BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
-      if (d.fundingPrograms) { FUNDING_PROGRAMS_DB.length = 0; d.fundingPrograms.forEach(function(x) { FUNDING_PROGRAMS_DB.push(x); }); }
-      if (d.serviceProviders) { SERVICE_PROVIDERS_DB.length = 0; d.serviceProviders.forEach(function(x) { SERVICE_PROVIDERS_DB.push(x); }); }
-      if (d.creditNotes) { CREDIT_NOTES_DB.length = 0; d.creditNotes.forEach(function(x) { CREDIT_NOTES_DB.push(x); }); }
-      return true;
+    // Load suppliers
+    var supRes = await supabase.from("suppliers").select("*");
+    if (supRes.data && supRes.data.length > 0) {
+      SUPPLIERS_DB.length = 0;
+      supRes.data.forEach(function(row) {
+        SUPPLIERS_DB.push({
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
+          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+            country: row.country || "United Kingdom", zip: row.zip || "",
+            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+            contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+            contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+            contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false },
+          bankDetails: { bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "", accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "" },
+          rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
+          branches: row.branches || []
+        });
+      });
     }
-  } catch (e) { /* no persisted data yet */ }
+    // Load buyers
+    var buyRes = await supabase.from("buyers").select("*");
+    if (buyRes.data && buyRes.data.length > 0) {
+      BUYERS_DB.length = 0;
+      buyRes.data.forEach(function(row) {
+        BUYERS_DB.push({
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
+          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+            country: row.country || "United Kingdom", zip: row.zip || "",
+            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+            contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+            contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+            contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false }
+        });
+      });
+      BUYERS = BUYERS_DB.map(function(b) { return b.name; });
+    }
+    // Load service providers
+    var spRes = await supabase.from("service_providers").select("*");
+    if (spRes.data && spRes.data.length > 0) {
+      SERVICE_PROVIDERS_DB.length = 0;
+      spRes.data.forEach(function(row) {
+        SERVICE_PROVIDERS_DB.push({
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          jurisdiction: row.jurisdiction, status: row.status, role: row.role, notes: row.notes,
+          address: { street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+            country: row.country || "United Kingdom", zip: row.zip || "",
+            primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+            secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false }
+        });
+      });
+    }
+    // Load funding programs
+    var fpRes = await supabase.from("funding_programs").select("*");
+    if (fpRes.data && fpRes.data.length > 0) {
+      FUNDING_PROGRAMS_DB.length = 0;
+      fpRes.data.forEach(function(row) {
+        FUNDING_PROGRAMS_DB.push({
+          id: row.id, name: row.name, currency: row.currency,
+          maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
+          maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
+          maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
+          minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
+          thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
+          thresholdRecovery: row.threshold_recovery || 30,
+          thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
+          maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
+          maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
+          eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
+          eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
+          createdDate: row.created_date
+        });
+      });
+    }
+    // Load invoices
+    var invRes = await supabase.from("invoices").select("*");
+    if (invRes.data && invRes.data.length > 0) {
+      INVOICES_DB.length = 0;
+      invRes.data.forEach(function(row) {
+        INVOICES_DB.push({
+          id: row.id, supplierName: row.supplier_name, buyerName: row.buyer_name,
+          amount: parseFloat(row.amount) || 0, currency: row.currency,
+          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+          daysToMaturity: row.days_to_maturity || 0,
+          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+          invoiceStatusHistory: row.invoice_status_history || []
+        });
+      });
+    }
+    // Load payments with allocations
+    var payRes = await supabase.from("payments").select("*");
+    if (payRes.data && payRes.data.length > 0) {
+      PAYMENTS_DB.length = 0;
+      for (var pi = 0; pi < payRes.data.length; pi++) {
+        var prow = payRes.data[pi];
+        var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
+        var allocs = (allocRes.data || []).map(function(a) {
+          return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+        });
+        PAYMENTS_DB.push({
+          paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
+          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
+        });
+      }
+    }
+    // Load holdback payments with allocations
+    var hbRes = await supabase.from("holdback_payments").select("*");
+    if (hbRes.data && hbRes.data.length > 0) {
+      HOLDBACK_PAYMENTS_DB.length = 0;
+      for (var hi = 0; hi < hbRes.data.length; hi++) {
+        var hrow = hbRes.data[hi];
+        var hbAllocRes = await supabase.from("holdback_payment_allocations").select("*").eq("hb_payment_id", hrow.hb_payment_id);
+        var hbAllocs = (hbAllocRes.data || []).map(function(a) {
+          return { targetId: a.target_id, amount: parseFloat(a.amount) || 0, type: a.type };
+        });
+        HOLDBACK_PAYMENTS_DB.push({
+          hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
+          amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs
+        });
+      }
+    }
+    // Load supplier payment queue
+    var spqRes = await supabase.from("supplier_payment_queue").select("*");
+    if (spqRes.data && spqRes.data.length > 0) {
+      SUPPLIER_PAYMENT_QUEUE.length = 0;
+      spqRes.data.forEach(function(row) {
+        SUPPLIER_PAYMENT_QUEUE.push({
+          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+          supplierName: row.supplier_name, supplierId: row.supplier_id,
+          bankName: row.bank_name, bankDetails: row.bank_details,
+          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
+          programId: row.program_id, programName: row.program_name,
+          createdAt: row.created_at, createdDisplay: row.created_display,
+          executedAt: row.executed_at, executedDisplay: row.executed_display
+        });
+      });
+    }
+    // Load credit notes
+    var cnRes = await supabase.from("credit_notes").select("*");
+    if (cnRes.data && cnRes.data.length > 0) {
+      CREDIT_NOTES_DB.length = 0;
+      cnRes.data.forEach(function(row) {
+        CREDIT_NOTES_DB.push({
+          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
+          currency: row.currency, date: row.date, reference: row.reference || "",
+          supplierName: row.supplier_name, buyerName: row.buyer_name,
+          createdDisplay: row.created_display, allocations: row.allocations || []
+        });
+      });
+    }
+    // Load audit log
+    var auditRes = await supabase.from("audit_log").select("*").order("timestamp", { ascending: true });
+    if (auditRes.data && auditRes.data.length > 0) {
+      AUDIT_LOG.length = 0;
+      auditRes.data.forEach(function(row) {
+        AUDIT_LOG.push({
+          timestamp: row.timestamp, displayTime: row.display_time,
+          action: row.action, details: row.details, context: row.context || {}
+        });
+      });
+    }
+    if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
+  } catch (e) { console.error("Supabase load error:", e); }
   return false;
 }
 
 async function savePersistedData() {
   try {
-    localStorage.setItem("factorflow-data", JSON.stringify({
-      invoices: INVOICES_DB,
-      payments: PAYMENTS_DB,
-      holdbackPayments: HOLDBACK_PAYMENTS_DB,
-      auditLog: AUDIT_LOG,
-      supplierPaymentQueue: SUPPLIER_PAYMENT_QUEUE,
-      suppliers: SUPPLIERS_DB,
-      buyers: BUYERS_DB,
-      fundingPrograms: FUNDING_PROGRAMS_DB,
-      serviceProviders: SERVICE_PROVIDERS_DB,
-      creditNotes: CREDIT_NOTES_DB
-    }));
-  } catch (e) { console.error("Storage save error:", e); }
+    // Save suppliers
+    var supRows = SUPPLIERS_DB.map(function(s) {
+      var addr = s.address || {};
+      var bank = s.bankDetails || {};
+      return {
+        id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
+        jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
+        onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
+        country: addr.country || "United Kingdom", zip: addr.zip || null,
+        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
+        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false,
+        contact3_name: addr.contact3Name || null, contact3_email: addr.contact3Email || null, contact3_phone: addr.contact3Phone || null, contact3_signatory: addr.contact3Signatory || false,
+        contact4_name: addr.contact4Name || null, contact4_email: addr.contact4Email || null, contact4_phone: addr.contact4Phone || null, contact4_signatory: addr.contact4Signatory || false,
+        contact5_name: addr.contact5Name || null, contact5_email: addr.contact5Email || null, contact5_phone: addr.contact5Phone || null, contact5_signatory: addr.contact5Signatory || false,
+        bank_name: bank.bankName || null, account_name: bank.accountName || null, sort_code: bank.sortCode || null,
+        account_number: bank.accountNumber || null, iban: bank.iban || null, bic: bank.bic || null,
+        rates: s.rates || [], branches: s.branches || []
+      };
+    });
+    if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
+
+    // Save buyers
+    var buyRows = BUYERS_DB.map(function(b) {
+      var addr = b.address || {};
+      return {
+        id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
+        jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
+        onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
+        country: addr.country || "United Kingdom", zip: addr.zip || null,
+        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
+        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false,
+        contact3_name: addr.contact3Name || null, contact3_email: addr.contact3Email || null, contact3_phone: addr.contact3Phone || null, contact3_signatory: addr.contact3Signatory || false,
+        contact4_name: addr.contact4Name || null, contact4_email: addr.contact4Email || null, contact4_phone: addr.contact4Phone || null, contact4_signatory: addr.contact4Signatory || false,
+        contact5_name: addr.contact5Name || null, contact5_email: addr.contact5Email || null, contact5_phone: addr.contact5Phone || null, contact5_signatory: addr.contact5Signatory || false
+      };
+    });
+    if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
+
+    // Save service providers
+    var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
+      var addr = sp.address || {};
+      return {
+        id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
+        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
+        street1: addr.street1 || null, street2: addr.street2 || null, city: addr.city || null, state: addr.state || null,
+        country: addr.country || "United Kingdom", zip: addr.zip || null,
+        primary_contact: addr.primaryContact || null, primary_email: addr.primaryEmail || null, primary_phone: addr.primaryPhone || null, primary_signatory: addr.primarySignatory || false,
+        secondary_contact: addr.secondaryContact || null, secondary_email: addr.secondaryEmail || null, secondary_phone: addr.secondaryPhone || null, secondary_signatory: addr.secondarySignatory || false
+      };
+    });
+    if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
+
+    // Save funding programs
+    var fpRows = FUNDING_PROGRAMS_DB.map(function(fp) {
+      return {
+        id: fp.id, name: fp.name, currency: fp.currency,
+        max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
+        max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
+        max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
+        min_invoice_size: fp.minInvoiceSize || 0,
+        threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
+        threshold_recovery: fp.thresholdRecovery || 30,
+        threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
+        max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
+        max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
+        eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
+        eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
+        created_date: fp.createdDate || null
+      };
+    });
+    if (fpRows.length > 0) await supabase.from("funding_programs").upsert(fpRows, { onConflict: "id" });
+
+    // Save invoices
+    var invRows = INVOICES_DB.map(function(inv) {
+      return {
+        id: inv.id, supplier_name: inv.supplierName, buyer_name: inv.buyerName,
+        amount: inv.amount, currency: inv.currency,
+        capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
+        interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
+        days_to_maturity: inv.daysToMaturity || 0,
+        invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
+        created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+        invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
+        funding_program: inv.fundingProgram || null,
+        partial_approved_amount: inv.partialApprovedAmount || 0,
+        invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+        invoice_status_history: inv.invoiceStatusHistory || []
+      };
+    });
+    if (invRows.length > 0) await supabase.from("invoices").upsert(invRows, { onConflict: "id" });
+
+    // Save payments — delete and re-insert allocations
+    var payRows = PAYMENTS_DB.map(function(p) {
+      return {
+        payment_id: p.paymentId, amount: p.amount, date: p.date,
+        currency: p.currency, reference: p.reference || ""
+      };
+    });
+    if (payRows.length > 0) {
+      await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
+      var payAllocRows = [];
+      PAYMENTS_DB.forEach(function(p) {
+        p.allocations.forEach(function(a) {
+          payAllocRows.push({
+            payment_id: p.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null
+          });
+        });
+      });
+      var payIds = PAYMENTS_DB.map(function(p) { return p.paymentId; });
+      await supabase.from("payment_allocations").delete().in("payment_id", payIds);
+      if (payAllocRows.length > 0) await supabase.from("payment_allocations").insert(payAllocRows);
+    }
+
+    // Save holdback payments — delete and re-insert allocations
+    var hbRows = HOLDBACK_PAYMENTS_DB.map(function(h) {
+      return {
+        hb_payment_id: h.hbPaymentId, source_invoice_id: h.sourceInvoiceId,
+        amount: h.amount, date: h.date, currency: h.currency
+      };
+    });
+    if (hbRows.length > 0) {
+      await supabase.from("holdback_payments").upsert(hbRows, { onConflict: "hb_payment_id" });
+      var hbAllocRows = [];
+      HOLDBACK_PAYMENTS_DB.forEach(function(h) {
+        (h.allocations || []).forEach(function(a) {
+          hbAllocRows.push({
+            hb_payment_id: h.hbPaymentId, target_id: a.targetId, amount: a.amount, type: a.type || "interest"
+          });
+        });
+      });
+      var hbIds = HOLDBACK_PAYMENTS_DB.map(function(h) { return h.hbPaymentId; });
+      await supabase.from("holdback_payment_allocations").delete().in("hb_payment_id", hbIds);
+      if (hbAllocRows.length > 0) await supabase.from("holdback_payment_allocations").insert(hbAllocRows);
+    }
+
+    // Save supplier payment queue
+    var spqRows = SUPPLIER_PAYMENT_QUEUE.map(function(q) {
+      return {
+        id: q.id, type: q.type, invoice_id: q.invoiceId || null, invoice_ids: q.invoiceIds || [],
+        supplier_name: q.supplierName, supplier_id: q.supplierId || null,
+        bank_name: q.bankName || null, bank_details: q.bankDetails || null,
+        amount: q.amount, currency: q.currency, status: q.status || "Pending",
+        program_id: q.programId || null, program_name: q.programName || null,
+        created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null
+      };
+    });
+    if (spqRows.length > 0) await supabase.from("supplier_payment_queue").upsert(spqRows, { onConflict: "id" });
+
+    // Save credit notes
+    var cnRows = CREDIT_NOTES_DB.map(function(cn) {
+      return {
+        credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
+        date: cn.date, reference: cn.reference || "",
+        supplier_name: cn.supplierName, buyer_name: cn.buyerName,
+        created_display: cn.createdDisplay || null, allocations: cn.allocations || []
+      };
+    });
+    if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
+
+    // Save audit log — delete all and re-insert
+    var auditRows = AUDIT_LOG.map(function(a) {
+      return {
+        timestamp: a.timestamp, display_time: a.displayTime,
+        action: a.action, details: a.details, context: a.context || {}
+      };
+    });
+    await supabase.from("audit_log").delete().gte("id", 0);
+    if (auditRows.length > 0) await supabase.from("audit_log").insert(auditRows);
+  } catch (e) { console.error("Supabase save error:", e); }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1277,7 +1583,10 @@ export default function FactoringDashboard() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "var(--muted)" }}>
               <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{st.n} invoices</span>
               <span style={{ width: 1, height: 16, background: "var(--border)" }} />
-              <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt(viewDate)}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Calendar size={14} />
+                <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", cursor: "pointer" }} />
+              </div>
             </div>
           </div>
       <div style={{ padding: "20px 24px", maxWidth: "none" }}>
@@ -7409,7 +7718,7 @@ export default function FactoringDashboard() {
                       };
                       reader.readAsText(file);
                     }} />
-                    <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { localStorage.removeItem("factorflow-data"); window.location.reload(); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
+                    <button onClick={function() { if (confirm("Reset all data to defaults? This will clear all changes, audit log, holdback payments, and payment queue.")) { Promise.all([supabase.from("payment_allocations").delete().gte("id",0),supabase.from("holdback_payment_allocations").delete().gte("id",0)]).then(function(){return Promise.all([supabase.from("audit_log").delete().gte("id",0),supabase.from("supplier_payment_queue").delete().neq("id",""),supabase.from("credit_notes").delete().neq("credit_note_id",""),supabase.from("holdback_payments").delete().neq("hb_payment_id",""),supabase.from("payments").delete().neq("payment_id",""),supabase.from("invoices").delete().neq("id",""),supabase.from("funding_programs").delete().neq("id",""),supabase.from("service_providers").delete().neq("id",""),supabase.from("buyers").delete().neq("id",""),supabase.from("suppliers").delete().neq("id","")]);}).then(function(){window.location.reload();}); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reset All Data</button>
                   </div>
                 </div>
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
