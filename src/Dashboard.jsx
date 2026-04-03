@@ -896,6 +896,9 @@ export default function FactoringDashboard() {
   var lrS = useState(""), loginError = lrS[0], setLoginError = lrS[1];
   var liS = useState(false), loggingIn = liS[0], setLoggingIn = liS[1];
   var spqS = useState(""), spSearch = spqS[0], setSpSearch = spqS[1];
+  var spfS = useState("all"), spFsFilter = spfS[0], setSpFsFilter = spfS[1];
+  var spbS = useState("all"), spBuyerFilter = spbS[0], setSpBuyerFilter = spbS[1];
+  var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
 
   function loadUserProfile(userId) {
     supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
@@ -1715,7 +1718,7 @@ export default function FactoringDashboard() {
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setExp(null); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpTypeFilter("all"); setExp(null); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
             React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
@@ -1975,37 +1978,53 @@ export default function FactoringDashboard() {
             /* INVOICES TAB */
             spPortalTab === "supplier" && (function() {
               var filteredSpInvs = spInvs;
+              if (spFsFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.fundingStatus === spFsFilter; });
+              if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.buyerName === spBuyerFilter; });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
-                filteredSpInvs = spInvs.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) > -1 || inv.buyerName.toLowerCase().indexOf(s) > -1 || inv.invoiceStatus.toLowerCase().indexOf(s) > -1 || (inv.fundingStatus || "").toLowerCase().indexOf(s) > -1; });
+                filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) > -1 || inv.buyerName.toLowerCase().indexOf(s) > -1 || inv.invoiceStatus.toLowerCase().indexOf(s) > -1 || (inv.fundingStatus || "").toLowerCase().indexOf(s) > -1; });
               }
+              var spBuyers = [];
+              var seenBuyers = {};
+              spInvs.forEach(function(inv) { if (!seenBuyers[inv.buyerName]) { seenBuyers[inv.buyerName] = true; spBuyers.push(inv.buyerName); } });
+              spBuyers.sort();
+              var spFsOptions = [];
+              var seenFs = {};
+              spInvs.forEach(function(inv) { var fs = inv.fundingStatus || "pending"; if (!seenFs[fs]) { seenFs[fs] = true; spFsOptions.push(fs); } });
+              var filterSel = { padding: "7px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, outline: "none", cursor: "pointer", fontFamily: spFont };
               return React.createElement("div", null,
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
                 React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Invoices"),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search invoices...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 200, fontFamily: spFont } }),
-                  spSearch ? React.createElement("button", { onClick: function() { setSpSearch(""); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 160, fontFamily: spFont } }),
+                  React.createElement("select", { value: spFsFilter, onChange: function(e) { setSpFsFilter(e.target.value); }, style: filterSel },
+                    React.createElement("option", { value: "all" }, "All Statuses"),
+                    spFsOptions.map(function(fs) { var fst = FST[fs] || { label: fs }; return React.createElement("option", { key: fs, value: fs }, fst.label); })
+                  ),
+                  React.createElement("select", { value: spBuyerFilter, onChange: function(e) { setSpBuyerFilter(e.target.value); }, style: filterSel },
+                    React.createElement("option", { value: "all" }, "All Buyers"),
+                    spBuyers.map(function(b) { return React.createElement("option", { key: b, value: b }, b); })
+                  ),
+                  (spSearch || spFsFilter !== "all" || spBuyerFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredSpInvs.length + " of " + spInvs.length)
                 )
               ),
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
-                filteredSpInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, spSearch ? "No invoices match your search." : "No invoices yet.") :
+                filteredSpInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, spSearch || spFsFilter !== "all" || spBuyerFilter !== "all" ? "No invoices match your filters." : "No invoices yet.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
                   React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }, className: "sp-table" },
                     React.createElement("colgroup", null,
-                      React.createElement("col", { style: { width: "11%" } }),
+                      React.createElement("col", { style: { width: "14%" } }),
+                      React.createElement("col", { style: { width: "18%" } }),
+                      React.createElement("col", { style: { width: "15%" } }),
+                      React.createElement("col", { style: { width: "15%" } }),
+                      React.createElement("col", { style: { width: "17%" } }),
                       React.createElement("col", { style: { width: "16%" } }),
-                      React.createElement("col", { style: { width: "12%" } }),
-                      React.createElement("col", { style: { width: "10%" } }),
-                      React.createElement("col", { style: { width: "11%" } }),
-                      React.createElement("col", { style: { width: "11%" } }),
-                      React.createElement("col", { style: { width: "12%" } }),
-                      React.createElement("col", { style: { width: "12%" } }),
                       React.createElement("col", { style: { width: "5%" } })
                     ),
                     React.createElement("thead", null,
                       React.createElement("tr", null,
-                        ["Invoice", "Buyer", "Amount", "Status", "Funded", "Due", "Capital Due", "Balance", ""].map(function(h) {
+                        ["Invoice Number", "Buyer", "Invoice Amount", "Advance Provided", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
                       )
@@ -2019,24 +2038,23 @@ export default function FactoringDashboard() {
                         var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
                         var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past due";
                         var matColor = daysToMat >= 0 ? spGreen : spRed;
+                        var fundingOS = r2((inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0));
                         return React.createElement("tbody", { key: inv.id },
                           React.createElement("tr", { style: { cursor: "pointer", borderBottom: isExpanded ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isExpanded ? null : "sp-" + inv.id); } },
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
                             React.createElement("td", { style: portalTd }, inv.buyerName),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
+                            React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: fundingOS > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(fundingOS, inv.currency)),
                             React.createElement("td", { style: portalTd },
                               React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
                             ),
-                            React.createElement("td", { style: portalTd }, fmt(inv.fundedDate)),
-                            React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText }) }, fmt(inv.dueDate)),
-                            React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
-                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: (inv.balanceOwed || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.balanceOwed || 0, inv.currency)),
                             React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
                               React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpanded ? "\u25B2" : "\u25BC")
                             )
                           ),
                           isExpanded ? React.createElement("tr", null,
-                            React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
@@ -2055,19 +2073,21 @@ export default function FactoringDashboard() {
                                     inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Reference"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
                                     inv.purchaseOrder ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Purchase Order"), React.createElement("span", { style: spVal }, inv.purchaseOrder)) : null
                                   ),
-                                  /* Funding Details */
+                                  /* Funding Details — updated layout */
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                     React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10B981", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #10B98140" } }, "Funding Details"),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funding Status"), React.createElement("span", null, React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funded Date"), React.createElement("span", { style: spVal }, fmt(inv.fundedDate))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Due"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.capitalDue || 0, inv.currency))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback"), React.createElement("span", { style: spVal }, money(inv.holdback || 0, inv.currency))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.interestCharged || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Advance Provided"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.capitalDue || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Initial Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.interestCharged || 0, inv.currency))),
+                                    React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.capitalOutstanding || 0) > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(inv.capitalOutstanding || 0, inv.currency))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Balance Owed"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700 }) }, money(inv.balanceOwed || 0, inv.currency))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : spMuted }) }, money(inv.holdbackAvailable || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.interestOutstanding || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.interestOutstanding || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.penaltyInterest || 0) > 0.01 ? spRed : spGreen }) }, money(inv.penaltyInterest || 0, inv.currency))),
+                                    React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: Object.assign({}, spLbl, { fontWeight: 700, color: spText }) }, "Total Outstanding Balance"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700, fontSize: 14 }) }, money(inv.balanceOwed || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Total Repaid"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, money(inv.totalRepaid || 0, inv.currency))),
-                                    inv.fullyRepaidDate ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Fully Repaid Date"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, fmt(inv.fullyRepaidDate))) : null
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : spMuted }) }, money(inv.holdbackAvailable || 0, inv.currency)))
                                   )
                                 ),
                                 /* Status History */
@@ -2095,16 +2115,25 @@ export default function FactoringDashboard() {
             /* PAYMENTS TO PELAGIC TAB */
             spPortalTab === "payments" && (function() {
               var filteredPTP = spAllPaysToPelagic;
+              if (spTypeFilter !== "all") filteredPTP = filteredPTP.filter(function(ep) { return ep.pay.currency === spTypeFilter; });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
-                filteredPTP = spAllPaysToPelagic.filter(function(ep) { return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }) || ep.pay.reference.toLowerCase().indexOf(s) > -1; });
+                filteredPTP = filteredPTP.filter(function(ep) { return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }) || ep.pay.reference.toLowerCase().indexOf(s) > -1; });
               }
+              var ptpCcys = [];
+              var seenCcys = {};
+              spAllPaysToPelagic.forEach(function(ep) { if (!seenCcys[ep.pay.currency]) { seenCcys[ep.pay.currency] = true; ptpCcys.push(ep.pay.currency); } });
+              var filterSel = { padding: "7px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, outline: "none", cursor: "pointer", fontFamily: spFont };
               return React.createElement("div", null,
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
                 React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Payments to Pelagic"),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search payments...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 200, fontFamily: spFont } }),
-                  spSearch ? React.createElement("button", { onClick: function() { setSpSearch(""); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 160, fontFamily: spFont } }),
+                  ptpCcys.length > 1 ? React.createElement("select", { value: spTypeFilter, onChange: function(e) { setSpTypeFilter(e.target.value); }, style: filterSel },
+                    React.createElement("option", { value: "all" }, "All Currencies"),
+                    ptpCcys.map(function(c) { return React.createElement("option", { key: c, value: c }, c); })
+                  ) : null,
+                  (spSearch || spTypeFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpTypeFilter("all"); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredPTP.length + " of " + spAllPaysToPelagic.length)
                 )
               ),
@@ -2174,16 +2203,23 @@ export default function FactoringDashboard() {
             /* PAYMENTS TO YOU TAB */
             spPortalTab === "program" && (function() {
               var filteredPTY = spAllPaymentsToYou;
+              if (spTypeFilter !== "all") filteredPTY = filteredPTY.filter(function(p) { return p.type === spTypeFilter; });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
-                filteredPTY = spAllPaymentsToYou.filter(function(p) { return p.id.toLowerCase().indexOf(s) > -1 || p.type.toLowerCase().indexOf(s) > -1 || p.reference.toLowerCase().indexOf(s) > -1; });
+                filteredPTY = filteredPTY.filter(function(p) { return p.id.toLowerCase().indexOf(s) > -1 || p.type.toLowerCase().indexOf(s) > -1 || p.reference.toLowerCase().indexOf(s) > -1; });
               }
+              var filterSel = { padding: "7px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, outline: "none", cursor: "pointer", fontFamily: spFont };
               return React.createElement("div", null,
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
                 React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Payments to You"),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search payments...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 200, fontFamily: spFont } }),
-                  spSearch ? React.createElement("button", { onClick: function() { setSpSearch(""); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 160, fontFamily: spFont } }),
+                  React.createElement("select", { value: spTypeFilter, onChange: function(e) { setSpTypeFilter(e.target.value); }, style: filterSel },
+                    React.createElement("option", { value: "all" }, "All Types"),
+                    React.createElement("option", { value: "Funding" }, "Funding"),
+                    React.createElement("option", { value: "Holdback Return" }, "Holdback Return")
+                  ),
+                  (spSearch || spTypeFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpTypeFilter("all"); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredPTY.length + " of " + spAllPaymentsToYou.length)
                 )
               ),
