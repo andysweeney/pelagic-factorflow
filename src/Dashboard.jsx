@@ -1808,7 +1808,12 @@ export default function FactoringDashboard() {
           React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "0", maxWidth: 1200 } },
             /* Top bar with date picker */
             React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
-              React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History" }[spPortalTab] || ""),
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History" }[spPortalTab] || ""),
+                spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
+                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
+                ) : null
+              ),
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
                 React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "View as of"),
                 React.createElement("input", { type: "date", value: viewDate, onChange: function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); } }, style: { padding: "6px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, fontFamily: spMono, outline: "none", cursor: "pointer" } }),
@@ -1819,12 +1824,7 @@ export default function FactoringDashboard() {
 
             /* OVERVIEW TAB */
             spPortalTab === "company" && React.createElement("div", null,
-              React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } },
-                React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Overview"),
-                spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 13, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer", minWidth: 200 } },
-                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
-                ) : null
-              ),
+              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
               React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 } },
                 /* Left: stat cards — 2x2 with merged Outstanding Balance */
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } },
