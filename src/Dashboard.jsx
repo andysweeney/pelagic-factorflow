@@ -1831,37 +1831,184 @@ export default function FactoringDashboard() {
                   )
                 );
               })(),
-              /* Invoice status breakdown */
-              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
-                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Invoice Status"),
-                React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
-                  (function() {
-                    var counts = {};
-                    spInvs.forEach(function(inv) { var s = inv.invoiceStatus || "Pending"; counts[s] = (counts[s] || 0) + 1; });
-                    return Object.entries(counts).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) {
-                      return React.createElement("div", { key: e[0], style: { padding: "8px 16px", borderRadius: 8, background: "#1A2744", border: "1px solid " + spBorder, fontFamily: spFont } },
-                        React.createElement("span", { style: { fontSize: 12, color: spMuted } }, e[0] + ": "),
-                        React.createElement("span", { style: { fontSize: 14, fontWeight: 700, color: spText, fontFamily: spMono } }, e[1])
+              /* Stacked area chart — capital by funding status over time */
+              (function() {
+                if (spInvs.length === 0) return null;
+                var startDate = null;
+                spInvs.forEach(function(inv) {
+                  if (inv.fundedDate && (!startDate || inv.fundedDate < startDate)) startDate = inv.fundedDate;
+                });
+                if (!startDate) return null;
+                // Collect all events: funded adds to a status, payments move between statuses
+                // We'll compute snapshots by stepping through days
+                var statusKeys = ["funded", "partial_recovery", "overdue", "at_risk", "recovery_mode"];
+                var statusColors = { funded: "#0EA5E9", partial_recovery: "#D97706", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626" };
+                var end = viewDate;
+                var totalDays = daysBetween(startDate, end);
+                var maxPoints = 120;
+                var step = totalDays > maxPoints ? Math.ceil(totalDays / maxPoints) : 1;
+                var chartData = [];
+                var d = startDate;
+                while (d <= end) {
+                  var snapshot = processForDate(d, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
+                  var byStatus = {};
+                  statusKeys.forEach(function(k) { byStatus[k] = 0; });
+                  snapshot.invoices.filter(function(inv) {
+                    return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
+                  }).forEach(function(inv) {
+                    var fs = inv.fundingStatus;
+                    if (byStatus[fs] !== undefined) byStatus[fs] += inv.capitalOutstanding || 0;
+                  });
+                  var label = new Date(d + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: totalDays > 180 ? "2-digit" : undefined });
+                  var point = { name: label };
+                  statusKeys.forEach(function(k) { point[k] = r2(byStatus[k]); });
+                  chartData.push(point);
+                  d = addDays(d, step);
+                }
+                if (chartData.length < 2) return null;
+                return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
+                  React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 4, fontFamily: spFont } }, "Funds Advanced to " + spSupName),
+                  React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 16, fontFamily: spFont } }, "Capital outstanding by funding status"),
+                  React.createElement("div", { style: { width: "100%", height: 240 } },
+                    React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
+                      React.createElement(AreaChart, { data: chartData, margin: { top: 8, right: 16, left: 16, bottom: 8 } },
+                        React.createElement("defs", null,
+                          statusKeys.map(function(k) {
+                            return React.createElement("linearGradient", { key: k, id: "spGrad_" + k, x1: "0", y1: "0", x2: "0", y2: "1" },
+                              React.createElement("stop", { offset: "0%", stopColor: statusColors[k], stopOpacity: 0.4 }),
+                              React.createElement("stop", { offset: "100%", stopColor: statusColors[k], stopOpacity: 0.05 })
+                            );
+                          })
+                        ),
+                        React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1C2A4280", vertical: false }),
+                        React.createElement(XAxis, { dataKey: "name", tick: { fontSize: 10, fill: "#64748B", fontFamily: "'Inter', sans-serif" }, axisLine: { stroke: "#1C2A42" }, tickLine: false, interval: "preserveStartEnd" }),
+                        React.createElement(YAxis, { tick: { fontSize: 10, fill: "#64748B", fontFamily: "'JetBrains Mono', monospace" }, axisLine: false, tickLine: false, tickFormatter: function(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + "m" : v >= 1000 ? (v / 1000).toFixed(0) + "k" : v; } }),
+                        React.createElement(Tooltip, { contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val, name) { var fst = FST[name] || { label: name }; return [money(val, spDisplayCcy), fst.label]; } }),
+                        statusKeys.map(function(k) {
+                          return React.createElement(Area, { key: k, type: "monotone", dataKey: k, stackId: "1", stroke: statusColors[k], strokeWidth: 1.5, fill: "url(#spGrad_" + k + ")", dot: false, activeDot: { r: 4, fill: statusColors[k], stroke: "#fff", strokeWidth: 2 } });
+                        })
+                      )
+                    )
+                  ),
+                  React.createElement("div", { style: { display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap", justifyContent: "center" } },
+                    statusKeys.map(function(k) {
+                      var fst = FST[k] || { label: k };
+                      return React.createElement("div", { key: k, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: spMuted, fontFamily: spFont } },
+                        React.createElement("div", { style: { width: 10, height: 10, borderRadius: 2, background: statusColors[k] } }),
+                        fst.label
                       );
-                    });
-                  })()
-                )
-              ),
-              /* Funding status breakdown */
-              React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px" } },
-                React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Funding Status"),
-                React.createElement("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
-                  (function() {
-                    var fCounts = {};
-                    spInvs.forEach(function(inv) { var fs = inv.fundingStatus || "pending"; var fst = FST[fs] || FST.funded; fCounts[fst.label] = (fCounts[fst.label] || 0) + 1; });
-                    return Object.entries(fCounts).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) {
-                      return React.createElement("div", { key: e[0], style: { padding: "8px 16px", borderRadius: 8, background: "#1A2744", border: "1px solid " + spBorder, fontFamily: spFont } },
-                        React.createElement("span", { style: { fontSize: 12, color: spMuted } }, e[0] + ": "),
-                        React.createElement("span", { style: { fontSize: 14, fontWeight: 700, color: spText, fontFamily: spMono } }, e[1])
-                      );
-                    });
-                  })()
-                )
+                    })
+                  )
+                );
+              })(),
+              /* Donut chart + Payment Activities side by side */
+              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 } },
+                /* Donut chart — Current Invoice Funding Status */
+                (function() {
+                  var donutData = [];
+                  var statusCap = {};
+                  var statusCount = {};
+                  spInvs.forEach(function(inv) {
+                    if (inv.fundingStatus === "fully_repaid" || inv.fundingStatus === "write_off" || inv.fundingStatus === "pending") return;
+                    var fs = inv.fundingStatus || "funded";
+                    var fst = FST[fs] || FST.funded;
+                    if (!statusCap[fs]) { statusCap[fs] = 0; statusCount[fs] = 0; }
+                    statusCap[fs] += inv.capitalOutstanding || 0;
+                    statusCount[fs] += 1;
+                  });
+                  var donutColors = { funded: "#0EA5E9", partial_recovery: "#D97706", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626", approved: "#38BDF8" };
+                  Object.keys(statusCap).forEach(function(fs) {
+                    if (statusCap[fs] < 0.01) return;
+                    var fst = FST[fs] || FST.funded;
+                    donutData.push({ name: fst.label, value: r2(statusCap[fs]), count: statusCount[fs], color: donutColors[fs] || "#64748B", key: fs });
+                  });
+                  donutData.sort(function(a, b) { return b.value - a.value; });
+                  var totalDonut = donutData.reduce(function(s, d) { return s + d.value; }, 0);
+                  if (donutData.length === 0) return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px" } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Current Invoice Funding Status"),
+                    React.createElement("div", { style: { color: spMuted, fontSize: 12, fontStyle: "italic", textAlign: "center", padding: 20 } }, "No active invoices.")
+                  );
+                  var RADIAN = Math.PI / 180;
+                  function renderLabel(props) {
+                    var cx = props.cx, cy = props.cy, midAngle = props.midAngle, outerRadius = props.outerRadius, value = props.value, name = props.name;
+                    var radius = outerRadius + 28;
+                    var x = cx + radius * Math.cos(-midAngle * RADIAN);
+                    var y = cy + radius * Math.sin(-midAngle * RADIAN);
+                    return React.createElement("text", { x: x, y: y, fill: "#94A3B8", textAnchor: x > cx ? "start" : "end", dominantBaseline: "central", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }, money(value, spDisplayCcy));
+                  }
+                  return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px" } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 8, fontFamily: spFont } }, "Current Invoice Funding Status"),
+                    React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 8, fontFamily: spFont } }, "Capital outstanding: " + money(r2(totalDonut), spDisplayCcy)),
+                    React.createElement("div", { style: { width: "100%", height: 260, display: "flex", justifyContent: "center" } },
+                      React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
+                        React.createElement(PieChart, null,
+                          React.createElement(Pie, {
+                            data: donutData, cx: "50%", cy: "50%", innerRadius: 55, outerRadius: 85,
+                            dataKey: "value", nameKey: "name", paddingAngle: 3, label: renderLabel, labelLine: { stroke: "#334155", strokeWidth: 1 },
+                            stroke: "#131C2E", strokeWidth: 2
+                          },
+                            donutData.map(function(d, i) { return React.createElement(Cell, { key: i, fill: d.color }); })
+                          ),
+                          React.createElement(Tooltip, {
+                            contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" },
+                            formatter: function(val, name, props) {
+                              var entry = props.payload;
+                              return [money(val, spDisplayCcy) + " (" + entry.count + " invoice" + (entry.count !== 1 ? "s" : "") + ")", entry.name];
+                            }
+                          })
+                        )
+                      )
+                    ),
+                    React.createElement("div", { style: { display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center", marginTop: 4 } },
+                      donutData.map(function(d) {
+                        return React.createElement("div", { key: d.key, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: spMuted, fontFamily: spFont } },
+                          React.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: d.color } }),
+                          d.name + " (" + d.count + ")"
+                        );
+                      })
+                    )
+                  );
+                })(),
+                /* Payment Activities — last 10 */
+                (function() {
+                  var activities = [];
+                  // Payments to supplier (funding + holdback)
+                  spAllPaymentsToYou.forEach(function(p) {
+                    activities.push({ date: p.sortDate, display: p.date, type: p.type === "Funding" ? "Funded" : "Holdback Return", direction: "to_supplier", amount: p.amount, currency: p.currency, ref: p.reference, status: p.status });
+                  });
+                  // Payments from buyer allocated to supplier's invoices
+                  spAllPaysToPelagic.forEach(function(ep) {
+                    var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                    activities.push({ date: ep.pay.date, display: fmt(ep.pay.date), type: "Payment Received", direction: "to_pelagic", amount: totalAlloc, currency: ep.pay.currency, ref: ep.pay.paymentId, status: "Allocated" });
+                  });
+                  activities.sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+                  var last10 = activities.slice(0, 10);
+                  return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px" } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, "Payment Activities"),
+                    last10.length === 0 ? React.createElement("div", { style: { color: spMuted, fontSize: 12, fontStyle: "italic", textAlign: "center", padding: 20 } }, "No payment activity yet.") :
+                    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 0 } },
+                      last10.map(function(a, ai) {
+                        var isIn = a.direction === "to_pelagic";
+                        var dirColor = isIn ? spGreen : spAccent;
+                        var dirIcon = isIn ? "\u2192" : "\u2190";
+                        var dirLabel = isIn ? "Received" : "Paid Out";
+                        return React.createElement("div", { key: ai, style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: ai < last10.length - 1 ? "1px solid " + spBorder + "80" : "none" } },
+                          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                            React.createElement("div", { style: { width: 28, height: 28, borderRadius: 6, background: dirColor + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: dirColor, fontWeight: 700 } }, dirIcon),
+                            React.createElement("div", null,
+                              React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: spText, fontFamily: spFont } }, a.type),
+                              React.createElement("div", { style: { fontSize: 10, color: spMuted, fontFamily: spFont } }, a.display + (a.ref ? " \u2022 " + a.ref : ""))
+                            )
+                          ),
+                          React.createElement("div", { style: { textAlign: "right" } },
+                            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: dirColor, fontFamily: spMono } }, (isIn ? "+" : "-") + money(a.amount, a.currency)),
+                            React.createElement("div", { style: { fontSize: 9, color: spMuted, fontFamily: spFont, textTransform: "uppercase", letterSpacing: "0.05em" } }, dirLabel)
+                          )
+                        );
+                      })
+                    )
+                  );
+                })()
               )
             ),
 
