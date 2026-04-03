@@ -1060,6 +1060,7 @@ export default function FactoringDashboard() {
   var fpe1 = useState(null), editProg = fpe1[0], setEditProg = fpe1[1];
   var fps1 = useState({}), fundProgSelections = fps1[0], setFundProgSelections = fps1[1];
   var fup1 = useState(null), fundPopup = fup1[0], setFundPopup = fup1[1];
+  var rmtS = useState(null), remitPopup = rmtS[0], setRemitPopup = rmtS[1];
   var fuf1 = useState({}), fundPopupFields = fuf1[0], setFundPopupFields = fuf1[1];
   var adj1 = useState(null), adjInv = adj1[0], setAdjInv = adj1[1];
   var adj2 = useState(""), adjType = adj2[0], setAdjType = adj2[1];
@@ -1237,6 +1238,29 @@ export default function FactoringDashboard() {
     PAYMENTS_DB.push({ paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [] });
     auditLog("Payment Created", payId + " created: " + money(payAmt, newPayCcy) + " on " + newPayDate + (newPayRef.trim() ? " (Ref: " + newPayRef.trim() + ")" : ""), { paymentId: payId, amount: payAmt, currency: newPayCcy, date: newPayDate, reference: newPayRef.trim() });
     setShowNewPay(false); setNewPayId(""); setNewPayAmt(""); setNewPayDate(REF_DATE); setNewPayCcy("GBP"); setNewPayRef("");
+    setDataVer(function(v) { return v + 1; });
+  }
+
+  function remitToSupplier(paymentId, supplierName, amount, currency, programId) {
+    var supplier = getParentSupplier(supplierName);
+    var bankInfo = getSupplierBankDetails(supplierName, programId);
+    var prog = programId ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; }) : null;
+    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    var now = new Date();
+    SUPPLIER_PAYMENT_QUEUE.push({
+      id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
+      supplierName: supplierName, supplierId: supplier ? supplier.id : "",
+      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+      amount: r2(amount), currency: currency, status: "Completed",
+      programId: programId || "", programName: prog ? prog.name : "",
+      createdAt: now.toISOString(),
+      createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+      executedAt: now.toISOString(),
+      executedDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+      sourcePaymentId: paymentId
+    });
+    auditLog("Payment Remitted", paymentId + ": " + money(r2(amount), currency) + " remitted to " + supplierName + " (" + spqId + ")", { paymentId: paymentId, supplierName: supplierName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "" });
+    setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
   }
   function startEdit(inv) {
@@ -1752,13 +1776,17 @@ export default function FactoringDashboard() {
           return q.type === "funding" && (spInvIds[q.invoiceId] || (q.invoiceIds && q.invoiceIds.some(function(iid) { return spInvIds[iid]; })));
         }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.invoiceId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
+        var spRemittancePays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
+          return q.type === "remittance" && (q.supplierName === spSupName || getParentSupplierName(q.supplierName) === spSupName);
+        }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
+
         var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) { return spInvIds[h.sourceInvoiceId]; }).map(function(h) {
           var supReturn = 0;
           (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
           return { id: h.hbPaymentId, type: "Holdback Return", date: fmt(h.date), amount: supReturn > 0 ? supReturn : h.amount, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: "", sortDate: h.date };
         });
 
-        var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
+        var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).concat(spRemittancePays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
 
         // Payments to Pelagic — incoming allocations
         var spAllPaysToPelagic = [];
@@ -6006,7 +6034,7 @@ export default function FactoringDashboard() {
               })()}
             </div>
           </div>
-          {allocs.length > 0 && <div style={{ padding: "16px 22px" }}>
+          {(allocs.length > 0 || getPayRemaining(allocPay) > 0.01) && <div style={{ padding: "16px 22px" }}>
             {confirmData && <div style={{ marginBottom: 14, padding: "14px 18px", borderRadius: 10, background: "#C08B3010", border: "1px solid #C08B3040" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#D97706", marginBottom: 8 }}>Later-dated payments will be unallocated:</div>
               {confirmData.later.map(function(l) { return <div key={l.pid} style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", marginBottom: 2 }}>{l.pid} ({l.invs.join(", ")})</div>; })}
@@ -6016,10 +6044,68 @@ export default function FactoringDashboard() {
               </div>
             </div>}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 13 }}><span style={{ color: "var(--muted)" }}>Allocating: </span><span style={{ color: "#059669", fontWeight: 600 }}>{money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency)}</span><span style={{ color: "var(--muted)" }}> to {allocs.length} invoice{allocs.length !== 1 ? "s" : ""}</span></div>
-              <button onClick={confirmAllocation} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #2B4C7E40" }}>Confirm Allocation</button>
+              <div style={{ fontSize: 13 }}>
+                {allocs.length > 0 && React.createElement("span", null, React.createElement("span", { style: { color: "var(--muted)" } }, "Allocating: "), React.createElement("span", { style: { color: "#059669", fontWeight: 600 } }, money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency)), React.createElement("span", { style: { color: "var(--muted)" } }, " to " + allocs.length + " invoice" + (allocs.length !== 1 ? "s" : "")))}
+                {(function() {
+                  var remBal = r2(getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
+                  return remBal > 0.01 ? React.createElement("span", { style: { color: "var(--muted)", marginLeft: allocs.length > 0 ? 12 : 0 } }, "Remaining: ", React.createElement("span", { style: { color: "var(--accent)", fontWeight: 600 } }, money(remBal, allocPay.currency))) : null;
+                })()}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {allocs.length > 0 && <button onClick={confirmAllocation} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 14px #2B4C7E40" }}>Confirm Allocation</button>}
+                {(function() {
+                  var remBal = r2(getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
+                  if (remBal < 0.01) return null;
+                  return <button onClick={function() { setRemitPopup({ paymentId: allocPay.paymentId, amount: remBal, currency: allocPay.currency, supplier: "", programId: "" }); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #059669", background: "#05966910", color: "#059669", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Remit {money(remBal, allocPay.currency)} to Supplier</button>;
+                })()}
+              </div>
             </div>
           </div>}
+        </div>}
+
+        {/* Remit to Supplier Popup */}
+        {remitPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setRemitPopup(null); }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: "28px", maxWidth: 480, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#059669", marginBottom: 4 }}>Remit to Supplier</div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Send {money(remitPopup.amount, remitPopup.currency)} from {remitPopup.paymentId} directly to a supplier</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Supplier</label>
+                <select value={remitPopup.supplier} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
+                  <option value="">Select supplier...</option>
+                  {SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Program (optional)</label>
+                <select value={remitPopup.programId} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { programId: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
+                  <option value="">No program</option>
+                  {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name} ({fp.currency})</option>; })}
+                </select>
+              </div>
+              <div style={{ padding: "12px 16px", borderRadius: 8, background: "#05966908", border: "1px solid #05966920" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>Amount to remit</span>
+                  <span style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(remitPopup.amount, remitPopup.currency)}</span>
+                </div>
+                {remitPopup.supplier && (function() {
+                  var bankInfo = getSupplierBankDetails(remitPopup.supplier, remitPopup.programId);
+                  return bankInfo.bankName ? <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
+                    <span style={{ color: "var(--muted)" }}>Bank: </span>{bankInfo.bankName}
+                    {bankInfo.bankDetails ? <span style={{ marginLeft: 8, color: "var(--muted)" }}>{bankInfo.bankDetails}</span> : null}
+                    {bankInfo.bankVerified ? <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: "#05966914", color: "#059669" }}>{"\u2713"} Verified</span> : <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: "#EF444414", color: "#EF4444" }}>Unverified</span>}
+                  </div> : <div style={{ marginTop: 8, fontSize: 11, color: "#D97706" }}>No bank details on file</div>;
+                })()}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button disabled={!remitPopup.supplier} onClick={function() {
+                if (allocs.length > 0) confirmAllocation();
+                remitToSupplier(remitPopup.paymentId, remitPopup.supplier, remitPopup.amount, remitPopup.currency, remitPopup.programId);
+              }} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: remitPopup.supplier ? "#059669" : "var(--border)", color: remitPopup.supplier ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: remitPopup.supplier ? "pointer" : "default" }}>{allocs.length > 0 ? "Allocate & Remit" : "Remit to Supplier"}</button>
+              <button onClick={function() { setRemitPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
         </div>}
 
         {/* ========== CREDIT NOTES VIEW ========== */}
