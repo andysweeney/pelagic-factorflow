@@ -119,6 +119,11 @@ function getEligiblePrograms(inv, supDilRates) {
     if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) return false;
     if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) return false;
     if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) return false;
+    // Single invoice limit per supplier per program
+    var parentSupObj = getParentSupplier(inv.supplierName);
+    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
+    }
     return true;
   });
 }
@@ -266,6 +271,8 @@ async function loadPersistedData() {
           bankName: row.bank_name || "", bankDetails: row.account_name ? [row.sort_code, row.account_number, row.iban, row.bic].filter(Boolean).join(" / ") : "",
           accountName: row.account_name || "", sortCode: row.sort_code || "", accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
           bankVerified: false,
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {},
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
           branches: row.branches || []
         });
@@ -442,6 +449,8 @@ async function savePersistedData() {
         contact5_name: s.contact5Name || null, contact5_email: s.contact5Email || null, contact5_phone: s.contact5Phone || null, contact5_signatory: s.contact5Signatory || false,
         bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
         account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
+        credit_limits: s.creditLimits || {},
+        single_invoice_limits: s.singleInvoiceLimits || {},
         rates: s.rates || [], branches: s.branches || []
       };
     });
@@ -2317,7 +2326,42 @@ export default function FactoringDashboard() {
                       );
                     })
                   )
-                )
+                ),
+                /* Program Limits — Credit Limits & Single Invoice Limits */
+                (function() {
+                  if (!spSupplier) return null;
+                  var cl = spSupplier.creditLimits || {};
+                  var sil = spSupplier.singleInvoiceLimits || {};
+                  var allProgIds = {};
+                  Object.keys(cl).forEach(function(k) { if (cl[k] > 0) allProgIds[k] = true; });
+                  Object.keys(sil).forEach(function(k) { if (sil[k] > 0) allProgIds[k] = true; });
+                  var entries = Object.keys(allProgIds);
+                  if (entries.length === 0) return null;
+                  return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Program Limits"),
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                      React.createElement("thead", null,
+                        React.createElement("tr", null,
+                          ["Program", "Currency", "Credit Limit", "Max Invoice Size"].map(function(h) {
+                            return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
+                          })
+                        )
+                      ),
+                      React.createElement("tbody", null,
+                        entries.map(function(fpId) {
+                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                          var ccy = prog ? prog.currency : "GBP";
+                          return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, ccy),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: cl[fpId] > 0 ? spAccent : spMuted, fontWeight: cl[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, cl[fpId] > 0 ? money(cl[fpId], ccy) : "No limit"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: sil[fpId] > 0 ? spAccent : spMuted, fontWeight: sil[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, sil[fpId] > 0 ? money(sil[fpId], ccy) : "No limit")
+                          );
+                        })
+                      )
+                    )
+                  );
+                })()
               ) : React.createElement("div", { style: { color: spMuted, fontSize: 13 } }, "Supplier information not available.")
             ),
 
@@ -6031,6 +6075,38 @@ export default function FactoringDashboard() {
                 if (oldDirCount !== newDirCount) {
                   changes.push("Directors: " + oldDirCount + " \u2192 " + newDirCount);
                 }
+                // Track per-program credit limit changes
+                var oldCLs = ent.creditLimits || {};
+                var newCLs = f.creditLimits || {};
+                var clProgIds = {};
+                Object.keys(oldCLs).forEach(function(k) { clProgIds[k] = true; });
+                Object.keys(newCLs).forEach(function(k) { clProgIds[k] = true; });
+                Object.keys(clProgIds).forEach(function(fpId) {
+                  var oldV = oldCLs[fpId] || 0;
+                  var newV = newCLs[fpId] || 0;
+                  if (oldV !== newV) {
+                    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                    var pName = prog ? prog.name : fpId;
+                    var ccy = prog ? prog.currency : "GBP";
+                    changes.push("Credit Limit (" + pName + "): " + (oldV > 0 ? money(oldV, ccy) : "No limit") + " \u2192 " + (newV > 0 ? money(newV, ccy) : "No limit"));
+                  }
+                });
+                // Track single invoice limit changes
+                var oldSIL = ent.singleInvoiceLimits || {};
+                var newSIL = f.singleInvoiceLimits || {};
+                var allProgIds = {};
+                Object.keys(oldSIL).forEach(function(k) { allProgIds[k] = true; });
+                Object.keys(newSIL).forEach(function(k) { allProgIds[k] = true; });
+                Object.keys(allProgIds).forEach(function(fpId) {
+                  var oldV = oldSIL[fpId] || 0;
+                  var newV = newSIL[fpId] || 0;
+                  if (oldV !== newV) {
+                    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                    var pName = prog ? prog.name : fpId;
+                    var ccy = prog ? prog.currency : "GBP";
+                    changes.push("Invoice Limit (" + pName + "): " + (oldV > 0 ? money(oldV, ccy) : "No limit") + " \u2192 " + (newV > 0 ? money(newV, ccy) : "No limit"));
+                  }
+                });
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
                 Object.assign(ent, f);
@@ -7025,6 +7101,27 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", gap: 8, alignItems: "end" }}><div style={{ flex: 1 }}>{fld("Contact 5 Phone", "contact5Phone", "tel")}</div><label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", paddingBottom: 8 }}><input type="checkbox" checked={f.contact5Signatory || false} onChange={function() { setManageFields(function(p) { return Object.assign({}, p, { contact5Signatory: !p.contact5Signatory }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: f.contact5Signatory ? "#059669" : "var(--muted)", whiteSpace: "nowrap" }}>Signatory</span></label></div>
                 </div>
               </div>
+              {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Program</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>CCY</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
+                  </tr></thead>
+                  <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
+                    var cl = (f.creditLimits || {})[fp.id];
+                    var sil = (f.singleInvoiceLimits || {})[fp.id];
+                    return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
+                      <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--muted)" }}>{fp.currency}</td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>}
               {isSupLike && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
                   {fld("Bank Name", "bankName")}
@@ -7465,8 +7562,26 @@ export default function FactoringDashboard() {
                   var supRate = getSupplierRate(inv.supplierName);
                   var maxCap = r2(inv.amount * prog.maxAdvanceRate);
                   var defaultCap = r2(inv.amount * supRate.advanceRate);
+                  // Apply per-program credit limit cap
+                  var parentSupplier = getParentSupplier(inv.supplierName);
+                  var creditLimitForProg = 0;
+                  if (parentSupplier && parentSupplier.creditLimits && parentSupplier.creditLimits[progId] > 0) {
+                    creditLimitForProg = parentSupplier.creditLimits[progId];
+                    var currentOS = 0;
+                    viewData.invoices.forEach(function(existInv) {
+                      if (existInv.id === inv.id) return;
+                      if (getParentSupplierName(existInv.supplierName) !== getParentSupplierName(inv.supplierName)) return;
+                      if (existInv.fundingStatus === "pending") return;
+                      if (existInv.fundingProgram !== progId) return;
+                      currentOS += (existInv.capitalOutstanding || 0) + (existInv.interestOutstanding || 0) + (existInv.penaltyInterest || 0);
+                    });
+                    var headroom = r2(creditLimitForProg - currentOS);
+                    if (headroom < 0) headroom = 0;
+                    if (headroom < maxCap) maxCap = headroom;
+                    if (defaultCap > maxCap) defaultCap = maxCap;
+                  }
                   setFundPopup({ inv: inv, prog: prog });
-                  setFundPopupFields({ capitalDue: String(Math.min(defaultCap, maxCap)), annualRate: String((supRate.annualRate * 100).toFixed(1)), maxCap: maxCap, minRate: prog.minInterestRate });
+                  setFundPopupFields({ capitalDue: String(Math.min(defaultCap, maxCap)), annualRate: String((supRate.annualRate * 100).toFixed(1)), maxCap: maxCap, minRate: prog.minInterestRate, creditLimitApplied: creditLimitForProg });
                 }
 
                 function confirmFundPopup() {
@@ -7559,6 +7674,7 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Fund Invoice: {fundPopup.inv.id}</div>
                       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>{fundPopup.inv.supplierName} / {fundPopup.inv.buyerName}</div>
                       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong></div>
+                      {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies — max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
                         <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
                           <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
