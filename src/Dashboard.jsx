@@ -920,6 +920,7 @@ export default function FactoringDashboard() {
   var spbS = useState("all"), spBuyerFilter = spbS[0], setSpBuyerFilter = spbS[1];
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
   var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
+  var sppgS = useState(0), spPage = sppgS[0], setSpPage = sppgS[1];
 
   function loadUserProfile(userId) {
     supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
@@ -1807,7 +1808,7 @@ export default function FactoringDashboard() {
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpTypeFilter("all"); setExp(null); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
             React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
@@ -1843,11 +1844,22 @@ export default function FactoringDashboard() {
                   React.createElement(PortalStat, { label: "Total Invoiced via Pelagic", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
                   React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
                   /* Outstanding Balance card — merged with Capital/Interest/Penalty breakdown */
-                  React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+                  (function() {
+                    var spSingleInvLimit = spSupplier && spSupplier.singleInvoiceLimits && spSupplier.singleInvoiceLimits[activeProgId] ? spSupplier.singleInvoiceLimits[activeProgId] : 0;
+                    return React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
                     React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: spAmber } }),
                     React.createElement("div", { style: { fontSize: 11, fontWeight: 500, color: spMuted, letterSpacing: "0.04em", marginBottom: 10, fontFamily: spFont } }, "Outstanding Balance"),
                     React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
-                    spCreditLimit > 0 ? React.createElement("div", { style: { fontSize: 10, color: spMuted, marginTop: 8, fontFamily: spMono } }, "Limit: " + money(spCreditLimit, spDisplayCcy) + " (" + (spCreditLimit > 0 ? (spBalanceOwed / spCreditLimit * 100).toFixed(0) + "% used" : "") + ")") : null,
+                    (spCreditLimit > 0 || spSingleInvLimit > 0) ? React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 3 } },
+                      spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Credit Limit"),
+                        React.createElement("span", { style: { color: spBalanceOwed > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy) + " (" + (spBalanceOwed / spCreditLimit * 100).toFixed(0) + "% used)")
+                      ) : null,
+                      spSingleInvLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Max Invoice Size"),
+                        React.createElement("span", { style: { color: spText, fontFamily: spMono, fontWeight: 600 } }, money(spSingleInvLimit, spDisplayCcy))
+                      ) : null
+                    ) : null,
                     React.createElement("div", { style: { marginTop: 10, paddingTop: 10, borderTop: "1px solid " + spBorder + "80", display: "flex", flexDirection: "column", gap: 4 } },
                       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: spFont } },
                         React.createElement("span", { style: { color: spMuted } }, "Capital"),
@@ -1862,7 +1874,7 @@ export default function FactoringDashboard() {
                         React.createElement("span", { style: { color: spRed, fontFamily: spMono } }, money(r2(spPenOS), spDisplayCcy))
                       )
                     )
-                  ),
+                  ); })(),
                   /* Dilution Rates card */
                   React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
                     React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#8B5CF6" } }),
@@ -1912,6 +1924,16 @@ export default function FactoringDashboard() {
                       actions.push({ type: "critical", icon: "\u26A1", color: spRed, title: "Invoice " + inv.id + " to " + inv.buyerName + " requires immediate action", sub: money(inv.capitalOutstanding || 0, inv.currency) + " outstanding", invId: inv.id });
                     } else if (fs === "overdue" || fs === "at_risk") {
                       actions.push({ type: "alert", icon: "\u23F3", color: fs === "overdue" ? spRed : "#8B5CF6", title: "Invoice " + inv.id + " to " + inv.buyerName + " is overdue", sub: money(inv.capitalOutstanding || 0, inv.currency) + " outstanding \u2022 " + fmt(inv.dueDate), invId: inv.id });
+                    }
+                  });
+                  // Unallocated credit notes
+                  CREDIT_NOTES_DB.filter(function(cn) {
+                    return cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName;
+                  }).forEach(function(cn) {
+                    var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
+                    if (totalAlloc < (cn.amount || 0) - 0.01) {
+                      var unalloc = r2((cn.amount || 0) - totalAlloc);
+                      actions.push({ type: "warning", icon: "\uD83D\uDCCB", color: spAmber, title: "Credit Note " + cn.id + " is unallocated", sub: money(unalloc, cn.currency) + " unallocated from " + cn.buyerName });
                     }
                   });
                   return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", display: "flex", flexDirection: "column" } },
@@ -2139,20 +2161,39 @@ export default function FactoringDashboard() {
               var seenFs = {};
               spInvs.forEach(function(inv) { var fs = inv.fundingStatus || "pending"; if (!seenFs[fs]) { seenFs[fs] = true; spFsOptions.push(fs); } });
               var filterSel = { padding: "7px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, outline: "none", cursor: "pointer", fontFamily: spFont };
+              // Pagination
+              var pageSize = 20;
+              var totalPages = Math.ceil(filteredSpInvs.length / pageSize);
+              var currentPage = Math.min(spPage, Math.max(0, totalPages - 1));
+              var pageInvs = filteredSpInvs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+              // Credit Notes for this supplier
+              var spCreditNotes = CREDIT_NOTES_DB.filter(function(cn) {
+                return cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName;
+              });
+              if (activeProgId) {
+                spCreditNotes = spCreditNotes.filter(function(cn) {
+                  // Filter CNs that have allocations to invoices on this program, or unallocated ones
+                  if (!cn.allocations || cn.allocations.length === 0) return true;
+                  return cn.allocations.some(function(a) {
+                    var inv = spInvs.find(function(i) { return i.id === a.invoiceId; });
+                    return inv && inv.fundingProgram === activeProgId;
+                  });
+                });
+              }
               return React.createElement("div", null,
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
                 React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Invoices"),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 160, fontFamily: spFont } }),
-                  React.createElement("select", { value: spFsFilter, onChange: function(e) { setSpFsFilter(e.target.value); }, style: filterSel },
+                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); setSpPage(0); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 160, fontFamily: spFont } }),
+                  React.createElement("select", { value: spFsFilter, onChange: function(e) { setSpFsFilter(e.target.value); setSpPage(0); }, style: filterSel },
                     React.createElement("option", { value: "all" }, "All Statuses"),
                     spFsOptions.map(function(fs) { var fst = FST[fs] || { label: fs }; return React.createElement("option", { key: fs, value: fs }, fst.label); })
                   ),
-                  React.createElement("select", { value: spBuyerFilter, onChange: function(e) { setSpBuyerFilter(e.target.value); }, style: filterSel },
+                  React.createElement("select", { value: spBuyerFilter, onChange: function(e) { setSpBuyerFilter(e.target.value); setSpPage(0); }, style: filterSel },
                     React.createElement("option", { value: "all" }, "All Buyers"),
                     spBuyers.map(function(b) { return React.createElement("option", { key: b, value: b }, b); })
                   ),
-                  (spSearch || spFsFilter !== "all" || spBuyerFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                  (spSearch || spFsFilter !== "all" || spBuyerFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpPage(0); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredSpInvs.length + " of " + spInvs.length)
                 )
               ),
@@ -2161,22 +2202,23 @@ export default function FactoringDashboard() {
                 React.createElement("div", { style: { overflowX: "auto" } },
                   React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }, className: "sp-table" },
                     React.createElement("colgroup", null,
-                      React.createElement("col", { style: { width: "14%" } }),
-                      React.createElement("col", { style: { width: "18%" } }),
-                      React.createElement("col", { style: { width: "15%" } }),
-                      React.createElement("col", { style: { width: "15%" } }),
-                      React.createElement("col", { style: { width: "17%" } }),
+                      React.createElement("col", { style: { width: "13%" } }),
                       React.createElement("col", { style: { width: "16%" } }),
-                      React.createElement("col", { style: { width: "5%" } })
+                      React.createElement("col", { style: { width: "13%" } }),
+                      React.createElement("col", { style: { width: "13%" } }),
+                      React.createElement("col", { style: { width: "10%" } }),
+                      React.createElement("col", { style: { width: "14%" } }),
+                      React.createElement("col", { style: { width: "14%" } }),
+                      React.createElement("col", { style: { width: "4%" } })
                     ),
                     React.createElement("thead", null,
                       React.createElement("tr", null,
-                        ["Invoice Number", "Buyer", "Invoice Amount", "Advance Provided", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
+                        ["Invoice Number", "Buyer", "Invoice Amount", "Advance Provided", "Due Date", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
                       )
                     ),
-                    filteredSpInvs.slice(0, 200).map(function(inv) {
+                    pageInvs.map(function(inv) {
                         var fst = FST[inv.fundingStatus] || FST.funded;
                         var isExpanded = exp === "sp-" + inv.id;
                         var spLbl = { fontSize: 10, color: spMuted, fontWeight: 600 };
@@ -2192,6 +2234,7 @@ export default function FactoringDashboard() {
                             React.createElement("td", { style: portalTd }, inv.buyerName),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
                             React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
+                            React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText, fontSize: 12 }) }, fmt(inv.dueDate)),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: fundingOS > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(fundingOS, inv.currency)),
                             React.createElement("td", { style: portalTd },
                               React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
@@ -2201,7 +2244,7 @@ export default function FactoringDashboard() {
                             )
                           ),
                           isExpanded ? React.createElement("tr", null,
-                            React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { colSpan: 8, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
@@ -2220,12 +2263,14 @@ export default function FactoringDashboard() {
                                     inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Reference"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
                                     inv.purchaseOrder ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Purchase Order"), React.createElement("span", { style: spVal }, inv.purchaseOrder)) : null
                                   ),
-                                  /* Funding Details — updated layout */
+                                  /* Funding Details */
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                     React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10B981", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #10B98140" } }, "Funding Details"),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funding Status"), React.createElement("span", null, React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funded Date"), React.createElement("span", { style: spVal }, fmt(inv.fundedDate))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Advance Provided"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.capitalDue || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Rate"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAccent }) }, ((inv.annualRate || 0) * 100).toFixed(1) + "% p.a.")),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Rate"), React.createElement("span", { style: Object.assign({}, spVal, { color: spRed }) }, ((inv.penaltyRate || 0) * 100).toFixed(1) + "% p.a.")),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Initial Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.interestCharged || 0, inv.currency))),
                                     React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.capitalOutstanding || 0) > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(inv.capitalOutstanding || 0, inv.currency))),
@@ -2254,6 +2299,49 @@ export default function FactoringDashboard() {
                           ) : null
                         );
                       })
+                  )
+                ),
+                /* Pagination */
+                totalPages > 1 ? React.createElement("div", { style: { padding: "14px 20px", borderTop: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                  React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "Page " + (currentPage + 1) + " of " + totalPages + " (" + filteredSpInvs.length + " invoices)"),
+                  React.createElement("div", { style: { display: "flex", gap: 6 } },
+                    React.createElement("button", { disabled: currentPage === 0, onClick: function() { setSpPage(currentPage - 1); setExp(null); }, style: { padding: "6px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: currentPage === 0 ? "transparent" : spCard, color: currentPage === 0 ? spBorder : spText, fontSize: 11, fontWeight: 600, cursor: currentPage === 0 ? "default" : "pointer", fontFamily: spFont } }, "\u2190 Previous"),
+                    React.createElement("button", { disabled: currentPage >= totalPages - 1, onClick: function() { setSpPage(currentPage + 1); setExp(null); }, style: { padding: "6px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: currentPage >= totalPages - 1 ? "transparent" : spCard, color: currentPage >= totalPages - 1 ? spBorder : spText, fontSize: 11, fontWeight: 600, cursor: currentPage >= totalPages - 1 ? "default" : "pointer", fontFamily: spFont } }, "Next \u2192")
+                  )
+                ) : null
+              ),
+              /* Credit Notes */
+              React.createElement("div", { style: { marginTop: 28 } },
+                React.createElement("h2", { style: { fontSize: 18, fontWeight: 700, color: spText, margin: "0 0 16px", fontFamily: spFont } }, "Credit Notes"),
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                  spCreditNotes.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No credit notes.") :
+                  React.createElement("div", { style: { overflowX: "auto" } },
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
+                      React.createElement("thead", null,
+                        React.createElement("tr", null,
+                          ["CN Number", "Buyer", "CN Amount", "Received Date", "Allocation Status"].map(function(h) {
+                            return React.createElement("th", { key: h, style: portalTh }, h);
+                          })
+                        )
+                      ),
+                      React.createElement("tbody", null,
+                        spCreditNotes.map(function(cn) {
+                          var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
+                          var cnAmt = cn.amount || 0;
+                          var allocStatus = totalAlloc < 0.01 ? "Unallocated" : r2(totalAlloc) >= r2(cnAmt) - 0.01 ? "Fully Allocated" : "Partially Allocated";
+                          var allocColor = allocStatus === "Fully Allocated" ? spGreen : allocStatus === "Unallocated" ? spRed : spAmber;
+                          return React.createElement("tr", { key: cn.id, style: { borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, cn.id),
+                            React.createElement("td", { style: portalTd }, cn.buyerName),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(cnAmt, cn.currency)),
+                            React.createElement("td", { style: portalTd }, fmt(cn.receivedDate || cn.date)),
+                            React.createElement("td", { style: portalTd },
+                              React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: allocColor + "14", color: allocColor, border: "1px solid " + allocColor + "30", fontFamily: spMono } }, allocStatus)
+                            )
+                          );
+                        })
+                      )
+                    )
                   )
                 )
               )
