@@ -1821,7 +1821,7 @@ export default function FactoringDashboard() {
             spPortalTab === "company" && React.createElement("div", null,
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } },
                 React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Overview"),
-                spPrograms.length > 1 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 13, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer", minWidth: 200 } },
+                spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 13, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer", minWidth: 200 } },
                   spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
                 ) : null
               ),
