@@ -1739,11 +1739,54 @@ export default function FactoringDashboard() {
             /* OVERVIEW TAB */
             spPortalTab === "company" && React.createElement("div", null,
               React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
-              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 } },
-                React.createElement(PortalStat, { label: "Total Invoiced via Pelagic", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
-                React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
-                React.createElement(PortalStat, { label: "Outstanding Balance", value: money(r2(spBalanceOwed), spDisplayCcy), color: spAmber }),
-                React.createElement(PortalStat, { label: "Capital O/S", value: money(r2(spCapOS), spDisplayCcy), sub: "Interest: " + money(r2(spIntOS), spDisplayCcy) + " | Penalty: " + money(r2(spPenOS), spDisplayCcy), color: "#8B5CF6" })
+              React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 } },
+                /* Left: 2x2 stat cards */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } },
+                  React.createElement(PortalStat, { label: "Total Invoiced via Pelagic", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
+                  React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
+                  React.createElement(PortalStat, { label: "Outstanding Balance", value: money(r2(spBalanceOwed), spDisplayCcy), color: spAmber }),
+                  React.createElement(PortalStat, { label: "Capital O/S", value: money(r2(spCapOS), spDisplayCcy), sub: "Interest: " + money(r2(spIntOS), spDisplayCcy) + " | Penalty: " + money(r2(spPenOS), spDisplayCcy), color: "#8B5CF6" })
+                ),
+                /* Right: Action Needed */
+                (function() {
+                  var actions = [];
+                  // Bank account not verified
+                  if (spSupplier && !spSupplier.bankVerified) {
+                    actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Needs Verification", sub: "Please contact Pelagic to verify your bank details" });
+                  }
+                  // Invoices needing attention
+                  spInvs.forEach(function(inv) {
+                    var fs = inv.fundingStatus;
+                    if (fs === "recovery_mode") {
+                      actions.push({ type: "critical", icon: "\u26A1", color: spRed, title: "Invoice " + inv.id + " to " + inv.buyerName + " requires immediate action", sub: money(inv.capitalOutstanding || 0, inv.currency) + " outstanding" });
+                    } else if (fs === "overdue" || fs === "at_risk") {
+                      actions.push({ type: "alert", icon: "\u23F3", color: fs === "overdue" ? spRed : "#8B5CF6", title: "Invoice " + inv.id + " to " + inv.buyerName + " is overdue", sub: money(inv.capitalOutstanding || 0, inv.currency) + " outstanding \u2022 " + fmt(inv.dueDate) });
+                    }
+                  });
+                  return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", display: "flex", flexDirection: "column" } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont, display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                      "Action Needed",
+                      actions.length > 0 ? React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 10, background: spRed + "20", color: spRed, fontFamily: spMono } }, actions.length) : null
+                    ),
+                    actions.length === 0 ? React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: spGreen, fontSize: 13, fontFamily: spFont } },
+                      React.createElement("div", { style: { textAlign: "center" } },
+                        React.createElement("div", { style: { fontSize: 28, marginBottom: 8 } }, "\u2713"),
+                        "No actions needed"
+                      )
+                    ) :
+                    React.createElement("div", { style: { flex: 1, overflowY: "auto", maxHeight: 220, display: "flex", flexDirection: "column", gap: 0 } },
+                      actions.map(function(a, ai) {
+                        return React.createElement("div", { key: ai, style: { display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: ai < actions.length - 1 ? "1px solid " + spBorder + "80" : "none" } },
+                          React.createElement("div", { style: { width: 28, height: 28, borderRadius: 6, background: a.color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: a.color, fontWeight: 700, flexShrink: 0, marginTop: 1 } }, a.icon),
+                          React.createElement("div", null,
+                            React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: spText, fontFamily: spFont, lineHeight: 1.4 } }, a.title),
+                            React.createElement("div", { style: { fontSize: 10, color: spMuted, fontFamily: spFont, marginTop: 2 } }, a.sub)
+                          )
+                        );
+                      })
+                    )
+                  );
+                })()
               ),
               /* Capital outstanding over time chart — daily */
               (function() {
