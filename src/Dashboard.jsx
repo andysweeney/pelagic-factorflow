@@ -1962,7 +1962,7 @@ export default function FactoringDashboard() {
                   var byStatus = {};
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
-                    return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
+                    return (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
                   }).forEach(function(inv) {
                     var fs = inv.fundingStatus;
                     if (byStatus[fs] !== undefined) byStatus[fs] += inv.capitalOutstanding || 0;
@@ -2479,11 +2479,11 @@ export default function FactoringDashboard() {
                           React.createElement("div", { style: { fontSize: 12, color: spText, fontFamily: spMono } }, val)
                         );
                       }
-                      return React.createElement("div", { key: fpId, style: { marginBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 20 : 0 } },
-                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 12, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
-                        outgoing.bankName ? React.createElement("div", { style: { marginBottom: 12 } },
-                          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
-                            React.createElement("div", { style: { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent } }, "Outgoing"),
+                      return React.createElement("div", { key: fpId, style: { marginBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, paddingBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, borderBottom: progIds.indexOf(fpId) < progIds.length - 1 ? "1px solid " + spBorder : "none" } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
+                        outgoing.bankName ? React.createElement("div", { style: { marginBottom: 16 } },
+                          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+                            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spAccent, fontFamily: spFont } }, spSupName + " Bank Account Details"),
                             outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified")
                           ),
                           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
@@ -2496,7 +2496,7 @@ export default function FactoringDashboard() {
                           )
                         ) : null,
                         incoming.bankName ? React.createElement("div", null,
-                          React.createElement("div", { style: { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spGreen, marginBottom: 8 } }, "Incoming"),
+                          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spGreen, fontFamily: spFont, marginBottom: 10 } }, "Pelagic Bank Account Details"),
                           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
                             bankRow("Bank Name", incoming.bankName),
                             isGBP ? bankRow("Sort Code", incoming.sortCode) : null,
