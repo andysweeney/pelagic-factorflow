@@ -978,9 +978,10 @@ export default function FactoringDashboard() {
     });
   }, []);
 
-  // Save data whenever dataVer changes (skip initial load)
+  // Save data whenever dataVer changes (skip initial load and supplier users)
   useEffect(function() {
     if (storageLoading) return;
+    if (userProfile && userProfile.role === "supplier") return;
     if (dataVer > 0) savePersistedData();
   }, [dataVer, storageLoading]);
 
