@@ -908,6 +908,7 @@ export default function FactoringDashboard() {
   var spfS = useState("all"), spFsFilter = spfS[0], setSpFsFilter = spfS[1];
   var spbS = useState("all"), spBuyerFilter = spbS[0], setSpBuyerFilter = spbS[1];
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
+  var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
 
   function loadUserProfile(userId) {
     supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
@@ -1643,10 +1644,37 @@ export default function FactoringDashboard() {
         var spSupId = userProfile.supplier_id || "";
         var spSupplier = SUPPLIERS_DB.find(function(s) { return s.id === spSupId; });
         var spSupName = spSupplier ? spSupplier.name : "";
-        var spInvs = viewData.invoices.filter(function(inv) {
+
+        // Determine which programs this supplier is on
+        var spAllInvs = viewData.invoices.filter(function(inv) {
           return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
         });
-        var spDisplayCcy = "GBP";
+        var spPrograms = [];
+        var seenProgs = {};
+        spAllInvs.forEach(function(inv) {
+          if (inv.fundingProgram && !seenProgs[inv.fundingProgram]) {
+            seenProgs[inv.fundingProgram] = true;
+            var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; });
+            if (prog) spPrograms.push(prog);
+          }
+        });
+        // Also check eligible programs from program settings
+        FUNDING_PROGRAMS_DB.forEach(function(fp) {
+          if (!seenProgs[fp.id] && fp.eligibleSuppliers && fp.eligibleSuppliers.indexOf(spSupName) > -1) {
+            seenProgs[fp.id] = true;
+            spPrograms.push(fp);
+          }
+        });
+        // Auto-select first program if none selected
+        var activeProgId = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        var activeProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === activeProgId; });
+
+        // Filter invoices by selected program
+        var spInvs = spAllInvs;
+        if (activeProgId) {
+          spInvs = spAllInvs.filter(function(inv) { return inv.fundingProgram === activeProgId || inv.fundingStatus === "pending"; });
+        }
+        var spDisplayCcy = activeProg ? activeProg.currency : "GBP";
 
         // Stats
         var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spIntOS = 0, spPenOS = 0, spBalanceOwed = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
@@ -1662,6 +1690,46 @@ export default function FactoringDashboard() {
           }
           spTotalRepaid += inv.totalRepaid || 0;
         });
+
+        // Credit limit for active program
+        var spCreditLimit = spSupplier && spSupplier.creditLimits && spSupplier.creditLimits[activeProgId] ? spSupplier.creditLimits[activeProgId] : 0;
+
+        // Dilution rates for this supplier on this program
+        var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
+        var fdilEligibleFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+        var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
+        // Current funded dilution
+        var fdilNum = 0, fdilDen = 0;
+        spInvs.forEach(function(inv) {
+          if (!fdilEligibleFS[inv.fundingStatus]) return;
+          var invAmt = inv.amount || 0;
+          fdilDen += invAmt;
+          fdilNum += inv.dilutionTotal || 0;
+          if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) fdilNum += (invAmt - inv.partialApprovedAmount);
+          if (inv.fundingStatus === "recovery_mode") fdilNum += invAmt;
+        });
+        var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
+        // 30-day and 90-day funded dilution
+        function calcFDil(days) {
+          var cutoff = new Date(viewDate + "T12:00:00"); cutoff.setDate(cutoff.getDate() - days);
+          var cutoffStr = cutoff.toISOString().split("T")[0];
+          var pN = 0, pD = 0;
+          spInvs.forEach(function(inv) {
+            if (!inv.fundedDate || inv.fundedDate < cutoffStr) return;
+            var a = inv.amount || 0;
+            pD += a;
+            pN += inv.dilutionTotal || 0;
+            if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pN += (a - inv.partialApprovedAmount);
+            if (badStatuses[inv.invoiceStatus]) pN += a;
+          });
+          return pD > 0.01 ? (pN / pD) * 100 : 0;
+        }
+        var fdil30 = calcFDil(30);
+        var fdil90 = calcFDil(90);
+        // Program max dilution limits
+        var progMaxDilLive = activeProg ? (activeProg.maxFundDilLive || 0) * 100 : 0;
+        var progMaxDil30 = activeProg ? (activeProg.maxFundDil30 || 0) * 100 : 0;
+        var progMaxDil90 = activeProg ? (activeProg.maxFundDil90 || 0) * 100 : 0;
 
         // Payments to you — merge funding + holdback
         var spInvIds = {};
@@ -1751,14 +1819,66 @@ export default function FactoringDashboard() {
 
             /* OVERVIEW TAB */
             spPortalTab === "company" && React.createElement("div", null,
-              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
+              React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 } },
+                React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Overview"),
+                spPrograms.length > 1 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 13, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer", minWidth: 200 } },
+                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
+                ) : null
+              ),
               React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 } },
-                /* Left: 2x2 stat cards */
+                /* Left: stat cards — 2x2 with merged Outstanding Balance */
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } },
                   React.createElement(PortalStat, { label: "Total Invoiced via Pelagic", value: money(r2(spTotalInvoiced), spDisplayCcy), sub: spInvs.length + " invoices", color: spAccent }),
                   React.createElement(PortalStat, { label: "Cash Advanced", value: money(r2(spCapAdvanced), spDisplayCcy), color: spGreen }),
-                  React.createElement(PortalStat, { label: "Outstanding Balance", value: money(r2(spBalanceOwed), spDisplayCcy), color: spAmber }),
-                  React.createElement(PortalStat, { label: "Capital O/S", value: money(r2(spCapOS), spDisplayCcy), sub: "Interest: " + money(r2(spIntOS), spDisplayCcy) + " | Penalty: " + money(r2(spPenOS), spDisplayCcy), color: "#8B5CF6" })
+                  /* Outstanding Balance card — merged with Capital/Interest/Penalty breakdown */
+                  React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+                    React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: spAmber } }),
+                    React.createElement("div", { style: { fontSize: 11, fontWeight: 500, color: spMuted, letterSpacing: "0.04em", marginBottom: 10, fontFamily: spFont } }, "Outstanding Balance"),
+                    React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
+                    spCreditLimit > 0 ? React.createElement("div", { style: { fontSize: 10, color: spMuted, marginTop: 8, fontFamily: spMono } }, "Limit: " + money(spCreditLimit, spDisplayCcy) + " (" + (spCreditLimit > 0 ? (spBalanceOwed / spCreditLimit * 100).toFixed(0) + "% used" : "") + ")") : null,
+                    React.createElement("div", { style: { marginTop: 10, paddingTop: 10, borderTop: "1px solid " + spBorder + "80", display: "flex", flexDirection: "column", gap: 4 } },
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Capital"),
+                        React.createElement("span", { style: { color: spText, fontFamily: spMono, fontWeight: 600 } }, money(r2(spCapOS), spDisplayCcy))
+                      ),
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Interest"),
+                        React.createElement("span", { style: { color: spAmber, fontFamily: spMono } }, money(r2(spIntOS), spDisplayCcy))
+                      ),
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Penalty"),
+                        React.createElement("span", { style: { color: spRed, fontFamily: spMono } }, money(r2(spPenOS), spDisplayCcy))
+                      )
+                    )
+                  ),
+                  /* Dilution Rates card */
+                  React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "22px 24px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+                    React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "#8B5CF6" } }),
+                    React.createElement("div", { style: { fontSize: 11, fontWeight: 500, color: spMuted, letterSpacing: "0.04em", marginBottom: 12, fontFamily: spFont } }, "Dilution Rates"),
+                    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                        React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "Current"),
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                          React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: progMaxDilLive > 0 && fdilRate > progMaxDilLive ? spRed : spText, fontFamily: spMono } }, fdilRate.toFixed(1) + "%"),
+                          progMaxDilLive > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDilLive.toFixed(1) + "%") : null
+                        )
+                      ),
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                        React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "30 Day"),
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil30 > 0 && fdil30 > progMaxDil30 ? spRed : spText, fontFamily: spMono } }, fdil30.toFixed(1) + "%"),
+                          progMaxDil30 > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDil30.toFixed(1) + "%") : null
+                        )
+                      ),
+                      React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                        React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "90 Day"),
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil90 > 0 && fdil90 > progMaxDil90 ? spRed : spText, fontFamily: spMono } }, fdil90.toFixed(1) + "%"),
+                          progMaxDil90 > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDil90.toFixed(1) + "%") : null
+                        )
+                      )
+                    )
+                  )
                 ),
                 /* Right: Action Needed */
                 (function() {
