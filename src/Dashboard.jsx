@@ -71,9 +71,18 @@ function getAllSupplierEntities() {
   return result;
 }
 // Get bank details for a supplier name — checks branch first, falls back to parent
-function getSupplierBankDetails(name) {
+function getSupplierBankDetails(name, programId) {
   var parent = getParentSupplier(name);
   if (!parent) return { bankName: "", bankDetails: "", bankVerified: false };
+  // Check program-specific outgoing bank account first
+  if (programId && parent.programBankAccounts && parent.programBankAccounts[programId]) {
+    var progAcct = parent.programBankAccounts[programId].outgoing || {};
+    if (progAcct.bankName) {
+      var details = [progAcct.sortCode, progAcct.accountNumber, progAcct.iban, progAcct.aba, progAcct.bic].filter(Boolean).join(" / ");
+      return { bankName: progAcct.bankName, bankDetails: details, bankVerified: progAcct.verified || false };
+    }
+  }
+  // Fall back to branch bank details
   var brName = getBranchName(name);
   if (brName && parent.branches) {
     var br = parent.branches.find(function(b) { return b.branchName === brName; });
@@ -273,6 +282,7 @@ async function loadPersistedData() {
           bankVerified: false,
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          programBankAccounts: row.program_bank_accounts || {},
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
           branches: row.branches || []
         });
@@ -451,6 +461,7 @@ async function savePersistedData() {
         account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
         credit_limits: s.creditLimits || {},
         single_invoice_limits: s.singleInvoiceLimits || {},
+        program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || []
       };
     });
@@ -1384,7 +1395,7 @@ export default function FactoringDashboard() {
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
     var supplier = getParentSupplier(raw.supplierName);
-    var bankInfo = getSupplierBankDetails(raw.supplierName);
+    var bankInfo = getSupplierBankDetails(raw.supplierName, raw.fundingProgram);
     var now = new Date();
     var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
@@ -1553,7 +1564,7 @@ export default function FactoringDashboard() {
     var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
     var supplier = getParentSupplier(hbDisburseInv.supplierName);
-    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierName);
+    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
@@ -1728,9 +1739,9 @@ export default function FactoringDashboard() {
         var fdil30 = calcFDil(30);
         var fdil90 = calcFDil(90);
         // Program max dilution limits
-        var progMaxDilLive = activeProg ? (activeProg.maxFundDilLive || 0) * 100 : 0;
-        var progMaxDil30 = activeProg ? (activeProg.maxFundDil30 || 0) * 100 : 0;
-        var progMaxDil90 = activeProg ? (activeProg.maxFundDil90 || 0) * 100 : 0;
+        var progMaxDilLive = activeProg ? (activeProg.maxFundDilLive || 0) : 0;
+        var progMaxDil30 = activeProg ? (activeProg.maxFundDil30 || 0) : 0;
+        var progMaxDil90 = activeProg ? (activeProg.maxFundDil90 || 0) : 0;
 
         // Payments to you — merge funding + holdback
         var spInvIds = {};
@@ -1884,9 +1895,15 @@ export default function FactoringDashboard() {
                 /* Right: Action Needed */
                 (function() {
                   var actions = [];
-                  // Bank account not verified
-                  if (spSupplier && !spSupplier.bankVerified) {
-                    actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Needs Verification", sub: "Please contact Pelagic to verify your bank details" });
+                  // Bank account not verified — check outgoing bank for active program
+                  if (spSupplier && activeProgId) {
+                    var progAcct = (spSupplier.programBankAccounts || {})[activeProgId];
+                    var outgoing = progAcct ? progAcct.outgoing : null;
+                    if (!outgoing || !outgoing.bankName) {
+                      actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Not Set Up", sub: "Outgoing bank details needed for " + (activeProg ? activeProg.name : "this program") });
+                    } else if (!outgoing.verified) {
+                      actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Needs Verification", sub: "Outgoing account for " + (activeProg ? activeProg.name : "this program") + " is unverified" });
+                    }
                   }
                   // Invoices needing attention
                   spInvs.forEach(function(inv) {
@@ -2436,18 +2453,63 @@ export default function FactoringDashboard() {
                     });
                   })()
                 ),
-                /* Bank Details */
-                React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
-                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Bank Details"),
-                  React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px 28px" } },
-                    [["Bank Name", spSupplier.bankName || "\u2014"], ["Sort Code", spSupplier.sortCode || "\u2014"], ["Account Number", spSupplier.accountNumber || "\u2014"], ["IBAN", spSupplier.iban || "\u2014"], ["BIC", spSupplier.bic || "\u2014"], ["Account Name", spSupplier.accountName || "\u2014"]].map(function(row) {
-                      return React.createElement("div", { key: row[0] },
-                        React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 4, fontFamily: spFont } }, row[0]),
-                        React.createElement("div", { style: { fontSize: 13, color: spText, fontFamily: spMono } }, row[1])
+                /* Bank Accounts by Program */
+                (function() {
+                  if (!spSupplier || !spSupplier.programBankAccounts) return null;
+                  var pba = spSupplier.programBankAccounts;
+                  var progIds = Object.keys(pba).filter(function(k) {
+                    var acct = pba[k];
+                    return (acct.outgoing && acct.outgoing.bankName) || (acct.incoming && acct.incoming.bankName);
+                  });
+                  if (progIds.length === 0) return null;
+                  return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Bank Accounts"),
+                    progIds.map(function(fpId) {
+                      var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                      var ccy = prog ? prog.currency : "GBP";
+                      var acct = pba[fpId] || {};
+                      var outgoing = acct.outgoing || {};
+                      var incoming = acct.incoming || {};
+                      var isGBP = ccy === "GBP";
+                      var isUSD = ccy === "USD";
+                      function bankRow(label, val) {
+                        if (!val) return null;
+                        return React.createElement("div", { key: label },
+                          React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 2, fontFamily: spFont } }, label),
+                          React.createElement("div", { style: { fontSize: 12, color: spText, fontFamily: spMono } }, val)
+                        );
+                      }
+                      return React.createElement("div", { key: fpId, style: { marginBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 20 : 0 } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 12, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
+                        outgoing.bankName ? React.createElement("div", { style: { marginBottom: 12 } },
+                          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 } },
+                            React.createElement("div", { style: { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent } }, "Outgoing"),
+                            outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified")
+                          ),
+                          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
+                            bankRow("Bank Name", outgoing.bankName),
+                            isGBP ? bankRow("Sort Code", outgoing.sortCode) : null,
+                            bankRow("Account Number", outgoing.accountNumber),
+                            isUSD ? bankRow("ABA/Routing", outgoing.aba) : null,
+                            bankRow("BIC/SWIFT", outgoing.bic),
+                            !isUSD ? bankRow("IBAN", outgoing.iban) : null
+                          )
+                        ) : null,
+                        incoming.bankName ? React.createElement("div", null,
+                          React.createElement("div", { style: { fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spGreen, marginBottom: 8 } }, "Incoming"),
+                          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
+                            bankRow("Bank Name", incoming.bankName),
+                            isGBP ? bankRow("Sort Code", incoming.sortCode) : null,
+                            bankRow("Account Number", incoming.accountNumber),
+                            isUSD ? bankRow("ABA/Routing", incoming.aba) : null,
+                            bankRow("BIC/SWIFT", incoming.bic),
+                            !isUSD ? bankRow("IBAN", incoming.iban) : null
+                          )
+                        ) : null
                       );
                     })
-                  )
-                ),
+                  );
+                })(),
                 /* Program Limits — Credit Limits & Single Invoice Limits */
                 (function() {
                   if (!spSupplier) return null;
@@ -5492,14 +5554,14 @@ export default function FactoringDashboard() {
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierName);
+                    var bankInfo = getSupplierBankDetails(inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                     outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
                     if (item.programId) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.programId; });
-                    var bankInfo = getSupplierBankDetails(item.supplierName || "");
+                    var bankInfo = getSupplierBankDetails(item.supplierName || "", item.programId);
                     outboundRows.push({ rowType: item.type, rowId: "q-" + item.id, inv: null, supplierName: item.supplierName || "", programId: item.programId, programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: item.date, detail: item.type === "holdback_disbursement" ? "HB " + item.sourceInvoiceId : item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : ""), spqId: item.id, cancelFn: item.type === "holdback_disbursement" ? function() { cancelSPQItem(item.id); } : null });
                   });
                   if (outboundRows.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 18 }}>No outbound payments pending.</div>;
@@ -6227,6 +6289,30 @@ export default function FactoringDashboard() {
                     var ccy = prog ? prog.currency : "GBP";
                     changes.push("Invoice Limit (" + pName + "): " + (oldV > 0 ? money(oldV, ccy) : "No limit") + " \u2192 " + (newV > 0 ? money(newV, ccy) : "No limit"));
                   }
+                });
+                // Track program bank account changes
+                var oldPBA = ent.programBankAccounts || {};
+                var newPBA = f.programBankAccounts || {};
+                var pbaProgIds = {};
+                Object.keys(oldPBA).forEach(function(k) { pbaProgIds[k] = true; });
+                Object.keys(newPBA).forEach(function(k) { pbaProgIds[k] = true; });
+                Object.keys(pbaProgIds).forEach(function(fpId) {
+                  var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                  var pName = prog ? prog.name : fpId;
+                  ["outgoing", "incoming"].forEach(function(dir) {
+                    var oldDir = (oldPBA[fpId] || {})[dir] || {};
+                    var newDir = (newPBA[fpId] || {})[dir] || {};
+                    var bankFields = ["bankName", "sortCode", "accountNumber", "bic", "iban", "aba", "verified"];
+                    var fieldLabels = { bankName: "Bank Name", sortCode: "Sort Code", accountNumber: "Account No", bic: "BIC", iban: "IBAN", aba: "ABA", verified: "Verified" };
+                    bankFields.forEach(function(bf) {
+                      var ov = oldDir[bf] !== undefined && oldDir[bf] !== null ? String(oldDir[bf]) : "";
+                      var nv = newDir[bf] !== undefined && newDir[bf] !== null ? String(newDir[bf]) : "";
+                      if (ov !== nv) {
+                        var dirLabel = dir === "outgoing" ? "Out" : "In";
+                        changes.push(pName + " " + dirLabel + " " + fieldLabels[bf] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\"");
+                      }
+                    });
+                  });
                 });
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
@@ -7243,17 +7329,70 @@ export default function FactoringDashboard() {
                   })}</tbody>
                 </table>
               </div>}
-              {isSupLike && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
-                  {fld("Bank Name", "bankName")}
-                  {fld("Bank Payment Details", "bankDetails")}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2, justifyContent: "end" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0" }}>
-                      <div onClick={function() { setManageFields(function(p) { return Object.assign({}, p, { bankVerified: !p.bankVerified }); }); }} style={{ width: 20, height: 20, borderRadius: 5, border: "2px solid " + (f.bankVerified ? "var(--accent)" : "var(--border)"), background: f.bankVerified ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>{f.bankVerified ? "\u2713" : ""}</div>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: f.bankVerified ? "#059669" : "var(--text-secondary)" }}>Bank Details Verified</span>
-                    </label>
-                  </div>
-                </div>
+              {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Bank Accounts by Program</div>
+                {FUNDING_PROGRAMS_DB.map(function(fp) {
+                  var pba = (f.programBankAccounts || {})[fp.id] || {};
+                  var outgoing = pba.outgoing || {};
+                  var incoming = pba.incoming || {};
+                  var ccy = fp.currency || "GBP";
+                  var isGBP = ccy === "GBP";
+                  var isEUR = ccy === "EUR";
+                  var isUSD = ccy === "USD";
+                  var inpStyle = { padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" };
+                  var lblStyle = { fontSize: 10, fontWeight: 600, color: "var(--muted)", marginBottom: 3 };
+                  function updateBank(direction, field, value) {
+                    setManageFields(function(p) {
+                      var accts = Object.assign({}, p.programBankAccounts || {});
+                      if (!accts[fp.id]) accts[fp.id] = {};
+                      if (!accts[fp.id][direction]) accts[fp.id][direction] = {};
+                      accts[fp.id][direction][field] = value;
+                      return Object.assign({}, p, { programBankAccounts: accts });
+                    });
+                  }
+                  function bankField(direction, field, label) {
+                    var obj = direction === "outgoing" ? outgoing : incoming;
+                    return React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2 } },
+                      React.createElement("label", { style: lblStyle }, label),
+                      React.createElement("input", { type: "text", value: obj[field] || "", onChange: function(e) { updateBank(direction, field, e.target.value); }, style: inpStyle })
+                    );
+                  }
+                  return <div key={fp.id} style={{ background: "var(--card-hover)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{fp.name} <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>({ccy})</span></div>
+                    </div>
+                    {/* Outgoing */}
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#0EA5E9" }}>Outgoing (Payments to Supplier)</div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                          <div onClick={function() { updateBank("outgoing", "verified", !outgoing.verified); }} style={{ width: 16, height: 16, borderRadius: 4, border: "2px solid " + (outgoing.verified ? "#059669" : "var(--border)"), background: outgoing.verified ? "#059669" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{outgoing.verified ? "\u2713" : ""}</div>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: outgoing.verified ? "#059669" : "var(--muted)" }}>Verified</span>
+                        </label>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: isUSD ? "1fr 1fr 1fr 1fr" : isGBP ? "1fr 1fr 1fr 1fr 1fr" : "1fr 1fr 1fr 1fr", gap: "8px 12px" }}>
+                        {bankField("outgoing", "bankName", "Bank Name")}
+                        {isGBP && bankField("outgoing", "sortCode", "Sort Code")}
+                        {bankField("outgoing", "accountNumber", "Account Number")}
+                        {isUSD && bankField("outgoing", "aba", "ABA/Routing")}
+                        {bankField("outgoing", "bic", "BIC/SWIFT")}
+                        {!isUSD && bankField("outgoing", "iban", "IBAN")}
+                      </div>
+                    </div>
+                    {/* Incoming */}
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#059669", marginBottom: 8 }}>Incoming (Payments from Buyer)</div>
+                      <div style={{ display: "grid", gridTemplateColumns: isUSD ? "1fr 1fr 1fr 1fr" : isGBP ? "1fr 1fr 1fr 1fr 1fr" : "1fr 1fr 1fr 1fr", gap: "8px 12px" }}>
+                        {bankField("incoming", "bankName", "Bank Name")}
+                        {isGBP && bankField("incoming", "sortCode", "Sort Code")}
+                        {bankField("incoming", "accountNumber", "Account Number")}
+                        {isUSD && bankField("incoming", "aba", "ABA/Routing")}
+                        {bankField("incoming", "bic", "BIC/SWIFT")}
+                        {!isUSD && bankField("incoming", "iban", "IBAN")}
+                      </div>
+                    </div>
+                  </div>;
+                })}
               </div>}
               {/* Directors Section */}
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
@@ -7936,7 +8075,7 @@ export default function FactoringDashboard() {
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierName);
+                    var bankInfo = getSupplierBankDetails(inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                     outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
