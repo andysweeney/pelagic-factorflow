@@ -35,64 +35,123 @@ function addDays(s, n) { var p = s.split("-"); var d = new Date(Date.UTC(parseIn
 function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); return Math.round((Date.UTC(parseInt(pb[0]), parseInt(pb[1]) - 1, parseInt(pb[2])) - Date.UTC(parseInt(pa[0]), parseInt(pa[1]) - 1, parseInt(pa[2]))) / 86400000); }
 function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 
-// Branch helpers
-// Returns the parent supplier name for a given name (which could be "Parent" or "Parent — Branch")
-function getParentSupplierName(name) {
-  if (!name) return name;
-  var sep = name.indexOf(" \u2014 ");
-  return sep >= 0 ? name.substring(0, sep) : name;
+// ======== Entity ID helpers ========
+// Entity ID format: "SUP-001" (parent) or "SUP-001:BR-001" (branch)
+function parseEntityId(entityId) {
+  if (!entityId) return { supplierId: null, branchId: null };
+  var parts = entityId.split(":");
+  return { supplierId: parts[0], branchId: parts[1] || null };
 }
-// Returns the branch part, or null if it's a parent
-function getBranchName(name) {
-  if (!name) return null;
-  var sep = name.indexOf(" \u2014 ");
-  return sep >= 0 ? name.substring(sep + 3) : null;
+function makeEntityId(supplierId, branchId) {
+  return branchId ? supplierId + ":" + branchId : supplierId;
 }
-// Returns the parent supplier object for a given name
-function getParentSupplier(name) {
-  var pn = getParentSupplierName(name);
-  return SUPPLIERS_DB.find(function(s) { return s.name === pn; }) || null;
+function getSupplierById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  return SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; }) || null;
 }
-// Returns true if the given invoice belongs to the same parent supplier
-function isSameParentSupplier(invSupName, parentName) {
-  return getParentSupplierName(invSupName) === getParentSupplierName(parentName);
+function getBranchById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  if (!parsed.branchId) return null;
+  var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; });
+  if (!sup || !sup.branches) return null;
+  return sup.branches.find(function(b) { return b.branchId === parsed.branchId; }) || null;
 }
-// Build a list of all supplier entities (parents + branches) for dropdowns
-// Returns [{ value: "Parent Name", label: "Parent Name" }, { value: "Parent Name — Branch", label: "Parent Name — Branch" }, ...]
+function getParentEntityId(entityId) {
+  if (!entityId) return entityId;
+  return parseEntityId(entityId).supplierId;
+}
+function getEntityDisplayName(entityId) {
+  if (!entityId) return "";
+  var sup = getSupplierById(entityId);
+  if (!sup) return entityId;
+  var br = getBranchById(entityId);
+  return br ? sup.name + " \u2014 " + br.branchName : sup.name;
+}
+// Build a list of all supplier entities for dropdowns: [{ value: "SUP-001", label: "Parent" }, { value: "SUP-001:BR-001", label: "Parent — Branch" }]
 function getAllSupplierEntities() {
   var result = [];
   SUPPLIERS_DB.forEach(function(s) {
-    result.push({ value: s.name, label: s.name });
+    result.push({ value: s.id, label: s.name, supplierId: s.id });
     if (s.branches) s.branches.forEach(function(br) {
-      var fullName = s.name + " \u2014 " + br.branchName;
-      result.push({ value: fullName, label: fullName });
+      var eid = makeEntityId(s.id, br.branchId);
+      result.push({ value: eid, label: s.name + " \u2014 " + br.branchName, supplierId: s.id });
     });
   });
   return result;
 }
-// Get bank details for a supplier name — checks branch first, falls back to parent
-function getSupplierBankDetails(name, programId) {
-  var parent = getParentSupplier(name);
-  if (!parent) return { bankName: "", bankDetails: "", bankVerified: false };
-  // Check program-specific outgoing bank account first
-  if (programId && parent.programBankAccounts && parent.programBankAccounts[programId]) {
-    var progAcct = parent.programBankAccounts[programId].outgoing || {};
+// Backward-compat: name-based helpers (used during migration, eventually removable)
+function getParentSupplierName(nameOrId) {
+  if (!nameOrId) return nameOrId;
+  // If it looks like an ID (SUP-xxx or SUP-xxx:BR-xxx), resolve to name
+  if (nameOrId.match && nameOrId.match(/^SUP-/)) {
+    var sup = getSupplierById(nameOrId);
+    return sup ? sup.name : nameOrId;
+  }
+  var sep = nameOrId.indexOf(" \u2014 ");
+  return sep >= 0 ? nameOrId.substring(0, sep) : nameOrId;
+}
+function getBranchName(nameOrId) {
+  if (!nameOrId) return null;
+  if (nameOrId.match && nameOrId.match(/^SUP-/)) {
+    var br = getBranchById(nameOrId);
+    return br ? br.branchName : null;
+  }
+  var sep = nameOrId.indexOf(" \u2014 ");
+  return sep >= 0 ? nameOrId.substring(sep + 3) : null;
+}
+function getParentSupplier(nameOrId) {
+  if (!nameOrId) return null;
+  if (nameOrId.match && nameOrId.match(/^SUP-/)) return getSupplierById(nameOrId);
+  var pn = getParentSupplierName(nameOrId);
+  return SUPPLIERS_DB.find(function(s) { return s.name === pn; }) || null;
+}
+function isSameParentSupplier(id1, id2) {
+  return getParentEntityId(id1) === getParentEntityId(id2);
+}
+// Resolve a supplierId to display name (used in tables etc)
+function supName(entityId) { return getEntityDisplayName(entityId); }
+// Get buyer display name by ID
+function buyName(buyerId) {
+  if (!buyerId) return "";
+  var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
+  return b ? b.name : buyerId;
+}
+
+// Get bank details by entity ID and program — cascades: branch program → parent program → branch flat → parent flat
+function getSupplierBankDetails(entityId, programId) {
+  var sup = getSupplierById(entityId);
+  if (!sup) return { bankName: "", bankDetails: "", bankVerified: false };
+  var branch = getBranchById(entityId);
+  // 1. Branch program-specific
+  if (programId && branch && branch.programBankAccounts && branch.programBankAccounts[programId]) {
+    var brProgAcct = branch.programBankAccounts[programId].outgoing || {};
+    if (brProgAcct.bankName) {
+      var details = [brProgAcct.sortCode, brProgAcct.accountNumber, brProgAcct.iban, brProgAcct.aba, brProgAcct.bic].filter(Boolean).join(" / ");
+      return { bankName: brProgAcct.bankName, bankDetails: details, bankVerified: brProgAcct.verified || false };
+    }
+  }
+  // 2. Parent program-specific
+  if (programId && sup.programBankAccounts && sup.programBankAccounts[programId]) {
+    var progAcct = sup.programBankAccounts[programId].outgoing || {};
     if (progAcct.bankName) {
       var details = [progAcct.sortCode, progAcct.accountNumber, progAcct.iban, progAcct.aba, progAcct.bic].filter(Boolean).join(" / ");
       return { bankName: progAcct.bankName, bankDetails: details, bankVerified: progAcct.verified || false };
     }
   }
-  // Fall back to branch bank details
-  var brName = getBranchName(name);
-  if (brName && parent.branches) {
-    var br = parent.branches.find(function(b) { return b.branchName === brName; });
-    if (br && br.bankName) return { bankName: br.bankName, bankDetails: br.bankDetails || "", bankVerified: br.bankVerified || false };
-  }
-  return { bankName: parent.bankName || "", bankDetails: parent.bankDetails || "", bankVerified: parent.bankVerified || false };
+  // 3. Branch flat
+  if (branch && branch.bankName) return { bankName: branch.bankName, bankDetails: branch.bankDetails || "", bankVerified: branch.bankVerified || false };
+  // 4. Parent flat
+  return { bankName: sup.bankName || "", bankDetails: sup.bankDetails || "", bankVerified: sup.bankVerified || false };
 }
 
-function getSupplierRate(supplierName, asOfTimestamp) {
-  var supplier = getParentSupplier(supplierName);
+function getSupplierRate(entityId, asOfTimestamp) {
+  var supplier = getSupplierById(entityId);
+  if (!supplier) {
+    // Backward compat: try by name
+    supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
+  }
   if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
   var ts = asOfTimestamp || new Date().toISOString();
   var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
@@ -105,21 +164,26 @@ function getSupplierRate(supplierName, asOfTimestamp) {
 }
 
 function getEligiblePrograms(inv, supDilRates) {
-  var supRate = getSupplierRate(inv.supplierName);
+  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
+  var parentId = getParentEntityId(inv.supplierId || "");
   var parentSup = getParentSupplierName(inv.supplierName);
   var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
   // Ineligible invoice statuses
   var badInvStatuses = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
   if (badInvStatuses[inv.invoiceStatus]) return [];
-  var dr = supDilRates ? (supDilRates[parentSup] || {}) : {};
+  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
   return FUNDING_PROGRAMS_DB.filter(function(fp) {
-    // Eligible suppliers check — check full name (parent or branch) and parent name
+    // Eligible suppliers check — by ID (parent or entity)
     if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
-      var nameMatch = fp.eligibleSuppliers.indexOf(inv.supplierName) > -1 || fp.eligibleSuppliers.indexOf(parentSup) > -1;
-      if (!nameMatch) return false;
+      var entityId = inv.supplierId || "";
+      var idMatch = fp.eligibleSuppliers.indexOf(entityId) > -1 || fp.eligibleSuppliers.indexOf(parentId) > -1;
+      if (!idMatch) return false;
     }
-    // Eligible buyers check
-    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0 && fp.eligibleBuyers.indexOf(inv.buyerName) === -1) return false;
+    // Eligible buyers check — by ID
+    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
+      var buyerId = inv.buyerId || "";
+      if (fp.eligibleBuyers.indexOf(buyerId) === -1) return false;
+    }
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
     if (term > fp.maxInvoiceTerm) return false;
@@ -132,7 +196,7 @@ function getEligiblePrograms(inv, supDilRates) {
     if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) return false;
     if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) return false;
     // Single invoice limit per supplier per program
-    var parentSupObj = getParentSupplier(inv.supplierName);
+    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
     if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
       if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
     }
@@ -353,7 +417,7 @@ async function loadPersistedData() {
       INVOICES_DB.length = 0;
       invRes.data.forEach(function(row) {
         INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, buyerName: row.buyer_name,
+          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
           amount: parseFloat(row.amount) || 0, currency: row.currency,
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
           interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
@@ -423,7 +487,7 @@ async function loadPersistedData() {
         CREDIT_NOTES_DB.push({
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, buyerName: row.buyer_name,
+          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
           createdDisplay: row.created_display, allocations: row.allocations || []
         });
       });
@@ -523,7 +587,7 @@ async function savePersistedData() {
     // Save invoices
     var invRows = INVOICES_DB.map(function(inv) {
       return {
-        id: inv.id, supplier_name: inv.supplierName, buyer_name: inv.buyerName,
+        id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
         amount: inv.amount, currency: inv.currency,
         capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
         interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
@@ -601,7 +665,7 @@ async function savePersistedData() {
       return {
         credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
         date: cn.date, reference: cn.reference || "",
-        supplier_name: cn.supplierName, buyer_name: cn.buyerName,
+        supplier_name: cn.supplierName, supplier_id: cn.supplierId || "", buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
         created_display: cn.createdDisplay || null, allocations: cn.allocations || []
       };
     });
@@ -1244,15 +1308,16 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
-  function remitToSupplier(paymentId, supplierName, amount, currency, programId) {
-    var supplier = getParentSupplier(supplierName);
-    var bankInfo = getSupplierBankDetails(supplierName, programId);
+  function remitToSupplier(paymentId, supplierEntityId, amount, currency, programId) {
+    var supplier = getSupplierById(supplierEntityId) || getParentSupplier(supplierEntityId);
+    var displayName = getEntityDisplayName(supplierEntityId) || supplierEntityId;
+    var bankInfo = getSupplierBankDetails(supplierEntityId, programId);
     var prog = programId ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; }) : null;
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     var now = new Date();
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
-      supplierName: supplierName, supplierId: supplier ? supplier.id : "",
+      supplierName: displayName, supplierId: supplierEntityId,
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: r2(amount), currency: currency, status: "Completed",
       programId: programId || "", programName: prog ? prog.name : "",
@@ -1262,7 +1327,7 @@ export default function FactoringDashboard() {
       executedDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       sourcePaymentId: paymentId
     });
-    auditLog("Payment Remitted", paymentId + ": " + money(r2(amount), currency) + " remitted to " + supplierName + " (" + spqId + ")", { paymentId: paymentId, supplierName: supplierName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "" });
+    auditLog("Payment Remitted", paymentId + ": " + money(r2(amount), currency) + " remitted to " + displayName + " (" + spqId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
   }
@@ -1422,23 +1487,22 @@ export default function FactoringDashboard() {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
-    var supplier = getParentSupplier(raw.supplierName);
-    var bankInfo = getSupplierBankDetails(raw.supplierName, raw.fundingProgram);
+    var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
+    var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
     var now = new Date();
     var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
-      supplierName: raw.supplierName, supplierId: supplier ? supplier.id : "",
-      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+      supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
+      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified,
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
-      createdAt: now.toISOString(),
       createdDisplay: useDisplay,
       executedAt: now.toISOString(),
       executedDisplay: useDisplay
     });
-    auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ")", { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplier: raw.supplierName, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId });
+    auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -1592,7 +1656,7 @@ export default function FactoringDashboard() {
     var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
     var supplier = getParentSupplier(hbDisburseInv.supplierName);
-    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
+    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierId || hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
@@ -1604,7 +1668,7 @@ export default function FactoringDashboard() {
       executedAt: null, executedDisplay: null
     });
     HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, amount: supAmt, date: viewDate, currency: hbDisburseInv.currency, allocations: allocations });
-    auditLog("Holdback Disbursed", hbId + " from " + hbDisburseInv.id + " (" + hbDisburseInv.supplierName + "): " + money(supAmt, hbDisburseInv.currency) + " returned to supplier", { hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, supplierName: hbDisburseInv.supplierName, amount: supAmt, currency: hbDisburseInv.currency });
+    auditLog("Holdback Disbursed", hbId + " from " + hbDisburseInv.id + " (" + hbDisburseInv.supplierName + "): " + money(supAmt, hbDisburseInv.currency) + " returned to supplier — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, supplierName: hbDisburseInv.supplierName, amount: supAmt, currency: hbDisburseInv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setHbSuccessMsg({ hbId: hbId, sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: [], currency: hbDisburseInv.currency, total: supAmt });
     setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt("");
     setDataVer(function(v) { return v + 1; });
@@ -1618,7 +1682,7 @@ export default function FactoringDashboard() {
     item.status = "Completed";
     item.executedAt = now.toISOString();
     item.executedDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    auditLog("Supplier Payment Executed", spqId + " executed: " + money(item.amount, item.currency) + " to " + item.supplierName + " (" + item.bankName + " " + item.bankDetails + ")", { queueId: spqId, hbPaymentId: item.hbPaymentId, sourceInvoiceId: item.sourceInvoiceId, supplierName: item.supplierName, supplierId: item.supplierId, bankName: item.bankName, bankDetails: item.bankDetails, amount: item.amount, currency: item.currency });
+    auditLog("Supplier Payment Executed", spqId + " executed: " + money(item.amount, item.currency) + " to " + item.supplierName + " — " + (item.bankName ? item.bankName + " " + item.bankDetails : "No bank on file"), { queueId: spqId, hbPaymentId: item.hbPaymentId, sourceInvoiceId: item.sourceInvoiceId, supplierName: item.supplierName, supplierId: item.supplierId, bankName: item.bankName, bankDetails: item.bankDetails, bankVerified: item.bankVerified || false, amount: item.amount, currency: item.currency });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -1687,7 +1751,7 @@ export default function FactoringDashboard() {
 
         // Determine which programs this supplier is on
         var spAllInvs = viewData.invoices.filter(function(inv) {
-          return inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName;
+          return inv.supplierId ? getParentEntityId(inv.supplierId) === spSupId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName);
         });
         var spPrograms = [];
         var seenProgs = {};
@@ -1701,8 +1765,8 @@ export default function FactoringDashboard() {
         // Also check eligible programs from program settings
         FUNDING_PROGRAMS_DB.forEach(function(fp) {
           if (!seenProgs[fp.id] && fp.eligibleSuppliers) {
-            // Check if parent name or any branch name matches
-            var isEligible = fp.eligibleSuppliers.indexOf(spSupName) > -1 || fp.eligibleSuppliers.some(function(es) { return getParentSupplierName(es) === spSupName; });
+            // Check if parent ID or any branch entity ID matches
+            var isEligible = fp.eligibleSuppliers.indexOf(spSupId) > -1 || fp.eligibleSuppliers.some(function(es) { return getParentEntityId(es) === spSupId; });
             if (isEligible) {
               seenProgs[fp.id] = true;
               spPrograms.push(fp);
@@ -1784,7 +1848,7 @@ export default function FactoringDashboard() {
         }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.invoiceId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spRemittancePays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
-          return q.type === "remittance" && (q.supplierName === spSupName || getParentSupplierName(q.supplierName) === spSupName);
+          return q.type === "remittance" && (q.supplierId === spSupId || getParentEntityId(q.supplierId) === spSupId || q.supplierName === spSupName || getParentSupplierName(q.supplierName) === spSupName);
         }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) { return spInvIds[h.sourceInvoiceId]; }).map(function(h) {
@@ -1806,7 +1870,7 @@ export default function FactoringDashboard() {
         // Audit log for supplier
         var spAuditLog = AUDIT_LOG.filter(function(e) {
           var c = e.context || {};
-          return c.supplier === spSupName || c.supplierName === spSupName || (e.details || "").indexOf(spSupName) > -1;
+          return c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spSupId || (e.details || "").indexOf(spSupName) > -1;
         }).slice().reverse();
 
         // Stat card for portal
@@ -1963,7 +2027,7 @@ export default function FactoringDashboard() {
                   });
                   // Unallocated credit notes
                   CREDIT_NOTES_DB.filter(function(cn) {
-                    return cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName;
+                    return cn.supplierId ? getParentEntityId(cn.supplierId) === spSupId : (cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName);
                   }).forEach(function(cn) {
                     var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
                     if (totalAlloc < (cn.amount || 0) - 0.01) {
@@ -2019,7 +2083,7 @@ export default function FactoringDashboard() {
                   var byStatus = {};
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
-                    return (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
+                    return (inv.supplierId ? getParentEntityId(inv.supplierId) === spSupId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName)) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
                   }).forEach(function(inv) {
                     var fs = inv.fundingStatus;
                     if (byStatus[fs] !== undefined) byStatus[fs] += inv.capitalOutstanding || 0;
@@ -4428,7 +4492,7 @@ export default function FactoringDashboard() {
             </select>
             {selectedProgram && <select value={progSupFilter} onChange={function(e) { setProgSupFilter(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 200 }}>
               <option value="">All Suppliers</option>
-              {(function() { var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; }); var sups = prog && prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 ? prog.eligibleSuppliers : SUPPLIERS_DB.map(function(s) { return s.name; }); var opts = []; sups.forEach(function(sn) { opts.push({ value: sn, label: sn }); var sup = SUPPLIERS_DB.find(function(s) { return s.name === sn; }); if (sup && sup.branches) sup.branches.forEach(function(br) { opts.push({ value: sn + " \u2014 " + br.branchName, label: sn + " \u2014 " + br.branchName }); }); }); return opts; })().map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+              {(function() { var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; }); var eligIds = prog && prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 ? prog.eligibleSuppliers : SUPPLIERS_DB.map(function(s) { return s.id; }); var opts = []; eligIds.forEach(function(eid) { var parsed = parseEntityId(eid); var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; }); if (!sup) return; if (parsed.branchId) { var br = sup.branches && sup.branches.find(function(b) { return b.branchId === parsed.branchId; }); if (br) opts.push({ value: eid, label: sup.name + " \u2014 " + br.branchName }); } else { opts.push({ value: sup.id, label: sup.name }); if (sup.branches) sup.branches.forEach(function(br) { opts.push({ value: makeEntityId(sup.id, br.branchId), label: sup.name + " \u2014 " + br.branchName }); }); } }); return opts; })().map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
             </select>}
           </div>
 
@@ -4975,8 +5039,8 @@ export default function FactoringDashboard() {
                       <div><span style={{ color: "var(--muted)" }}>Min Interest Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(prog.minInterestRate * 100).toFixed(1)}%</span></div>
                       <div><span style={{ color: "var(--muted)" }}>Max Invoice Term: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{prog.maxInvoiceTerm}d</span></div>
                       <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Status Thresholds: </span><span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span style={{ color: "#EF4444" }}>Overdue {prog.thresholdOverdue || 1}d</span> → <span style={{ color: "#8B5CF6" }}>At Risk {prog.thresholdAtRisk || 7}d</span> → <span style={{ color: "#DC2626" }}>Recovery {prog.thresholdRecovery || 30}d</span> | <span style={{ color: "#8B5CF6" }}>Dispute→Risk {prog.thresholdDisputeAtRisk || 1}d</span> → <span style={{ color: "#DC2626" }}>Dispute→Recovery {prog.thresholdDisputeRecovery || 14}d</span></span></div>
-                      {prog.eligibleBuyers && prog.eligibleBuyers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Buyers: </span>{prog.eligibleBuyers.join(", ")}</div>}
-                      {prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Suppliers: </span>{prog.eligibleSuppliers.join(", ")}</div>}
+                      {prog.eligibleBuyers && prog.eligibleBuyers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Buyers: </span>{prog.eligibleBuyers.map(function(bid) { return buyName(bid) || bid; }).join(", ")}</div>}
+                      {prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Suppliers: </span>{prog.eligibleSuppliers.map(function(eid) { return getEntityDisplayName(eid) || eid; }).join(", ")}</div>}
                     </div>
                   </div>
                   {/* Donut */}
@@ -5853,14 +5917,14 @@ export default function FactoringDashboard() {
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierName, inv.fundingProgram);
+                    var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                     outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
                     if (item.programId) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.programId; });
-                    var bankInfo = getSupplierBankDetails(item.supplierName || "", item.programId);
+                    var bankInfo = getSupplierBankDetails(item.supplierId || item.supplierName || "", item.programId);
                     outboundRows.push({ rowType: item.type, rowId: "q-" + item.id, inv: null, supplierName: item.supplierName || "", programId: item.programId, programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: item.date, detail: item.type === "holdback_disbursement" ? "HB " + item.sourceInvoiceId : item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : ""), spqId: item.id, cancelFn: item.type === "holdback_disbursement" ? function() { cancelSPQItem(item.id); } : null });
                   });
                   if (outboundRows.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 18 }}>No outbound payments pending.</div>;
@@ -5878,7 +5942,7 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.programName}</td>
                           <td style={Object.assign({}, qmc, { color: "var(--accent)" })}>{row.detail}</td>
                           <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(row.amount, row.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11, color: row.bankName ? "var(--text-secondary)" : "#EF4444" }}>{row.bankName || "No bank"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11 }}>{row.bankName ? <span style={{ color: "var(--text-secondary)" }}>{row.bankName}</span> : <span style={{ color: "#EF4444", fontWeight: 600 }}>No bank</span>}{row.bankDetails ? <div style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 1 }}>{row.bankDetails}</div> : null}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(row.date)}</td>
                           <td style={{ padding: "8px 8px" }}>{row.cancelFn && <button onClick={row.cancelFn} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #DC262625", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Cancel</button>}</td>
                         </tr>;
@@ -6145,7 +6209,7 @@ export default function FactoringDashboard() {
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Select invoices</span>
               <select value={allocProgFilter} onChange={function(e) { setAllocProgFilter(e.target.value); setAllocSupFilter(""); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 160 }}><option value="">All Programs</option>{FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>
-              <select value={allocSupFilter} onChange={function(e) { setAllocSupFilter(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 160 }}><option value="">All Suppliers</option>{(function() { if (!allocProgFilter) return SUPPLIERS_DB; var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === allocProgFilter; }); if (!prog || !prog.eligibleSuppliers || prog.eligibleSuppliers.length === 0) return SUPPLIERS_DB; return SUPPLIERS_DB.filter(function(s) { return prog.eligibleSuppliers.indexOf(s.name) > -1; }); })().map(function(s) { return <option key={s.name} value={s.name}>{s.name}</option>; })}</select>
+              <select value={allocSupFilter} onChange={function(e) { setAllocSupFilter(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 160 }}><option value="">All Suppliers</option>{(function() { if (!allocProgFilter) return SUPPLIERS_DB; var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === allocProgFilter; }); if (!prog || !prog.eligibleSuppliers || prog.eligibleSuppliers.length === 0) return SUPPLIERS_DB; return SUPPLIERS_DB.filter(function(s) { return prog.eligibleSuppliers.indexOf(s.id) > -1 || prog.eligibleSuppliers.some(function(eid) { return getParentEntityId(eid) === s.id; }); }); })().map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}</select>
               <input type="text" value={allocSearch} onChange={function(e) { setAllocSearch(e.target.value); }} placeholder="Search..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 150 }} />
             </div>
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
@@ -6256,7 +6320,7 @@ export default function FactoringDashboard() {
                 <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Supplier</label>
                 <select value={remitPopup.supplier} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
                   <option value="">Select supplier...</option>
-                  {SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}
+                  {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
                 </select>
               </div>
               <div>
@@ -6300,12 +6364,14 @@ export default function FactoringDashboard() {
             var amt = r2(parseFloat(cnf.amount) || 0);
             if (amt <= 0 || !cnf.date || !cnf.currency || !cnf.supplier || !cnf.buyer) return;
             var cnId = "CN-" + String(CREDIT_NOTES_DB.length + 1).padStart(5, "0");
+            var supDisplay = getEntityDisplayName(cnf.supplier) || cnf.supplier;
+            var buyDisplay = buyName(cnf.buyer) || cnf.buyer;
             CREDIT_NOTES_DB.push({
               creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date,
-              reference: cnf.reference || "", supplierName: cnf.supplier, buyerName: cnf.buyer, allocations: [],
+              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay, allocations: [],
               createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
             });
-            auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + cnf.supplier + " / " + cnf.buyer, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierName: cnf.supplier, buyerName: cnf.buyer });
+            auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + supDisplay + " / " + buyDisplay, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay });
             setCnf({ amount: "", currency: cnf.currency, date: cnf.date, reference: "", supplier: cnf.supplier, buyer: cnf.buyer });
             setDataVer(function(v) { return v + 1; });
           }
@@ -6339,7 +6405,7 @@ export default function FactoringDashboard() {
               <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, marginBottom: 14 }}>Create Credit Note</div>
               <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Supplier</label><select value={cnf.supplier} onChange={function(e) { setCnf(Object.assign({}, cnf, { supplier: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select supplier...</option>{getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}</select></div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{BUYERS_DB.map(function(b) { return <option key={b.id} value={b.name}>{b.name}</option>; })}</select></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Amount</label><input type="number" step="0.01" value={cnf.amount} onChange={function(e) { setCnf(Object.assign({}, cnf, { amount: e.target.value })); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 140 }} /></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Currency</label><select value={cnf.currency} onChange={function(e) { setCnf(Object.assign({}, cnf, { currency: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Date</label><input type="date" value={cnf.date} onChange={function(e) { setCnf(Object.assign({}, cnf, { date: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} /></div>
@@ -7183,7 +7249,7 @@ export default function FactoringDashboard() {
                   var ebData = editingBranch ? editingBranch.data : null;
 
                   function startBranchEdit(idx) {
-                    var br = idx >= 0 ? Object.assign({}, branches[idx]) : { branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
+                    var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
                     setManagePopup({ type: "branchEdit", idx: idx, data: br });
                   }
                   function saveBranch() {
@@ -7195,6 +7261,29 @@ export default function FactoringDashboard() {
                       var brTrack = { branchName: "Branch Name", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
                       var brChanges = [];
                       Object.keys(brTrack).forEach(function(k) { var ov = oldBr[k] !== undefined && oldBr[k] !== null ? String(oldBr[k]) : ""; var nv = ebData[k] !== undefined && ebData[k] !== null ? String(ebData[k]) : ""; if (ov !== nv) brChanges.push(brTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); });
+                      // Track program bank account changes on branch
+                      var oldBrPBA = oldBr.programBankAccounts || {};
+                      var newBrPBA = ebData.programBankAccounts || {};
+                      var brPbaProgs = {};
+                      Object.keys(oldBrPBA).forEach(function(k) { brPbaProgs[k] = true; });
+                      Object.keys(newBrPBA).forEach(function(k) { brPbaProgs[k] = true; });
+                      Object.keys(brPbaProgs).forEach(function(fpId) {
+                        var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                        var pName = prog ? prog.name : fpId;
+                        ["outgoing", "incoming"].forEach(function(dir) {
+                          var oldDir = (oldBrPBA[fpId] || {})[dir] || {};
+                          var newDir = (newBrPBA[fpId] || {})[dir] || {};
+                          ["bankName", "sortCode", "accountNumber", "bic", "iban", "aba", "verified"].forEach(function(bf) {
+                            var ov = oldDir[bf] !== undefined && oldDir[bf] !== null ? String(oldDir[bf]) : "";
+                            var nv = newDir[bf] !== undefined && newDir[bf] !== null ? String(newDir[bf]) : "";
+                            if (ov !== nv) {
+                              var dirLabel = dir === "outgoing" ? "Out" : "In";
+                              var fLabel = { bankName: "Bank Name", sortCode: "Sort Code", accountNumber: "Account No", bic: "BIC", iban: "IBAN", aba: "ABA", verified: "Verified" }[bf] || bf;
+                              brChanges.push(pName + " " + dirLabel + " " + fLabel + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\"");
+                            }
+                          });
+                        });
+                      });
                       var brDetail = brChanges.length > 0 ? brChanges.join("; ") : "No field changes";
                       detEntity.branches[ebIdx] = ebData;
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
@@ -7231,15 +7320,15 @@ export default function FactoringDashboard() {
                       {branches.length === 0 && <div style={{ padding: "24px 22px", color: "var(--muted)", fontSize: 12, textAlign: "center", fontStyle: "italic" }}>No branches added. Click "+ Add Branch" to create one.</div>}
                       {branches.length > 0 && <div style={{ maxHeight: 400, overflowY: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank", "Verified", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank Accounts", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                           <tbody>{branches.map(function(br, bi) {
+                            var brPbaCount = br.programBankAccounts ? Object.keys(br.programBankAccounts).filter(function(k) { var o = br.programBankAccounts[k]; return (o.outgoing && o.outgoing.bankName) || (o.incoming && o.incoming.bankName); }).length : 0;
                             return <tr key={bi} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{br.branchName}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.city || "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.country || "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.primaryContact || "\u2014"}</td>
-                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.bankName || "\u2014"}</td>
-                              <td style={{ padding: "8px 8px" }}>{br.bankVerified ? <Badge label="Yes" bg="#2E8B5714" color="#059669" border="#2E8B5730" /> : <Badge label="No" bg="#6B728014" color="#6B7280" border="#6B728030" />}</td>
+                              <td style={{ padding: "8px 8px", fontSize: 11 }}>{brPbaCount > 0 ? <Badge label={brPbaCount + " program" + (brPbaCount !== 1 ? "s" : "")} bg="#2E8B5714" color="#059669" border="#2E8B5730" /> : <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 11 }}>Using parent</span>}</td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
                                 <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
@@ -7283,16 +7372,80 @@ export default function FactoringDashboard() {
                           {bfld("Contact 5 Email", "contact5Email", "email")}
                           <div style={{ display: "flex", gap: 8, alignItems: "end" }}><div style={{ flex: 1 }}>{bfld("Contact 5 Phone", "contact5Phone", "tel")}</div><label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", paddingBottom: 8 }}><input type="checkbox" checked={ebData.contact5Signatory || false} onChange={function() { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { contact5Signatory: !p.data.contact5Signatory }) }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: ebData.contact5Signatory ? "#059669" : "var(--muted)", whiteSpace: "nowrap" }}>Signatory</span></label></div>
                         </div>
-                        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
-                          {bfld("Bank Name", "bankName")}
-                          {bfld("Bank Payment Details", "bankDetails")}
-                          <div style={{ display: "flex", flexDirection: "column", gap: 2, justifyContent: "end" }}>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 0" }}>
-                              <div onClick={function() { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { bankVerified: !p.data.bankVerified }) }); }); }} style={{ width: 20, height: 20, borderRadius: 5, border: "2px solid " + (ebData.bankVerified ? "var(--accent)" : "var(--border)"), background: ebData.bankVerified ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>{ebData.bankVerified ? "\u2713" : ""}</div>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: ebData.bankVerified ? "#059669" : "var(--text-secondary)" }}>Bank Details Verified</span>
-                            </label>
-                          </div>
-                        </div>
+                        {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 10 }}>Bank Accounts by Program</div>
+                          {FUNDING_PROGRAMS_DB.map(function(fp) {
+                            var brPba = (ebData.programBankAccounts || {})[fp.id] || {};
+                            var brOut = brPba.outgoing || {};
+                            var brIn = brPba.incoming || {};
+                            var ccy = fp.currency || "GBP";
+                            var isGBP = ccy === "GBP";
+                            var isUSD = ccy === "USD";
+                            var bInp = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" };
+                            var bLbl = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 };
+                            function updateBrBank(direction, field, value) {
+                              setManagePopup(function(p) {
+                                var accts = Object.assign({}, (p.data.programBankAccounts || {}));
+                                if (!accts[fp.id]) accts[fp.id] = {};
+                                var dirObj = Object.assign({}, accts[fp.id][direction] || {});
+                                dirObj[field] = value;
+                                accts[fp.id] = Object.assign({}, accts[fp.id]);
+                                accts[fp.id][direction] = dirObj;
+                                return Object.assign({}, p, { data: Object.assign({}, p.data, { programBankAccounts: accts }) });
+                              });
+                            }
+                            function brBankField(direction, field, label) {
+                              var obj = direction === "outgoing" ? brOut : brIn;
+                              return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                <label style={bLbl}>{label}</label>
+                                <input type="text" value={obj[field] || ""} onChange={function(e) { updateBrBank(direction, field, e.target.value); }} style={bInp} />
+                              </div>;
+                            }
+                            // Check parent for defaults
+                            var parentPba = (det.programBankAccounts || {})[fp.id] || {};
+                            var parentOut = parentPba.outgoing || {};
+                            var parentIn = parentPba.incoming || {};
+                            var hasParentOut = !!parentOut.bankName;
+                            var hasParentIn = !!parentIn.bankName;
+                            var hasBrOut = !!brOut.bankName;
+                            var hasBrIn = !!brIn.bankName;
+                            return <div key={fp.id} style={{ background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px", marginBottom: 10 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>{fp.name} <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>({ccy})</span>
+                                {!hasBrOut && hasParentOut ? <span style={{ fontSize: 9, color: "#D97706", marginLeft: 8 }}>Using parent bank details</span> : null}
+                              </div>
+                              {/* Outgoing */}
+                              <div style={{ marginBottom: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#0EA5E9" }}>Outgoing</div>
+                                  <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={brOut.verified || false} onChange={function() { updateBrBank("outgoing", "verified", !brOut.verified); }} style={{ width: 12, height: 12, accentColor: "#059669" }} />
+                                    <span style={{ fontSize: 9, fontWeight: 600, color: brOut.verified ? "#059669" : "var(--muted)" }}>Verified</span>
+                                  </label>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px 10px" }}>
+                                  {brBankField("outgoing", "bankName", "Bank Name")}
+                                  {isGBP && brBankField("outgoing", "sortCode", "Sort Code")}
+                                  {brBankField("outgoing", "accountNumber", "Account No")}
+                                  {isUSD && brBankField("outgoing", "aba", "ABA/Routing")}
+                                  {brBankField("outgoing", "bic", "BIC/SWIFT")}
+                                  {!isUSD && brBankField("outgoing", "iban", "IBAN")}
+                                </div>
+                              </div>
+                              {/* Incoming */}
+                              <div>
+                                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#059669", marginBottom: 6 }}>Incoming</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px 10px" }}>
+                                  {brBankField("incoming", "bankName", "Bank Name")}
+                                  {isGBP && brBankField("incoming", "sortCode", "Sort Code")}
+                                  {brBankField("incoming", "accountNumber", "Account No")}
+                                  {isUSD && brBankField("incoming", "aba", "ABA/Routing")}
+                                  {brBankField("incoming", "bic", "BIC/SWIFT")}
+                                  {!isUSD && brBankField("incoming", "iban", "IBAN")}
+                                </div>
+                              </div>
+                            </div>;
+                          })}
+                        </div>}
                         <div style={{ display: "flex", gap: 8 }}>
                           <button onClick={saveBranch} disabled={!ebData.branchName} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: ebData.branchName ? "var(--accent)" : "var(--border)", color: ebData.branchName ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: ebData.branchName ? "pointer" : "default" }}>{ebIdx >= 0 ? "Save Changes" : "Add Branch"}</button>
                           <button onClick={function() { setManagePopup(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
@@ -8017,25 +8170,24 @@ export default function FactoringDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.name) > -1; return <span key={b.name} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.name) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Suppliers</label>
                       <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
                         var items = [];
                         SUPPLIERS_DB.forEach(function(s) {
-                          var parentSel = (pf.eligibleSuppliers || []).indexOf(s.name) > -1;
-                          items.push(React.createElement("span", { key: s.name, onClick: function() {
+                          var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
+                          items.push(React.createElement("span", { key: s.id, onClick: function() {
                             setProgFields(function(p) {
                               var arr = (p.eligibleSuppliers || []).slice();
                               if (parentSel) {
                                 // Deselect parent and all its branches
-                                arr = arr.filter(function(n) { return n !== s.name && !n.startsWith(s.name + " \u2014 "); });
+                                arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
                               } else {
                                 // Select parent (which means all branches eligible)
-                                // Remove any individually selected branches since parent covers all
-                                arr = arr.filter(function(n) { return !n.startsWith(s.name + " \u2014 "); });
-                                arr.push(s.name);
+                                arr = arr.filter(function(n) { return !n.startsWith(s.id + ":"); });
+                                arr.push(s.id);
                               }
                               return Object.assign({}, p, { eligibleSuppliers: arr });
                             });
@@ -8043,17 +8195,17 @@ export default function FactoringDashboard() {
                           // Show branches indented if parent is NOT selected (individual branch selection)
                           if (s.branches && s.branches.length > 0 && !parentSel) {
                             s.branches.forEach(function(br) {
-                              var brFullName = s.name + " \u2014 " + br.branchName;
-                              var brSel = (pf.eligibleSuppliers || []).indexOf(brFullName) > -1;
-                              items.push(React.createElement("span", { key: brFullName, onClick: function() {
-                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brFullName) }); });
+                              var brEntityId = makeEntityId(s.id, br.branchId);
+                              var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
+                              items.push(React.createElement("span", { key: brEntityId, onClick: function() {
+                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
                               }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
                             });
                           }
                           // Show branches as auto-included if parent IS selected
                           if (s.branches && s.branches.length > 0 && parentSel) {
                             s.branches.forEach(function(br) {
-                              items.push(React.createElement("span", { key: s.name + " \u2014 " + br.branchName + "-auto", style: Object.assign({}, multiSelStyle, { background: "#1E3A5F10", color: "#0F172A80", borderColor: "#0F172A20", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
+                              items.push(React.createElement("span", { key: s.id + ":" + (br.branchId || br.branchName) + "-auto", style: Object.assign({}, multiSelStyle, { background: "#1E3A5F10", color: "#0F172A80", borderColor: "#0F172A20", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
                             });
                           }
                         });
@@ -8105,7 +8257,7 @@ export default function FactoringDashboard() {
                           <td style={Object.assign({}, mc, { color: "#D97706" })}>{(prog.minInterestRate * 100).toFixed(1)}%</td>
                           <td style={Object.assign({}, mc)}>{prog.maxInvoiceTerm}d</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{(prog.eligibleBuyers || []).length > 0 ? prog.eligibleBuyers.join(", ") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>All</span>}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{(prog.eligibleSuppliers || []).length > 0 ? prog.eligibleSuppliers.join(", ") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>All</span>}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{(prog.eligibleSuppliers || []).length > 0 ? prog.eligibleSuppliers.map(function(eid) { return getEntityDisplayName(eid) || eid; }).join(", ") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>All</span>}</td>
                           <td style={{ padding: "8px 8px" }}><button onClick={function() { startEditProgram(idx); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button></td>
                         </tr>;
                       })}</tbody>
@@ -8126,9 +8278,11 @@ export default function FactoringDashboard() {
                 var newId = "INV-" + String(INVOICES_DB.length + 2001).padStart(7, "0");
                 var hist = [{ status: "Received", date: nf.invoiceDate }];
                 var supRate = getSupplierRate(nf.supplier);
+                var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
+                var buyDisplayName = buyName(nf.buyer) || nf.buyer;
                 // Capital/interest/holdback are NOT set at creation — they are set when funding is approved via the Fund popup
                 INVOICES_DB.push({
-                  id: newId, supplierName: nf.supplier, buyerName: nf.buyer,
+                  id: newId, supplierId: nf.supplier, supplierName: supDisplayName, buyerId: nf.buyer, buyerName: buyDisplayName,
                   amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
                   interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
                   advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
@@ -8139,7 +8293,7 @@ export default function FactoringDashboard() {
                   fullyRepaidDate: null, invoiceStatus: "Received", invoiceStatusHistory: hist,
                   fundingStatus: "pending", partialApprovedAmount: 0
                 });
-                auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + nf.supplier + " / " + nf.buyer + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplier: nf.supplier, buyer: nf.buyer, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
+                auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + supDisplayName + " / " + buyDisplayName + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplierId: nf.supplier, supplier: supDisplayName, buyerId: nf.buyer, buyer: buyDisplayName, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
                 setNewInvFields({ supplier: nf.supplier, buyer: nf.buyer, amount: "", currency: nf.currency, invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
                 setDataVer(function(v) { return v + 1; });
               }
@@ -8159,7 +8313,7 @@ export default function FactoringDashboard() {
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Buyer</label>
                     <select value={nf.buyer} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyer: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
                       <option value="">Select buyer...</option>
-                      {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.name}>{b.name}</option>; })}
+                      {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}
                     </select>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -8213,18 +8367,20 @@ export default function FactoringDashboard() {
                 function openFundPopup(inv, progId) {
                   var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === progId; });
                   if (!prog) return;
-                  var supRate = getSupplierRate(inv.supplierName);
+                  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
                   var maxCap = r2(inv.amount * prog.maxAdvanceRate);
                   var defaultCap = r2(inv.amount * supRate.advanceRate);
                   // Apply per-program credit limit cap
-                  var parentSupplier = getParentSupplier(inv.supplierName);
+                  var parentSupplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
+                  var parentId = getParentEntityId(inv.supplierId) || "";
                   var creditLimitForProg = 0;
                   if (parentSupplier && parentSupplier.creditLimits && parentSupplier.creditLimits[progId] > 0) {
                     creditLimitForProg = parentSupplier.creditLimits[progId];
                     var currentOS = 0;
                     viewData.invoices.forEach(function(existInv) {
                       if (existInv.id === inv.id) return;
-                      if (getParentSupplierName(existInv.supplierName) !== getParentSupplierName(inv.supplierName)) return;
+                      var existParentId = getParentEntityId(existInv.supplierId) || "";
+                      if (existParentId ? existParentId !== parentId : getParentSupplierName(existInv.supplierName) !== getParentSupplierName(inv.supplierName)) return;
                       if (existInv.fundingStatus === "pending") return;
                       if (existInv.fundingProgram !== progId) return;
                       currentOS += (existInv.capitalOutstanding || 0) + (existInv.interestOutstanding || 0) + (existInv.penaltyInterest || 0);
@@ -8362,6 +8518,19 @@ export default function FactoringDashboard() {
                           <div><span style={{ color: "var(--muted)" }}>Term: </span>{pt}d</div>
                         </div>;
                       })()}
+                      {(function() {
+                        var bankInfo = getSupplierBankDetails(fundPopup.inv.supplierId || fundPopup.inv.supplierName, fundPopup.prog.id);
+                        return <div style={{ padding: "10px 14px", borderRadius: 8, background: "#05966908", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 16, fontSize: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Payment to</span>
+                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#05966914", color: "#059669" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#EF444414", color: "#EF4444" }}>Unverified</span>}
+                          </div>
+                          {bankInfo.bankName ? <div>
+                            <span style={{ color: "var(--text)", fontWeight: 600 }}>{bankInfo.bankName}</span>
+                            {bankInfo.bankDetails ? <div style={{ color: "var(--text-secondary)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{bankInfo.bankDetails}</div> : null}
+                          </div> : <div style={{ color: "#D97706", fontWeight: 600 }}>No bank details on file for this supplier/program</div>}
+                        </div>;
+                      })()}
                       <div style={{ display: "flex", gap: 10 }}>
                         <button onClick={confirmFundPopup} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: "#38BDF8", color: "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #818cf840" }}>Approve for Funding</button>
                         <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
@@ -8469,7 +8638,7 @@ export default function FactoringDashboard() {
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierName, inv.fundingProgram);
+                    var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                     outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
@@ -8792,7 +8961,7 @@ export default function FactoringDashboard() {
 
                     <div style={{ marginBottom: 16 }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", "Status"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{batchConfirm.items.map(function(item, ii) {
                           if (batchConfirm.type === "outbound") {
                             var typeLabel = item.rowType === "funding" ? "Funding" : "Holdback";
@@ -8805,6 +8974,9 @@ export default function FactoringDashboard() {
                               <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0EA5E9" }}>{money(item.amount, item.currency)}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.bankName || "\u2014"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.bankDetails || "\u2014"}</td>
+                              <td style={{ padding: "6px 10px" }}>{(function() { var bi = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId); return bi.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>{"\u2713"}</span> : <span style={{ fontSize: 9, fontWeight: 700, color: "#EF4444" }}>{"\u2717"}</span>; })()}</td>
                             </tr>;
                           } else {
                             return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -8821,6 +8993,22 @@ export default function FactoringDashboard() {
                     </div>
 
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                      {/* Bank Details Summary */}
+                      {batchConfirm.type === "outbound" && batchConfirm.items.length > 0 && (function() {
+                        var firstItem = batchConfirm.items[0];
+                        var bankInfo = getSupplierBankDetails(firstItem.supplierId || firstItem.supplierName, firstItem.programId);
+                        return <div style={{ padding: "14px 18px", borderRadius: 10, background: bankInfo.bankVerified ? "#05966908" : "#F59E0B08", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 14 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Payment Destination</div>
+                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u26A0"} Unverified</span>}
+                          </div>
+                          {bankInfo.bankName ? <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{bankInfo.bankName}</div>
+                            {bankInfo.bankDetails ? <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bankInfo.bankDetails}</div> : null}
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Paying: {firstItem.supplierName} via {firstItem.programName}</div>
+                          </div> : <div style={{ fontSize: 13, color: "#D97706", fontWeight: 600 }}>{"\u26A0"} No bank details on file — payment cannot be executed</div>}
+                        </div>;
+                      })()}
                       {/* Deductions section — only for outbound payments */}
                       {batchConfirm.type === "outbound" && (function() {
                         var deductTotal = batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0);
