@@ -113,8 +113,11 @@ function getEligiblePrograms(inv, supDilRates) {
   if (badInvStatuses[inv.invoiceStatus]) return [];
   var dr = supDilRates ? (supDilRates[parentSup] || {}) : {};
   return FUNDING_PROGRAMS_DB.filter(function(fp) {
-    // Eligible suppliers check — uses parent name
-    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0 && fp.eligibleSuppliers.indexOf(parentSup) === -1) return false;
+    // Eligible suppliers check — check full name (parent or branch) and parent name
+    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
+      var nameMatch = fp.eligibleSuppliers.indexOf(inv.supplierName) > -1 || fp.eligibleSuppliers.indexOf(parentSup) > -1;
+      if (!nameMatch) return false;
+    }
     // Eligible buyers check
     if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0 && fp.eligibleBuyers.indexOf(inv.buyerName) === -1) return false;
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
@@ -1697,9 +1700,13 @@ export default function FactoringDashboard() {
         });
         // Also check eligible programs from program settings
         FUNDING_PROGRAMS_DB.forEach(function(fp) {
-          if (!seenProgs[fp.id] && fp.eligibleSuppliers && fp.eligibleSuppliers.indexOf(spSupName) > -1) {
-            seenProgs[fp.id] = true;
-            spPrograms.push(fp);
+          if (!seenProgs[fp.id] && fp.eligibleSuppliers) {
+            // Check if parent name or any branch name matches
+            var isEligible = fp.eligibleSuppliers.indexOf(spSupName) > -1 || fp.eligibleSuppliers.some(function(es) { return getParentSupplierName(es) === spSupName; });
+            if (isEligible) {
+              seenProgs[fp.id] = true;
+              spPrograms.push(fp);
+            }
           }
         });
         // Auto-select first program if none selected
@@ -8014,7 +8021,44 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Suppliers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{SUPPLIERS_DB.map(function(s) { var sel = (pf.eligibleSuppliers || []).indexOf(s.name) > -1; return <span key={s.name} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], s.name) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#1E3A5F20" : "transparent", color: sel ? "#0F172A" : "var(--muted)", borderColor: sel ? "#0F172A" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{s.name}</span>; })}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
+                        var items = [];
+                        SUPPLIERS_DB.forEach(function(s) {
+                          var parentSel = (pf.eligibleSuppliers || []).indexOf(s.name) > -1;
+                          items.push(React.createElement("span", { key: s.name, onClick: function() {
+                            setProgFields(function(p) {
+                              var arr = (p.eligibleSuppliers || []).slice();
+                              if (parentSel) {
+                                // Deselect parent and all its branches
+                                arr = arr.filter(function(n) { return n !== s.name && !n.startsWith(s.name + " \u2014 "); });
+                              } else {
+                                // Select parent (which means all branches eligible)
+                                // Remove any individually selected branches since parent covers all
+                                arr = arr.filter(function(n) { return !n.startsWith(s.name + " \u2014 "); });
+                                arr.push(s.name);
+                              }
+                              return Object.assign({}, p, { eligibleSuppliers: arr });
+                            });
+                          }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#1E3A5F20" : "transparent", color: parentSel ? "#0F172A" : "var(--muted)", borderColor: parentSel ? "#0F172A" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
+                          // Show branches indented if parent is NOT selected (individual branch selection)
+                          if (s.branches && s.branches.length > 0 && !parentSel) {
+                            s.branches.forEach(function(br) {
+                              var brFullName = s.name + " \u2014 " + br.branchName;
+                              var brSel = (pf.eligibleSuppliers || []).indexOf(brFullName) > -1;
+                              items.push(React.createElement("span", { key: brFullName, onClick: function() {
+                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brFullName) }); });
+                              }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
+                            });
+                          }
+                          // Show branches as auto-included if parent IS selected
+                          if (s.branches && s.branches.length > 0 && parentSel) {
+                            s.branches.forEach(function(br) {
+                              items.push(React.createElement("span", { key: s.name + " \u2014 " + br.branchName + "-auto", style: Object.assign({}, multiSelStyle, { background: "#1E3A5F10", color: "#0F172A80", borderColor: "#0F172A20", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
+                            });
+                          }
+                        });
+                        return items;
+                      })()}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyer Jurisdictions</label>
