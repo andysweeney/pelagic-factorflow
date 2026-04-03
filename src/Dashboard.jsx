@@ -1961,7 +1961,7 @@ export default function FactoringDashboard() {
                     var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
                     if (totalAlloc < (cn.amount || 0) - 0.01) {
                       var unalloc = r2((cn.amount || 0) - totalAlloc);
-                      actions.push({ type: "warning", icon: "\uD83D\uDCCB", color: spAmber, title: "Credit Note " + cn.id + " is unallocated", sub: money(unalloc, cn.currency) + " unallocated from " + cn.buyerName });
+                      actions.push({ type: "warning", icon: "\uD83D\uDCCB", color: spAmber, title: "Credit Note " + cn.creditNoteId + " is unallocated", sub: money(unalloc, cn.currency) + " unallocated from " + cn.buyerName });
                     }
                   });
                   return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", display: "flex", flexDirection: "column" } },
@@ -2321,7 +2321,68 @@ export default function FactoringDashboard() {
                                       );
                                     })
                                   )
-                                ) : null
+                                ) : null,
+                                /* Payments Applied to this Invoice */
+                                (function() {
+                                  var invPayments = [];
+                                  PAYMENTS_DB.forEach(function(p) {
+                                    p.allocations.forEach(function(a) {
+                                      if (a.invoiceId === inv.id) {
+                                        invPayments.push({ paymentId: p.paymentId, date: a.allocDate || p.date, amount: a.amount, currency: p.currency, reference: p.reference });
+                                      }
+                                    });
+                                  });
+                                  if (invPayments.length === 0) return null;
+                                  invPayments.sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spGreen, marginBottom: 12 } }, "Payments Applied (" + invPayments.length + ")"),
+                                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                      React.createElement("thead", null,
+                                        React.createElement("tr", null,
+                                          ["Payment ID", "Date", "Amount", "Reference"].map(function(h) {
+                                            return React.createElement("th", { key: h, style: { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h);
+                                          })
+                                        )
+                                      ),
+                                      React.createElement("tbody", null,
+                                        invPayments.map(function(ip, ipi) {
+                                          return React.createElement("tr", { key: ipi, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                                            React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spAccent, fontWeight: 600 } }, ip.paymentId),
+                                            React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, color: spText } }, fmt(ip.date)),
+                                            React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spGreen, fontWeight: 600 } }, money(ip.amount, ip.currency)),
+                                            React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spMuted } }, ip.reference || "\u2014")
+                                          );
+                                        })
+                                      )
+                                    ),
+                                    React.createElement("div", { style: { marginTop: 8, paddingTop: 8, borderTop: "1px solid " + spBorder, display: "flex", justifyContent: "space-between", fontSize: 12 } },
+                                      React.createElement("span", { style: { color: spMuted, fontWeight: 600 } }, "Total Applied"),
+                                      React.createElement("span", { style: { fontFamily: spMono, color: spGreen, fontWeight: 700 } }, money(invPayments.reduce(function(s, ip) { return s + ip.amount; }, 0), inv.currency))
+                                    )
+                                  );
+                                })(),
+                                /* Audit Log for this Invoice */
+                                (function() {
+                                  var invAudit = AUDIT_LOG.filter(function(e) {
+                                    var c = e.context || {};
+                                    return c.invoiceId === inv.id || (e.details || "").indexOf(inv.id) > -1;
+                                  }).slice().reverse();
+                                  if (invAudit.length === 0) return null;
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Audit Log (" + invAudit.length + " entries)"),
+                                    React.createElement("div", { style: { maxHeight: 400, overflowY: "auto" } },
+                                      invAudit.map(function(e, ei) {
+                                        return React.createElement("div", { key: ei, style: { padding: "8px 0", borderBottom: ei < invAudit.length - 1 ? "1px solid " + spBorder + "60" : "none", fontSize: 11 } },
+                                          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 2 } },
+                                            React.createElement("span", { style: { fontWeight: 600, color: spAccent } }, e.action),
+                                            React.createElement("span", { style: { color: spMuted, fontFamily: spMono, fontSize: 10 } }, e.timestamp)
+                                          ),
+                                          React.createElement("div", { style: { color: spMuted, lineHeight: 1.4 } }, e.details)
+                                        );
+                                      })
+                                    )
+                                  );
+                                })()
                               )
                             )
                           ) : null
@@ -2347,28 +2408,106 @@ export default function FactoringDashboard() {
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
-                          ["CN Number", "Buyer", "CN Amount", "Received Date", "Allocation Status"].map(function(h) {
+                          ["CN Number", "Buyer", "CN Amount", "Received Date", "Allocation Status", ""].map(function(h) {
                             return React.createElement("th", { key: h, style: portalTh }, h);
                           })
                         )
                       ),
-                      React.createElement("tbody", null,
-                        spCreditNotes.map(function(cn) {
-                          var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
-                          var cnAmt = cn.amount || 0;
-                          var allocStatus = totalAlloc < 0.01 ? "Unallocated" : r2(totalAlloc) >= r2(cnAmt) - 0.01 ? "Fully Allocated" : "Partially Allocated";
-                          var allocColor = allocStatus === "Fully Allocated" ? spGreen : allocStatus === "Unallocated" ? spRed : spAmber;
-                          return React.createElement("tr", { key: cn.id, style: { borderBottom: "1px solid " + spBorder } },
-                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, cn.id),
+                      spCreditNotes.map(function(cn) {
+                        var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
+                        var cnAmt = cn.amount || 0;
+                        var allocStatus = totalAlloc < 0.01 ? "Unallocated" : r2(totalAlloc) >= r2(cnAmt) - 0.01 ? "Fully Allocated" : "Partially Allocated";
+                        var allocColor = allocStatus === "Fully Allocated" ? spGreen : allocStatus === "Unallocated" ? spRed : spAmber;
+                        var isCnExp = exp === "cn-" + cn.creditNoteId;
+                        return React.createElement("tbody", { key: cn.creditNoteId },
+                          React.createElement("tr", { style: { cursor: "pointer", borderBottom: isCnExp ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isCnExp ? null : "cn-" + cn.creditNoteId); } },
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, cn.creditNoteId),
                             React.createElement("td", { style: portalTd }, cn.buyerName),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(cnAmt, cn.currency)),
                             React.createElement("td", { style: portalTd }, fmt(cn.receivedDate || cn.date)),
                             React.createElement("td", { style: portalTd },
                               React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: allocColor + "14", color: allocColor, border: "1px solid " + allocColor + "30", fontFamily: spMono } }, allocStatus)
+                            ),
+                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
+                              React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isCnExp ? "\u25B2" : "\u25BC")
                             )
-                          );
-                        })
-                      )
+                          ),
+                          isCnExp ? React.createElement("tr", null,
+                            React.createElement("td", { colSpan: 6, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                                /* CN Details */
+                                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 16 } },
+                                  React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAmber, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid " + spAmber + "40" } }, "Credit Note Details"),
+                                    [["CN Number", cn.creditNoteId], ["Supplier", cn.supplierName], ["Buyer", cn.buyerName], ["Amount", money(cnAmt, cn.currency)], ["Currency", cn.currency], ["Date", fmt(cn.date)], ["Reference", cn.reference || "\u2014"], ["Status", allocStatus]].map(function(row) {
+                                      return React.createElement("div", { key: row[0], style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid " + spBorder + "80" } },
+                                        React.createElement("span", { style: { fontSize: 10, color: spMuted, fontWeight: 600 } }, row[0]),
+                                        React.createElement("span", { style: { fontSize: 12, fontFamily: spMono, color: spText } }, row[1])
+                                      );
+                                    })
+                                  ),
+                                  /* Allocations */
+                                  React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spGreen, marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid " + spGreen + "40" } }, "Applied to Invoices"),
+                                    (cn.allocations && cn.allocations.length > 0) ?
+                                    React.createElement("div", null,
+                                      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                        React.createElement("thead", null,
+                                          React.createElement("tr", null,
+                                            ["Invoice", "Amount Applied", "Type"].map(function(h) {
+                                              return React.createElement("th", { key: h, style: { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h);
+                                            })
+                                          )
+                                        ),
+                                        React.createElement("tbody", null,
+                                          cn.allocations.map(function(a, ai) {
+                                            return React.createElement("tr", { key: ai, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                                              React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spAccent, fontWeight: 600 } }, a.invoiceId),
+                                              React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spGreen, fontWeight: 600 } }, money(a.amount, cn.currency)),
+                                              React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spMuted } }, a.type || "Allocation")
+                                            );
+                                          })
+                                        )
+                                      ),
+                                      React.createElement("div", { style: { marginTop: 8, paddingTop: 8, borderTop: "1px solid " + spBorder, display: "flex", justifyContent: "space-between", fontSize: 12 } },
+                                        React.createElement("span", { style: { color: spMuted, fontWeight: 600 } }, "Total Allocated"),
+                                        React.createElement("span", { style: { fontFamily: spMono, color: spGreen, fontWeight: 700 } }, money(r2(totalAlloc), cn.currency))
+                                      ),
+                                      r2(cnAmt - totalAlloc) > 0.01 ? React.createElement("div", { style: { marginTop: 4, display: "flex", justifyContent: "space-between", fontSize: 12 } },
+                                        React.createElement("span", { style: { color: spMuted, fontWeight: 600 } }, "Unallocated"),
+                                        React.createElement("span", { style: { fontFamily: spMono, color: spAmber, fontWeight: 700 } }, money(r2(cnAmt - totalAlloc), cn.currency))
+                                      ) : null
+                                    ) :
+                                    React.createElement("div", { style: { padding: "16px 0", color: spMuted, fontSize: 12, fontStyle: "italic", textAlign: "center" } }, "No allocations yet")
+                                  )
+                                ),
+                                /* Audit Log for this CN */
+                                (function() {
+                                  var cnAudit = AUDIT_LOG.filter(function(e) {
+                                    var c = e.context || {};
+                                    return c.creditNoteId === cn.creditNoteId || (e.details || "").indexOf(cn.creditNoteId) > -1;
+                                  }).slice().reverse();
+                                  if (cnAudit.length === 0) return null;
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Audit Log (" + cnAudit.length + " entries)"),
+                                    React.createElement("div", { style: { maxHeight: 400, overflowY: "auto" } },
+                                      cnAudit.map(function(e, ei) {
+                                        return React.createElement("div", { key: ei, style: { padding: "8px 0", borderBottom: ei < cnAudit.length - 1 ? "1px solid " + spBorder + "60" : "none", fontSize: 11 } },
+                                          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 2 } },
+                                            React.createElement("span", { style: { fontWeight: 600, color: spAccent } }, e.action),
+                                            React.createElement("span", { style: { color: spMuted, fontFamily: spMono, fontSize: 10 } }, e.timestamp)
+                                          ),
+                                          React.createElement("div", { style: { color: spMuted, lineHeight: 1.4 } }, e.details)
+                                        );
+                                      })
+                                    )
+                                  );
+                                })()
+                              )
+                            )
+                          ) : null
+                        );
+                      })
                     )
                   )
                 )
@@ -2665,11 +2804,41 @@ export default function FactoringDashboard() {
             ),
 
             /* YOUR HISTORY TAB */
-            spPortalTab === "creditnotes" && React.createElement("div", null,
-              React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Your History"),
+            spPortalTab === "creditnotes" && (function() {
+              // Collect unique actions
+              var histActions = [];
+              var seenActions = {};
+              spAuditLog.forEach(function(e) { if (!seenActions[e.action]) { seenActions[e.action] = true; histActions.push(e.action); } });
+              histActions.sort();
+              // Filter
+              var filteredHist = spAuditLog;
+              if (spTypeFilter !== "all") filteredHist = filteredHist.filter(function(e) { return e.action === spTypeFilter; });
+              if (spSearch) {
+                var s = spSearch.toLowerCase();
+                filteredHist = filteredHist.filter(function(e) { return (e.action || "").toLowerCase().indexOf(s) > -1 || (e.details || "").toLowerCase().indexOf(s) > -1 || (e.displayTime || "").toLowerCase().indexOf(s) > -1; });
+              }
+              // Pagination
+              var histPageSize = 30;
+              var histTotalPages = Math.ceil(filteredHist.length / histPageSize);
+              var histCurrentPage = Math.min(spPage, Math.max(0, histTotalPages - 1));
+              var histPageItems = filteredHist.slice(histCurrentPage * histPageSize, (histCurrentPage + 1) * histPageSize);
+              var filterSel = { padding: "7px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, outline: "none", cursor: "pointer", fontFamily: spFont };
+              return React.createElement("div", null,
+              React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 } },
+                React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Your History"),
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
+                  React.createElement("input", { type: "text", value: spSearch, onChange: function(e) { setSpSearch(e.target.value); setSpPage(0); }, placeholder: "Search...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 180, fontFamily: spFont } }),
+                  React.createElement("select", { value: spTypeFilter, onChange: function(e) { setSpTypeFilter(e.target.value); setSpPage(0); }, style: filterSel },
+                    React.createElement("option", { value: "all" }, "All Actions"),
+                    histActions.map(function(a) { return React.createElement("option", { key: a, value: a }, a); })
+                  ),
+                  (spSearch || spTypeFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpTypeFilter("all"); setSpPage(0); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                  React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredHist.length + " entries")
+                )
+              ),
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
-                spAuditLog.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, "No activity recorded yet.") :
-                React.createElement("div", { style: { overflowX: "auto", maxHeight: 600, overflowY: "auto" } },
+                filteredHist.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, spSearch || spTypeFilter !== "all" ? "No entries match your filters." : "No activity recorded yet.") :
+                React.createElement("div", { style: { overflowX: "auto" } },
                   React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
@@ -2679,7 +2848,7 @@ export default function FactoringDashboard() {
                       )
                     ),
                     React.createElement("tbody", null,
-                      spAuditLog.slice(0, 500).map(function(e, ei) {
+                      histPageItems.map(function(e, ei) {
                         return React.createElement("tr", { key: ei },
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { fontSize: 11, color: spMuted, whiteSpace: "nowrap" }) }, e.displayTime),
                           React.createElement("td", { style: Object.assign({}, portalTd, { fontWeight: 600, color: spAccent, fontSize: 12 }) }, e.action),
@@ -2688,9 +2857,16 @@ export default function FactoringDashboard() {
                       })
                     )
                   )
-                )
+                ),
+                histTotalPages > 1 ? React.createElement("div", { style: { padding: "14px 20px", borderTop: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                  React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "Page " + (histCurrentPage + 1) + " of " + histTotalPages),
+                  React.createElement("div", { style: { display: "flex", gap: 6 } },
+                    React.createElement("button", { disabled: histCurrentPage === 0, onClick: function() { setSpPage(histCurrentPage - 1); }, style: { padding: "6px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: histCurrentPage === 0 ? "transparent" : spCard, color: histCurrentPage === 0 ? spBorder : spText, fontSize: 11, fontWeight: 600, cursor: histCurrentPage === 0 ? "default" : "pointer", fontFamily: spFont } }, "\u2190 Previous"),
+                    React.createElement("button", { disabled: histCurrentPage >= histTotalPages - 1, onClick: function() { setSpPage(histCurrentPage + 1); }, style: { padding: "6px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: histCurrentPage >= histTotalPages - 1 ? "transparent" : spCard, color: histCurrentPage >= histTotalPages - 1 ? spBorder : spText, fontSize: 11, fontWeight: 600, cursor: histCurrentPage >= histTotalPages - 1 ? "default" : "pointer", fontFamily: spFont } }, "Next \u2192")
+                  )
+                ) : null
               )
-            )
+            ); })()
             )
           ),
           React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
