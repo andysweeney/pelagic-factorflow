@@ -2271,10 +2271,23 @@ export default function FactoringDashboard() {
           return q.type === "remittance" && (spMatchesScope(q.supplierId) || spMatchesScopeByName(q.supplierName));
         }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
-        var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) { return spInvIds[h.sourceInvoiceId]; }).map(function(h) {
+        var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) {
+          if (!spInvIds[h.sourceInvoiceId]) return false;
+          // Only show if the associated SPQ entry has been executed (Completed)
+          var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.hbPaymentId === h.hbPaymentId; });
+          if (!spq || spq.status !== "Completed") return false;
+          // Skip if this HBP was part of a bundle (already counted in spFundingPays via the bundle record)
+          if (spq.isBundle) return false;
+          // Only show if there's an actual disbursement to the supplier
           var supReturn = 0;
           (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
-          return { id: h.hbPaymentId, type: "Holdback Return", date: fmt(h.date), amount: supReturn > 0 ? supReturn : h.amount, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: "", sortDate: h.date };
+          if (supReturn < 0.01) return false;
+          return true;
+        }).map(function(h) {
+          var supReturn = 0;
+          (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
+          var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.hbPaymentId === h.hbPaymentId; });
+          return { id: h.hbPaymentId, type: "Holdback Return", date: spq ? (spq.executedDisplay || fmt(h.date)) : fmt(h.date), amount: supReturn, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: spq ? (spq.programName || "") : "", sortDate: spq ? (spq.executedAt || h.date) : h.date };
         });
 
         var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).concat(spRemittancePays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
