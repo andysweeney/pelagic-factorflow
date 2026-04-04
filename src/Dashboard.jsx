@@ -2154,6 +2154,14 @@ export default function FactoringDashboard() {
         var spAllInvs = viewData.invoices.filter(function(inv) {
           return inv.supplierId ? spMatchesScope(inv.supplierId) : spMatchesScopeByName(inv.supplierName);
         });
+        // Debug: trace invoice matching
+        console.log("[SP Debug] spRawId:", spRawId, "spParentId:", spParentId, "spIsBranchUser:", spIsBranchUser, "spSupName:", spSupName);
+        console.log("[SP Debug] viewData.invoices count:", viewData.invoices.length, "spAllInvs count:", spAllInvs.length);
+        if (viewData.invoices.length > 0 && spAllInvs.length === 0) {
+          viewData.invoices.slice(0, 3).forEach(function(inv) {
+            console.log("[SP Debug] Invoice", inv.id, "supplierId:", inv.supplierId, "supplierName:", inv.supplierName, "fundingStatus:", inv.fundingStatus, "matchScope:", inv.supplierId ? spMatchesScope(inv.supplierId) : "N/A", "matchName:", spMatchesScopeByName(inv.supplierName));
+          });
+        }
         var spPrograms = [];
         var seenProgs = {};
         spAllInvs.forEach(function(inv) {
@@ -2188,6 +2196,10 @@ export default function FactoringDashboard() {
         var spInvs = spAllInvs;
         if (activeProgId) {
           spInvs = spAllInvs.filter(function(inv) { return inv.fundingProgram === activeProgId || inv.fundingStatus === "pending"; });
+        }
+        console.log("[SP Debug] activeProgId:", activeProgId, "spInvs count after program filter:", spInvs.length);
+        if (spAllInvs.length > 0 && spInvs.length === 0) {
+          spAllInvs.slice(0, 3).forEach(function(inv) { console.log("[SP Debug] Filtered out:", inv.id, "fundingProgram:", inv.fundingProgram, "fundingStatus:", inv.fundingStatus); });
         }
         var spDisplayCcy = activeProg ? activeProg.currency : "GBP";
 
