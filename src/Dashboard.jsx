@@ -422,6 +422,7 @@ async function loadPersistedData() {
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
           interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
           daysToMaturity: row.days_to_maturity || 0,
+          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
           invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
@@ -523,6 +524,7 @@ async function reloadInvoices() {
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
           interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
           daysToMaturity: row.days_to_maturity || 0,
+          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
           invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
@@ -674,6 +676,7 @@ async function savePersistedData() {
         capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
         interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
         days_to_maturity: inv.daysToMaturity || 0,
+        advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
         invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
         created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
         invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
@@ -1159,40 +1162,38 @@ export default function FactoringDashboard() {
   useEffect(function() {
     if (!session) return;
 
+    // Debounce realtime reloads — wait 500ms after the last event before reloading
+    var timers = {};
+    function debouncedReload(key, reloadFn) {
+      if (timers[key]) clearTimeout(timers[key]);
+      timers[key] = setTimeout(function() {
+        reloadFn().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      }, 500);
+    }
+
     var channel = supabase.channel("realtime-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function() {
-        reloadInvoices().then(function() {
-          _realtimeUpdate = true;
-          setDataVer(function(v) { return v + 1; });
-        });
+        debouncedReload("invoices", reloadInvoices);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, function() {
-        reloadPayments().then(function() {
-          _realtimeUpdate = true;
-          setDataVer(function(v) { return v + 1; });
-        });
+        debouncedReload("payments", reloadPayments);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "payment_allocations" }, function() {
-        reloadPayments().then(function() {
-          _realtimeUpdate = true;
-          setDataVer(function(v) { return v + 1; });
-        });
+        debouncedReload("payments", reloadPayments);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function() {
-        reloadSPQ().then(function() {
-          _realtimeUpdate = true;
-          setDataVer(function(v) { return v + 1; });
-        });
+        debouncedReload("spq", reloadSPQ);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function() {
-        reloadAuditLog().then(function() {
-          _realtimeUpdate = true;
-          setDataVer(function(v) { return v + 1; });
-        });
+        debouncedReload("audit", reloadAuditLog);
       })
       .subscribe();
 
     return function() {
+      Object.keys(timers).forEach(function(k) { clearTimeout(timers[k]); });
       supabase.removeChannel(channel);
     };
   }, [session]);
