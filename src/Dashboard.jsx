@@ -430,7 +430,8 @@ async function loadPersistedData() {
           maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
-          createdDate: row.created_date
+          createdDate: row.created_date,
+          fundFlows: row.fund_flows || []
         });
       });
     }
@@ -690,7 +691,8 @@ async function reloadFundingPrograms() {
           maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
-          createdDate: row.created_date
+          createdDate: row.created_date,
+          fundFlows: row.fund_flows || []
         });
       });
     }
@@ -786,7 +788,8 @@ async function savePersistedData() {
         max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
         eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
         eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
-        created_date: fp.createdDate || null
+        created_date: fp.createdDate || null,
+        fund_flows: fp.fundFlows || []
       };
     });
     if (fpRows.length > 0) await supabase.from("funding_programs").upsert(fpRows, { onConflict: "id" });
