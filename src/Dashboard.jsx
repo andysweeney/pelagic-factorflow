@@ -73,10 +73,10 @@ function getEntityDisplayName(entityId) {
 function getAllSupplierEntities() {
   var result = [];
   SUPPLIERS_DB.forEach(function(s) {
-    result.push({ value: s.id, label: s.name, supplierId: s.id });
+    result.push({ value: s.id, label: s.name, supplierId: s.id, isBranch: false });
     if (s.branches) s.branches.forEach(function(br) {
       var eid = makeEntityId(s.id, br.branchId);
-      result.push({ value: eid, label: s.name + " \u2014 " + br.branchName, supplierId: s.id });
+      result.push({ value: eid, label: s.name + " \u2014 " + br.branchName, supplierId: s.id, isBranch: true, branchId: br.branchId || "" });
     });
   });
   return result;
@@ -7743,7 +7743,7 @@ export default function FactoringDashboard() {
             })()}
 
             {/* Normal manage content (hidden when detail is open) */}
-            {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && editing && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
+            {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && manageTab !== "users" && editing && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
               {/* Companies House Import Step (suppliers only, new entity only) */}
               {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, marginBottom: 4 }}>New {entityLabel}</div>
@@ -8066,7 +8066,7 @@ export default function FactoringDashboard() {
               })()}
             </div>}
 
-            {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+            {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && manageTab !== "users" && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
               <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>{entityLabel}s ({db.length})</div>
                 {!editing && <button onClick={startNewEntity} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ New {entityLabel}</button>}
@@ -9386,10 +9386,17 @@ export default function FactoringDashboard() {
               }
               var roleColors = { admin: "#EF4444", operations: "#0EA5E9", supervisor: "#8B5CF6", supplier: "#059669", supplier_branch: "#D97706" };
 
-              // All supplier entities for the dropdown
+              // All supplier entities for the dropdown — split into parents and branches
               var allEntities = getAllSupplierEntities();
-              var parentEntities = allEntities.filter(function(e) { return e.value.indexOf(":") === -1; });
-              var branchEntities = allEntities.filter(function(e) { return e.value.indexOf(":") > -1; });
+              var parentEntities = [];
+              var branchEntities = [];
+              allEntities.forEach(function(e) {
+                if (e.isBranch) {
+                  branchEntities.push(e);
+                } else {
+                  parentEntities.push(e);
+                }
+              });
 
               var fieldStyle = { width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" };
               var labelStyle = { fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" };
@@ -9489,15 +9496,15 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                     <div>
                       <div style={labelStyle}>Full Name</div>
-                      <input value={userFields.full_name || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { full_name: e.target.value })); }} style={fieldStyle} placeholder="John Smith" />
+                      <input autoComplete="off" value={userFields.full_name || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { full_name: e.target.value })); }} style={fieldStyle} placeholder="John Smith" />
                     </div>
                     <div>
                       <div style={labelStyle}>Email</div>
-                      <input value={userFields.email || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { email: e.target.value })); }} style={fieldStyle} placeholder="user@example.com" disabled={userEdit !== "new"} />
+                      <input autoComplete="off" value={userFields.email || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { email: e.target.value })); }} style={fieldStyle} placeholder="user@example.com" disabled={userEdit !== "new"} />
                     </div>
                     {userEdit === "new" && <div>
                       <div style={labelStyle}>Password</div>
-                      <input type="password" value={userFields.password || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { password: e.target.value })); }} style={fieldStyle} placeholder="Minimum 8 characters" />
+                      <input type="password" autoComplete="new-password" value={userFields.password || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { password: e.target.value })); }} style={fieldStyle} placeholder="Minimum 8 characters" />
                     </div>}
                     <div>
                       <div style={labelStyle}>Role</div>
