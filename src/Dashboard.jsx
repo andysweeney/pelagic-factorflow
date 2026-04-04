@@ -2882,7 +2882,7 @@ export default function FactoringDashboard() {
                                 (function() {
                                   var invAudit = AUDIT_LOG.filter(function(e) {
                                     var c = e.context || {};
-                                    return c.invoiceId === inv.id || (e.details || "").indexOf(inv.id) > -1;
+                                    return c.invoiceId === inv.id || (c.allocations && c.allocations.some(function(a) { return a.invoiceId === inv.id; })) || c.sourceInvoiceId === inv.id || (e.details || "").indexOf(inv.id) > -1;
                                   }).slice().reverse();
                                   if (invAudit.length === 0) return null;
                                   return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
