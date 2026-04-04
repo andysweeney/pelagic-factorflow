@@ -1833,7 +1833,7 @@ export default function FactoringDashboard() {
     raw.fundingProgram = programId;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     var progName = prog ? prog.name : programId;
-    auditLog("Invoice Approved", invId + " approved for funding via " + progName + ": " + money(raw.amount, raw.currency) + " — capital " + money(raw.capitalDue, raw.currency) + " to " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplier: raw.supplierName, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: programId, fundingProgramName: progName });
+    auditLog("Invoice Approved", invId + " approved for funding via " + progName + ": " + money(raw.amount, raw.currency) + " — capital " + money(raw.capitalDue, raw.currency) + " to " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: programId, fundingProgramName: progName });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -2195,7 +2195,7 @@ export default function FactoringDashboard() {
         var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spIntOS = 0, spPenOS = 0, spBalanceOwed = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
         spInvs.forEach(function(inv) {
           spTotalInvoiced += inv.amount || 0;
-          if (inv.fundingStatus !== "pending") {
+          if (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") {
             spCapAdvanced += inv.capitalDue || 0;
             spCapOS += inv.capitalOutstanding || 0;
             spIntOS += inv.interestOutstanding || 0;
@@ -2301,12 +2301,25 @@ export default function FactoringDashboard() {
         spAllPaysToPelagic.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
 
         // Audit log for supplier
+        var spInvIdSet = {};
+        spInvs.forEach(function(inv) { spInvIdSet[inv.id] = true; });
         var spAuditLog = AUDIT_LOG.filter(function(e) {
           var c = e.context || {};
+          // Direct supplier field match
           if (spIsBranchUser) {
-            return c.supplierId === spEntityId || c.supplierName === spDisplayIdentity || (e.details || "").indexOf(spDisplayIdentity) > -1;
+            if (c.supplierId === spEntityId || c.supplierName === spDisplayIdentity || (e.details || "").indexOf(spDisplayIdentity) > -1) return true;
+          } else {
+            if (c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spParentId || c.parentSupplier === spSupName || (e.details || "").indexOf(spSupName) > -1) return true;
           }
-          return c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spParentId || (e.details || "").indexOf(spSupName) > -1;
+          // Invoice-linked match — catches Invoice Approved, Invoice Funded, Payment Allocated, etc.
+          if (c.invoiceId && spInvIdSet[c.invoiceId]) return true;
+          if (c.sourceInvoiceId && spInvIdSet[c.sourceInvoiceId]) return true;
+          if (c.allocations && Array.isArray(c.allocations)) {
+            for (var ai = 0; ai < c.allocations.length; ai++) {
+              if (c.allocations[ai].invoiceId && spInvIdSet[c.allocations[ai].invoiceId]) return true;
+            }
+          }
+          return false;
         }).slice().reverse();
 
         // Stat card for portal
@@ -2808,8 +2821,8 @@ export default function FactoringDashboard() {
                                     inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Reference"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
                                     inv.purchaseOrder ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Purchase Order"), React.createElement("span", { style: spVal }, inv.purchaseOrder)) : null
                                   ),
-                                  /* Funding Details */
-                                  React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                  /* Funding Details — only show once funded */
+                                  inv.fundedDate ? React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                     React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#10B981", marginBottom: 12, paddingBottom: 8, borderBottom: "2px solid #10B98140" } }, "Funding Details"),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funding Status"), React.createElement("span", null, React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funded Date"), React.createElement("span", { style: spVal }, fmt(inv.fundedDate))),
@@ -2825,7 +2838,7 @@ export default function FactoringDashboard() {
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: Object.assign({}, spLbl, { fontWeight: 700, color: spText }) }, "Total Outstanding Balance"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700, fontSize: 14 }) }, money(inv.balanceOwed || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Total Repaid"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, money(inv.totalRepaid || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : spMuted }) }, money(inv.holdbackAvailable || 0, inv.currency)))
-                                  )
+                                  ) : null
                                 ),
                                 /* Status History */
                                 inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -3523,7 +3536,7 @@ export default function FactoringDashboard() {
         </div>}
         {!isM && !isP && !isCN && !isF && !isB && (!isS || supTab === "invoices") && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 22 }}>
           {isC && <><StatCard label="Capital Advanced" value={money(st.capitalAdvanced, "GBP")} sub={st.n + " invoices"} accent="#0EA5E9" icon={"\u25c6"} /><StatCard label="Fully Repaid" value={String(st.fully_repaid || 0)} accent="#059669" icon={"\u2713"} /><StatCard label="Recovery" value={String(st.recovery_mode || 0)} accent="#DC2626" icon="!" /><StatCard label="Penalty" value={money(st.totalPenalty, "GBP")} accent="#8B5CF6" icon={"\u26a0"} /></>}
-          {isS && (function() { var supTotal = filtered.reduce(function(s, inv) { return s + inv.amount; }, 0); var supCapAdv = filtered.reduce(function(s, inv) { return inv.fundingStatus !== "pending" ? s + inv.capitalDue : s; }, 0); var dc = supCurrency !== "all" ? supCurrency : "GBP"; return <><StatCard label="Invoiced" value={money(r2(supTotal), dc)} accent="#0EA5E9" icon={"\u25c8"} /><StatCard label="Cash Advanced" value={money(r2(supCapAdv), dc)} accent="#0F172A" icon={"\u25b2"} /></>; })()}
+          {isS && (function() { var supTotal = filtered.reduce(function(s, inv) { return s + inv.amount; }, 0); var supCapAdv = filtered.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") ? s + inv.capitalDue : s; }, 0); var dc = supCurrency !== "all" ? supCurrency : "GBP"; return <><StatCard label="Invoiced" value={money(r2(supTotal), dc)} accent="#0EA5E9" icon={"\u25c8"} /><StatCard label="Cash Advanced" value={money(r2(supCapAdv), dc)} accent="#0F172A" icon={"\u25b2"} /></>; })()}
         </div>}
         {!isM && !isB && !isP && !isCN && !isS && !isF && <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 22 }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Monthly Volume</div><MiniChart data={viewData.chartData} /></div>}
         {!isM && !isP && !isCN && !isF && !isB && (!isS || supTab === "invoices") && <div>
@@ -5019,7 +5032,7 @@ export default function FactoringDashboard() {
           buyInvs.sort(function(a, b) { return a.invoiceDate > b.invoiceDate ? -1 : 1; });
           var mc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
           var totalInv = buyInvs.reduce(function(s, inv) { return s + inv.amount; }, 0);
-          var totalCapAdv = buyInvs.reduce(function(s, inv) { return inv.fundingStatus !== "pending" ? s + inv.capitalDue : s; }, 0);
+          var totalCapAdv = buyInvs.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") ? s + inv.capitalDue : s; }, 0);
 
           return <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
