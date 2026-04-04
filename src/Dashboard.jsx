@@ -502,6 +502,11 @@ async function loadPersistedData() {
           bankName: row.bank_name, bankDetails: row.bank_details,
           amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
           programId: row.program_id, programName: row.program_name,
+          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
+          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
+          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
+          notes: row.notes || [],
           createdAt: row.created_at, createdDisplay: row.created_display,
           executedAt: row.executed_at, executedDisplay: row.executed_display
         });
@@ -599,6 +604,11 @@ async function reloadSPQ() {
           bankName: row.bank_name, bankDetails: row.bank_details,
           amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
           programId: row.program_id, programName: row.program_name,
+          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
+          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
+          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
+          notes: row.notes || [],
           createdAt: row.created_at, createdDisplay: row.created_display,
           executedAt: row.executed_at, executedDisplay: row.executed_display
         });
@@ -875,6 +885,12 @@ async function savePersistedData() {
         bank_name: q.bankName || null, bank_details: q.bankDetails || null,
         amount: q.amount, currency: q.currency, status: q.status || "Pending",
         program_id: q.programId || null, program_name: q.programName || null,
+        hb_payment_id: q.hbPaymentId || null, source_invoice_id: q.sourceInvoiceId || null,
+        is_bundle: q.isBundle || false, holdback_ids: q.holdbackIds || [],
+        gross_amount: q.grossAmount || null, deductions: q.deductions || [],
+        deduction_total: q.deductionTotal || 0,
+        notes: q.notes || [],
+        created_at: q.createdAt || null,
         created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null
       };
     });
@@ -2002,9 +2018,10 @@ export default function FactoringDashboard() {
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
-      supplierName: hbDisburseInv.supplierName, supplierId: supplier ? supplier.id : "",
+      supplierName: hbDisburseInv.supplierName, supplierId: hbDisburseInv.supplierId || (supplier ? supplier.id : ""),
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
+      programId: hbDisburseInv.fundingProgram || null, programName: (function() { var fp = hbDisburseInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === hbDisburseInv.fundingProgram; }) : null; return fp ? fp.name : null; })(),
       createdAt: new Date().toISOString(),
       createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       executedAt: null, executedDisplay: null
@@ -9522,7 +9539,15 @@ export default function FactoringDashboard() {
                     var prog = null;
                     var srcInv = INVOICES_DB.find(function(x) { return x.id === item.sourceInvoiceId; });
                     if (srcInv) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === srcInv.fundingProgram; });
-                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : "", programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: item.bankName || "", bankDetails: item.bankDetails || "", date: item.createdDisplay, detail: item.hbPaymentId + " / " + item.sourceInvoiceId, cancelFn: function() { setConfirmCancelHbp(item.id); } });
+                    // Use stored bank details, fall back to live lookup from supplier/invoice
+                    var bankName = item.bankName || "";
+                    var bankDetails = item.bankDetails || "";
+                    if (!bankName && (item.supplierId || item.supplierName)) {
+                      var fallbackBank = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId || (srcInv ? srcInv.fundingProgram : null));
+                      bankName = fallbackBank.bankName;
+                      bankDetails = fallbackBank.bankDetails;
+                    }
+                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
                   });
                   var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
                   // Lock to supplier+program from first selection
