@@ -1399,6 +1399,11 @@ export default function FactoringDashboard() {
   var he1 = useState(null), expHbPay = he1[0], setExpHbPay = he1[1];
   var hf1 = useState("all"), hbFilter = hf1[0], setHbFilter = hf1[1];
   var hcc1 = useState(null), confirmCancelHbp = hcc1[0], setConfirmCancelHbp = hcc1[1];
+  var soap1 = useState(null), supOverviewAuditPopup = soap1[0], setSupOverviewAuditPopup = soap1[1];
+  var soaf1 = useState(""), supOverviewAuditFilter = soaf1[0], setSupOverviewAuditFilter = soaf1[1];
+  var soaa1 = useState("all"), supOverviewAuditAction = soaa1[0], setSupOverviewAuditAction = soaa1[1];
+  var oce1 = useState(null), outCompExp = oce1[0], setOutCompExp = oce1[1];
+  var fpe1 = useState(null), fundPayExp = fpe1[0], setFundPayExp = fpe1[1];
   var bnd1 = useState(null), bundleDialog = bnd1[0], setBundleDialog = bnd1[1];
   var rc1 = useState(false), showRateChange = rc1[0], setShowRateChange = rc1[1];
   var rn1 = useState(""), newRateAnnual = rn1[0], setNewRateAnnual = rn1[1];
@@ -1983,13 +1988,33 @@ export default function FactoringDashboard() {
 
   var sel = { padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer", transition: "border-color 0.15s ease" };
   var cols = [{ key: "id", label: "Invoice" }];
-  cols.push({ key: "supplierName", label: "Supplier" });
-  cols.push({ key: "buyerName", label: "Buyer" }, { key: "amount", label: "Amount" });
-  if (!isB) cols.push({ key: "capitalDue", label: isS ? "Cash Recd" : "Capital" });
-  if (!isB) cols.push({ key: "interestCharged", label: "Initial Interest" }, { key: "penaltyInterest", label: "Penalty" });
-  cols.push({ key: "invoiceDate", label: "Inv Date" }, { key: "dueDate", label: "Due" });
-  cols.push({ key: "invoiceStatus", label: "Inv Status" });
-  if (!isB) cols.push({ key: "fundingStatus", label: "Fund Status" }, { key: "totalOutstanding", label: "O/S" });
+  if (isS) {
+    cols.push({ key: "buyerName", label: "Buyer" });
+    cols.push({ key: "amount", label: "Amount" });
+    cols.push({ key: "capitalDue", label: "Advance Amount" });
+    cols.push({ key: "totalOutstanding", label: "Total Balance O/S" });
+    cols.push({ key: "invoiceDate", label: "Inv Date" }, { key: "dueDate", label: "Due" });
+    cols.push({ key: "invoiceStatus", label: "Inv Status" });
+    cols.push({ key: "fundingStatus", label: "Fund Status" });
+    cols.push({ key: "annualRate", label: "Interest Rate" });
+  } else if (isB) {
+    cols.push({ key: "supplierName", label: "Supplier" });
+    cols.push({ key: "amount", label: "Amount" });
+    cols.push({ key: "capitalDue", label: "Advance Amount" });
+    cols.push({ key: "totalOutstanding", label: "Total Balance O/S" });
+    cols.push({ key: "invoiceDate", label: "Inv Date" }, { key: "dueDate", label: "Due" });
+    cols.push({ key: "invoiceStatus", label: "Inv Status" });
+    cols.push({ key: "fundingStatus", label: "Fund Status" });
+    cols.push({ key: "annualRate", label: "Interest Rate" });
+  } else {
+    cols.push({ key: "supplierName", label: "Supplier" });
+    cols.push({ key: "buyerName", label: "Buyer" }, { key: "amount", label: "Amount" });
+    cols.push({ key: "capitalDue", label: "Capital" });
+    cols.push({ key: "interestCharged", label: "Initial Interest" }, { key: "penaltyInterest", label: "Penalty" });
+    cols.push({ key: "invoiceDate", label: "Inv Date" }, { key: "dueDate", label: "Due" });
+    cols.push({ key: "invoiceStatus", label: "Inv Status" });
+    cols.push({ key: "fundingStatus", label: "Fund Status" }, { key: "totalOutstanding", label: "O/S" });
+  }
   cols.push({ key: "_x", label: "" });
 
   var rootStyle = { "--bg": "#F8FAFC", "--card": "#FFFFFF", "--card-hover": "#F1F5F9", "--border": "#E2E8F0", "--text": "#0F172A", "--text-secondary": "#475569", "--muted": "#94A3B8", "--accent": "#0EA5E9", "--accent-hover": "#0284C7", "--sidebar-bg": "#0F172A", "--sidebar-text": "#CBD5E1", "--sidebar-active": "#0EA5E9", "--danger": "#EF4444", "--warning": "#F59E0B", "--success": "#10B981", "--purple": "#8B5CF6", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif", fontSize: 14, padding: 0, margin: 0, lineHeight: 1.5 };
@@ -3399,7 +3424,7 @@ export default function FactoringDashboard() {
             {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
+            <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label + " (" + se.value + ")"}</option>; })}
             </select>
             <select value={supCurrency} onChange={function(e) { setSupCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
@@ -3434,7 +3459,7 @@ export default function FactoringDashboard() {
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           <input type="text" placeholder="Search..." value={q} onChange={function(e) { setQ(e.target.value); setPg(0); }} style={Object.assign({}, sel, { width: 200 })} />
           <select value={isf} onChange={function(e) { setIsf(e.target.value); setPg(0); }} style={sel}><option value="all">All Inv Status</option>{INV_STATUSES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-          {!isB && <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={sel}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>}
+          <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={sel}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
           <select value={bf} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={sel}><option value="all">All Buyers</option>{BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
           <div style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{filtered.length} invoices</div>
         </div>
@@ -3454,17 +3479,22 @@ export default function FactoringDashboard() {
                   <tbody key={inv.id}>
                     <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
                       <td style={Object.assign({}, mc, { color: "var(--accent)", fontWeight: 500 })}>{inv.id}</td>
-                      <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>
-                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>
+                      {isS && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
+                      {isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
                       <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                      {!isB && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
-                      {!isB && <td style={Object.assign({}, mc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>}
-                      {!isB && <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>}
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, mc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>}
                       <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{fmt(inv.invoiceDate)}</td>
                       <td style={Object.assign({}, tc, { color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400 })}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 6px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
-                      {!isB && <td style={{ padding: "8px 6px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>DNF</span>}</td>}
-                      {!isB && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
+                      <td style={{ padding: "8px 6px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>DNF</span>}</td>
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
                       <td style={{ padding: "8px 6px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
                     {isExp && <tr><td colSpan={cols.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
@@ -4220,6 +4250,227 @@ export default function FactoringDashboard() {
                 </div>}
               </div>
             </div>
+
+            {/* Supplier Overview — Audit Log */}
+            {(function() {
+              var selBrId = parseEntityId(selectedSupplier).branchId;
+              var selParentId = getParentEntityId(selectedSupplier);
+              var selDisplayName = getEntityDisplayName(selectedSupplier);
+              var selParentName = getParentSupplierName(selectedSupplier);
+              // Build set of invoice IDs belonging to this supplier (for indirect matching)
+              var _supInvIdSet = {};
+              supInvs.forEach(function(inv) { _supInvIdSet[inv.id] = true; });
+              // Also include ALL invoices for this parent supplier (across currencies) for broad audit matching
+              var allSupInvIdSet = {};
+              viewData.invoices.forEach(function(inv) {
+                var match = selBrId
+                  ? (inv.supplierId === selectedSupplier || inv.supplierName === selDisplayName)
+                  : (getParentEntityId(inv.supplierId) === selParentId || getParentSupplierName(inv.supplierName) === selParentName);
+                if (match) allSupInvIdSet[inv.id] = true;
+              });
+              // Match function: does this audit entry relate to the selected supplier?
+              function matchesSupplier(entry) {
+                var c = entry.context || {};
+                // Direct supplier name/ID match
+                if (c.supplierId) {
+                  if (selBrId) {
+                    if (c.supplierId === selectedSupplier) return true;
+                  } else {
+                    if (getParentEntityId(c.supplierId) === selParentId) return true;
+                  }
+                }
+                if (c.supplierName) {
+                  if (selBrId) {
+                    if (c.supplierName === selDisplayName) return true;
+                  } else {
+                    if (getParentSupplierName(c.supplierName) === selParentName) return true;
+                  }
+                }
+                if (c.supplier) {
+                  if (selBrId) {
+                    if (c.supplier === selDisplayName) return true;
+                  } else {
+                    if (getParentSupplierName(c.supplier) === selParentName) return true;
+                  }
+                }
+                if (c.parentSupplier && c.parentSupplier === selParentName) return true;
+                // Invoice-linked match
+                if (c.invoiceId && allSupInvIdSet[c.invoiceId]) return true;
+                // Source invoice match (HBP events)
+                if (c.sourceInvoiceId && allSupInvIdSet[c.sourceInvoiceId]) return true;
+                // Payment allocation match — check if payment was allocated to any of this supplier's invoices
+                if (c.allocations && Array.isArray(c.allocations)) {
+                  for (var ai = 0; ai < c.allocations.length; ai++) {
+                    if (c.allocations[ai].invoiceId && allSupInvIdSet[c.allocations[ai].invoiceId]) return true;
+                  }
+                }
+                // Deduction match
+                if (c.invoiceAllocations && Array.isArray(c.invoiceAllocations)) {
+                  for (var di = 0; di < c.invoiceAllocations.length; di++) {
+                    if (c.invoiceAllocations[di].invoiceId && allSupInvIdSet[c.invoiceAllocations[di].invoiceId]) return true;
+                  }
+                }
+                // Rate change match
+                if (entry.action === "Rate Changed" && c.supplierId) {
+                  if (selBrId) { if (c.supplierId === selectedSupplier) return true; }
+                  else { if (getParentEntityId(c.supplierId) === selParentId) return true; }
+                }
+                return false;
+              }
+              var soActionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Payment Remitted": "#059669", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Supplier Payment Executed": "#059669", "Outbound Deduction": "#DC2626", "Credit Note Created": "#0EA5E9", "Credit Note Allocated": "#059669", "Credit Note Unallocated": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706" };
+
+              function soRenderContext(entry) {
+                var c = entry.context || {};
+                var rows = [];
+                function addRow(label, value, color) { if (value !== undefined && value !== null && value !== "") rows.push({ label: label, value: String(value), color: color }); }
+                if (entry.action === "Payment Created") {
+                  addRow("Payment ID", c.paymentId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Currency", c.currency); addRow("Date", c.date ? fmt(c.date) : "");
+                } else if (entry.action === "Payment Allocated") {
+                  addRow("Payment ID", c.paymentId, "var(--accent)"); addRow("Payment Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); addRow("Currency", c.currency); addRow("Payment Date", c.date ? fmt(c.date) : "");
+                  if (c.allocations) c.allocations.forEach(function(a) { addRow("\u2192 " + a.invoiceId, money(a.amount, c.currency), "#059669"); });
+                  if (c.displacedPayments && c.displacedPayments.length > 0) c.displacedPayments.forEach(function(d) { addRow("Displaced: " + d.paymentId, d.invoiceIds.join(", "), "#EF4444"); });
+                } else if (entry.action === "Payment Unallocated") {
+                  addRow("Payment ID", c.paymentId, "var(--accent)"); addRow("Payment Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); addRow("Currency", c.currency);
+                  if (c.reason === "superseded") addRow("Reason", "Superseded by " + c.supersededBy, "#D97706");
+                  if (c.previousAllocations) c.previousAllocations.forEach(function(a) { addRow("Was allocated: " + a.invoiceId, money(a.amount, c.currency), "#EF4444"); });
+                } else if (entry.action === "Payment Remitted") {
+                  addRow("Payment ID", c.paymentId, "var(--accent)"); addRow("Supplier", c.supplierName); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Currency", c.currency); addRow("Bank", c.bankName); addRow("Account", c.bankDetails);
+                } else if (entry.action === "Invoice Created") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Currency", c.currency); addRow("Supplier", c.supplier); addRow("Buyer", c.buyer); addRow("Invoice Date", c.invoiceDate ? fmt(c.invoiceDate) : ""); addRow("Due Date", c.dueDate ? fmt(c.dueDate) : ""); addRow("Capital (90%)", c.capitalDue !== undefined ? money(c.capitalDue, c.currency) : ""); addRow("Holdback (10%)", c.holdback !== undefined ? money(c.holdback, c.currency) : "");
+                } else if (entry.action === "Invoice Edited") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); if (c.changes) c.changes.forEach(function(ch) { addRow("Changed", ch, "#D97706"); });
+                } else if (entry.action === "Invoice Approved") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); addRow("Capital", c.capitalDue !== undefined ? money(c.capitalDue, c.currency) : ""); addRow("Program", c.fundingProgramName, "#8B5CF6"); addRow("Buyer", c.buyer);
+                } else if (entry.action === "Invoice Funded") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Capital Advanced", c.capitalDue !== undefined ? money(c.capitalDue, c.currency) : ""); addRow("Buyer", c.buyer); addRow("Funded Date", c.fundedDate ? fmt(c.fundedDate) : ""); addRow("Bank", c.bankName); addRow("Account", c.bankDetails);
+                } else if (entry.action === "Invoice Approval Cancelled") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); if (c.previousProgram) addRow("Previous Program", c.previousProgram);
+                } else if (entry.action === "Invoice Status Changed" || entry.action === "Funding Status Changed") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Old Status", c.oldStatus); addRow("New Status", c.newStatus, "#D97706");
+                } else if (entry.action === "Invoice Write-Off") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Penalty", c.penaltyWriteOff !== undefined ? money(c.penaltyWriteOff, c.currency) : "", "#DC2626"); addRow("Interest", c.interestWriteOff !== undefined ? money(c.interestWriteOff, c.currency) : "", "#D97706"); addRow("Capital", c.capitalWriteOff !== undefined ? money(c.capitalWriteOff, c.currency) : ""); addRow("Holdback", c.holdbackWriteOff !== undefined ? money(c.holdbackWriteOff, c.currency) : ""); addRow("Total", c.totalWriteOff !== undefined ? money(c.totalWriteOff, c.currency) : "", "#EF4444");
+                } else if (entry.action === "Holdback Disbursed") {
+                  addRow("HBP ID", c.hbPaymentId, "#059669"); addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)"); addRow("Supplier", c.supplierName); addRow("Total Disbursed", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Currency", c.currency);
+                  if (c.supplierReturn > 0) addRow("Supplier Return", money(c.supplierReturn, c.currency), "#0F172A");
+                  if (c.invoiceAllocations) c.invoiceAllocations.forEach(function(a) { addRow("\u2192 " + a.invoiceId, money(a.amount, c.currency), "#D97706"); });
+                  addRow("Bank", c.bankName); addRow("Account", c.bankDetails);
+                } else if (entry.action === "Holdback Payment Cancelled") {
+                  addRow("HBP ID", c.hbPaymentId, "#EF4444"); addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)"); addRow("Amount Restored", c.amount !== undefined ? money(c.amount, c.currency) : "", "#EF4444");
+                  if (c.allocations) c.allocations.forEach(function(a) { if (a.type === "disbursement") addRow("Reversed: Supplier Return", money(a.amount, c.currency), "#0F172A"); else addRow("Reversed: " + a.targetId, money(a.amount, c.currency), "#D97706"); });
+                } else if (entry.action === "Supplier Payment Executed") {
+                  addRow("Queue ID", c.queueId, "#059669"); addRow("HBP ID", c.hbPaymentId, "#059669"); addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)"); addRow("Supplier", c.supplierName); addRow("Bank", c.bankName); addRow("Account", c.bankDetails); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669");
+                } else if (entry.action === "Supplier Payment Cancelled") {
+                  addRow("Queue ID", c.queueId, "#EF4444"); addRow("HBP ID", c.hbPaymentId, "#EF4444"); addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)"); addRow("Supplier", c.supplierName); addRow("Amount Restored", c.amount !== undefined ? money(c.amount, c.currency) : "", "#EF4444");
+                } else if (entry.action === "Rate Changed") {
+                  addRow("Supplier", c.supplier); addRow("Advance Rate", c.advanceRate !== undefined ? (c.advanceRate * 100).toFixed(2) + "%" : ""); addRow("Interest Rate", c.annualRate !== undefined ? (c.annualRate * 100).toFixed(2) + "%" : ""); addRow("Penalty Rate", c.penaltyRate !== undefined ? (c.penaltyRate * 100).toFixed(2) + "%" : ""); addRow("Effective", c.effectiveDisplay);
+                } else if (entry.action === "Outbound Deduction") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Deduct Amount", c.deductAmount !== undefined ? money(c.deductAmount, c.currency) : "", "#DC2626"); addRow("Penalty", c.penalty !== undefined ? money(c.penalty, c.currency) : ""); addRow("Interest", c.interest !== undefined ? money(c.interest, c.currency) : ""); addRow("Capital", c.capital !== undefined ? money(c.capital, c.currency) : "");
+                } else if (entry.action === "Credit Note Created") {
+                  addRow("CN ID", c.creditNoteId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Supplier", c.supplierName); addRow("Buyer", c.buyerName); addRow("Date", c.date);
+                } else if (entry.action === "Credit Note Allocated" || entry.action === "Credit Note Unallocated") {
+                  addRow("CN ID", c.creditNoteId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); if (c.invoiceId) addRow("Invoice", c.invoiceId, "var(--accent)");
+                  if (c.allocations) c.allocations.forEach(function(a) { addRow("\u2192 " + a.invoiceId, money(a.amount, c.currency), "#059669"); });
+                } else if (entry.action === "Do Not Fund Set" || entry.action === "Do Not Fund Cleared") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)");
+                } else if (entry.action === "Invoice Note Added") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Note", c.note);
+                } else if (entry.action === "HBP Note Added") {
+                  addRow("HBP ID", c.hbPaymentId, "#059669"); addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)"); addRow("Note", c.note);
+                } else if (entry.action === "Payment Note Added") {
+                  addRow("Payment ID", c.paymentId, "var(--accent)"); addRow("Note", c.note);
+                } else if (entry.action === "Entity Created" || entry.action === "Entity Edited") {
+                  addRow("Type", c.entityType); addRow("ID", c.entityId, "var(--accent)"); addRow("Name", c.name);
+                  if (c.changes) c.changes.forEach(function(ch) { addRow("Changed", ch, "#D97706"); });
+                }
+                if (c.userName || c.userEmail) addRow("User", c.userName || c.userEmail, "var(--accent)");
+                return rows;
+              }
+
+              var allSupAudit = AUDIT_LOG.filter(matchesSupplier);
+              // Build unique action types for filter dropdown
+              var soActionTypes = {};
+              allSupAudit.forEach(function(e) { soActionTypes[e.action] = true; });
+              var soActionTypeList = Object.keys(soActionTypes).sort();
+              // Apply filters
+              var filteredSupAudit = allSupAudit;
+              if (supOverviewAuditAction !== "all") {
+                filteredSupAudit = filteredSupAudit.filter(function(e) { return e.action === supOverviewAuditAction; });
+              }
+              if (supOverviewAuditFilter) {
+                var sq = supOverviewAuditFilter.toLowerCase();
+                filteredSupAudit = filteredSupAudit.filter(function(e) {
+                  return (e.action && e.action.toLowerCase().indexOf(sq) > -1) || (e.details && e.details.toLowerCase().indexOf(sq) > -1) || (e.displayTime && e.displayTime.toLowerCase().indexOf(sq) > -1) || (e.context && e.context.invoiceId && e.context.invoiceId.toLowerCase().indexOf(sq) > -1) || (e.context && e.context.paymentId && e.context.paymentId.toLowerCase().indexOf(sq) > -1) || (e.context && e.context.hbPaymentId && e.context.hbPaymentId.toLowerCase().indexOf(sq) > -1);
+                });
+              }
+              var reversedSupAudit = filteredSupAudit.slice().reverse();
+
+              // Popup overlay for detail
+              var soAuditPopupOverlay = null;
+              if (supOverviewAuditPopup !== null && reversedSupAudit.length > 0) {
+                var soEntry = reversedSupAudit[supOverviewAuditPopup];
+                if (soEntry) {
+                  var soAc = soActionColors[soEntry.action] || "var(--text-secondary)";
+                  var soRows = soRenderContext(soEntry);
+                  soAuditPopupOverlay = <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setSupOverviewAuditPopup(null); }}>
+                    <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 600, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={function(e) { e.stopPropagation(); }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: soAc }}>{soEntry.action}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 3 }}>{soEntry.displayTime}</div>
+                        </div>
+                        <button onClick={function() { setSupOverviewAuditPopup(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                      </div>
+                      <div style={{ padding: "12px 16px", borderRadius: 10, background: "var(--bg)", marginBottom: 16, fontSize: 12.5, color: "var(--text)", lineHeight: 1.6 }}>{soEntry.details}</div>
+                      {soRows.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <tbody>{soRows.map(function(r, ri) {
+                          return <tr key={ri} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", whiteSpace: "nowrap", width: 160 }}>{r.label}</td>
+                            <td style={{ padding: "8px 12px", fontSize: 12.5, fontFamily: r.color ? "'JetBrains Mono', monospace" : "inherit", color: r.color || "var(--text)" }}>{r.value}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>}
+                      {soRows.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No additional context recorded for this action.</div>}
+                    </div>
+                  </div>;
+                }
+              }
+
+              return <div style={{ marginTop: 22 }}>
+                {soAuditPopupOverlay}
+                <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+                  <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>Audit Log</div>
+                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{allSupAudit.length} entries{filteredSupAudit.length !== allSupAudit.length ? " (" + filteredSupAudit.length + " shown)" : ""}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <select value={supOverviewAuditAction} onChange={function(e) { setSupOverviewAuditAction(e.target.value); setSupOverviewAuditPopup(null); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                        <option value="all">All Actions</option>
+                        {soActionTypeList.map(function(a) { return <option key={a} value={a}>{a}</option>; })}
+                      </select>
+                      <input type="text" value={supOverviewAuditFilter} onChange={function(e) { setSupOverviewAuditFilter(e.target.value); setSupOverviewAuditPopup(null); }} placeholder="Search audit log..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 160 }} />
+                    </div>
+                  </div>
+                  {reversedSupAudit.length === 0 && <div style={{ padding: "24px 28px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{allSupAudit.length === 0 ? "No audit events recorded for this supplier." : "No events match the current filter."}</div>}
+                  {reversedSupAudit.length > 0 && <div style={{ maxHeight: 450, overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Timestamp", "User", "Action", "Details", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{reversedSupAudit.map(function(entry, i) {
+                        var ac = soActionColors[entry.action] || "var(--text-secondary)";
+                        var entryUser = (entry.context && (entry.context.userName || entry.context.userEmail)) || "\u2014";
+                        return <tr key={i} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setSupOverviewAuditPopup(i); }}>
+                          <td style={{ padding: "8px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{entry.displayTime}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{entryUser}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 700, color: ac, whiteSpace: "nowrap" }}>{entry.action}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)", maxWidth: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.details}</td>
+                          <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10, color: "var(--muted)" }}>{"\u25b8"}</span></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>}
+                </div>
+              </div>;
+            })()}
           </div>;
         })()}
 
@@ -4374,21 +4625,85 @@ export default function FactoringDashboard() {
               {supFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No funding payments for this supplier.</div>}
               {supFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Queue ID", "Invoice", "Amount", "CCY", "Program", "Bank", "Account", "Status", "Executed"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{supFunding.map(function(fp) {
+                  <thead><tr>{["Queue ID", "Invoice", "Amount", "CCY", "Program", "Bank", "Status", "Executed", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  {supFunding.map(function(fp) {
                     var sc = fp.status === "Completed" ? "#059669" : "#D97706";
-                    return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={Object.assign({}, sfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
-                      <td style={Object.assign({}, sfmc, { color: "var(--accent)" })}>{fp.invoiceId}</td>
-                      <td style={Object.assign({}, sfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.programName || "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
-                      <td style={Object.assign({}, sfmc, { color: "var(--text-secondary)" })}>{fp.bankDetails || "\u2014"}</td>
-                      <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
-                    </tr>;
-                  })}</tbody>
+                    var isFpExp = fundPayExp === "sf-" + fp.id;
+                    return (
+                      <tbody key={fp.id}>
+                        <tr style={{ borderBottom: isFpExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isFpExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isFpExp ? null : "sf-" + fp.id); }}>
+                          <td style={Object.assign({}, sfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
+                          <td style={Object.assign({}, sfmc, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</td>
+                          <td style={Object.assign({}, sfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.programName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isFpExp ? null : "sf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isFpExp ? "var(--accent)" : "var(--card-hover)", color: isFpExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isFpExp ? "\u25b4" : "\u25be"}</button></td>
+                        </tr>
+                        {isFpExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                          <div style={{ padding: "16px 22px" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                              {(function() {
+                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div>
+                                  <div style={row}><span style={lbl}>Queue ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div>
+                                  <div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div>
+                                  <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>
+                                  {fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}
+                                  {fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}
+                                  <div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div>
+                                  <div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div>
+                                </div>;
+                              })()}
+                              {(function() {
+                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Execution Details</div>
+                                  <div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: sc, fontWeight: 600 })}>{fp.status}</span></div>
+                                  <div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>
+                                  {fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}
+                                  <div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div>
+                                </div>;
+                              })()}
+                            </div>
+                            {/* Notes */}
+                            <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>
+                              {fp.notes && fp.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{fp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input type="text" value={fundPayExp === "sf-" + fp.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                                <button onClick={function() { if (!noteText.trim()) return; if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                              </div>
+                            </div>
+                            {/* Audit Trail */}
+                            {(function() {
+                              var fpLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === fp.id || e.context.paymentId === fp.id || e.context.completedPaymentId === fp.id || (fp.invoiceId && e.context.invoiceId === fp.invoiceId && (e.action === "Invoice Funded" || e.action === "Invoice Approved")) || (fp.invoiceIds && fp.invoiceIds.some(function(iid) { return e.context.invoiceId === iid && (e.action === "Invoice Funded" || e.action === "Invoice Approved"); }))); });
+                              if (fpLogs.length === 0) return null;
+                              return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({fpLogs.length})</div>
+                                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                    <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#fff" }}>{h}</th>; })}</tr></thead>
+                                    <tbody>{fpLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody>
+                                  </table>
+                                </div>
+                              </div>;
+                            })()}
+                          </div>
+                        </td></tr>}
+                      </tbody>
+                    );
+                  })}
                 </table>
               </div>}
             </div>
@@ -4643,60 +4958,71 @@ export default function FactoringDashboard() {
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
-                  <thead><tr>{["Invoice", "Supplier", "Amount", "CCY", "Capital", "Interest", "Penalty", "Due", "Inv Status", "Fund Status", "O/S", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  <thead><tr>{["Invoice", "Supplier", "Amount", "Advance Amount", "Total Balance O/S", "Inv Date", "Due", "Inv Status", "Fund Status", "Interest Rate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                   <tbody>{buyInvs.map(function(inv) {
                     var ist = IST[inv.invoiceStatus] || IST["Received"];
                     var fst = FST[inv.fundingStatus] || FST.funded;
                     var isBuyExp = exp === "buy-" + inv.id;
+                    var dp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
+                    var bmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", whiteSpace: "nowrap" };
                     return <React.Fragment key={inv.id}>
                     <tr style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
-                      <td style={Object.assign({}, mc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.supplierName}</td>
-                      <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
-                      <td style={Object.assign({}, mc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
-                      <td style={Object.assign({}, mc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>
-                      <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                      <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                      <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                      <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
+                      <td style={Object.assign({}, bmc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400, whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                       <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
-                      <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
-                      <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid " + (isBuyExp ? "var(--accent)" : "var(--border)"), background: isBuyExp ? "var(--accent)" : "transparent", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>{isBuyExp ? "\u25b4" : "\u25be"}</button></td>
+                      <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBuyExp ? "var(--accent)" : "var(--card-hover)", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBuyExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
-                    {isBuyExp && <tr><td colSpan={12} style={{ padding: "18px 22px", background: "var(--card-hover)", borderBottom: "2px solid var(--accent)20" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                        {(function() {
-                          var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600 };
-                          var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
-                          var row = { display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #f0f1f5" };
-                          return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Invoice Details</div>
-                            <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{inv.id}</span></div>
-                            <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
-                            <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
-                            <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
-                            <div style={row}><span style={lbl}>Due Date</span><span style={val}>{fmt(inv.dueDate)}</span></div>
-                            <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Interest Charged</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Penalty Interest</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</span></div>
-                            <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Capital O/S</span><span style={val}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Interest O/S</span><span style={val}>{money(inv.interestOutstanding, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
-                            <div style={row}><span style={lbl}>Total O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</span></div>
-                          </div>;
-                        })()}
-                        <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Status & Payments</div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                            {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
-                          </div>
-                          {inv.payments && inv.payments.length > 0 && <div>
-                            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Buyer Payments ({inv.payments.length})</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Amount", "Penalty", "Interest", "Capital", "Holdback"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "3px 6px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{inv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "3px 6px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#0F172A" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
-                          </div>}
+                    {isBuyExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                      <div style={{ padding: "16px 22px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                          {(function() {
+                            var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                            var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                            var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                            return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Invoice Information</div>
+                              <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
+                              <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
+                              <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
+                              <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                              <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
+                              <div style={row}><span style={lbl}>Due Date</span><span style={Object.assign({}, val, { color: dp ? "#EF4444" : "var(--text)" })}>{fmt(inv.dueDate)}</span></div>
+                              <div style={row}><span style={lbl}>Term</span><span style={val}>{inv.daysToMaturity ? inv.daysToMaturity + " days" : "\u2014"}</span></div>
+                              <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</span></div>
+                            </div>;
+                          })()}
+                          {(function() {
+                            var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                            var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                            var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                            return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Balances & Status</div>
+                              <div style={row}><span style={lbl}>Advance Amount</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Interest Charged</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Penalty Interest</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</span></div>
+                              <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Capital O/S</span><span style={val}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Interest O/S</span><span style={val}>{money(inv.interestOutstanding, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Total O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</span></div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                                {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
+                              </div>
+                            </div>;
+                          })()}
                         </div>
+                        {inv.payments && inv.payments.length > 0 && <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Buyer Payments ({inv.payments.length})</div>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Amount", "Penalty", "Interest", "Capital", "Holdback"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{inv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#0F172A" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
+                        </div>}
                       </div>
                     </td></tr>}
                     </React.Fragment>;
@@ -4852,20 +5178,36 @@ export default function FactoringDashboard() {
               {allBuyFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No funding payments for invoices from this buyer.</div>}
               {allBuyFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Program", "Status", "Executed"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{allBuyFunding.map(function(fp) {
+                  <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Program", "Status", "Executed", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  {allBuyFunding.map(function(fp) {
                     var sc = fp.status === "Completed" ? "#059669" : "#D97706";
-                    return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={Object.assign({}, bfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
-                      <td style={Object.assign({}, bfmc, { color: "var(--accent)" })}>{fp.invoiceId}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.supplierName}</td>
-                      <td style={Object.assign({}, bfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.programName || "\u2014"}</td>
-                      <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
-                    </tr>;
-                  })}</tbody>
+                    var isBfExp = fundPayExp === "bf-" + fp.id;
+                    return (
+                      <tbody key={fp.id}>
+                        <tr style={{ borderBottom: isBfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isBfExp ? null : "bf-" + fp.id); }}>
+                          <td style={Object.assign({}, bfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
+                          <td style={Object.assign({}, bfmc, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.supplierName}</td>
+                          <td style={Object.assign({}, bfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.programName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isBfExp ? null : "bf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBfExp ? "var(--accent)" : "var(--card-hover)", color: isBfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBfExp ? "\u25b4" : "\u25be"}</button></td>
+                        </tr>
+                        {isBfExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                          <div style={{ padding: "16px 22px" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                              {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 }; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Queue ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || "\u2014"}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
+                              {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 }; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Execution Details</div><div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: sc, fontWeight: 600 })}>{fp.status}</span></div><div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div><div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>{fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}<div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div><div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div></div>; })()}
+                            </div>
+                            <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>{fp.notes && fp.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{fp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={fundPayExp === "bf-" + fp.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                            {(function() { var fpLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === fp.id || e.context.paymentId === fp.id || e.context.completedPaymentId === fp.id || (fp.invoiceId && e.context.invoiceId === fp.invoiceId && (e.action === "Invoice Funded" || e.action === "Invoice Approved")) || (fp.invoiceIds && fp.invoiceIds.some(function(iid) { return e.context.invoiceId === iid && (e.action === "Invoice Funded" || e.action === "Invoice Approved"); }))); }); if (fpLogs.length === 0) return null; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({fpLogs.length})</div><div style={{ maxHeight: 180, overflowY: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#fff" }}>{h}</th>; })}</tr></thead><tbody>{fpLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                          </div>
+                        </td></tr>}
+                      </tbody>
+                    );
+                  })}
                 </table>
               </div>}
             </div>
@@ -6210,21 +6552,36 @@ export default function FactoringDashboard() {
                 {filteredFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No funding payments in this program.</div>}
                 {filteredFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Bank", "Account", "Status", "Executed"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{filteredFunding.map(function(fp) {
+                    <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Bank", "Status", "Executed", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    {filteredFunding.map(function(fp) {
                       var sc = fp.status === "Completed" ? "#059669" : "#D97706";
-                      return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={Object.assign({}, pfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
-                        <td style={Object.assign({}, pfmc, { color: "var(--accent)" })}>{fp.invoiceId}</td>
-                        <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName}</td>
-                        <td style={Object.assign({}, pfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
-                        <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
-                        <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
-                        <td style={Object.assign({}, pfmc, { color: "var(--text-secondary)" })}>{fp.bankDetails || "\u2014"}</td>
-                        <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
-                        <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
-                      </tr>;
-                    })}</tbody>
+                      var isPfExp = fundPayExp === "pf-" + fp.id;
+                      return (
+                        <tbody key={fp.id}>
+                          <tr style={{ borderBottom: isPfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isPfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isPfExp ? null : "pf-" + fp.id); }}>
+                            <td style={Object.assign({}, pfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
+                            <td style={Object.assign({}, pfmc, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName}</td>
+                            <td style={Object.assign({}, pfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isPfExp ? null : "pf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPfExp ? "var(--accent)" : "var(--card-hover)", color: isPfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPfExp ? "\u25b4" : "\u25be"}</button></td>
+                          </tr>
+                          {isPfExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                            <div style={{ padding: "16px 22px" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 }; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Queue ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || prog.name}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
+                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 }; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Execution Details</div><div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: sc, fontWeight: 600 })}>{fp.status}</span></div><div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div><div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>{fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}<div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div><div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div></div>; })()}
+                              </div>
+                              <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>{fp.notes && fp.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{fp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={fundPayExp === "pf-" + fp.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                              {(function() { var fpLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === fp.id || e.context.paymentId === fp.id || e.context.completedPaymentId === fp.id || (fp.invoiceId && e.context.invoiceId === fp.invoiceId && (e.action === "Invoice Funded" || e.action === "Invoice Approved")) || (fp.invoiceIds && fp.invoiceIds.some(function(iid) { return e.context.invoiceId === iid && (e.action === "Invoice Funded" || e.action === "Invoice Approved"); }))); }); if (fpLogs.length === 0) return null; return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({fpLogs.length})</div><div style={{ maxHeight: 180, overflowY: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#fff" }}>{h}</th>; })}</tr></thead><tbody>{fpLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                            </div>
+                          </td></tr>}
+                        </tbody>
+                      );
+                    })}
                   </table>
                 </div>}
               </div>
@@ -6343,30 +6700,6 @@ export default function FactoringDashboard() {
                     </table></div>
                   </div>;
                 })()}
-
-                {/* Holdback Payments not Disbursed */}
-                {(function() {
-                  var hbInvoices = viewData.invoices.filter(function(inv) { return inv.holdbackReceived > 0.01 && inv.holdbackAvailable > 0.01; });
-                  if (hbInvoices.length === 0) return null;
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>Holdback Payments Not Disbursed ({hbInvoices.length})</div>
-                    </div>
-                    <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Holdback Available", "CCY", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{hbInvoices.map(function(inv) {
-                        return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.supplierName}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#059669" }}>{money(inv.holdbackAvailable, inv.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
-                          <td style={{ padding: "8px 8px" }}><button onClick={function() { setHbDisburseInv(inv); setHbAllocs([]); setHbSupplierAmt(""); }} style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Disburse</button></td>
-                        </tr>;
-                      })}</tbody>
-                    </table></div>
-                  </div>;
-                })()}
               </div>;
           })()}
 
@@ -6375,24 +6708,102 @@ export default function FactoringDashboard() {
               var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
               if (completed.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No completed outbound payments yet.</div>;
+              var ocCols = ["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""];
               return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                 <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments ({completed.length})</div>
                 </div>
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{completed.sort(function(a, b) { return (a.completedDate || a.date) > (b.completedDate || b.date) ? -1 : 1; }).map(function(item) {
+                  <thead><tr>{ocCols.map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  {completed.sort(function(a, b) { return (a.executedAt || a.createdAt || "") > (b.executedAt || b.createdAt || "") ? -1 : 1; }).map(function(item) {
                     var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "holdback_disbursement" ? "#059669" : "#D97706";
-                    return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
-                      <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{item.type === "funding" ? "Funding" : item.type === "holdback_disbursement" ? "Holdback" : item.type}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName || "\u2014"}</td>
-                      <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(item.completedDate || item.date)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"))}</td>
-                    </tr>;
-                  })}</tbody>
+                    var typeLabel = item.type === "funding" ? "Funding" : item.type === "holdback_disbursement" ? "Holdback" : (item.type || "Holdback");
+                    var isOcExp = outCompExp === item.id;
+                    var invoiceRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"));
+                    return (
+                      <tbody key={item.id}>
+                        <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", background: isOcExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setOutCompExp(isOcExp ? null : item.id); }}>
+                          <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
+                          <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{typeLabel}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName || "\u2014"}</td>
+                          <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || fmt(item.completedDate || item.date) || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{invoiceRef}</td>
+                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setOutCompExp(isOcExp ? null : item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isOcExp ? "\u25b4" : "\u25be"}</button></td>
+                        </tr>
+                        {isOcExp && <tr><td colSpan={ocCols.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                          <div style={{ padding: "16px 22px" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                              {/* Payment Details */}
+                              {(function() {
+                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div>
+                                  <div style={row}><span style={lbl}>Payment ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{item.id}</span></div>
+                                  <div style={row}><span style={lbl}>Type</span><span style={Object.assign({}, val, { color: typeColor, fontWeight: 600 })}>{typeLabel}</span></div>
+                                  <div style={row}><span style={lbl}>Supplier</span><span style={val}>{item.supplierName || "\u2014"}</span></div>
+                                  {item.supplierId && <div style={row}><span style={lbl}>Supplier ID</span><span style={val}>{item.supplierId}</span></div>}
+                                  <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(item.amount, item.currency)}</span></div>
+                                  {item.grossAmount && item.grossAmount !== item.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(item.grossAmount, item.currency)}</span></div>}
+                                  {item.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(item.deductionTotal, item.currency)}</span></div>}
+                                  <div style={row}><span style={lbl}>Currency</span><span style={val}>{item.currency}</span></div>
+                                  {item.programName && <div style={row}><span style={lbl}>Program</span><span style={val}>{item.programName}</span></div>}
+                                  <div style={row}><span style={lbl}>Bank</span><span style={val}>{item.bankName || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Account Details</span><span style={val}>{item.bankDetails || "\u2014"}</span></div>
+                                </div>;
+                              })()}
+                              {/* Execution & Reference */}
+                              {(function() {
+                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
+                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
+                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
+                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Execution Details</div>
+                                  <div style={row}><span style={lbl}>Created</span><span style={val}>{item.createdDisplay || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Executed</span><span style={val}>{item.executedDisplay || "\u2014"}</span></div>
+                                  <div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: "#059669", fontWeight: 600 })}>{item.status}</span></div>
+                                  {item.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}
+                                  <div style={row}><span style={lbl}>Invoice(s)</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{invoiceRef}</span></div>
+                                  {item.hbPaymentId && <div style={row}><span style={lbl}>HBP ID</span><span style={Object.assign({}, val, { color: "#059669" })}>{item.hbPaymentId}</span></div>}
+                                  {item.sourceInvoiceId && <div style={row}><span style={lbl}>Source Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{item.sourceInvoiceId}</span></div>}
+                                  {item.deductions && item.deductions.length > 0 && <div style={{ marginTop: 10 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626", marginBottom: 4 }}>Deductions ({item.deductions.length})</div>
+                                    {item.deductions.map(function(d, di) { return <div key={di} style={row}><span style={Object.assign({}, lbl, { color: "#DC2626" })}>{d.invoiceId}</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(d.amount, item.currency)}</span></div>; })}
+                                  </div>}
+                                </div>;
+                              })()}
+                            </div>
+                            {/* Notes */}
+                            <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {item.notes && item.notes.length > 0 ? "(" + item.notes.length + ")" : ""}</div>
+                              {item.notes && item.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{item.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input type="text" value={outCompExp === item.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!item.notes) item.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); item.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", item.id + ": " + noteText.trim(), { paymentId: item.id, supplierName: item.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                                <button onClick={function() { if (!noteText.trim()) return; if (!item.notes) item.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); item.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", item.id + ": " + noteText.trim(), { paymentId: item.id, supplierName: item.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                              </div>
+                            </div>
+                            {/* Audit Trail */}
+                            {(function() {
+                              var ocLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === item.id || e.context.paymentId === item.id || (item.hbPaymentId && e.context.hbPaymentId === item.hbPaymentId) || (item.invoiceId && e.context.invoiceId === item.invoiceId) || (item.invoiceIds && item.invoiceIds.some(function(iid) { return e.context.invoiceId === iid; }))); });
+                              if (ocLogs.length === 0) return null;
+                              return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
+                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({ocLogs.length})</div>
+                                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                    <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#fff" }}>{h}</th>; })}</tr></thead>
+                                    <tbody>{ocLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody>
+                                  </table>
+                                </div>
+                              </div>;
+                            })()}
+                          </div>
+                        </td></tr>}
+                      </tbody>
+                    );
+                  })}
                 </table></div>
               </div>;
           })()}
@@ -6487,8 +6898,8 @@ export default function FactoringDashboard() {
           </div>
         </div>}
 
-        {/* Holdback Payments DB */}
-        {isP && !allocPay && (function() {
+        {/* Holdback Payments DB — only on dedicated holdback tab, not on payment tabs */}
+        {isP && !allocPay && false && (function() {
           var hbInvoices = viewData.invoices.filter(function(inv) { return inv.holdbackReceived > 0.01; });
           var hbInvData = hbInvoices.map(function(inv) {
             var hbps = HOLDBACK_PAYMENTS_DB.filter(function(h) { return h.sourceInvoiceId === inv.id; });
