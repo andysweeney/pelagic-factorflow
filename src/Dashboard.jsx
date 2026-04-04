@@ -509,6 +509,88 @@ async function loadPersistedData() {
   return false;
 }
 
+var _realtimeUpdate = false; // Flag to prevent save loops when realtime triggers a reload
+
+async function reloadInvoices() {
+  try {
+    var invRes = await supabase.from("invoices").select("*");
+    if (invRes.data) {
+      INVOICES_DB.length = 0;
+      invRes.data.forEach(function(row) {
+        INVOICES_DB.push({
+          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          amount: parseFloat(row.amount) || 0, currency: row.currency,
+          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+          daysToMaturity: row.days_to_maturity || 0,
+          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+          invoiceStatusHistory: row.invoice_status_history || []
+        });
+      });
+    }
+  } catch (e) { console.error("Realtime reload invoices error:", e); }
+}
+
+async function reloadPayments() {
+  try {
+    var payRes = await supabase.from("payments").select("*");
+    if (payRes.data) {
+      PAYMENTS_DB.length = 0;
+      for (var pi = 0; pi < payRes.data.length; pi++) {
+        var prow = payRes.data[pi];
+        var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
+        var allocs = (allocRes.data || []).map(function(a) {
+          return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+        });
+        PAYMENTS_DB.push({
+          paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
+          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
+        });
+      }
+    }
+  } catch (e) { console.error("Realtime reload payments error:", e); }
+}
+
+async function reloadSPQ() {
+  try {
+    var spqRes = await supabase.from("supplier_payment_queue").select("*");
+    if (spqRes.data) {
+      SUPPLIER_PAYMENT_QUEUE.length = 0;
+      spqRes.data.forEach(function(row) {
+        SUPPLIER_PAYMENT_QUEUE.push({
+          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+          supplierName: row.supplier_name, supplierId: row.supplier_id,
+          bankName: row.bank_name, bankDetails: row.bank_details,
+          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
+          programId: row.program_id, programName: row.program_name,
+          createdAt: row.created_at, createdDisplay: row.created_display,
+          executedAt: row.executed_at, executedDisplay: row.executed_display
+        });
+      });
+    }
+  } catch (e) { console.error("Realtime reload SPQ error:", e); }
+}
+
+async function reloadAuditLog() {
+  try {
+    var auditRes = await supabase.from("audit_log").select("*").order("timestamp", { ascending: true });
+    if (auditRes.data) {
+      AUDIT_LOG.length = 0;
+      auditRes.data.forEach(function(row) {
+        AUDIT_LOG.push({
+          timestamp: row.timestamp, displayTime: row.display_time,
+          action: row.action, details: row.details, context: row.context || {}
+        });
+      });
+      _lastSavedAuditIndex = AUDIT_LOG.length;
+    }
+  } catch (e) { console.error("Realtime reload audit error:", e); }
+}
+
 async function savePersistedData() {
   try {
     // Save suppliers
@@ -1065,12 +1147,55 @@ export default function FactoringDashboard() {
     });
   }, []);
 
-  // Save data whenever dataVer changes (skip initial load and supplier users)
+  // Save data whenever dataVer changes (skip initial load, supplier users, and realtime-triggered reloads)
   useEffect(function() {
     if (storageLoading) return;
     if (userProfile && userProfile.role === "supplier") return;
+    if (_realtimeUpdate) { _realtimeUpdate = false; return; }
     if (dataVer > 0) savePersistedData();
   }, [dataVer, storageLoading]);
+
+  // Supabase Realtime subscriptions for live updates
+  useEffect(function() {
+    if (!session) return;
+
+    var channel = supabase.channel("realtime-updates")
+      .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function() {
+        reloadInvoices().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, function() {
+        reloadPayments().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_allocations" }, function() {
+        reloadPayments().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function() {
+        reloadSPQ().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function() {
+        reloadAuditLog().then(function() {
+          _realtimeUpdate = true;
+          setDataVer(function(v) { return v + 1; });
+        });
+      })
+      .subscribe();
+
+    return function() {
+      supabase.removeChannel(channel);
+    };
+  }, [session]);
 
   // Set favicon
   useEffect(function() {
