@@ -2281,8 +2281,12 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
                     (spCreditLimit > 0 || spSingleInvLimit > 0) ? React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 3 } },
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Company Credit Limit"),
-                        React.createElement("span", { style: { color: r2(spParentBalForProg) > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy) + " (Outstanding Balance for " + spSupName + " " + money(r2(spParentBalForProg), spDisplayCcy) + ")")
+                        React.createElement("span", { style: { color: spMuted } }, "Company Limit"),
+                        React.createElement("span", { style: { color: spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy))
+                      ) : null,
+                      spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Company Balance"),
+                        React.createElement("span", { style: { color: r2(spParentBalForProg) > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(r2(spParentBalForProg), spDisplayCcy))
                       ) : null,
                       spSingleInvLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
                         React.createElement("span", { style: { color: spMuted } }, "Max Invoice Size"),
@@ -8784,6 +8788,9 @@ export default function FactoringDashboard() {
                   var rate = parseFloat(fundPopupFields.annualRate) / 100;
                   if (cap < 0 || cap > fundPopupFields.maxCap + 0.01) return;
                   if (rate < fundPopupFields.minRate - 0.0001) return;
+                  // Check program available balance
+                  var availBal = r2((prog.maxSize || 0) - (prog.currentFundedBalance || 0));
+                  if (cap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(cap, inv.currency)); return; }
                   // Update the raw invoice with final funding terms
                   var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
                   if (!raw) return;
@@ -8866,7 +8873,7 @@ export default function FactoringDashboard() {
                     <div style={{ background: "#fff", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
                       <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Fund Invoice: {fundPopup.inv.id}</div>
                       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>{fundPopup.inv.supplierName} / {fundPopup.inv.buyerName}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong></div>
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong> — Available: <strong style={{ color: r2((fundPopup.prog.maxSize || 0) - (fundPopup.prog.currentFundedBalance || 0)) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(r2((fundPopup.prog.maxSize || 0) - (fundPopup.prog.currentFundedBalance || 0)), fundPopup.inv.currency)}</strong></div>
                       {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies — max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
                         <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
@@ -8932,7 +8939,7 @@ export default function FactoringDashboard() {
                         return null;
                       })()}
                       <div style={{ display: "flex", gap: 10 }}>
-                        {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); return <button onClick={confirmFundPopup} disabled={blocked} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: blocked ? "var(--border)" : "#38BDF8", color: blocked ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: blocked ? "not-allowed" : "pointer", boxShadow: blocked ? "none" : "0 2px 14px #818cf840" }}>Approve for Funding</button>; })()}
+                        {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0; var progAvail = r2((fundPopup.prog.maxSize || 0) - (fundPopup.prog.currentFundedBalance || 0)); var insufficientBal = capNeeded > progAvail + 0.01; var disabled = blocked || insufficientBal; return <button onClick={confirmFundPopup} disabled={disabled} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{insufficientBal ? "Insufficient Program Balance" : "Approve for Funding"}</button>; })()}
                         <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                       </div>
                     </div>
@@ -9490,8 +9497,37 @@ export default function FactoringDashboard() {
                           {deductTotal > 0 ? <span>Gross: {money(grossTotal, batchConfirm.currency || "GBP")} {"\u2014"} Deductions: <span style={{ color: "#DC2626" }}>{money(deductTotal, batchConfirm.currency || "GBP")}</span> {"\u2014"} Net: <span style={{ color: "#059669" }}>{money(netTotal, batchConfirm.currency || "GBP")}</span></span> : <span>Total: {money(grossTotal, batchConfirm.currency || "GBP")}</span>}
                         </div>;
                       })()}
+                      {batchConfirm.type === "outbound" && (function() {
+                        // Check program available balance for funding items
+                        var fundingItems = batchConfirm.fundingItems || [];
+                        if (fundingItems.length === 0) return null;
+                        var totalCapNeeded = 0;
+                        fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
+                        var progId = fundingItems[0].fundingProgram;
+                        var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
+                        if (!prog) return null;
+                        var availBal = r2((prog.maxSize || 0) - (prog.currentFundedBalance || 0));
+                        if (totalCapNeeded <= availBal + 0.01) return null;
+                        return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#EF444414", border: "1px solid #EF444440", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 16 }}>{"\u26D4"}</span>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>Insufficient Program Balance</div>
+                            <div style={{ fontSize: 11, color: "#EF4444", opacity: 0.8 }}>{prog.name}: Available {money(availBal, batchConfirm.currency)} — Required {money(r2(totalCapNeeded), batchConfirm.currency)}</div>
+                          </div>
+                        </div>;
+                      })()}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={function() {
+                        {(function() {
+                          var fundingItems = batchConfirm.fundingItems || [];
+                          var insuffBal = false;
+                          if (batchConfirm.type === "outbound" && fundingItems.length > 0) {
+                            var totalCapNeeded = 0;
+                            fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
+                            var progId = fundingItems[0].fundingProgram;
+                            var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
+                            if (prog) { var availBal = r2((prog.maxSize || 0) - (prog.currentFundedBalance || 0)); insuffBal = totalCapNeeded > availBal + 0.01; }
+                          }
+                          return <button disabled={insuffBal} onClick={function() {
                           var now = new Date();
                           var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                           if (batchConfirm.type === "outbound") {
@@ -9593,7 +9629,8 @@ export default function FactoringDashboard() {
                             setDataVer(function(v) { return v + 1; });
                           }
                           setBatchConfirm(null);
-                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: batchConfirm.type === "outbound" ? "#059669" : "#7C3AED", color: "#fff", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: "pointer", boxShadow: "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>Confirm Execution</button>
+                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: insuffBal ? "var(--border)" : (batchConfirm.type === "outbound" ? "#059669" : "#7C3AED"), color: insuffBal ? "var(--muted)" : "#fff", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: insuffBal ? "not-allowed" : "pointer", boxShadow: insuffBal ? "none" : "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>{insuffBal ? "Insufficient Balance" : "Confirm Execution"}</button>;
+                        })()}
                         <button onClick={function() { setBatchConfirm(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                       </div>
                     </div>
