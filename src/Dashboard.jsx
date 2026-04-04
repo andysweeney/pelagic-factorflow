@@ -120,6 +120,27 @@ function buyName(buyerId) {
 }
 
 // Get bank details by entity ID and program — cascades: branch program → parent program → branch flat → parent flat
+// Check if a supplier entity (parent or branch) is paused
+// Branch paused OR parent paused = entity is paused
+function isEntityPaused(entityId) {
+  if (!entityId) return false;
+  var sup = getSupplierById(entityId);
+  if (!sup) return false;
+  // Check parent pause first
+  if (sup.paused) return true;
+  // Check branch pause
+  var branch = getBranchById(entityId);
+  if (branch && branch.paused) return true;
+  return false;
+}
+
+// Check if a buyer is paused
+function isBuyerPaused(buyerId) {
+  if (!buyerId) return false;
+  var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
+  return b ? !!b.paused : false;
+}
+
 function getSupplierBankDetails(entityId, programId) {
   var sup = getSupplierById(entityId);
   if (!sup) return { bankName: "", bankDetails: "", bankVerified: false };
@@ -351,7 +372,8 @@ async function loadPersistedData() {
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
-          branches: row.branches || []
+          branches: row.branches || [],
+          paused: row.paused || false
         });
       });
     }
@@ -369,7 +391,8 @@ async function loadPersistedData() {
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
-          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          paused: row.paused || false
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -616,7 +639,8 @@ async function reloadSuppliers() {
           programBankAccounts: row.program_bank_accounts || {},
           rates: row.rates || [], branches: row.branches || [],
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
-          incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null
+          incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null,
+          paused: row.paused || false
         });
       });
     }
@@ -638,7 +662,8 @@ async function reloadBuyers() {
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
-          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          paused: row.paused || false
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -709,7 +734,8 @@ async function savePersistedData() {
         credit_limits: s.creditLimits || {},
         single_invoice_limits: s.singleInvoiceLimits || {},
         program_bank_accounts: s.programBankAccounts || {},
-        rates: s.rates || [], branches: s.branches || []
+        rates: s.rates || [], branches: s.branches || [],
+        paused: s.paused || false
       };
     });
     if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
@@ -726,7 +752,8 @@ async function savePersistedData() {
         secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
-        contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false
+        contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
+        paused: b.paused || false
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -2233,6 +2260,13 @@ export default function FactoringDashboard() {
             /* OVERVIEW TAB */
             spPortalTab === "company" && React.createElement("div", null,
               React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: "0 0 24px", fontFamily: spFont } }, "Overview"),
+              isEntityPaused(spEntityId) ? React.createElement("div", { style: { padding: "14px 20px", borderRadius: 10, background: "#EF444418", border: "1px solid #EF444440", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 } },
+                React.createElement("span", { style: { fontSize: 20 } }, "\u26D4"),
+                React.createElement("div", null,
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#EF4444", fontFamily: spFont } }, "You are temporarily paused from funding new invoices"),
+                  React.createElement("div", { style: { fontSize: 11, color: "#EF4444", opacity: 0.7, marginTop: 2, fontFamily: spFont } }, "Please contact Pelagic Solutions for more information")
+                )
+              ) : null,
               React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 } },
                 /* Left: stat cards — 2x2 with merged Outstanding Balance */
                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 } },
@@ -7312,9 +7346,13 @@ export default function FactoringDashboard() {
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
                   <button onClick={function() { setManageDetail(null); setManagePopup(null); setChLiveData(null); setManageDetailTab("overview"); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 800, fontWeight: 600 }}>{det.name}</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} \u2014 {entityInvs.length} invoices \u2014 Total: {money(totalAmt, "GBP")} \u2014 Outstanding: {money(totalOS, "GBP")}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontWeight: 600 }}>{det.name}</div>
+                      {detEntity && detEntity.paused && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", textTransform: "uppercase", letterSpacing: "0.04em" }}>{"\u23F8"} Paused</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
+                  {detEntity && <button onClick={function() { detEntity.paused = !detEntity.paused; auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
                 </div>
 
                 {/* Detail Sub-Tabs */}
@@ -7660,7 +7698,7 @@ export default function FactoringDashboard() {
                       {branches.length === 0 && <div style={{ padding: "24px 22px", color: "var(--muted)", fontSize: 12, textAlign: "center", fontStyle: "italic" }}>No branches added. Click "+ Add Branch" to create one.</div>}
                       {branches.length > 0 && <div style={{ maxHeight: 400, overflowY: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank Accounts", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank Accounts", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                           <tbody>{branches.map(function(br, bi) {
                             var brPbaCount = br.programBankAccounts ? Object.keys(br.programBankAccounts).filter(function(k) { var o = br.programBankAccounts[k]; return (o.outgoing && o.outgoing.bankName) || (o.incoming && o.incoming.bankName); }).length : 0;
                             return <tr key={bi} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -7669,8 +7707,12 @@ export default function FactoringDashboard() {
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.country || "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.primaryContact || "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 11 }}>{brPbaCount > 0 ? <Badge label={brPbaCount + " program" + (brPbaCount !== 1 ? "s" : "")} bg="#2E8B5714" color="#059669" border="#2E8B5730" /> : <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 11 }}>Using parent</span>}</td>
+                              <td style={{ padding: "8px 8px" }}>
+                                {br.paused ? <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u23F8"} Paused</span> : <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>Active</span>}
+                              </td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
                                 <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                                <button onClick={function() { br.paused = !br.paused; auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
                               </td>
                             </tr>;
@@ -8872,8 +8914,25 @@ export default function FactoringDashboard() {
                           </div> : <div style={{ color: "#D97706", fontWeight: 600 }}>No bank details on file for this supplier/program</div>}
                         </div>;
                       })()}
+                      {(function() {
+                        var supPaused = isEntityPaused(fundPopup.inv.supplierId);
+                        var buyPaused = isBuyerPaused(fundPopup.inv.buyerId);
+                        if (supPaused || buyPaused) {
+                          var reasons = [];
+                          if (supPaused) reasons.push("Supplier " + getEntityDisplayName(fundPopup.inv.supplierId) + " is paused");
+                          if (buyPaused) reasons.push("Buyer " + (fundPopup.inv.buyerName || "") + " is paused");
+                          return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#EF444414", border: "1px solid #EF444440", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 16 }}>{"\u26D4"}</span>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>Funding Blocked</div>
+                              <div style={{ fontSize: 11, color: "#EF4444", opacity: 0.8 }}>{reasons.join(" • ")}</div>
+                            </div>
+                          </div>;
+                        }
+                        return null;
+                      })()}
                       <div style={{ display: "flex", gap: 10 }}>
-                        <button onClick={confirmFundPopup} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: "#38BDF8", color: "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #818cf840" }}>Approve for Funding</button>
+                        {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); return <button onClick={confirmFundPopup} disabled={blocked} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: blocked ? "var(--border)" : "#38BDF8", color: blocked ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: blocked ? "not-allowed" : "pointer", boxShadow: blocked ? "none" : "0 2px 14px #818cf840" }}>Approve for Funding</button>; })()}
                         <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                       </div>
                     </div>
