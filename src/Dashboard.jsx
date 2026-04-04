@@ -9584,6 +9584,43 @@ export default function FactoringDashboard() {
                               executeFunding(inv.id);
                               fundingInvIds.push(inv.id);
                             });
+                            // Apply deductions to holdback HBP allocations — split disbursement into invoice allocations + reduced supplier return
+                            if (deductTotal > 0 && (batchConfirm.holdbackItems || []).length > 0) {
+                              var deductRemainingForHbp = deductTotal;
+                              (batchConfirm.holdbackItems || []).forEach(function(spq) {
+                                if (deductRemainingForHbp <= 0.001) return;
+                                var hbp = HOLDBACK_PAYMENTS_DB.find(function(x) { return x.hbPaymentId === spq.hbPaymentId; });
+                                if (!hbp) return;
+                                // Calculate how much of the deductions to take from this HBP
+                                var hbpOrigAmt = hbp.amount;
+                                var deductFromThis = r2(Math.min(deductRemainingForHbp, hbpOrigAmt));
+                                deductRemainingForHbp = r2(deductRemainingForHbp - deductFromThis);
+                                var netSupplierAmt = r2(hbpOrigAmt - deductFromThis);
+                                // Rebuild allocations: invoice allocations for each deduction + reduced disbursement
+                                var newAllocations = [];
+                                var deductUsed = 0;
+                                batchDeductions.forEach(function(d) {
+                                  if (deductUsed >= deductFromThis) return;
+                                  var allocAmt = r2(Math.min(d.amount, deductFromThis - deductUsed));
+                                  if (allocAmt > 0.001) {
+                                    newAllocations.push({ type: "invoice", targetId: d.invoiceId, amount: allocAmt });
+                                    deductUsed = r2(deductUsed + allocAmt);
+                                  }
+                                });
+                                if (netSupplierAmt > 0.001) {
+                                  newAllocations.push({ type: "disbursement", targetId: null, amount: netSupplierAmt });
+                                }
+                                hbp.allocations = newAllocations;
+                                // Update the SPQ entry amount to the net supplier payout
+                                spq.amount = netSupplierAmt;
+                                // Update the audit log context for this HBP
+                                var invAllocDetails = newAllocations.filter(function(a) { return a.type === "invoice"; });
+                                var logParts = [];
+                                invAllocDetails.forEach(function(a) { logParts.push(money(a.amount, hbp.currency) + " applied to " + a.targetId); });
+                                if (netSupplierAmt > 0.001) logParts.push(money(netSupplierAmt, hbp.currency) + " returned to supplier");
+                                auditLog("Holdback Disbursed", hbp.hbPaymentId + " from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (Total: " + money(hbpOrigAmt, hbp.currency) + ")", { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, supplierName: spq.supplierName, amount: hbpOrigAmt, supplierReturn: netSupplierAmt, invoiceAllocations: invAllocDetails.map(function(a) { return { invoiceId: a.targetId, amount: a.amount }; }), currency: hbp.currency });
+                              });
+                            }
                             // Execute holdback items
                             (batchConfirm.holdbackItems || []).forEach(function(spq) {
                               executeQueuedPayment(spq.id);
