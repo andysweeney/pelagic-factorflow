@@ -6024,7 +6024,7 @@ export default function FactoringDashboard() {
                     var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
                     var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
+                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
@@ -8747,13 +8747,13 @@ export default function FactoringDashboard() {
                     var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
                     var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
+                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
                     var srcInv = INVOICES_DB.find(function(x) { return x.id === item.sourceInvoiceId; });
                     if (srcInv) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === srcInv.fundingProgram; });
-                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierName: item.supplierName, programId: prog ? prog.id : "", programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: item.bankName || "", bankDetails: item.bankDetails || "", date: item.createdDisplay, detail: item.hbPaymentId + " / " + item.sourceInvoiceId, cancelFn: function() { setConfirmCancelHbp(item.id); } });
+                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : "", programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: item.bankName || "", bankDetails: item.bankDetails || "", date: item.createdDisplay, detail: item.hbPaymentId + " / " + item.sourceInvoiceId, cancelFn: function() { setConfirmCancelHbp(item.id); } });
                   });
                   var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
                   // Lock to supplier+program from first selection
