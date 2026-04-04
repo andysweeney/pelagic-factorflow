@@ -9249,7 +9249,7 @@ export default function FactoringDashboard() {
                   if (cap < 0 || cap > fundPopupFields.maxCap + 0.01) return;
                   if (rate < fundPopupFields.minRate - 0.0001) return;
                   // Check program available balance
-                  var availBal = getProgramAvailableBalance(programId);
+                  var availBal = getProgramAvailableBalance(prog.id);
                   if (cap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(cap, inv.currency)); return; }
                   // Update the raw invoice with final funding terms
                   var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
