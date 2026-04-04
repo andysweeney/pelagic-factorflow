@@ -2144,8 +2144,9 @@ export default function FactoringDashboard() {
         }
         function spMatchesScopeByName(supplierName) {
           if (spIsBranchUser) {
-            // Branch user: match branch display name only
-            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId);
+            // Branch user: match branch display name, entity display name, OR parent supplier name
+            // (invoices store parent name via getParentSupplierName, so we must also match against that)
+            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId) || supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
           }
           return supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
         }
