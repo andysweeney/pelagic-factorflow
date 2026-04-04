@@ -1199,7 +1199,15 @@ export default function FactoringDashboard() {
 
   function loadUserProfile(userId) {
     supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
-      if (result.data) setUserProfile(result.data);
+      if (result.data) {
+        setUserProfile(result.data);
+        // If data is already loaded, bump dataVer to re-render with new profile context
+        if (_dataLoaded) setDataVer(function(v) { return v + 1; });
+        // If supplier user and suppliers not loaded yet, force a reload
+        if (result.data.role === "supplier" && SUPPLIERS_DB.length === 0) {
+          loadPersistedData().then(function() { setDataVer(function(v) { return v + 1; }); });
+        }
+      }
     });
   }
 
@@ -1244,7 +1252,15 @@ export default function FactoringDashboard() {
 
   var lo1 = useState(!_dataLoaded), storageLoading = lo1[0], setStorageLoading = lo1[1];
   var vs = useState(REF_DATE), viewDate = vs[0], setViewDate = vs[1];
-  function auditLog(action, details, context) { _auditLog(action, details, context, viewDate !== REF_DATE ? viewDate : undefined); }
+  function auditLog(action, details, context) {
+    var ctx = Object.assign({}, context || {});
+    if (userProfile) {
+      ctx.userId = userProfile.id;
+      ctx.userEmail = userProfile.email;
+      ctx.userName = userProfile.full_name || userProfile.email;
+    }
+    _auditLog(action, details, ctx, viewDate !== REF_DATE ? viewDate : undefined);
+  }
   var vws = useState("company"), view = vws[0], setView = vws[1];
   var is1 = useState("all"), isf = is1[0], setIsf = is1[1];
   var fs1 = useState("all"), fsf = fs1[0], setFsf = fs1[1];
@@ -10087,6 +10103,8 @@ export default function FactoringDashboard() {
                   if (c.currency || (c.fields && c.fields.currency)) addRow("Currency", c.currency || c.fields.currency);
                   if (c.maxSize !== undefined) addRow("Max Size", money(c.maxSize, c.currency));
                 }
+                // Always show the user who performed the action
+                if (c.userName || c.userEmail) addRow("User", c.userName || c.userEmail, "var(--accent)");
                 return rows;
               }
 
@@ -10178,11 +10196,13 @@ export default function FactoringDashboard() {
                 {AUDIT_LOG.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No actions recorded yet. Changes to invoices, payments, allocations, and entities will appear here.</div>}
                 {AUDIT_LOG.length > 0 && <div style={{ maxHeight: 600, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Timestamp", "Action", "Details", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{["Timestamp", "User", "Action", "Details", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{AUDIT_LOG.slice().reverse().map(function(entry, i) {
                       var ac = actionColors[entry.action] || "var(--text-secondary)";
+                      var entryUser = (entry.context && (entry.context.userName || entry.context.userEmail)) || "\u2014";
                       return <tr key={i} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setAuditPopup(i); }}>
                         <td style={{ padding: "8px 8px", fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{entry.displayTime}</td>
+                        <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{entryUser}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 700, color: ac, whiteSpace: "nowrap" }}>{entry.action}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)" }}>{entry.details}</td>
                         <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10, color: "var(--muted)" }}>{"\u25b8"}</span></td>
