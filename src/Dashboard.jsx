@@ -1750,13 +1750,35 @@ export default function FactoringDashboard() {
         var spRed = "#EF4444";
         var spAmber = "#F59E0B";
 
-        var spSupId = userProfile.supplier_id || "";
-        var spSupplier = SUPPLIERS_DB.find(function(s) { return s.id === spSupId; });
+        // Entity ID from user profile: "SUP-001" = parent user, "SUP-001:BR-001" = branch user
+        var spRawId = userProfile.supplier_id || "";
+        var spParsed = parseEntityId(spRawId);
+        var spParentId = spParsed.supplierId || "";
+        var spIsBranchUser = !!spParsed.branchId;
+        var spEntityId = spRawId; // The entity this user is scoped to
+        var spSupplier = SUPPLIERS_DB.find(function(s) { return s.id === spParentId; });
         var spSupName = spSupplier ? spSupplier.name : "";
+        var spBranchObj = spIsBranchUser ? getBranchById(spRawId) : null;
+        var spDisplayIdentity = spIsBranchUser ? (spSupName + " \u2014 " + (spBranchObj ? spBranchObj.branchName : spParsed.branchId)) : spSupName;
 
-        // Determine which programs this supplier is on
+        // Helper: does an invoice belong to this user's scope?
+        function spMatchesScope(entityId) {
+          if (!entityId) return false;
+          if (spIsBranchUser) return entityId === spEntityId;
+          // Parent user: match parent or any branch under parent
+          return getParentEntityId(entityId) === spParentId;
+        }
+        function spMatchesScopeByName(supplierName) {
+          if (spIsBranchUser) {
+            // Branch user: match entity display name exactly
+            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId);
+          }
+          return supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
+        }
+
+        // Determine which programs this supplier/branch is on
         var spAllInvs = viewData.invoices.filter(function(inv) {
-          return inv.supplierId ? getParentEntityId(inv.supplierId) === spSupId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName);
+          return inv.supplierId ? spMatchesScope(inv.supplierId) : spMatchesScopeByName(inv.supplierName);
         });
         var spPrograms = [];
         var seenProgs = {};
@@ -1770,8 +1792,14 @@ export default function FactoringDashboard() {
         // Also check eligible programs from program settings
         FUNDING_PROGRAMS_DB.forEach(function(fp) {
           if (!seenProgs[fp.id] && fp.eligibleSuppliers) {
-            // Check if parent ID or any branch entity ID matches
-            var isEligible = fp.eligibleSuppliers.indexOf(spSupId) > -1 || fp.eligibleSuppliers.some(function(es) { return getParentEntityId(es) === spSupId; });
+            var isEligible;
+            if (spIsBranchUser) {
+              // Branch user: only programs where their specific entity ID is eligible
+              isEligible = fp.eligibleSuppliers.indexOf(spEntityId) > -1;
+            } else {
+              // Parent user: programs where parent ID or any branch is eligible
+              isEligible = fp.eligibleSuppliers.indexOf(spParentId) > -1 || fp.eligibleSuppliers.some(function(es) { return getParentEntityId(es) === spParentId; });
+            }
             if (isEligible) {
               seenProgs[fp.id] = true;
               spPrograms.push(fp);
@@ -1806,6 +1834,19 @@ export default function FactoringDashboard() {
 
         // Credit limit for active program
         var spCreditLimit = spSupplier && spSupplier.creditLimits && spSupplier.creditLimits[activeProgId] ? spSupplier.creditLimits[activeProgId] : 0;
+
+        // Parent-level outstanding balance for this program (credit limits are at parent level)
+        var spParentBalForProg = 0;
+        if (spCreditLimit > 0 && activeProgId) {
+          viewData.invoices.forEach(function(inv) {
+            if (inv.fundingProgram !== activeProgId) return;
+            if (inv.fundingStatus === "pending") return;
+            var invParent = getParentEntityId(inv.supplierId || "");
+            if (invParent === spParentId || inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName) {
+              spParentBalForProg += inv.balanceOwed || 0;
+            }
+          });
+        }
 
         // Dilution rates for this supplier on this program
         var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
@@ -1853,7 +1894,7 @@ export default function FactoringDashboard() {
         }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.invoiceId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spRemittancePays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
-          return q.type === "remittance" && (q.supplierId === spSupId || getParentEntityId(q.supplierId) === spSupId || q.supplierName === spSupName || getParentSupplierName(q.supplierName) === spSupName);
+          return q.type === "remittance" && (spMatchesScope(q.supplierId) || spMatchesScopeByName(q.supplierName));
         }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) { return spInvIds[h.sourceInvoiceId]; }).map(function(h) {
@@ -1875,7 +1916,10 @@ export default function FactoringDashboard() {
         // Audit log for supplier
         var spAuditLog = AUDIT_LOG.filter(function(e) {
           var c = e.context || {};
-          return c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spSupId || (e.details || "").indexOf(spSupName) > -1;
+          if (spIsBranchUser) {
+            return c.supplierId === spEntityId || c.supplierName === spDisplayIdentity || (e.details || "").indexOf(spDisplayIdentity) > -1;
+          }
+          return c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spParentId || (e.details || "").indexOf(spSupName) > -1;
         }).slice().reverse();
 
         // Stat card for portal
@@ -1917,7 +1961,7 @@ export default function FactoringDashboard() {
             ),
             React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
               React.createElement("div", { style: { fontSize: 12, color: "#CBD5E1", fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
-              React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 10, fontFamily: spFont } }, spSupName),
+              React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 10, fontFamily: spFont } }, spDisplayIdentity),
               React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
             )
           ),
@@ -1956,8 +2000,8 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
                     (spCreditLimit > 0 || spSingleInvLimit > 0) ? React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 3 } },
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Credit Limit"),
-                        React.createElement("span", { style: { color: spBalanceOwed > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy) + " (" + (spBalanceOwed / spCreditLimit * 100).toFixed(0) + "% used)")
+                        React.createElement("span", { style: { color: spMuted } }, "Company Credit Limit"),
+                        React.createElement("span", { style: { color: r2(spParentBalForProg) > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy) + " (Outstanding Balance for " + spSupName + " " + money(r2(spParentBalForProg), spDisplayCcy) + ")")
                       ) : null,
                       spSingleInvLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
                         React.createElement("span", { style: { color: spMuted } }, "Max Invoice Size"),
@@ -2013,11 +2057,10 @@ export default function FactoringDashboard() {
                   var actions = [];
                   // Bank account not verified — check outgoing bank for active program
                   if (spSupplier && activeProgId) {
-                    var progAcct = (spSupplier.programBankAccounts || {})[activeProgId];
-                    var outgoing = progAcct ? progAcct.outgoing : null;
-                    if (!outgoing || !outgoing.bankName) {
+                    var bankInfo = getSupplierBankDetails(spEntityId, activeProgId);
+                    if (!bankInfo.bankName) {
                       actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Not Set Up", sub: "Outgoing bank details needed for " + (activeProg ? activeProg.name : "this program") });
-                    } else if (!outgoing.verified) {
+                    } else if (!bankInfo.bankVerified) {
                       actions.push({ type: "warning", icon: "\u26A0", color: spAmber, title: "Bank Account Needs Verification", sub: "Outgoing account for " + (activeProg ? activeProg.name : "this program") + " is unverified" });
                     }
                   }
@@ -2032,7 +2075,7 @@ export default function FactoringDashboard() {
                   });
                   // Unallocated credit notes
                   CREDIT_NOTES_DB.filter(function(cn) {
-                    return cn.supplierId ? getParentEntityId(cn.supplierId) === spSupId : (cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName);
+                    return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
                   }).forEach(function(cn) {
                     var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
                     if (totalAlloc < (cn.amount || 0) - 0.01) {
@@ -2088,7 +2131,7 @@ export default function FactoringDashboard() {
                   var byStatus = {};
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
-                    return (inv.supplierId ? getParentEntityId(inv.supplierId) === spSupId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName)) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
+                    return (inv.supplierId ? spMatchesScope(inv.supplierId) : spMatchesScopeByName(inv.supplierName)) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
                   }).forEach(function(inv) {
                     var fs = inv.fundingStatus;
                     if (byStatus[fs] !== undefined) byStatus[fs] += inv.capitalOutstanding || 0;
@@ -2101,7 +2144,7 @@ export default function FactoringDashboard() {
                 }
                 if (chartData.length < 2) return null;
                 return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "22px 24px", marginBottom: 20 } },
-                  React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 4, fontFamily: spFont } }, "Funds Advanced to " + spSupName),
+                  React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 4, fontFamily: spFont } }, "Funds Advanced to " + spDisplayIdentity),
                   React.createElement("div", { style: { fontSize: 11, color: spMuted, marginBottom: 16, fontFamily: spFont } }, "Capital outstanding by funding status"),
                   React.createElement("div", { style: { width: "100%", height: 240 } },
                     React.createElement(ResponsiveContainer, { width: "100%", height: "100%" },
@@ -2272,7 +2315,7 @@ export default function FactoringDashboard() {
               var pageInvs = filteredSpInvs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
               // Credit Notes for this supplier
               var spCreditNotes = CREDIT_NOTES_DB.filter(function(cn) {
-                return cn.supplierName === spSupName || getParentSupplierName(cn.supplierName) === spSupName;
+                return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
               });
               if (activeProgId) {
                 spCreditNotes = spCreditNotes.filter(function(cn) {
@@ -2748,28 +2791,40 @@ export default function FactoringDashboard() {
               spSupplier ? React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                 /* Company Details */
                 React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
-                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Company Details"),
-                  [["Company Name", spSupplier.name], ["Company Number", spSupplier.companyNumber || "\u2014"], ["VAT Number", spSupplier.vatNumber || "\u2014"], ["Jurisdiction", spSupplier.jurisdiction || "\u2014"], ["Status", spSupplier.status || "\u2014"], ["Onboarding Date", fmt(spSupplier.onboardingDate)]].map(function(row) {
+                  React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, spIsBranchUser ? "Branch Details" : "Company Details"),
+                  (function() {
+                    var infoRows;
+                    if (spIsBranchUser && spBranchObj) {
+                      infoRows = [["Branch Name", spBranchObj.branchName || "\u2014"], ["Parent Company", spSupplier.name], ["Branch ID", spParsed.branchId || "\u2014"], ["Company Number", spBranchObj.companyNumber || spSupplier.companyNumber || "\u2014"], ["VAT Number", spBranchObj.vatNumber || spSupplier.vatNumber || "\u2014"], ["Jurisdiction", spBranchObj.jurisdiction || spSupplier.jurisdiction || "\u2014"], ["Status", spSupplier.status || "\u2014"]];
+                    } else {
+                      infoRows = [["Company Name", spSupplier.name], ["Company Number", spSupplier.companyNumber || "\u2014"], ["VAT Number", spSupplier.vatNumber || "\u2014"], ["Jurisdiction", spSupplier.jurisdiction || "\u2014"], ["Status", spSupplier.status || "\u2014"], ["Onboarding Date", fmt(spSupplier.onboardingDate)]];
+                    }
+                    return infoRows.map(function(row) {
                     return React.createElement("div", { key: row[0], style: { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid " + spBorder + "60" } },
                       React.createElement("span", { style: { fontSize: 12, color: spMuted, fontFamily: spFont } }, row[0]),
                       React.createElement("span", { style: { fontSize: 13, color: spText, fontWeight: 500, fontFamily: spFont, textAlign: "right" } }, row[1])
                     );
-                  }),
+                  });
+                  })(),
                   React.createElement("div", { style: { marginTop: 14 } },
                     React.createElement("div", { style: { fontSize: 12, color: spMuted, marginBottom: 4 } }, "Address"),
-                    React.createElement("div", { style: { fontSize: 13, color: spText, lineHeight: 1.6 } }, [spSupplier.street1, spSupplier.street2, spSupplier.city, spSupplier.state, spSupplier.zip, spSupplier.country].filter(Boolean).join(", ") || "\u2014")
+                    React.createElement("div", { style: { fontSize: 13, color: spText, lineHeight: 1.6 } }, (function() {
+                      var src = (spIsBranchUser && spBranchObj) ? spBranchObj : spSupplier;
+                      return [src.street1, src.street2, src.city, src.state, src.zip, src.country].filter(Boolean).join(", ") || "\u2014";
+                    })())
                   )
                 ),
                 /* Contacts & Signatories */
                 React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
                   React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Contacts & Authorised Signatories"),
                   (function() {
+                    var src = (spIsBranchUser && spBranchObj) ? spBranchObj : spSupplier;
                     var contacts = [
-                      { name: spSupplier.primaryContact, email: spSupplier.primaryEmail, phone: spSupplier.primaryPhone, sig: spSupplier.primarySignatory },
-                      { name: spSupplier.secondaryContact, email: spSupplier.secondaryEmail, phone: spSupplier.secondaryPhone, sig: spSupplier.secondarySignatory },
-                      { name: spSupplier.contact3Name, email: spSupplier.contact3Email, phone: spSupplier.contact3Phone, sig: spSupplier.contact3Signatory },
-                      { name: spSupplier.contact4Name, email: spSupplier.contact4Email, phone: spSupplier.contact4Phone, sig: spSupplier.contact4Signatory },
-                      { name: spSupplier.contact5Name, email: spSupplier.contact5Email, phone: spSupplier.contact5Phone, sig: spSupplier.contact5Signatory }
+                      { name: src.primaryContact, email: src.primaryEmail, phone: src.primaryPhone, sig: src.primarySignatory },
+                      { name: src.secondaryContact, email: src.secondaryEmail, phone: src.secondaryPhone, sig: src.secondarySignatory },
+                      { name: src.contact3Name, email: src.contact3Email, phone: src.contact3Phone, sig: src.contact3Signatory },
+                      { name: src.contact4Name, email: src.contact4Email, phone: src.contact4Phone, sig: src.contact4Signatory },
+                      { name: src.contact5Name, email: src.contact5Email, phone: src.contact5Phone, sig: src.contact5Signatory }
                     ].filter(function(c) { return c.name; });
                     if (contacts.length === 0) return React.createElement("div", { style: { color: spMuted, fontSize: 13, fontStyle: "italic" } }, "No contacts on file.");
                     return contacts.map(function(c, ci) {
@@ -2786,11 +2841,25 @@ export default function FactoringDashboard() {
                 ),
                 /* Bank Accounts by Program */
                 (function() {
-                  if (!spSupplier || !spSupplier.programBankAccounts) return null;
-                  var pba = spSupplier.programBankAccounts;
+                  // For branch users, show bank accounts from branch programBankAccounts, falling back to parent
+                  // For parent users, show parent programBankAccounts as before
+                  var pbaSource = (spIsBranchUser && spBranchObj && spBranchObj.programBankAccounts) ? spBranchObj.programBankAccounts : (spSupplier ? spSupplier.programBankAccounts : null);
+                  // Also merge parent program bank accounts for branch users (for programs where branch has no override)
+                  var pba = {};
+                  if (spSupplier && spSupplier.programBankAccounts) {
+                    Object.keys(spSupplier.programBankAccounts).forEach(function(k) { pba[k] = spSupplier.programBankAccounts[k]; });
+                  }
+                  if (spIsBranchUser && spBranchObj && spBranchObj.programBankAccounts) {
+                    Object.keys(spBranchObj.programBankAccounts).forEach(function(k) { pba[k] = spBranchObj.programBankAccounts[k]; });
+                  }
+                  if (!pba || Object.keys(pba).length === 0) return null;
+                  // Filter to only programs this user can see
                   var progIds = Object.keys(pba).filter(function(k) {
                     var acct = pba[k];
-                    return (acct.outgoing && acct.outgoing.bankName) || (acct.incoming && acct.incoming.bankName);
+                    if (!((acct.outgoing && acct.outgoing.bankName) || (acct.incoming && acct.incoming.bankName))) return false;
+                    // Branch users: only show programs they're on
+                    if (spIsBranchUser) return seenProgs[k];
+                    return true;
                   });
                   if (progIds.length === 0) return null;
                   return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
@@ -2814,7 +2883,7 @@ export default function FactoringDashboard() {
                         React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
                         outgoing.bankName ? React.createElement("div", { style: { marginBottom: 16 } },
                           React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
-                            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spAccent, fontFamily: spFont } }, spSupName + " Bank Account Details"),
+                            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spAccent, fontFamily: spFont } }, spDisplayIdentity + " Bank Account Details"),
                             outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified")
                           ),
                           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
@@ -2849,14 +2918,30 @@ export default function FactoringDashboard() {
                   var allProgIds = {};
                   Object.keys(cl).forEach(function(k) { if (cl[k] > 0) allProgIds[k] = true; });
                   Object.keys(sil).forEach(function(k) { if (sil[k] > 0) allProgIds[k] = true; });
-                  var entries = Object.keys(allProgIds);
+                  var entries = Object.keys(allProgIds).filter(function(k) {
+                    // Branch users: only show programs they're on
+                    if (spIsBranchUser) return seenProgs[k];
+                    return true;
+                  });
                   if (entries.length === 0) return null;
+                  // Calculate outstanding balance per program across all parent invoices
+                  var parentAllInvs = viewData.invoices.filter(function(inv) {
+                    return inv.supplierId ? getParentEntityId(inv.supplierId) === spParentId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName);
+                  });
+                  var balByProg = {};
+                  parentAllInvs.forEach(function(inv) {
+                    var fpId = inv.fundingProgram;
+                    if (fpId && inv.fundingStatus !== "pending") {
+                      if (!balByProg[fpId]) balByProg[fpId] = 0;
+                      balByProg[fpId] += inv.balanceOwed || 0;
+                    }
+                  });
                   return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
                     React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Program Limits"),
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
-                          ["Program", "Currency", "Credit Limit", "Max Invoice Size"].map(function(h) {
+                          ["Program", "Currency", "Company Credit Limit", "Max Invoice Size"].map(function(h) {
                             return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
                           })
                         )
@@ -2865,10 +2950,12 @@ export default function FactoringDashboard() {
                         entries.map(function(fpId) {
                           var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
                           var ccy = prog ? prog.currency : "GBP";
+                          var progBal = r2(balByProg[fpId] || 0);
+                          var clDisplay = cl[fpId] > 0 ? money(cl[fpId], ccy) + " (Outstanding Balance for " + spSupName + " " + money(progBal, ccy) + ")" : "No limit";
                           return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, ccy),
-                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: cl[fpId] > 0 ? spAccent : spMuted, fontWeight: cl[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, cl[fpId] > 0 ? money(cl[fpId], ccy) : "No limit"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: cl[fpId] > 0 ? spAccent : spMuted, fontWeight: cl[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, clDisplay),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: sil[fpId] > 0 ? spAccent : spMuted, fontWeight: sil[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, sil[fpId] > 0 ? money(sil[fpId], ccy) : "No limit")
                           );
                         })
