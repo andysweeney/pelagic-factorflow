@@ -1777,17 +1777,14 @@ export default function FactoringDashboard() {
         // Helper: does an invoice belong to this user's scope?
         function spMatchesScope(entityId) {
           if (!entityId) return false;
-          if (spIsBranchUser) {
-            // Branch user: match own entity ID, or parent ID (for invoices not yet assigned to a branch)
-            return entityId === spEntityId || entityId === spParentId;
-          }
+          if (spIsBranchUser) return entityId === spEntityId;
           // Parent user: match parent or any branch under parent
           return getParentEntityId(entityId) === spParentId;
         }
         function spMatchesScopeByName(supplierName) {
           if (spIsBranchUser) {
-            // Branch user: match branch display name, or parent name (for invoices without branch assignment)
-            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId) || supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
+            // Branch user: match branch display name only
+            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId);
           }
           return supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
         }
