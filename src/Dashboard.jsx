@@ -452,7 +452,10 @@ async function loadPersistedData() {
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          invoiceStatusHistory: row.invoice_status_history || []
+          invoiceStatusHistory: row.invoice_status_history || [],
+          adjustments: row.adjustments || [],
+          doNotFund: row.do_not_fund || false,
+          notes: row.notes || []
         });
       });
     }
@@ -554,7 +557,10 @@ async function reloadInvoices() {
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          invoiceStatusHistory: row.invoice_status_history || []
+          invoiceStatusHistory: row.invoice_status_history || [],
+          adjustments: row.adjustments || [],
+          doNotFund: row.do_not_fund || false,
+          notes: row.notes || []
         });
       });
     }
@@ -809,7 +815,10 @@ async function savePersistedData() {
         funding_program: inv.fundingProgram || null,
         partial_approved_amount: inv.partialApprovedAmount || 0,
         invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-        invoice_status_history: inv.invoiceStatusHistory || []
+        invoice_status_history: inv.invoiceStatusHistory || [],
+        adjustments: inv.adjustments || [],
+        do_not_fund: inv.doNotFund || false,
+        notes: inv.notes || []
       };
     });
     if (invRows.length > 0) await supabase.from("invoices").upsert(invRows, { onConflict: "id" });
