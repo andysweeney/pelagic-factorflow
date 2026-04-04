@@ -995,6 +995,14 @@ export default function FactoringDashboard() {
     });
   }
 
+  function loadUsers() {
+    setUsersLoading(true);
+    supabase.from("user_profiles").select("*").order("created_at", { ascending: false }).then(function(result) {
+      setUsersLoading(false);
+      if (result.data) setUsersList(result.data);
+    });
+  }
+
   useEffect(function() {
     supabase.auth.getSession().then(function(result) {
       setSession(result.data.session);
@@ -1188,6 +1196,11 @@ export default function FactoringDashboard() {
   var wi1 = useState(""), woInterest = wi1[0], setWoInterest = wi1[1];
   var wc1 = useState(""), woCapital = wc1[0], setWoCapital = wc1[1];
   var wh1 = useState(""), woHoldback = wh1[0], setWoHoldback = wh1[1];
+  var um1 = useState([]), usersList = um1[0], setUsersList = um1[1];
+  var um2 = useState(false), usersLoading = um2[0], setUsersLoading = um2[1];
+  var um3 = useState(null), userEdit = um3[0], setUserEdit = um3[1]; // null | "new" | user object
+  var um4 = useState({}), userFields = um4[0], setUserFields = um4[1];
+  var um5 = useState(""), userSaveMsg = um5[0], setUserSaveMsg = um5[1];
   var PS = 25;
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
 
@@ -6932,7 +6945,7 @@ export default function FactoringDashboard() {
 
           return <div>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {["suppliers", "buyers", "service_providers", "programs", "invoices", "queue", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageTab === t ? "var(--accent)" : "var(--border)"), background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", textTransform: "capitalize", boxShadow: manageTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "invoices", "queue", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); if (t === "users") loadUsers(); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageTab === t ? "var(--accent)" : "var(--border)"), background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", textTransform: "capitalize", boxShadow: manageTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -9359,6 +9372,230 @@ export default function FactoringDashboard() {
             })()}
 
             {/* Audit Log */}
+            {!manageDetail && manageTab === "users" && (function() {
+              var ROLE_OPTIONS = [
+                { value: "admin", label: "Admin", desc: "Full access to all admin portal features" },
+                { value: "operations", label: "Operations", desc: "Operational access to admin portal" },
+                { value: "supervisor", label: "Supervisor", desc: "Read-only admin portal access (approval rights in future)" },
+                { value: "supplier", label: "Supplier", desc: "Parent-level supplier portal access" },
+                { value: "supplier_branch", label: "Branch User", desc: "Branch-level supplier portal access" }
+              ];
+              function getRoleLabel(role) {
+                var r = ROLE_OPTIONS.find(function(o) { return o.value === role; });
+                return r ? r.label : role || "—";
+              }
+              var roleColors = { admin: "#EF4444", operations: "#0EA5E9", supervisor: "#8B5CF6", supplier: "#059669", supplier_branch: "#D97706" };
+
+              // All supplier entities for the dropdown
+              var allEntities = getAllSupplierEntities();
+              var parentEntities = allEntities.filter(function(e) { return e.value.indexOf(":") === -1; });
+              var branchEntities = allEntities.filter(function(e) { return e.value.indexOf(":") > -1; });
+
+              var fieldStyle = { width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" };
+              var labelStyle = { fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" };
+
+              function openEditUser(user) {
+                var role = user.role;
+                // Map stored role: if role is "supplier" but supplier_id has ":", it's a branch user
+                if (role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) role = "supplier_branch";
+                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: user.supplier_id || "", status: user.status || "active" });
+                setUserEdit(user);
+                setUserSaveMsg("");
+              }
+
+              function openNewUser() {
+                setUserFields({ full_name: "", email: "", role: "operations", supplier_id: "", password: "", status: "active" });
+                setUserEdit("new");
+                setUserSaveMsg("");
+              }
+
+              function saveUser() {
+                var f = userFields;
+                if (!f.email) { setUserSaveMsg("Email is required."); return; }
+                if (!f.role) { setUserSaveMsg("Role is required."); return; }
+                if ((f.role === "supplier" || f.role === "supplier_branch") && !f.supplier_id) { setUserSaveMsg("Supplier/Branch must be selected for this role."); return; }
+                if (userEdit === "new" && (!f.password || f.password.length < 8)) { setUserSaveMsg("Password must be at least 8 characters."); return; }
+
+                // Determine the stored role and supplier_id
+                var storedRole = f.role === "supplier_branch" ? "supplier" : f.role;
+                var storedSupplierId = (f.role === "supplier" || f.role === "supplier_branch") ? f.supplier_id : null;
+
+                setUserSaveMsg("Saving...");
+
+                if (userEdit === "new") {
+                  // Create user via Supabase Admin API (sign up)
+                  supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name } } }).then(function(result) {
+                    if (result.error) { setUserSaveMsg("Error: " + result.error.message); return; }
+                    var newUserId = result.data.user ? result.data.user.id : null;
+                    if (!newUserId) { setUserSaveMsg("User created but no ID returned."); return; }
+                    // Upsert into user_profiles
+                    supabase.from("user_profiles").upsert({
+                      id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
+                      supplier_id: storedSupplierId, status: f.status || "active"
+                    }).then(function(r2) {
+                      if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
+                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedSupplierId ? " — " + getEntityDisplayName(storedSupplierId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
+                      setUserSaveMsg("");
+                      setUserEdit(null);
+                      loadUsers();
+                    });
+                  });
+                } else {
+                  // Update existing user profile
+                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, status: f.status || "active" };
+                  supabase.from("user_profiles").update(updates).eq("id", userEdit.id).then(function(r2) {
+                    if (r2.error) { setUserSaveMsg("Error: " + r2.error.message); return; }
+                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedSupplierId ? ", entity: " + getEntityDisplayName(storedSupplierId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
+                    setUserSaveMsg("");
+                    setUserEdit(null);
+                    loadUsers();
+                  });
+                }
+              }
+
+              function sendPasswordReset(email) {
+                supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin }).then(function(result) {
+                  if (result.error) { alert("Error: " + result.error.message); return; }
+                  alert("Password reset email sent to " + email);
+                  auditLog("Password Reset Sent", "Password reset email sent to " + email, { email: email });
+                });
+              }
+
+              function deleteUser(user) {
+                if (!confirm("Deactivate user " + (user.full_name || user.email) + "? They will no longer be able to log in.")) return;
+                supabase.from("user_profiles").update({ status: "deactivated" }).eq("id", user.id).then(function(r2) {
+                  if (r2.error) { alert("Error: " + r2.error.message); return; }
+                  auditLog("User Deactivated", (user.full_name || user.email) + " deactivated", { userId: user.id, email: user.email });
+                  loadUsers();
+                });
+              }
+
+              function reactivateUser(user) {
+                supabase.from("user_profiles").update({ status: "active" }).eq("id", user.id).then(function(r2) {
+                  if (r2.error) { alert("Error: " + r2.error.message); return; }
+                  auditLog("User Reactivated", (user.full_name || user.email) + " reactivated", { userId: user.id, email: user.email });
+                  loadUsers();
+                });
+              }
+
+              // Modal
+              var userModal = userEdit ? <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={function() { setUserEdit(null); }}>
+                <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "28px 32px", width: 520, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>{userEdit === "new" ? "Create New User" : "Edit User"}</div>
+                    <button onClick={function() { setUserEdit(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div>
+                      <div style={labelStyle}>Full Name</div>
+                      <input value={userFields.full_name || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { full_name: e.target.value })); }} style={fieldStyle} placeholder="John Smith" />
+                    </div>
+                    <div>
+                      <div style={labelStyle}>Email</div>
+                      <input value={userFields.email || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { email: e.target.value })); }} style={fieldStyle} placeholder="user@example.com" disabled={userEdit !== "new"} />
+                    </div>
+                    {userEdit === "new" && <div>
+                      <div style={labelStyle}>Password</div>
+                      <input type="password" value={userFields.password || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { password: e.target.value })); }} style={fieldStyle} placeholder="Minimum 8 characters" />
+                    </div>}
+                    <div>
+                      <div style={labelStyle}>Role</div>
+                      <select value={userFields.role || ""} onChange={function(e) { var newRole = e.target.value; var updates = { role: newRole }; if (newRole !== "supplier" && newRole !== "supplier_branch") updates.supplier_id = ""; setUserFields(Object.assign({}, userFields, updates)); }} style={fieldStyle}>
+                        {ROLE_OPTIONS.map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+                      </select>
+                      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{(ROLE_OPTIONS.find(function(o) { return o.value === userFields.role; }) || {}).desc || ""}</div>
+                    </div>
+                    {userFields.role === "supplier" && <div>
+                      <div style={labelStyle}>Supplier (Parent)</div>
+                      <select value={userFields.supplier_id || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { supplier_id: e.target.value })); }} style={fieldStyle}>
+                        <option value="">— Select Supplier —</option>
+                        {parentEntities.map(function(e) { return <option key={e.value} value={e.value}>{e.label} ({e.value})</option>; })}
+                      </select>
+                    </div>}
+                    {userFields.role === "supplier_branch" && <div>
+                      <div style={labelStyle}>Branch</div>
+                      <select value={userFields.supplier_id || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { supplier_id: e.target.value })); }} style={fieldStyle}>
+                        <option value="">— Select Branch —</option>
+                        {branchEntities.map(function(e) { return <option key={e.value} value={e.value}>{e.label} ({e.value})</option>; })}
+                      </select>
+                    </div>}
+                    <div>
+                      <div style={labelStyle}>Status</div>
+                      <select value={userFields.status || "active"} onChange={function(e) { setUserFields(Object.assign({}, userFields, { status: e.target.value })); }} style={fieldStyle}>
+                        <option value="active">Active</option>
+                        <option value="deactivated">Deactivated</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {userSaveMsg && <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 8, background: userSaveMsg.indexOf("Error") > -1 || userSaveMsg.indexOf("required") > -1 || userSaveMsg.indexOf("must") > -1 ? "#FEE2E2" : "#DBEAFE", color: userSaveMsg.indexOf("Error") > -1 || userSaveMsg.indexOf("required") > -1 || userSaveMsg.indexOf("must") > -1 ? "#DC2626" : "#1D4ED8", fontSize: 12, fontWeight: 600 }}>{userSaveMsg}</div>}
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+                    <button onClick={function() { setUserEdit(null); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                    <button onClick={saveUser} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px #2B4C7E30" }}>{userEdit === "new" ? "Create User" : "Save Changes"}</button>
+                  </div>
+                </div>
+              </div> : null;
+
+              return <div>
+                {userModal}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>User Administration</div>
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{usersList.length} users</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={loadUsers} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{"\u21BB"} Refresh</button>
+                    <button onClick={openNewUser} style={{ padding: "6px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px #2B4C7E30" }}>+ New User</button>
+                  </div>
+                </div>
+                <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+                  {usersLoading ? <div style={{ padding: "40px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading users...</div> :
+                  usersList.length === 0 ? <div style={{ padding: "40px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No users found. Click "New User" to create one.</div> :
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>
+                        {["Name", "Email", "Role", "Entity", "Status", "Actions"].map(function(h) {
+                          return <th key={h} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", background: "var(--card)" }}>{h}</th>;
+                        })}
+                      </tr></thead>
+                      <tbody>
+                        {usersList.map(function(user) {
+                          var displayRole = user.role;
+                          if (user.role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) displayRole = "supplier_branch";
+                          var rc = roleColors[displayRole] || "#6B7280";
+                          var isDeactivated = user.status === "deactivated";
+                          var entityName = user.supplier_id ? getEntityDisplayName(user.supplier_id) || user.supplier_id : "—";
+                          return <tr key={user.id} style={{ borderBottom: "1px solid var(--border)", opacity: isDeactivated ? 0.5 : 1 }}>
+                            <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{user.full_name || "—"}</td>
+                            <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{user.email}</td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: rc + "14", color: rc, border: "1px solid " + rc + "30", textTransform: "uppercase", letterSpacing: "0.04em" }}>{getRoleLabel(displayRole)}</span>
+                            </td>
+                            <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{entityName}</td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: isDeactivated ? "#EF4444" : "#059669" }}>{isDeactivated ? "\u25CF Deactivated" : "\u25CF Active"}</span>
+                            </td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button onClick={function() { openEditUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                                <button onClick={function() { sendPasswordReset(user.email); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #D9770640", background: "#D9770608", color: "#D97706", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Reset Pwd</button>
+                                {isDeactivated ?
+                                  <button onClick={function() { reactivateUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #05966940", background: "#05966908", color: "#059669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Reactivate</button> :
+                                  <button onClick={function() { deleteUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #EF444440", background: "#EF444408", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Deactivate</button>
+                                }
+                              </div>
+                            </td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>}
+                </div>
+              </div>;
+            })()}
+
             {!manageDetail && manageTab === "audit" && (function() {
               var actionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Program Created": "#0EA5E9", "Program Edited": "#D97706", "Program Funds Added": "#059669", "Program Funds Disbursed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706", "Supplier Payment Executed": "#059669" };
 
