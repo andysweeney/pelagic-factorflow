@@ -1881,7 +1881,7 @@ export default function FactoringDashboard() {
         SUPPLIER_PAYMENT_QUEUE.splice(qi, 1);
       }
     }
-    auditLog("Invoice Approval Cancelled", invId + " rejected for funding" + (progName ? " from " + progName : "") + ", returned to funding queue" + (removed.length > 0 ? " (removed queue: " + removed.join(", ") + ")" : ""), { invoiceId: invId, amount: raw.amount, currency: raw.currency, previousProgram: oldProg, removedQueueEntries: removed });
+    auditLog("Invoice Approval Cancelled", invId + " rejected for funding" + (progName ? " from " + progName : "") + ", returned to funding queue" + (removed.length > 0 ? " (removed queue: " + removed.join(", ") + ")" : ""), { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, previousProgram: oldProg, previousProgramName: progName, removedQueueEntries: removed });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -4416,7 +4416,7 @@ export default function FactoringDashboard() {
                 } else if (entry.action === "Invoice Funded") {
                   addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "", "#059669"); addRow("Capital Advanced", c.capitalDue !== undefined ? money(c.capitalDue, c.currency) : ""); addRow("Buyer", c.buyer); addRow("Funded Date", c.fundedDate ? fmt(c.fundedDate) : ""); addRow("Bank", c.bankName); addRow("Account", c.bankDetails);
                 } else if (entry.action === "Invoice Approval Cancelled") {
-                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); if (c.previousProgram) addRow("Previous Program", c.previousProgram);
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : ""); addRow("Supplier", c.supplierName || c.supplier); addRow("Buyer", c.buyer); if (c.previousProgramName) addRow("Rejected from Program", c.previousProgramName, "#EF4444"); else if (c.previousProgram) addRow("Previous Program", c.previousProgram);
                 } else if (entry.action === "Invoice Status Changed" || entry.action === "Funding Status Changed") {
                   addRow("Invoice ID", c.invoiceId, "var(--accent)"); addRow("Old Status", c.oldStatus); addRow("New Status", c.newStatus, "#D97706");
                 } else if (entry.action === "Invoice Write-Off") {
@@ -10545,6 +10545,14 @@ export default function FactoringDashboard() {
                   addRow("Supplier", c.supplier);
                   addRow("Buyer", c.buyer);
                   addRow("Funded Date", c.fundedDate ? fmt(c.fundedDate) : "");
+                } else if (entry.action === "Invoice Approval Cancelled") {
+                  addRow("Invoice ID", c.invoiceId, "var(--accent)");
+                  addRow("Amount", c.amount !== undefined ? money(c.amount, c.currency) : "");
+                  addRow("Supplier", c.supplierName || c.supplier);
+                  addRow("Buyer", c.buyer);
+                  if (c.previousProgramName) addRow("Rejected from Program", c.previousProgramName, "#EF4444");
+                  else if (c.previousProgram) addRow("Previous Program", c.previousProgram);
+                  addRow("Currency", c.currency);
                 } else if (entry.action === "Holdback Disbursed") {
                   addRow("HBP ID", c.hbPaymentId, "#059669");
                   addRow("Source Invoice", c.sourceInvoiceId, "var(--accent)");
