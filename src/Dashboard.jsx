@@ -1777,14 +1777,17 @@ export default function FactoringDashboard() {
         // Helper: does an invoice belong to this user's scope?
         function spMatchesScope(entityId) {
           if (!entityId) return false;
-          if (spIsBranchUser) return entityId === spEntityId;
+          if (spIsBranchUser) {
+            // Branch user: match own entity ID, or parent ID (for invoices not yet assigned to a branch)
+            return entityId === spEntityId || entityId === spParentId;
+          }
           // Parent user: match parent or any branch under parent
           return getParentEntityId(entityId) === spParentId;
         }
         function spMatchesScopeByName(supplierName) {
           if (spIsBranchUser) {
-            // Branch user: match entity display name exactly
-            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId);
+            // Branch user: match branch display name, or parent name (for invoices without branch assignment)
+            return supplierName === spDisplayIdentity || supplierName === getEntityDisplayName(spEntityId) || supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
           }
           return supplierName === spSupName || getParentSupplierName(supplierName) === spSupName;
         }
@@ -9430,15 +9433,23 @@ export default function FactoringDashboard() {
                 setUserSaveMsg("Saving...");
 
                 if (userEdit === "new") {
-                  // Create user via Supabase Admin API (sign up)
-                  supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name } } }).then(function(result) {
-                    if (result.error) { setUserSaveMsg("Error: " + result.error.message); return; }
+                  // Save current admin session before signUp (which switches session)
+                  var adminSession = null;
+                  supabase.auth.getSession().then(function(sessResult) {
+                    adminSession = sessResult.data.session;
+                    // Create new auth user
+                    return supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name } } });
+                  }).then(function(result) {
+                    if (result.error) { setUserSaveMsg("Error: " + result.error.message); if (adminSession) supabase.auth.setSession(adminSession); return; }
                     var newUserId = result.data.user ? result.data.user.id : null;
-                    if (!newUserId) { setUserSaveMsg("User created but no ID returned."); return; }
-                    // Upsert into user_profiles
-                    supabase.from("user_profiles").upsert({
-                      id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
-                      supplier_id: storedSupplierId, status: f.status || "active"
+                    if (!newUserId) { setUserSaveMsg("User created but no ID returned."); if (adminSession) supabase.auth.setSession(adminSession); return; }
+                    // Restore admin session before upserting profile
+                    var restoreAndUpsert = adminSession ? supabase.auth.setSession(adminSession) : Promise.resolve();
+                    restoreAndUpsert.then(function() {
+                      return supabase.from("user_profiles").upsert({
+                        id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
+                        supplier_id: storedSupplierId, status: f.status || "active"
+                      });
                     }).then(function(r2) {
                       if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
                       auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedSupplierId ? " — " + getEntityDisplayName(storedSupplierId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
