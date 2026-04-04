@@ -593,6 +593,102 @@ async function reloadAuditLog() {
   } catch (e) { console.error("Realtime reload audit error:", e); }
 }
 
+async function reloadSuppliers() {
+  try {
+    var supRes = await supabase.from("suppliers").select("*");
+    if (supRes.data) {
+      SUPPLIERS_DB.length = 0;
+      supRes.data.forEach(function(row) {
+        SUPPLIERS_DB.push({
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
+          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+          country: row.country || "United Kingdom", zip: row.zip || "",
+          primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          bank_name: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
+          accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {},
+          programBankAccounts: row.program_bank_accounts || {},
+          rates: row.rates || [], branches: row.branches || [],
+          entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
+          incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null
+        });
+      });
+    }
+  } catch (e) { console.error("Realtime reload suppliers error:", e); }
+}
+
+async function reloadBuyers() {
+  try {
+    var buyRes = await supabase.from("buyers").select("*");
+    if (buyRes.data) {
+      BUYERS_DB.length = 0;
+      buyRes.data.forEach(function(row) {
+        BUYERS_DB.push({
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
+          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
+          country: row.country || "United Kingdom", zip: row.zip || "",
+          primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false
+        });
+      });
+      BUYERS = BUYERS_DB.map(function(b) { return b.name; });
+    }
+  } catch (e) { console.error("Realtime reload buyers error:", e); }
+}
+
+async function reloadFundingPrograms() {
+  try {
+    var fpRes = await supabase.from("funding_programs").select("*");
+    if (fpRes.data) {
+      FUNDING_PROGRAMS_DB.length = 0;
+      fpRes.data.forEach(function(row) {
+        FUNDING_PROGRAMS_DB.push({
+          id: row.id, name: row.name, currency: row.currency,
+          maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
+          maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
+          maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
+          minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
+          thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
+          thresholdRecovery: row.threshold_recovery || 30,
+          thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
+          maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
+          maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
+          eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
+          eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
+          createdDate: row.created_date
+        });
+      });
+    }
+  } catch (e) { console.error("Realtime reload funding programs error:", e); }
+}
+
+async function reloadCreditNotes() {
+  try {
+    var cnRes = await supabase.from("credit_notes").select("*");
+    if (cnRes.data) {
+      CREDIT_NOTES_DB.length = 0;
+      cnRes.data.forEach(function(row) {
+        CREDIT_NOTES_DB.push({
+          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
+          currency: row.currency, date: row.date, reference: row.reference || "",
+          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          createdDisplay: row.created_display, allocations: row.allocations || []
+        });
+      });
+    }
+  } catch (e) { console.error("Realtime reload credit notes error:", e); }
+}
+
 async function savePersistedData() {
   try {
     // Save suppliers
@@ -1189,6 +1285,18 @@ export default function FactoringDashboard() {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function() {
         debouncedReload("audit", reloadAuditLog);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, function() {
+        debouncedReload("suppliers", reloadSuppliers);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "buyers" }, function() {
+        debouncedReload("buyers", reloadBuyers);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "funding_programs" }, function() {
+        debouncedReload("programs", reloadFundingPrograms);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_notes" }, function() {
+        debouncedReload("creditnotes", reloadCreditNotes);
       })
       .subscribe();
 
