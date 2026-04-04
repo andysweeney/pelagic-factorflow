@@ -1385,7 +1385,7 @@ export default function FactoringDashboard() {
   var ffd1 = useState(""), ffDate = ffd1[0], setFfDate = ffd1[1];
   var fff1 = useState(""), ffServiceProvider = fff1[0], setFfServiceProvider = fff1[1];
   var feqSel1 = useState({}), feqSelected = feqSel1[0], setFeqSelected = feqSel1[1]; // Funding Execution Queue selections
-  var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Disbursal Execution Queue selections
+  var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Service Provider Payments to be Made selections
   var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ffr1 = useState(""), ffReason = ffr1[0], setFfReason = ffr1[1];
@@ -1959,7 +1959,7 @@ export default function FactoringDashboard() {
     var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierId || hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
     var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
     SUPPLIER_PAYMENT_QUEUE.push({
-      id: spqId, hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
+      id: spqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
       supplierName: hbDisburseInv.supplierName, supplierId: supplier ? supplier.id : "",
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
@@ -6675,19 +6675,19 @@ export default function FactoringDashboard() {
                     var prog = null;
                     if (item.programId) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.programId; });
                     var bankInfo = getSupplierBankDetails(item.supplierId || item.supplierName || "", item.programId);
-                    outboundRows.push({ rowType: item.type, rowId: "q-" + item.id, inv: null, supplierName: item.supplierName || "", programId: item.programId, programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: item.date, detail: item.type === "holdback_disbursement" ? "HB " + item.sourceInvoiceId : item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : ""), spqId: item.id, cancelFn: item.type === "holdback_disbursement" ? function() { cancelSPQItem(item.id); } : null });
+                    outboundRows.push({ rowType: item.type, rowId: "q-" + item.id, inv: null, supplierName: item.supplierName || "", programId: item.programId, programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: item.date, detail: (item.type === "holdback_disbursement" || item.type === "holdback") ? "HB " + (item.hbPaymentId || "") + " / " + item.sourceInvoiceId : item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : ""), spqId: item.id, cancelFn: (item.type === "holdback_disbursement" || item.type === "holdback") ? function() { cancelSPQItem(item.id); } : null });
                   });
-                  if (outboundRows.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 18 }}>No outbound payments pending.</div>;
+                  if (outboundRows.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 18 }}>No supplier payments pending.</div>;
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                     <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>Outbound Payments to be Made ({outboundRows.length})</div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>Supplier Payments to be Made ({outboundRows.length})</div>
                     </div>
                     <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Type", "Supplier", "Program", "Invoice/Detail", "Amount", "Bank", "Date", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{outboundRows.map(function(row) {
-                        var typeColor = row.rowType === "funding" ? "#0EA5E9" : row.rowType === "holdback_disbursement" ? "#059669" : "#D97706";
+                        var typeColor = row.rowType === "funding" ? "#0EA5E9" : (row.rowType === "holdback_disbursement" || row.rowType === "holdback") ? "#059669" : "#D97706";
                         return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{row.rowType === "funding" ? "Funding" : row.rowType === "holdback_disbursement" ? "Holdback" : row.rowType}</td>
+                          <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{row.rowType === "funding" ? "Funding" : (row.rowType === "holdback_disbursement" || row.rowType === "holdback") ? "Holdback" : row.rowType}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.supplierName}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.programName}</td>
                           <td style={Object.assign({}, qmc, { color: "var(--accent)" })}>{row.detail}</td>
@@ -6716,8 +6716,8 @@ export default function FactoringDashboard() {
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>{ocCols.map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                   {completed.sort(function(a, b) { return (a.executedAt || a.createdAt || "") > (b.executedAt || b.createdAt || "") ? -1 : 1; }).map(function(item) {
-                    var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "holdback_disbursement" ? "#059669" : "#D97706";
-                    var typeLabel = item.type === "funding" ? "Funding" : item.type === "holdback_disbursement" ? "Holdback" : (item.type || "Holdback");
+                    var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : "#D97706";
+                    var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : (item.type || "Holdback");
                     var isOcExp = outCompExp === item.id;
                     var invoiceRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"));
                     return (
@@ -9500,7 +9500,7 @@ export default function FactoringDashboard() {
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {outboundRows.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#38BDF8" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Outbound Payments to be Made</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Supplier Payments to be Made</div>
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{outboundRows.length} awaiting execution</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -9515,7 +9515,7 @@ export default function FactoringDashboard() {
                         }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
                       </div>
                     </div>
-                    {outboundRows.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No outbound payments awaiting execution.</div>}
+                    {outboundRows.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No supplier payments awaiting execution.</div>}
                     {outboundRows.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
@@ -9553,7 +9553,7 @@ export default function FactoringDashboard() {
                   </div>;
                 })()}
 
-                {/* Disbursal Execution Queue */}
+                {/* Service Provider Payments to be Made */}
                 {(function() {
                   var pendingDisbursals = [];
                   FUNDING_PROGRAMS_DB.forEach(function(fp) {
@@ -9581,8 +9581,8 @@ export default function FactoringDashboard() {
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Disbursal Execution Queue</div>
-                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingDisbursals.length} pending disbursals</span>
+                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Service Provider Payments to be Made</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingDisbursals.length} awaiting execution</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {deqLockProg && <span style={{ fontSize: 10, color: "#7C3AED", fontWeight: 600 }}>Bundling: {deqLockSP} / {(function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === deqLockProg; }); return fp ? fp.name : ""; })()}</span>}
@@ -9590,7 +9590,7 @@ export default function FactoringDashboard() {
                         {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7C3AED", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
                       </div>
                     </div>
-                    {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No pending disbursals. Disbursals created from Program Overview will appear here.</div>}
+                    {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No service provider payments pending. Payments created from Program Overview will appear here.</div>}
                     {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
@@ -9788,7 +9788,7 @@ export default function FactoringDashboard() {
                 {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
                   <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "28px 32px", maxWidth: 1020, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Outbound Payments" : "Execute Disbursals"}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Supplier Payments" : "Execute Service Provider Payments"}</div>
                       <button onClick={function() { setBatchConfirm(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Confirm execution of {batchConfirm.items.length} payment{batchConfirm.items.length > 1 ? "s" : ""}.</div>
