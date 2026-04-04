@@ -6470,10 +6470,11 @@ export default function FactoringDashboard() {
             if (amt <= 0 || !cnf.date || !cnf.currency || !cnf.supplier || !cnf.buyer) return;
             var cnId = "CN-" + String(CREDIT_NOTES_DB.length + 1).padStart(5, "0");
             var supDisplay = getEntityDisplayName(cnf.supplier) || cnf.supplier;
+            var supParentNameCN = getParentSupplierName(cnf.supplier) || supDisplay;
             var buyDisplay = buyName(cnf.buyer) || cnf.buyer;
             CREDIT_NOTES_DB.push({
               creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date,
-              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay, allocations: [],
+              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supParentNameCN, buyerId: cnf.buyer, buyerName: buyDisplay, allocations: [],
               createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
             });
             auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + supDisplay + " / " + buyDisplay, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay });
@@ -8384,10 +8385,11 @@ export default function FactoringDashboard() {
                 var hist = [{ status: "Received", date: nf.invoiceDate }];
                 var supRate = getSupplierRate(nf.supplier);
                 var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
+                var supParentName = getParentSupplierName(nf.supplier) || supDisplayName;
                 var buyDisplayName = buyName(nf.buyer) || nf.buyer;
                 // Capital/interest/holdback are NOT set at creation — they are set when funding is approved via the Fund popup
                 INVOICES_DB.push({
-                  id: newId, supplierId: nf.supplier, supplierName: supDisplayName, buyerId: nf.buyer, buyerName: buyDisplayName,
+                  id: newId, supplierId: nf.supplier, supplierName: supParentName, buyerId: nf.buyer, buyerName: buyDisplayName,
                   amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
                   interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
                   advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
