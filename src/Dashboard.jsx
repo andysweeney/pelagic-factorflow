@@ -7624,13 +7624,18 @@ export default function FactoringDashboard() {
               <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? "var(--accent)" : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>Create Payment</button>
             </div>}
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                {(function() { var filteredIncoming = PAYMENTS_DB.filter(function(p) { var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+              {(function() {
+                var filteredIncoming = PAYMENTS_DB.filter(function(p) { var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
                 var inPageSize = 20;
                 var inTotalPages = Math.max(1, Math.ceil(filteredIncoming.length / inPageSize));
                 var inCurPage = Math.min(inPage, inTotalPages - 1);
-                return filteredIncoming.length === 0 ? <tbody><tr><td colSpan={7} style={{ padding: "24px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No payments match your filters.</td></tr></tbody> : <><tbody>{filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize).map(function(pay) {
+                if (filteredIncoming.length === 0) return <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No payments match your filters.</div>;
+                var pageItems = filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize);
+                return <div>
+              <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                <tbody>{pageItems.map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
                   var isPayExp = expPay === pay.paymentId;
@@ -7672,16 +7677,18 @@ export default function FactoringDashboard() {
                     <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {pay.notes && pay.notes.length > 0 ? "(" + pay.notes.length + ")" : ""}</div>{pay.notes && pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "#fff", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={expPay === pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "#fff", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
                   </td></tr>}
                   </tbody>;
-                })}</tbody></>; })()}
+                })}</tbody>
               </table>
-            {inTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {inCurPage + 1} of {inTotalPages} ({filteredIncoming.length} payments)</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button disabled={inCurPage === 0} onClick={function() { setInPage(inCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
-                <button disabled={inCurPage >= inTotalPages - 1} onClick={function() { setInPage(inCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage >= inTotalPages - 1 ? "transparent" : "var(--card)", color: inCurPage >= inTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage >= inTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
               </div>
-            </div>}
-            </div>
+              {inTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {inCurPage + 1} of {inTotalPages} ({filteredIncoming.length} payments)</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button disabled={inCurPage === 0} onClick={function() { setInPage(inCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
+                  <button disabled={inCurPage >= inTotalPages - 1} onClick={function() { setInPage(inCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage >= inTotalPages - 1 ? "transparent" : "var(--card)", color: inCurPage >= inTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage >= inTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                </div>
+              </div>}
+              </div>;
+              })()}
           </div>
         </div>}
 
