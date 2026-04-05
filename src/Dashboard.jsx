@@ -6903,11 +6903,6 @@ export default function FactoringDashboard() {
           {/* === OUTBOUND QUEUE TAB === */}
           {payTab === "outbound_queue" && (function() {
               var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
-              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
-              var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-
-              var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
-              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
 
               return <div>
@@ -7460,6 +7455,7 @@ export default function FactoringDashboard() {
                     })()}
                   </div>
                 </div>}
+              </div>;
           })()}
 
 
