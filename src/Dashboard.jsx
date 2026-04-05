@@ -1619,6 +1619,30 @@ export default function FactoringDashboard() {
     }
     var allocSnapshot = allocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
     auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + allocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
+    // Create outbound payment queue entries for allocations to unfunded invoices
+    allocs.forEach(function(a) {
+      var rawInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+      if (!rawInv) return;
+      var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
+      if (isFunded) return;
+      // Unfunded invoice — funds should be remitted to the supplier
+      var supplierEntityId = rawInv.supplierId || "";
+      var displayName = getEntityDisplayName(supplierEntityId) || rawInv.supplierName || supplierEntityId;
+      var bankInfo = getSupplierBankDetails(supplierEntityId, rawInv.fundingProgram);
+      var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+      var now = new Date();
+      SUPPLIER_PAYMENT_QUEUE.push({
+        id: spqId, type: "remittance", invoiceId: a.invoiceId, invoiceIds: [a.invoiceId],
+        supplierName: displayName, supplierId: supplierEntityId,
+        bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+        amount: r2(a.amount), currency: allocPay.currency, status: "Pending",
+        programId: rawInv.fundingProgram || "", programName: (function() { var fp = rawInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === rawInv.fundingProgram; }) : null; return fp ? fp.name : ""; })(),
+        createdAt: now.toISOString(),
+        createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+        sourcePaymentId: allocPay.paymentId
+      });
+      auditLog("Payment Remitted", allocPay.paymentId + ": " + money(r2(a.amount), allocPay.currency) + " from unfunded " + a.invoiceId + " queued for remittance to " + displayName + " (" + spqId + ")", { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(a.amount), currency: allocPay.currency, spqId: spqId, unfunded: true, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
+    });
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
     setTimeout(function() { setSuccessMsg(null); }, 12000);
@@ -1647,14 +1671,17 @@ export default function FactoringDashboard() {
       id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
       supplierName: displayName, supplierId: supplierEntityId,
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
-      amount: r2(amount), currency: currency, status: "Completed",
+      amount: r2(amount), currency: currency, status: "Pending",
       programId: programId || "", programName: prog ? prog.name : "",
       createdAt: now.toISOString(),
       createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
-      executedAt: now.toISOString(),
-      executedDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       sourcePaymentId: paymentId
     });
+    // Record the remittance as a special allocation on the source payment to reduce its available balance
+    var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === paymentId; });
+    if (pay) {
+      pay.allocations.push({ invoiceId: "REMIT-" + spqId, amount: r2(amount), remittance: true, supplierId: supplierEntityId, supplierName: displayName });
+    }
     auditLog("Payment Remitted", paymentId + ": " + money(r2(amount), currency) + " remitted to " + displayName + " (" + spqId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
@@ -2313,18 +2340,18 @@ export default function FactoringDashboard() {
         });
         spAllPaysToPelagic.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
 
-        // Audit log for supplier
+        // Audit log for supplier — use ALL invoices (not program-filtered) so rejection events are always captured
         var spInvIdSet = {};
-        spInvs.forEach(function(inv) { spInvIdSet[inv.id] = true; });
+        spAllInvs.forEach(function(inv) { spInvIdSet[inv.id] = true; });
         var spAuditLog = AUDIT_LOG.filter(function(e) {
           var c = e.context || {};
           // Direct supplier field match
           if (spIsBranchUser) {
-            if (c.supplierId === spEntityId || c.supplierName === spDisplayIdentity || (e.details || "").indexOf(spDisplayIdentity) > -1) return true;
+            if (c.supplierId === spEntityId || c.supplierName === spDisplayIdentity || c.supplierName === spSupName || c.supplier === spSupName || (e.details || "").indexOf(spDisplayIdentity) > -1) return true;
           } else {
             if (c.supplier === spSupName || c.supplierName === spSupName || c.supplierId === spParentId || c.parentSupplier === spSupName || (e.details || "").indexOf(spSupName) > -1) return true;
           }
-          // Invoice-linked match — catches Invoice Approved, Invoice Funded, Payment Allocated, etc.
+          // Invoice-linked match — catches Invoice Approved, Invoice Funded, Invoice Approval Cancelled, Payment Allocated, etc.
           if (c.invoiceId && spInvIdSet[c.invoiceId]) return true;
           if (c.sourceInvoiceId && spInvIdSet[c.sourceInvoiceId]) return true;
           if (c.allocations && Array.isArray(c.allocations)) {
@@ -3392,13 +3419,59 @@ export default function FactoringDashboard() {
 
             /* YOUR HISTORY TAB */
             spPortalTab === "creditnotes" && (function() {
+              // Build payment allocation events from PAYMENTS_DB for this supplier's invoices
+              var payAllocEvents = [];
+              var auditPaymentIds = {};
+              // Index which payment IDs already have audit log entries to avoid duplicates
+              spAuditLog.forEach(function(e) {
+                if (e.action === "Payment Allocated" && e.context && e.context.paymentId) {
+                  auditPaymentIds[e.context.paymentId] = true;
+                }
+              });
+              spAllPaysToPelagic.forEach(function(ep) {
+                // Skip if this payment already has an audit log entry
+                if (auditPaymentIds[ep.pay.paymentId]) return;
+                var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                var invList = ep.allocs.map(function(a) { return a.invoiceId; }).join(", ");
+                payAllocEvents.push({
+                  timestamp: ep.pay.date + "T12:00:00.000Z",
+                  displayTime: fmt(ep.pay.date),
+                  action: "Payment Allocated",
+                  details: ep.pay.paymentId + " allocated " + money(totalAlloc, ep.pay.currency) + " to " + ep.allocs.length + " invoice(s): " + invList + (ep.pay.reference ? " (Ref: " + ep.pay.reference + ")" : ""),
+                  context: { paymentId: ep.pay.paymentId, amount: ep.pay.amount, currency: ep.pay.currency, allocations: ep.allocs },
+                  _synthetic: true
+                });
+              });
+              // Also generate events for payments to the supplier (funding, holdback returns, remittances)
+              var auditPTYIds = {};
+              spAuditLog.forEach(function(e) {
+                if ((e.action === "Invoice Funded" || e.action === "Holdback Disbursed" || e.action === "Supplier Payment Executed" || e.action === "Payment Remitted") && e.context) {
+                  var k = e.context.completedPaymentId || e.context.hbPaymentId || e.context.queueId || e.context.paymentId || "";
+                  if (k) auditPTYIds[k] = true;
+                }
+              });
+              spAllPaymentsToYou.forEach(function(p) {
+                if (auditPTYIds[p.id]) return;
+                var actionName = p.type === "Funding" ? "Invoice Funded" : p.type === "Holdback Return" ? "Holdback Disbursed" : "Payment Remitted";
+                payAllocEvents.push({
+                  timestamp: (p.sortDate || p.date || "") + (p.sortDate && p.sortDate.indexOf("T") > -1 ? "" : "T12:00:00.000Z"),
+                  displayTime: p.date || fmt(p.sortDate),
+                  action: actionName,
+                  details: p.id + ": " + money(p.amount, p.currency) + " " + p.type.toLowerCase() + (p.reference ? " — " + p.reference : "") + (p.program ? " (" + p.program + ")" : "") + " [" + p.status + "]",
+                  context: {},
+                  _synthetic: true
+                });
+              });
+              // Merge audit log with payment events, sorted newest first
+              var mergedHist = spAuditLog.concat(payAllocEvents);
+              mergedHist.sort(function(a, b) { return (a.timestamp || "") > (b.timestamp || "") ? -1 : 1; });
               // Collect unique actions
               var histActions = [];
               var seenActions = {};
-              spAuditLog.forEach(function(e) { if (!seenActions[e.action]) { seenActions[e.action] = true; histActions.push(e.action); } });
+              mergedHist.forEach(function(e) { if (!seenActions[e.action]) { seenActions[e.action] = true; histActions.push(e.action); } });
               histActions.sort();
               // Filter
-              var filteredHist = spAuditLog;
+              var filteredHist = mergedHist;
               if (spTypeFilter !== "all") filteredHist = filteredHist.filter(function(e) { return e.action === spTypeFilter; });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
@@ -7170,8 +7243,8 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "5px 8px" }}><input type="date" value={allocDate} onChange={function(e) { var newDate = e.target.value; if (!newDate) return; var iid = inv.id; setAllocs(function(prev) { var exists = prev.find(function(a) { return a.invoiceId === iid; }); if (exists) { return prev.map(function(a) { return a.invoiceId === iid ? Object.assign({}, a, { allocDate: newDate }) : a; }); } else { return prev.concat([{ invoiceId: iid, amount: 0, allocDate: newDate }]); } }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (dateChanged ? "#D97706" : "var(--border)"), background: dateChanged ? "#C08B3008" : "var(--bg)", color: dateChanged ? "#D97706" : "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 110 }} /></td>
                       <td style={Object.assign({}, ms, { color: adjPen > 0 ? "#DC2626" : "var(--muted)" })}>{adjPen > 0 ? money(adjPen, inv.currency) : "\u2014"}{dateChanged && inv.penaltyInterest !== adjPen && <span style={{ color: "#D97706", fontSize: 9, display: "block" }}>was {money(inv.penaltyInterest, inv.currency)}</span>}{prP > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
                       <td style={Object.assign({}, ms, { color: inv.interestOutstanding > 0 ? "#D97706" : "var(--muted)" })}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prI, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: "var(--text)" })}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : money(adjTotal, inv.currency)}</td>
+                      <td style={Object.assign({}, ms, { color: "var(--text)" })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : <span>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</span>}</td>
+                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? money(inv.amount, inv.currency) : money(adjTotal, inv.currency)}</td>
                       <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); var entry = { invoiceId: iid, amount: r2(val) }; if (ad !== allocPay.date) entry.allocDate = ad; return val > 0.001 ? w.concat([entry]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
                         {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var entry = { invoiceId: iid, amount: val }; if (ad !== allocPay.date) entry.allocDate = ad; return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([entry]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
