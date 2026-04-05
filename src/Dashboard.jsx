@@ -10758,7 +10758,7 @@ export default function FactoringDashboard() {
           </div>;
         })()}
       </div>
-    </div></div></>}
+    </div></div>}
     <style dangerouslySetInnerHTML={{ __html: "\n@media (min-width: 769px) { .ff-sidebar-mobile { display: none !important; } .ff-sidebar-overlay { display: none !important; } .ff-menu-btn { display: none !important; } }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } .ff-menu-btn { display: flex !important; } .ff-sidebar-mobile { display: flex !important; } .ff-sidebar-close { display: flex !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: var(--card-hover); }\ninput:focus, select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" }} />
     </div>
   );
