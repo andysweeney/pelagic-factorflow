@@ -1488,7 +1488,7 @@ export default function FactoringDashboard() {
   var bhs1 = useState(""), bhSearch = bhs1[0], setBhSearch = bhs1[1];
   var bhf1 = useState(""), bhDateFilter = bhf1[0], setBhDateFilter = bhf1[1];
   var bhe1 = useState(null), bhExp = bhe1[0], setBhExp = bhe1[1];
-  var ptb1 = useState("incoming"), payTab = ptb1[0], setPayTab = ptb1[1];
+  var ptb1 = useState("outbound_queue"), payTab = ptb1[0], setPayTab = ptb1[1];
   var pds1 = useState(""), pdSearch = pds1[0], setPdSearch = pds1[1];
   var pdc1 = useState(""), pdCcyFilter = pdc1[0], setPdCcyFilter = pdc1[1];
   var pdd1 = useState(""), pdDateFilter = pdd1[0], setPdDateFilter = pdd1[1];
@@ -1686,6 +1686,60 @@ export default function FactoringDashboard() {
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
   }
+
+  function paymentFailed(item) {
+    if (!item) return;
+    var now = new Date();
+    var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+    if (item.type === "funding") {
+      var ids = item.invoiceIds || (item.invoiceId ? [item.invoiceId] : []);
+      ids.forEach(function(invId) {
+        var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+        if (raw && raw.fundingStatus === "funded") {
+          raw.fundingStatus = "approved";
+          raw.fundedDate = null;
+          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+          if (prog) prog.currentFundedBalance = r2(Math.max(0, (prog.currentFundedBalance || 0) - raw.capitalDue));
+        }
+      });
+      auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
+    } else if (item.type === "disbursal") {
+      var fIds = item.flowIds || [];
+      fIds.forEach(function(flowId) {
+        FUNDING_PROGRAMS_DB.forEach(function(fp) {
+          if (!fp.fundFlows) return;
+          fp.fundFlows.forEach(function(ff) {
+            if (ff.flowId === flowId && ff.status === "Completed") {
+              ff.status = "Pending";
+              ff.executedAt = null;
+              ff.executedDisplay = null;
+            }
+          });
+        });
+      });
+      auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency, programId: item.programId, programName: item.programName });
+    } else if (item.type === "remittance") {
+      if (item.sourcePaymentId) {
+        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === item.sourcePaymentId; });
+        if (srcPay) {
+          srcPay.allocations = srcPay.allocations.filter(function(a) { return !(a.remittance && a.invoiceId === "REMIT-" + item.id); });
+        }
+      }
+      auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
+    } else {
+      var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+      SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
+      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
+    }
+
+    item.status = "Failed";
+    item.failedAt = now.toISOString();
+    item.failedDisplay = nowDisp;
+    setManagePopup(null);
+    setDataVer(function(v) { return v + 1; });
+  }
+
   function startEdit(inv) {
     setEditInv(inv.id);
     setEditFields({
@@ -6842,17 +6896,25 @@ export default function FactoringDashboard() {
         {isP && !allocPay && <div>
           {/* Payment Sub-tabs */}
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
-            {[{ k: "outbound_pending", l: "Outbound Pending" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outbound_completed", l: "Outbound Completed" }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
+            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
           </div>
 
           {/* === OUTBOUND PENDING TAB === */}
-          {payTab === "outbound_pending" && (function() {
+          {/* === OUTBOUND QUEUE TAB === */}
+          {payTab === "outbound_queue" && (function() {
               var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
+              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+
+              var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
+              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
+              var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+
               return <div>
                 {/* Outbound Payments to be made */}
                 {(function() {
                   var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "approved"; });
+                  // Build unified rows: funding + holdback
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
@@ -6862,142 +6924,625 @@ export default function FactoringDashboard() {
                   });
                   pending.forEach(function(item) {
                     var prog = null;
-                    if (item.programId) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.programId; });
-                    var bankInfo = getSupplierBankDetails(item.supplierId || item.supplierName || "", item.programId);
-                    outboundRows.push({ rowType: item.type, rowId: "q-" + item.id, inv: null, supplierName: item.supplierName || "", programId: item.programId, programName: prog ? prog.name : "\u2014", amount: item.amount, currency: item.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: item.date, detail: (item.type === "holdback_disbursement" || item.type === "holdback") ? "HB " + (item.hbPaymentId || "") + " / " + item.sourceInvoiceId : item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : ""), spqId: item.id, cancelFn: (item.type === "holdback_disbursement" || item.type === "holdback") ? function() { cancelSPQItem(item.id); } : null });
+                    var srcInv = INVOICES_DB.find(function(x) { return x.id === item.sourceInvoiceId; });
+                    if (srcInv) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === srcInv.fundingProgram; });
+                    // Use stored bank details, fall back to live lookup from supplier/invoice
+                    var bankName = item.bankName || "";
+                    var bankDetails = item.bankDetails || "";
+                    if (!bankName && (item.supplierId || item.supplierName)) {
+                      var fallbackBank = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId || (srcInv ? srcInv.fundingProgram : null));
+                      bankName = fallbackBank.bankName;
+                      bankDetails = fallbackBank.bankDetails;
+                    }
+                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
                   });
-                  if (outboundRows.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, marginBottom: 18 }}>No supplier payments pending.</div>;
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>Supplier Payments to be Made ({outboundRows.length})</div>
+                  var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+                  // Lock to supplier+program from first selection
+                  var feqLockSup = null, feqLockProg = null;
+                  outboundRows.forEach(function(row) {
+                    if (feqSelected[row.rowId] && !feqLockSup) { feqLockSup = getParentSupplierName(row.supplierName); feqLockProg = row.programId; }
+                  });
+                  var feqEligible = outboundRows.filter(function(row) {
+                    if (!feqLockSup) return true;
+                    return getParentSupplierName(row.supplierName) === feqLockSup && row.programId === feqLockProg;
+                  });
+                  var feqSelCount = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).length;
+                  var feqSelTotal = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).reduce(function(s, row) { return s + row.amount; }, 0);
+                  var allFeqSelected = feqEligible.length > 0 && feqSelCount === feqEligible.length;
+                  var feqLockProgName = feqLockProg ? (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === feqLockProg; }); return fp ? fp.name : ""; })() : "";
+                  return <div style={{ background: "var(--card)", borderRadius: 12, border: outboundRows.length > 0 ? "1px solid #818cf840" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {outboundRows.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#38BDF8" }}></div>}
+                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Supplier Payments to be Made</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{outboundRows.length} awaiting execution</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {feqLockSup && <span style={{ fontSize: 10, color: "#38BDF8", fontWeight: 600 }}>Bundling: {feqLockSup} / {feqLockProgName}</span>}
+                        {feqSelCount > 0 && <button onClick={function() { setFeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                        {feqSelCount > 0 && <button onClick={function() {
+                          var selRows = outboundRows.filter(function(r) { return feqSelected[r.rowId]; });
+                          var fundingItems = selRows.filter(function(r) { return r.rowType === "funding"; }).map(function(r) { return r.inv; });
+                          var holdbackItems = selRows.filter(function(r) { return r.rowType === "holdback"; }).map(function(r) { return r.spqItem; });
+                          setBatchDeductions([]);
+                          setBatchConfirm({ type: "outbound", fundingItems: fundingItems, holdbackItems: holdbackItems, items: selRows, totalAmount: r2(feqSelTotal), currency: selRows[0] ? selRows[0].currency : "GBP" });
+                        }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
+                      </div>
                     </div>
-                    <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Type", "Supplier", "Program", "Invoice/Detail", "Amount", "Bank", "Date", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{outboundRows.map(function(row) {
-                        var typeColor = row.rowType === "funding" ? "#0EA5E9" : (row.rowType === "holdback_disbursement" || row.rowType === "holdback") ? "#059669" : "#D97706";
-                        return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{row.rowType === "funding" ? "Funding" : (row.rowType === "holdback_disbursement" || row.rowType === "holdback") ? "Holdback" : row.rowType}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.supplierName}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.programName}</td>
-                          <td style={Object.assign({}, qmc, { color: "var(--accent)" })}>{row.detail}</td>
-                          <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(row.amount, row.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11 }}>{row.bankName ? <span style={{ color: "var(--text-secondary)" }}>{row.bankName}</span> : <span style={{ color: "#EF4444", fontWeight: 600 }}>No bank</span>}{row.bankDetails ? <div style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 1 }}>{row.bankDetails}</div> : null}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(row.date)}</td>
-                          <td style={{ padding: "8px 8px" }}>{row.cancelFn && <button onClick={row.cancelFn} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #DC262625", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Cancel</button>}</td>
-                        </tr>;
-                      })}</tbody>
-                    </table></div>
+                    {outboundRows.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No supplier payments awaiting execution.</div>}
+                    {outboundRows.length > 0 && <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>
+                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
+                          {["Type", "ID", "Date", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                        </tr></thead>
+                        <tbody>{outboundRows.map(function(row) {
+                          var isSel = !!feqSelected[row.rowId];
+                          var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
+                          var typeColor = row.rowType === "funding" ? "#0EA5E9" : "#D97706";
+                          var typeLabel = row.rowType === "funding" ? "Funding" : "Holdback";
+                          return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
+                            <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[row.rowId]) delete n[row.rowId]; else n[row.rowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
+                            <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
+                            <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}>{row.rowType === "funding" ? row.inv.id : row.spqItem.id}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.rowType === "funding" ? fmt(row.inv.approvedDate) : row.spqItem.createdDisplay}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{row.supplierName}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{row.detail}</td>
+                            <td style={Object.assign({}, aqmc, { fontWeight: 700, color: "#0EA5E9" })}>{money(row.amount, row.currency)}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.currency}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.programName}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.bankName || "\u2014"}</td>
+                            <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{row.bankDetails || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px" }}>
+                              {!isLocked && <button onClick={row.cancelFn} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
+                              {!isLocked && row.rowType === "holdback" && confirmCancelHbp === row.spqItem.id && <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                                <button onClick={function() { cancelQueuedPayment(row.spqItem.id); setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
+                                <button onClick={function() { setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button>
+                              </div>}
+                            </td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
                   </div>;
                 })()}
-              </div>;
+
+                {/* Service Provider Payments to be Made */}
+                {(function() {
+                  var pendingDisbursals = [];
+                  FUNDING_PROGRAMS_DB.forEach(function(fp) {
+                    if (!fp.fundFlows) return;
+                    fp.fundFlows.forEach(function(ff, ffi) {
+                      if (ff.type === "outflow" && ff.status === "Pending") {
+                        pendingDisbursals.push(Object.assign({}, ff, { programId: fp.id, programName: fp.name, currency: fp.currency, flowIndex: ffi }));
+                      }
+                    });
+                  });
+                  var dqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+                  // Lock to program+service provider from first selection
+                  var deqLockProg = null, deqLockSP = null;
+                  pendingDisbursals.forEach(function(d) {
+                    if (deqSelected[d.flowId] && !deqLockProg) { deqLockProg = d.programId; deqLockSP = d.serviceProvider; }
+                  });
+                  var deqEligible = pendingDisbursals.filter(function(d) {
+                    if (!deqLockProg) return true;
+                    return d.programId === deqLockProg && d.serviceProvider === deqLockSP;
+                  });
+                  var deqSelCount = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).length;
+                  var deqSelTotal = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).reduce(function(s, d) { return s + d.amount; }, 0);
+                  var allDeqSelected = deqEligible.length > 0 && deqSelCount === deqEligible.length;
+                  return <div style={{ background: "var(--card)", borderRadius: 12, border: pendingDisbursals.length > 0 ? "1px solid #7B5EA740" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED" }}></div>}
+                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Service Provider Payments to be Made</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingDisbursals.length} awaiting execution</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {deqLockProg && <span style={{ fontSize: 10, color: "#7C3AED", fontWeight: 600 }}>Bundling: {deqLockSP} / {(function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === deqLockProg; }); return fp ? fp.name : ""; })()}</span>}
+                        {deqSelCount > 0 && <button onClick={function() { setDeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                        {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7C3AED", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
+                      </div>
+                    </div>
+                    {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No service provider payments pending. Payments created from Program Overview will appear here.</div>}
+                    {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>
+                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allDeqSelected) { setDeqSelected({}); } else { var n = {}; deqEligible.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7C3AED" : "var(--border)"), background: allDeqSelected ? "#7C3AED" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
+                          {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                        </tr></thead>
+                        <tbody>{pendingDisbursals.map(function(dis) {
+                          var isSel = !!deqSelected[dis.flowId];
+                          var isLocked = deqLockProg && (dis.programId !== deqLockProg || dis.serviceProvider !== deqLockSP);
+                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#7B5EA708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
+                            <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setDeqSelected(function(p) { var n = Object.assign({}, p); if (n[dis.flowId]) delete n[dis.flowId]; else n[dis.flowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "#7C3AED" : "var(--border)"), background: isSel ? "#7C3AED" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
+                            <td style={Object.assign({}, dqmc, { color: "#7C3AED", fontWeight: 600 })}>{dis.flowId}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.display}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{dis.programName}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{dis.serviceProvider}</td>
+                            <td style={Object.assign({}, dqmc, { fontWeight: 700, color: "var(--text)" })}>{money(dis.amount, dis.currency)}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{dis.currency}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dis.date)}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.reason || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px" }}>
+                              {!isLocked && <button onClick={function() {
+                                  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
+                                  if (!fp || !fp.fundFlows) return;
+                                  fp.fundFlows.splice(dis.flowIndex, 1);
+                                  auditLog("Disbursal Cancelled", dis.flowId + " cancelled: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
+                                  setDataVer(function(v) { return v + 1; });
+                              }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
+                            </td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
+                  </div>;
+                })()}
+
+                {/* Batch Execution Confirmation Modal */}
+                {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "28px 32px", maxWidth: 1020, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Supplier Payments" : "Execute Service Provider Payments"}</div>
+                      <button onClick={function() { setBatchConfirm(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Confirm execution of {batchConfirm.items.length} payment{batchConfirm.items.length > 1 ? "s" : ""}.</div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", "Status"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{batchConfirm.items.map(function(item, ii) {
+                          if (batchConfirm.type === "outbound") {
+                            var typeLabel = item.rowType === "funding" ? "Funding" : "Holdback";
+                            var typeColor = item.rowType === "funding" ? "#0EA5E9" : "#D97706";
+                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "6px 10px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{item.rowType === "funding" ? item.inv.id : item.spqItem.id}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.supplierName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.detail}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0EA5E9" }}>{money(item.amount, item.currency)}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.bankName || "\u2014"}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.bankDetails || "\u2014"}</td>
+                              <td style={{ padding: "6px 10px" }}>{(function() { var bi = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId); return bi.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>{"\u2713"}</span> : <span style={{ fontSize: 9, fontWeight: 700, color: "#EF4444" }}>{"\u2717"}</span>; })()}</td>
+                            </tr>;
+                          } else {
+                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED", fontWeight: 600 }}>{item.flowId}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.programName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.serviceProvider}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{money(item.amount, item.currency)}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(item.date)}</td>
+                            </tr>;
+                          }
+                        })}</tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                      {/* Bank Details Summary */}
+                      {batchConfirm.type === "outbound" && batchConfirm.items.length > 0 && (function() {
+                        var firstItem = batchConfirm.items[0];
+                        var bankInfo = getSupplierBankDetails(firstItem.supplierId || firstItem.supplierName, firstItem.programId);
+                        return <div style={{ padding: "14px 18px", borderRadius: 10, background: bankInfo.bankVerified ? "#05966908" : "#F59E0B08", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 14 }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Payment Destination</div>
+                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u26A0"} Unverified</span>}
+                          </div>
+                          {bankInfo.bankName ? <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{bankInfo.bankName}</div>
+                            {bankInfo.bankDetails ? <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bankInfo.bankDetails}</div> : null}
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Paying: {firstItem.supplierName} via {firstItem.programName}</div>
+                          </div> : <div style={{ fontSize: 13, color: "#D97706", fontWeight: 600 }}>{"\u26A0"} No bank details on file — payment cannot be executed</div>}
+                        </div>;
+                      })()}
+                      {/* Deductions section — only for outbound payments */}
+                      {batchConfirm.type === "outbound" && (function() {
+                        var deductTotal = batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0);
+                        var grossTotal = batchConfirm.totalAmount;
+                        var netPayout = r2(grossTotal - deductTotal);
+                        var deductSupplier = batchConfirm.items[0] ? getParentSupplierName(batchConfirm.items[0].supplierName) : "";
+                        var deductProgramId = batchConfirm.items[0] ? batchConfirm.items[0].programId : "";
+                        var deductCcy = batchConfirm.currency;
+                        // Get eligible invoices: same parent supplier, same program, recovery_mode or overdue
+                        var eligibleDeduct = viewData.invoices.filter(function(inv) {
+                          if (getParentSupplierName(inv.supplierName) !== deductSupplier) return false;
+                          if (inv.currency !== deductCcy) return false;
+                          if (inv.fundingProgram !== deductProgramId) return false;
+                          if (inv.fundingStatus !== "recovery_mode" && inv.fundingStatus !== "overdue") return false;
+                          // Exclude any invoices that are part of the outbound batch itself
+                          if (batchConfirm.fundingItems && batchConfirm.fundingItems.some(function(fi) { return fi.id === inv.id; })) return false;
+                          return true;
+                        }).sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
+                        function getMaxForInv(inv) {
+                          if (inv.fundingStatus === "overdue") return r2(inv.penaltyInterest);
+                          return r2(inv.penaltyInterest + inv.interestOutstanding + inv.capitalOutstanding);
+                        }
+                        var deductRemaining = r2(grossTotal - deductTotal);
+
+                        return <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>Deductions (Recovery Mode & Overdue)</div>
+                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>Deduct amounts against invoices in Recovery Mode or Overdue for this supplier and program before sending payment.</div>
+                          {eligibleDeduct.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0", fontStyle: "italic", marginBottom: 10 }}>No eligible invoices for deduction.</div>}
+                          {eligibleDeduct.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto", marginBottom: 12 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                              <thead><tr>{["Invoice", "Buyer", "Status", "Pen O/S", "Int O/S", "Cap O/S", "Max", "Deduct"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                              <tbody>{eligibleDeduct.map(function(inv) {
+                                var ex = batchDeductions.find(function(d) { return d.invoiceId === inv.id; });
+                                var aa = ex ? ex.amount : 0;
+                                var maxForThis = getMaxForInv(inv);
+                                var mx = r2(Math.min(maxForThis, deductRemaining + aa));
+                                var isOverdue = inv.fundingStatus === "overdue";
+                                var fst = FST[inv.fundingStatus] || FST.funded;
+                                var prP = 0, prI = 0, prC = 0;
+                                if (aa > 0) {
+                                  var rm = aa;
+                                  if (rm > 0 && inv.penaltyInterest > 0.001) { var x = Math.min(rm, inv.penaltyInterest); prP = x; rm -= x; }
+                                  if (!isOverdue) {
+                                    if (rm > 0 && inv.interestOutstanding > 0.001) { var x2 = Math.min(rm, inv.interestOutstanding); prI = x2; rm -= x2; }
+                                    if (rm > 0 && inv.capitalOutstanding > 0.001) { prC = Math.min(rm, inv.capitalOutstanding); }
+                                  }
+                                }
+                                return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#C0392B06" : "transparent" }}>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                                  <td style={{ padding: "5px 8px" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: fst.color }}>{fst.label}</span></td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" }}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prP, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.interestOutstanding > 0 ? "#D97706" : "var(--muted)" }}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prI, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prC, inv.currency)}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isOverdue ? "#DC2626" : "#8B5CF6", fontWeight: 600 }}>{money(maxForThis, inv.currency)}</td>
+                                  <td style={{ padding: "5px 8px" }}><div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                    <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setBatchDeductions(function(prev) { var w = prev.filter(function(d) { return d.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (aa > 0 ? "#DC2626" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 80 }} />
+                                    {mx > 0 && deductRemaining > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(maxForThis, deductRemaining)); var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Max</button>}
+                                    {aa > 0 && <button onClick={function() { var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "#DC2626", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
+                                  </div></td>
+                                </tr>;
+                              })}</tbody>
+                            </table>
+                          </div>}
+                          {deductTotal > 0 && <div style={{ background: "#C0392B08", borderRadius: 8, padding: "10px 14px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Deductions: <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(deductTotal, deductCcy)}</strong> against {batchDeductions.length} invoice{batchDeductions.length !== 1 ? "s" : ""}</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>Net Payout: <span style={{ color: "#059669" }}>{money(netPayout, deductCcy)}</span></div>
+                          </div>}
+                        </div>;
+                      })()}
+                    </div>
+
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      {(function() {
+                        var deductTotal = batchConfirm.type === "outbound" ? batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0) : 0;
+                        var grossTotal = batchConfirm.type === "outbound" ? batchConfirm.totalAmount : batchConfirm.items.reduce(function(s, item) { return s + item.amount; }, 0);
+                        var netTotal = r2(grossTotal - deductTotal);
+                        return <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>
+                          {deductTotal > 0 ? <span>Gross: {money(grossTotal, batchConfirm.currency || "GBP")} {"\u2014"} Deductions: <span style={{ color: "#DC2626" }}>{money(deductTotal, batchConfirm.currency || "GBP")}</span> {"\u2014"} Net: <span style={{ color: "#059669" }}>{money(netTotal, batchConfirm.currency || "GBP")}</span></span> : <span>Total: {money(grossTotal, batchConfirm.currency || "GBP")}</span>}
+                        </div>;
+                      })()}
+                      {batchConfirm.type === "outbound" && (function() {
+                        // Check program available balance for funding items
+                        var fundingItems = batchConfirm.fundingItems || [];
+                        if (fundingItems.length === 0) return null;
+                        var totalCapNeeded = 0;
+                        fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
+                        var progId = fundingItems[0].fundingProgram;
+                        var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
+                        if (!prog) return null;
+                        var availBal = getProgramAvailableBalance(progId);
+                        if (totalCapNeeded <= availBal + 0.01) return null;
+                        return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#EF444414", border: "1px solid #EF444440", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 16 }}>{"\u26D4"}</span>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>Insufficient Program Balance</div>
+                            <div style={{ fontSize: 11, color: "#EF4444", opacity: 0.8 }}>{prog.name}: Available {money(availBal, batchConfirm.currency)} — Required {money(r2(totalCapNeeded), batchConfirm.currency)}</div>
+                          </div>
+                        </div>;
+                      })()}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {(function() {
+                          var fundingItems = batchConfirm.fundingItems || [];
+                          var insuffBal = false;
+                          if (batchConfirm.type === "outbound" && fundingItems.length > 0) {
+                            var totalCapNeeded = 0;
+                            fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
+                            var progId = fundingItems[0].fundingProgram;
+                            var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
+                            if (prog) { var availBal = getProgramAvailableBalance(progId); insuffBal = totalCapNeeded > availBal + 0.01; }
+                          }
+                          return <button disabled={insuffBal} onClick={function() {
+                          var now = new Date();
+                          var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                          if (batchConfirm.type === "outbound") {
+                            // Apply deductions — create credit adjustments on target invoices using outstanding balances
+                            var deductTotal = 0;
+                            batchDeductions.forEach(function(d) {
+                              var raw = INVOICES_DB.find(function(x) { return x.id === d.invoiceId; });
+                              if (!raw) return;
+                              // Use OUTSTANDING amounts from viewData for the waterfall
+                              var vInv = viewData.invoices.find(function(x) { return x.id === d.invoiceId; });
+                              var osPen = vInv ? vInv.penaltyInterest : 0;
+                              var osInt = vInv ? vInv.interestOutstanding : 0;
+                              var osCap = vInv ? vInv.capitalOutstanding : 0;
+                              var isOverdue = (vInv ? vInv.fundingStatus : raw.fundingStatus) === "overdue";
+                              var rm = d.amount;
+                              var dPen = 0, dInt = 0, dCap = 0;
+                              // Waterfall: penalty -> interest -> capital
+                              if (rm > 0 && osPen > 0.001) { dPen = r2(Math.min(rm, osPen)); rm = r2(rm - dPen); }
+                              if (!isOverdue) {
+                                if (rm > 0 && osInt > 0.001) { dInt = r2(Math.min(rm, osInt)); rm = r2(rm - dInt); }
+                                if (rm > 0 && osCap > 0.001) { dCap = r2(Math.min(rm, osCap)); rm = r2(rm - dCap); }
+                              }
+                              // Store as credit adjustment on the raw invoice
+                              if (!raw.adjustments) raw.adjustments = [];
+                              raw.adjustments.push({
+                                type: "credit", date: now.toISOString().split("T")[0], timestamp: now.toISOString(),
+                                display: nowDisp, penalty: dPen, interest: dInt, capital: dCap,
+                                total: r2(dPen + dInt + dCap), source: "outbound_deduction"
+                              });
+                              deductTotal += d.amount;
+                              auditLog("Outbound Deduction", d.invoiceId + ": " + money(d.amount, batchConfirm.currency) + " deducted (Pen " + money(dPen, batchConfirm.currency) + ", Int " + money(dInt, batchConfirm.currency) + ", Cap " + money(dCap, batchConfirm.currency) + ")", { invoiceId: d.invoiceId, deductAmount: d.amount, penalty: dPen, interest: dInt, capital: dCap, currency: batchConfirm.currency, supplierName: batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "" });
+                            });
+
+                            var netAmount = r2(batchConfirm.totalAmount - deductTotal);
+                            // Execute funding items
+                            var fundingInvIds = [];
+                            (batchConfirm.fundingItems || []).forEach(function(inv) {
+                              executeFunding(inv.id);
+                              fundingInvIds.push(inv.id);
+                            });
+                            // Apply deductions to holdback HBP allocations — split disbursement into invoice allocations + reduced supplier return
+                            if (deductTotal > 0 && (batchConfirm.holdbackItems || []).length > 0) {
+                              var deductRemainingForHbp = deductTotal;
+                              (batchConfirm.holdbackItems || []).forEach(function(spq) {
+                                if (deductRemainingForHbp <= 0.001) return;
+                                var hbp = HOLDBACK_PAYMENTS_DB.find(function(x) { return x.hbPaymentId === spq.hbPaymentId; });
+                                if (!hbp) return;
+                                // Calculate how much of the deductions to take from this HBP
+                                var hbpOrigAmt = hbp.amount;
+                                var deductFromThis = r2(Math.min(deductRemainingForHbp, hbpOrigAmt));
+                                deductRemainingForHbp = r2(deductRemainingForHbp - deductFromThis);
+                                var netSupplierAmt = r2(hbpOrigAmt - deductFromThis);
+                                // Rebuild allocations: invoice allocations for each deduction + reduced disbursement
+                                var newAllocations = [];
+                                var deductUsed = 0;
+                                batchDeductions.forEach(function(d) {
+                                  if (deductUsed >= deductFromThis) return;
+                                  var allocAmt = r2(Math.min(d.amount, deductFromThis - deductUsed));
+                                  if (allocAmt > 0.001) {
+                                    newAllocations.push({ type: "invoice", targetId: d.invoiceId, amount: allocAmt });
+                                    deductUsed = r2(deductUsed + allocAmt);
+                                  }
+                                });
+                                if (netSupplierAmt > 0.001) {
+                                  newAllocations.push({ type: "disbursement", targetId: null, amount: netSupplierAmt });
+                                }
+                                hbp.allocations = newAllocations;
+                                // Update the SPQ entry amount to the net supplier payout
+                                spq.amount = netSupplierAmt;
+                                // Update the audit log context for this HBP
+                                var invAllocDetails = newAllocations.filter(function(a) { return a.type === "invoice"; });
+                                var logParts = [];
+                                invAllocDetails.forEach(function(a) { logParts.push(money(a.amount, hbp.currency) + " applied to " + a.targetId); });
+                                if (netSupplierAmt > 0.001) logParts.push(money(netSupplierAmt, hbp.currency) + " returned to supplier");
+                                auditLog("Holdback Disbursed", hbp.hbPaymentId + " from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (Total: " + money(hbpOrigAmt, hbp.currency) + ")", { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, supplierName: spq.supplierName, amount: hbpOrigAmt, supplierReturn: netSupplierAmt, invoiceAllocations: invAllocDetails.map(function(a) { return { invoiceId: a.targetId, amount: a.amount }; }), currency: hbp.currency });
+                              });
+                            }
+                            // Execute holdback items
+                            (batchConfirm.holdbackItems || []).forEach(function(spq) {
+                              executeQueuedPayment(spq.id);
+                            });
+                            // If bundle (>1 item), create consolidated completion record and remove individuals
+                            if (batchConfirm.items.length > 1) {
+                              var individualIds = [];
+                              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
+                                if (q.status === "Completed" && q.executedDisplay === nowDisp) {
+                                  if (q.type === "funding" && fundingInvIds.indexOf(q.invoiceId) >= 0) individualIds.push(q.id);
+                                  if (!q.type && batchConfirm.holdbackItems.some(function(h) { return h.id === q.id; })) individualIds.push(q.id);
+                                }
+                              });
+                              individualIds.forEach(function(rid) { var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; }); if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1); });
+                              var bundleId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                              var firstRow = batchConfirm.items[0];
+                              var allInvIds = fundingInvIds.slice();
+                              var allHbpIds = (batchConfirm.holdbackItems || []).map(function(h) { return h.id; });
+                              SUPPLIER_PAYMENT_QUEUE.push({
+                                id: bundleId, type: "funding", isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
+                                supplierName: firstRow.supplierName, supplierId: "",
+                                bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
+                                amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
+                                currency: batchConfirm.currency, status: "Completed",
+                                programId: firstRow.programId, programName: firstRow.programName,
+                                createdAt: now.toISOString(), createdDisplay: nowDisp,
+                                executedAt: now.toISOString(), executedDisplay: nowDisp
+                              });
+                            }
+                            setFeqSelected({});
+                          } else {
+                            // Disbursal execution
+                            var disTotalAmt = 0;
+                            var disFlowIds = [];
+                            batchConfirm.items.forEach(function(dis) {
+                              var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
+                              if (!fp || !fp.fundFlows) return;
+                              var ff = fp.fundFlows[dis.flowIndex];
+                              if (ff) {
+                                ff.status = "Completed";
+                                ff.executedAt = now.toISOString();
+                                ff.executedDisplay = nowDisp;
+                                disTotalAmt += dis.amount;
+                                disFlowIds.push(dis.flowId);
+                                auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
+                              }
+                            });
+                            var disId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                            var firstDis = batchConfirm.items[0];
+                            SUPPLIER_PAYMENT_QUEUE.push({
+                              id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
+                              serviceProvider: firstDis.serviceProvider,
+                              programId: firstDis.programId, programName: firstDis.programName,
+                              amount: r2(disTotalAmt), currency: firstDis.currency, status: "Completed",
+                              createdAt: now.toISOString(), createdDisplay: nowDisp,
+                              executedAt: now.toISOString(), executedDisplay: nowDisp
+                            });
+                            setDeqSelected({});
+                            setDataVer(function(v) { return v + 1; });
+                          }
+                          setBatchConfirm(null);
+                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: insuffBal ? "var(--border)" : (batchConfirm.type === "outbound" ? "#059669" : "#7C3AED"), color: insuffBal ? "var(--muted)" : "#fff", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: insuffBal ? "not-allowed" : "pointer", boxShadow: insuffBal ? "none" : "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>{insuffBal ? "Insufficient Balance" : "Confirm Execution"}</button>;
+                        })()}
+                        <button onClick={function() { setBatchConfirm(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>}
+
+                {/* Bundle Payment Dialog */}
+                {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600 }}>Bundle Payments to {bundleDialog.supplierName}</div>
+                      <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{bundleDialog.items.length > 1 ? "There are " + bundleDialog.items.length + " pending payments to this supplier in " + bundleDialog.currency + ". Select which to include in a single consolidated payment." : "Confirm execution of this payment."}</div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["", "Queue ID", "HBP ID", "Source Inv", "Amount", "Bank", "Account"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <tbody>{bundleDialog.items.map(function(bi) {
+                          var isSel = !!bundleDialog.selected[bi.id];
+                          var isTrigger = bi.id === bundleDialog.triggerId;
+                          return <tr key={bi.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent" }}>
+                            <td style={{ padding: "8px 8px" }}>
+                              <div onClick={function() { if (isTrigger) return; setBundleDialog(function(prev) { var s = Object.assign({}, prev.selected); if (s[bi.id]) delete s[bi.id]; else s[bi.id] = true; return Object.assign({}, prev, { selected: s }); }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: isTrigger ? "default" : "pointer", opacity: isTrigger ? 0.6 : 1 }}>{isSel ? "\u2713" : ""}</div>
+                            </td>
+                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{bi.id}{isTrigger ? " *" : ""}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{bi.hbPaymentId}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{bi.sourceInvoiceId}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(bi.amount, bi.currency)}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{bi.bankName || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bi.bankDetails || "\u2014"}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>
+
+                    {(function() {
+                      var selItems = bundleDialog.items.filter(function(bi) { return bundleDialog.selected[bi.id]; });
+                      var totalAmt = 0;
+                      selItems.forEach(function(si) { totalAmt += si.amount; });
+                      return <div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: "1px solid var(--border)", marginBottom: 14 }}>
+                          <div>
+                            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{selItems.length} payment{selItems.length !== 1 ? "s" : ""} selected</span>
+                            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                              <button onClick={function() { var s = {}; bundleDialog.items.forEach(function(bi) { s[bi.id] = true; }); setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--accent)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Select All</button>
+                              <button onClick={function() { var s = {}; s[bundleDialog.triggerId] = true; setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Original Only</button>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Consolidated Total</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalAmt), bundleDialog.currency)}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={function() {
+                            selItems.forEach(function(si) { executeQueuedPayment(si.id); });
+                            if (selItems.length > 1) {
+                              var bundledIds = selItems.map(function(si) { return si.id; });
+                              auditLog("Bundled Payment Executed", selItems.length + " payments bundled for " + bundleDialog.supplierName + ": " + money(r2(totalAmt), bundleDialog.currency) + " (" + bundledIds.join(", ") + ")", { supplierName: bundleDialog.supplierName, totalAmount: r2(totalAmt), currency: bundleDialog.currency, queueIds: bundledIds, count: selItems.length });
+                            }
+                            setBundleDialog(null);
+                          }} disabled={selItems.length === 0} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: selItems.length > 0 ? "#059669" : "var(--border)", color: selItems.length > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: selItems.length > 0 ? "pointer" : "default", boxShadow: selItems.length > 0 ? "0 2px 10px #2E8B5730" : "none" }}>{selItems.length > 1 ? "Execute Bundled Payment (" + selItems.length + ")" : "Execute Payment"}</button>
+                          <button onClick={function() { setBundleDialog(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        </div>
+                      </div>;
+                    })()}
+                  </div>
+                </div>}
           })()}
+
 
           {/* === OUTBOUND COMPLETED TAB === */}
           {payTab === "outbound_completed" && (function() {
-              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
+              var allCompleted = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; }).slice().reverse();
+              var cpPopup = managePopup && managePopup.type === "completedPayment" ? managePopup : null;
+              var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-              if (completed.length === 0) return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No completed outbound payments yet.</div>;
-              var ocCols = ["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""];
-              return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+              return <div>
+              <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                 <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments ({completed.length})</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments ({allCompleted.length})</div>
                 </div>
+                {allCompleted.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No completed outbound payments yet.</div> :
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{ocCols.map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  {completed.sort(function(a, b) { return (a.executedAt || a.createdAt || "") > (b.executedAt || b.createdAt || "") ? -1 : 1; }).map(function(item) {
+                  <thead><tr>{["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  {allCompleted.map(function(item) {
                     var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : "#D97706";
-                    var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : (item.type || "Holdback");
-                    var isOcExp = outCompExp === item.id;
+                    var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Remittance" : (item.type || "Other");
+                    var isOcExp = exp === "oc-" + item.id;
                     var invoiceRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"));
                     return (
                       <tbody key={item.id}>
-                        <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", background: isOcExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setOutCompExp(isOcExp ? null : item.id); }}>
+                        <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
                           <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
                           <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{typeLabel}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName || "\u2014"}</td>
                           <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || fmt(item.completedDate || item.date) || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || "\u2014"}</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{invoiceRef}</td>
-                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setOutCompExp(isOcExp ? null : item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isOcExp ? "\u25b4" : "\u25be"}</button></td>
+                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isOcExp ? null : "oc-" + item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>{isOcExp ? "\u25b4" : "\u25be"}</button></td>
                         </tr>
-                        {isOcExp && <tr><td colSpan={ocCols.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
-                          <div style={{ padding: "16px 22px" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                              {/* Payment Details */}
-                              {(function() {
-                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
-                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
-                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
-                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div>
-                                  <div style={row}><span style={lbl}>Payment ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{item.id}</span></div>
-                                  <div style={row}><span style={lbl}>Type</span><span style={Object.assign({}, val, { color: typeColor, fontWeight: 600 })}>{typeLabel}</span></div>
-                                  <div style={row}><span style={lbl}>Supplier</span><span style={val}>{item.supplierName || "\u2014"}</span></div>
-                                  {item.supplierId && <div style={row}><span style={lbl}>Supplier ID</span><span style={val}>{item.supplierId}</span></div>}
-                                  <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(item.amount, item.currency)}</span></div>
-                                  {item.grossAmount && item.grossAmount !== item.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(item.grossAmount, item.currency)}</span></div>}
-                                  {item.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(item.deductionTotal, item.currency)}</span></div>}
-                                  <div style={row}><span style={lbl}>Currency</span><span style={val}>{item.currency}</span></div>
-                                  {item.programName && <div style={row}><span style={lbl}>Program</span><span style={val}>{item.programName}</span></div>}
-                                  <div style={row}><span style={lbl}>Bank</span><span style={val}>{item.bankName || "\u2014"}</span></div>
-                                  <div style={row}><span style={lbl}>Account Details</span><span style={val}>{item.bankDetails || "\u2014"}</span></div>
-                                </div>;
-                              })()}
-                              {/* Execution & Reference */}
-                              {(function() {
-                                var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
-                                var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
-                                var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid #f0f1f5", gap: 8 };
-                                return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#0F172A", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #1E3A5F" }}>Execution Details</div>
-                                  <div style={row}><span style={lbl}>Created</span><span style={val}>{item.createdDisplay || "\u2014"}</span></div>
-                                  <div style={row}><span style={lbl}>Executed</span><span style={val}>{item.executedDisplay || "\u2014"}</span></div>
-                                  <div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: "#059669", fontWeight: 600 })}>{item.status}</span></div>
-                                  {item.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}
-                                  <div style={row}><span style={lbl}>Invoice(s)</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{invoiceRef}</span></div>
-                                  {item.hbPaymentId && <div style={row}><span style={lbl}>HBP ID</span><span style={Object.assign({}, val, { color: "#059669" })}>{item.hbPaymentId}</span></div>}
-                                  {item.sourceInvoiceId && <div style={row}><span style={lbl}>Source Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{item.sourceInvoiceId}</span></div>}
-                                  {item.deductions && item.deductions.length > 0 && <div style={{ marginTop: 10 }}>
-                                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626", marginBottom: 4 }}>Deductions ({item.deductions.length})</div>
-                                    {item.deductions.map(function(d, di) { return <div key={di} style={row}><span style={Object.assign({}, lbl, { color: "#DC2626" })}>{d.invoiceId}</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(d.amount, item.currency)}</span></div>; })}
-                                  </div>}
-                                </div>;
-                              })()}
-                            </div>
-                            {/* Notes */}
-                            <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {item.notes && item.notes.length > 0 ? "(" + item.notes.length + ")" : ""}</div>
-                              {item.notes && item.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{item.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
-                              <div style={{ display: "flex", gap: 6 }}>
-                                <input type="text" value={outCompExp === item.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!item.notes) item.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); item.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", item.id + ": " + noteText.trim(), { paymentId: item.id, supplierName: item.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
-                                <button onClick={function() { if (!noteText.trim()) return; if (!item.notes) item.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); item.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", item.id + ": " + noteText.trim(), { paymentId: item.id, supplierName: item.supplierName, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
-                              </div>
-                            </div>
-                            {/* Audit Trail */}
-                            {(function() {
-                              var ocLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === item.id || e.context.paymentId === item.id || (item.hbPaymentId && e.context.hbPaymentId === item.hbPaymentId) || (item.invoiceId && e.context.invoiceId === item.invoiceId) || (item.invoiceIds && item.invoiceIds.some(function(iid) { return e.context.invoiceId === iid; }))); });
-                              if (ocLogs.length === 0) return null;
-                              return <div style={{ background: "#fff", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({ocLogs.length})</div>
-                                <div style={{ maxHeight: 180, overflowY: "auto" }}>
-                                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                    <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#fff" }}>{h}</th>; })}</tr></thead>
-                                    <tbody>{ocLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody>
-                                  </table>
-                                </div>
-                              </div>;
-                            })()}
+                        {isOcExp && <tr><td colSpan={8} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
+                          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Program:</strong> {item.programName || "\u2014"}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Bank:</strong> {item.bankName || "No bank on file"} {item.bankDetails || ""}</div>
+                            {item.sourcePaymentId && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Source:</strong> {item.sourcePaymentId}</div>}
+                            <button onClick={function() { paymentFailed(item); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer", marginLeft: "auto" }}>Payment Failed</button>
                           </div>
                         </td></tr>}
                       </tbody>
                     );
                   })}
-                </table></div>
+                </table></div>}
+              </div>
+              {(function() {
+                var failedPayments = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).slice().reverse();
+                if (failedPayments.length === 0) return null;
+                return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #C0392B30", overflow: "hidden" }}>
+                  <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#DC2626" }}></div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Failed Payments</div>
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{failedPayments.length} failed</span>
+                  </div>
+                  <div style={{ maxHeight: 300, overflowX: "auto", overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{failedPayments.map(function(item) {
+                        var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : item.type === "remittance" ? "Remittance" : "Holdback";
+                        var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : item.type === "remittance" ? "#D97706" : "#059669";
+                        var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
+                        return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)", background: "#C0392B06" }}>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{item.id}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: typeColor, fontWeight: 600 }}>{typeLabel}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{item.executedDisplay}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "#DC2626", fontWeight: 600 }}>{item.failedDisplay}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{recipient}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(item.amount, item.currency)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                </div>;
+              })()}
               </div>;
           })()}
 
-          {/* === INCOMING PAYMENTS TAB === */}
+
+
           {payTab === "incoming" && <div style={{ marginTop: 0 }}>
           {successMsg && <div style={{ marginBottom: 16, padding: "16px 22px", borderRadius: 12, background: "#2E8B5710", border: "1px solid #2E8B5740", display: "flex", gap: 16 }}>
             <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "#059669", marginBottom: 4 }}>Payment {successMsg.payId} allocated</div>{successMsg.lines.map(function(l) { return <div key={l.invoiceId} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.invoiceId}: {money(l.amount, successMsg.currency)}</div>; })}{successMsg.later.length > 0 && <div style={{ fontSize: 12, color: "#D97706", marginTop: 4 }}>Unallocated: {successMsg.later.map(function(u) { return u.pid; }).join(", ")}</div>}</div>
@@ -7834,7 +8379,7 @@ export default function FactoringDashboard() {
 
           return <div>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {["suppliers", "buyers", "service_providers", "programs", "invoices", "queue", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); if (t === "users") loadUsers(); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageTab === t ? "var(--accent)" : "var(--border)"), background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", textTransform: "capitalize", boxShadow: manageTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "invoices", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); if (t === "users") loadUsers(); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageTab === t ? "var(--accent)" : "var(--border)"), background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", textTransform: "capitalize", boxShadow: manageTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -9648,732 +10193,6 @@ export default function FactoringDashboard() {
             })()}
 
             {/* Payment Queue */}
-            {!manageDetail && manageTab === "queue" && (function() {
-              var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
-              var completed = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; });
-              var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-
-              return <div>
-                {/* Outbound Payments to be made */}
-                {(function() {
-                  var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "approved"; });
-                  // Build unified rows: funding + holdback
-                  var outboundRows = [];
-                  approvedInvs.forEach(function(inv) {
-                    var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
-                    var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
-                  });
-                  pending.forEach(function(item) {
-                    var prog = null;
-                    var srcInv = INVOICES_DB.find(function(x) { return x.id === item.sourceInvoiceId; });
-                    if (srcInv) prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === srcInv.fundingProgram; });
-                    // Use stored bank details, fall back to live lookup from supplier/invoice
-                    var bankName = item.bankName || "";
-                    var bankDetails = item.bankDetails || "";
-                    if (!bankName && (item.supplierId || item.supplierName)) {
-                      var fallbackBank = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId || (srcInv ? srcInv.fundingProgram : null));
-                      bankName = fallbackBank.bankName;
-                      bankDetails = fallbackBank.bankDetails;
-                    }
-                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
-                  });
-                  var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-                  // Lock to supplier+program from first selection
-                  var feqLockSup = null, feqLockProg = null;
-                  outboundRows.forEach(function(row) {
-                    if (feqSelected[row.rowId] && !feqLockSup) { feqLockSup = getParentSupplierName(row.supplierName); feqLockProg = row.programId; }
-                  });
-                  var feqEligible = outboundRows.filter(function(row) {
-                    if (!feqLockSup) return true;
-                    return getParentSupplierName(row.supplierName) === feqLockSup && row.programId === feqLockProg;
-                  });
-                  var feqSelCount = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).length;
-                  var feqSelTotal = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).reduce(function(s, row) { return s + row.amount; }, 0);
-                  var allFeqSelected = feqEligible.length > 0 && feqSelCount === feqEligible.length;
-                  var feqLockProgName = feqLockProg ? (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === feqLockProg; }); return fp ? fp.name : ""; })() : "";
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: outboundRows.length > 0 ? "1px solid #818cf840" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {outboundRows.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#38BDF8" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Supplier Payments to be Made</div>
-                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{outboundRows.length} awaiting execution</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {feqLockSup && <span style={{ fontSize: 10, color: "#38BDF8", fontWeight: 600 }}>Bundling: {feqLockSup} / {feqLockProgName}</span>}
-                        {feqSelCount > 0 && <button onClick={function() { setFeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                        {feqSelCount > 0 && <button onClick={function() {
-                          var selRows = outboundRows.filter(function(r) { return feqSelected[r.rowId]; });
-                          var fundingItems = selRows.filter(function(r) { return r.rowType === "funding"; }).map(function(r) { return r.inv; });
-                          var holdbackItems = selRows.filter(function(r) { return r.rowType === "holdback"; }).map(function(r) { return r.spqItem; });
-                          setBatchDeductions([]);
-                          setBatchConfirm({ type: "outbound", fundingItems: fundingItems, holdbackItems: holdbackItems, items: selRows, totalAmount: r2(feqSelTotal), currency: selRows[0] ? selRows[0].currency : "GBP" });
-                        }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
-                      </div>
-                    </div>
-                    {outboundRows.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No supplier payments awaiting execution.</div>}
-                    {outboundRows.length > 0 && <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
-                          {["Type", "ID", "Date", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
-                        </tr></thead>
-                        <tbody>{outboundRows.map(function(row) {
-                          var isSel = !!feqSelected[row.rowId];
-                          var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
-                          var typeColor = row.rowType === "funding" ? "#0EA5E9" : "#D97706";
-                          var typeLabel = row.rowType === "funding" ? "Funding" : "Holdback";
-                          return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
-                            <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[row.rowId]) delete n[row.rowId]; else n[row.rowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
-                            <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                            <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}>{row.rowType === "funding" ? row.inv.id : row.spqItem.id}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.rowType === "funding" ? fmt(row.inv.approvedDate) : row.spqItem.createdDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{row.supplierName}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{row.detail}</td>
-                            <td style={Object.assign({}, aqmc, { fontWeight: 700, color: "#0EA5E9" })}>{money(row.amount, row.currency)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.programName}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.bankName || "\u2014"}</td>
-                            <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{row.bankDetails || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px" }}>
-                              {!isLocked && <button onClick={row.cancelFn} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
-                              {!isLocked && row.rowType === "holdback" && confirmCancelHbp === row.spqItem.id && <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                                <button onClick={function() { cancelQueuedPayment(row.spqItem.id); setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
-                                <button onClick={function() { setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button>
-                              </div>}
-                            </td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>}
-                  </div>;
-                })()}
-
-                {/* Service Provider Payments to be Made */}
-                {(function() {
-                  var pendingDisbursals = [];
-                  FUNDING_PROGRAMS_DB.forEach(function(fp) {
-                    if (!fp.fundFlows) return;
-                    fp.fundFlows.forEach(function(ff, ffi) {
-                      if (ff.type === "outflow" && ff.status === "Pending") {
-                        pendingDisbursals.push(Object.assign({}, ff, { programId: fp.id, programName: fp.name, currency: fp.currency, flowIndex: ffi }));
-                      }
-                    });
-                  });
-                  var dqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-                  // Lock to program+service provider from first selection
-                  var deqLockProg = null, deqLockSP = null;
-                  pendingDisbursals.forEach(function(d) {
-                    if (deqSelected[d.flowId] && !deqLockProg) { deqLockProg = d.programId; deqLockSP = d.serviceProvider; }
-                  });
-                  var deqEligible = pendingDisbursals.filter(function(d) {
-                    if (!deqLockProg) return true;
-                    return d.programId === deqLockProg && d.serviceProvider === deqLockSP;
-                  });
-                  var deqSelCount = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).length;
-                  var deqSelTotal = deqEligible.filter(function(d) { return deqSelected[d.flowId]; }).reduce(function(s, d) { return s + d.amount; }, 0);
-                  var allDeqSelected = deqEligible.length > 0 && deqSelCount === deqEligible.length;
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: pendingDisbursals.length > 0 ? "1px solid #7B5EA740" : "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Service Provider Payments to be Made</div>
-                        <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingDisbursals.length} awaiting execution</span>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {deqLockProg && <span style={{ fontSize: 10, color: "#7C3AED", fontWeight: 600 }}>Bundling: {deqLockSP} / {(function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === deqLockProg; }); return fp ? fp.name : ""; })()}</span>}
-                        {deqSelCount > 0 && <button onClick={function() { setDeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                        {deqSelCount > 0 && <button onClick={function() { var items = pendingDisbursals.filter(function(d) { return deqSelected[d.flowId]; }); setBatchConfirm({ type: "disbursal", items: items }); }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#7C3AED", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #7B5EA730" }}>Execute Selected ({deqSelCount}) {"\u2014"} {money(r2(deqSelTotal), pendingDisbursals[0] ? pendingDisbursals[0].currency : "GBP")}</button>}
-                      </div>
-                    </div>
-                    {pendingDisbursals.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No service provider payments pending. Payments created from Program Overview will appear here.</div>}
-                    {pendingDisbursals.length > 0 && <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allDeqSelected) { setDeqSelected({}); } else { var n = {}; deqEligible.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7C3AED" : "var(--border)"), background: allDeqSelected ? "#7C3AED" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
-                          {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
-                        </tr></thead>
-                        <tbody>{pendingDisbursals.map(function(dis) {
-                          var isSel = !!deqSelected[dis.flowId];
-                          var isLocked = deqLockProg && (dis.programId !== deqLockProg || dis.serviceProvider !== deqLockSP);
-                          return <tr key={dis.flowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#7B5EA708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
-                            <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setDeqSelected(function(p) { var n = Object.assign({}, p); if (n[dis.flowId]) delete n[dis.flowId]; else n[dis.flowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "#7C3AED" : "var(--border)"), background: isSel ? "#7C3AED" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
-                            <td style={Object.assign({}, dqmc, { color: "#7C3AED", fontWeight: 600 })}>{dis.flowId}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.display}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{dis.programName}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{dis.serviceProvider}</td>
-                            <td style={Object.assign({}, dqmc, { fontWeight: 700, color: "var(--text)" })}>{money(dis.amount, dis.currency)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{dis.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dis.date)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{dis.reason || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px" }}>
-                              {!isLocked && <button onClick={function() {
-                                  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
-                                  if (!fp || !fp.fundFlows) return;
-                                  fp.fundFlows.splice(dis.flowIndex, 1);
-                                  auditLog("Disbursal Cancelled", dis.flowId + " cancelled: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
-                                  setDataVer(function(v) { return v + 1; });
-                              }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
-                            </td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>}
-                  </div>;
-                })()}
-
-                {/* Completed Payments — All Types */}
-                {(function() {
-                  var allCompleted = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; }).slice().reverse();
-                  var cpPopup = managePopup && managePopup.type === "completedPayment" ? managePopup : null;
-                  var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
-
-                  function paymentFailed(item) {
-                    if (!item) return;
-                    var now = new Date();
-                    var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-
-                    if (item.type === "funding") {
-                      var ids = item.invoiceIds || (item.invoiceId ? [item.invoiceId] : []);
-                      ids.forEach(function(invId) {
-                        var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
-                        if (raw && raw.fundingStatus === "funded") {
-                          raw.fundingStatus = "approved";
-                          raw.fundedDate = null;
-                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
-                          if (prog) prog.currentFundedBalance = r2(Math.max(0, (prog.currentFundedBalance || 0) - raw.capitalDue));
-                        }
-                      });
-                      auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
-                    } else if (item.type === "disbursal") {
-                      var fIds = item.flowIds || [];
-                      fIds.forEach(function(flowId) {
-                        FUNDING_PROGRAMS_DB.forEach(function(fp) {
-                          if (!fp.fundFlows) return;
-                          fp.fundFlows.forEach(function(ff) {
-                            if (ff.flowId === flowId && ff.status === "Completed") {
-                              ff.status = "Pending";
-                              ff.executedAt = null;
-                              ff.executedDisplay = null;
-                            }
-                          });
-                        });
-                      });
-                      auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency, programId: item.programId, programName: item.programName });
-                    } else if (item.type === "remittance") {
-                      // Remittance failure — do NOT create a duplicate pending entry
-                      // Remove the REMIT- allocation from the source payment to free the balance
-                      if (item.sourcePaymentId) {
-                        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === item.sourcePaymentId; });
-                        if (srcPay) {
-                          srcPay.allocations = srcPay.allocations.filter(function(a) { return !(a.remittance && a.invoiceId === "REMIT-" + item.id); });
-                        }
-                      }
-                      auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
-                    } else {
-                      // Holdback — create a new pending copy and mark this as failed
-                      var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
-                      SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
-                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
-                    }
-
-                    // Mark the original record as Failed
-                    item.status = "Failed";
-                    item.failedAt = now.toISOString();
-                    item.failedDisplay = nowDisp;
-                    setManagePopup(null);
-                    setDataVer(function(v) { return v + 1; });
-                  }
-
-                  return <div>
-                  <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Completed Payments</div>
-                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{allCompleted.length} executed</span>
-                    </div>
-                    {allCompleted.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No completed payments yet.</div>}
-                    {allCompleted.length > 0 && <div style={{ maxHeight: 400, overflowX: "auto", overflowY: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Queue ID", "Type", "Executed", "Recipient", "Program", "Details", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{allCompleted.map(function(item) {
-                          var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : "Holdback";
-                          var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : "#059669";
-                          var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
-                          var details = item.type === "funding" ? ((item.invoiceIds || []).join(", ") || item.invoiceId || "\u2014") + (item.isBundle ? " (bundle)" : "") : item.type === "disbursal" ? ((item.flowIds || []).join(", ")) + (item.isBundle ? " (bundle)" : "") : (item.hbPaymentId || "\u2014") + " / " + (item.sourceInvoiceId || "");
-                          return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600, cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 })} onClick={function() { setManagePopup({ type: "completedPayment", id: item.id }); }}>{item.id}</td>
-                            <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "#059669", fontWeight: 600 }}>{item.executedDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)" }}>{recipient}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{details}</td>
-                            <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>}
-                  </div>
-
-                  {/* Completed Payment Detail Popup */}
-                  {cpItem && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
-                    <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 620, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600 }}>Payment Details: {cpItem.id}</div>
-                        <button onClick={function() { setManagePopup(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", fontSize: 12, marginBottom: 16 }}>
-                        <div><span style={{ color: "var(--muted)" }}>Type: </span><Badge label={cpItem.type === "funding" ? "Funding" : cpItem.type === "disbursal" ? "Disbursal" : "Holdback"} bg={(cpItem.type === "funding" ? "#0EA5E9" : cpItem.type === "disbursal" ? "#7C3AED" : "#059669") + "14"} color={cpItem.type === "funding" ? "#0EA5E9" : cpItem.type === "disbursal" ? "#7C3AED" : "#059669"} border={(cpItem.type === "funding" ? "#0EA5E9" : cpItem.type === "disbursal" ? "#7C3AED" : "#059669") + "30"} /></div>
-                        <div><span style={{ color: "var(--muted)" }}>Amount: </span><strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(cpItem.amount, cpItem.currency)}</strong></div>
-                        <div><span style={{ color: "var(--muted)" }}>Recipient: </span>{cpItem.type === "disbursal" ? cpItem.serviceProvider : cpItem.supplierName}</div>
-                        <div><span style={{ color: "var(--muted)" }}>Currency: </span>{cpItem.currency}</div>
-                        {cpItem.programName && <div><span style={{ color: "var(--muted)" }}>Program: </span>{cpItem.programName}</div>}
-                        {cpItem.bankName && <div><span style={{ color: "var(--muted)" }}>Bank: </span>{cpItem.bankName}</div>}
-                        {cpItem.bankDetails && <div><span style={{ color: "var(--muted)" }}>Account: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{cpItem.bankDetails}</span></div>}
-                        <div><span style={{ color: "var(--muted)" }}>Executed: </span><span style={{ color: "#059669", fontWeight: 600 }}>{cpItem.executedDisplay}</span></div>
-                        <div><span style={{ color: "var(--muted)" }}>Created: </span>{cpItem.createdDisplay}</div>
-                        {cpItem.isBundle && <div><span style={{ color: "var(--muted)" }}>Bundle: </span><span style={{ color: "var(--accent)", fontWeight: 600 }}>Yes</span></div>}
-                      </div>
-                      {cpItem.type === "funding" && cpItem.invoiceIds && cpItem.invoiceIds.length > 0 && <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Invoices ({cpItem.invoiceIds.length})</div>
-                        <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Invoice", "Buyer", "Capital"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{cpItem.invoiceIds.map(function(iid) { var inv = INVOICES_DB.find(function(x) { return x.id === iid; }); return <tr key={iid} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{iid}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv ? inv.buyerName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{inv ? money(inv.capitalDue, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
-                      </div>}
-                      {cpItem.type === "disbursal" && cpItem.flowIds && cpItem.flowIds.length > 0 && <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Disbursals ({cpItem.flowIds.length})</div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{cpItem.flowIds.join(", ")}</div>
-                      </div>}
-                      {cpItem.type !== "funding" && cpItem.type !== "disbursal" && cpItem.hbPaymentId && <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Holdback Details</div>
-                        <div style={{ fontSize: 12 }}><span style={{ color: "var(--muted)" }}>HBP ID: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{cpItem.hbPaymentId}</span></div>
-                        <div style={{ fontSize: 12 }}><span style={{ color: "var(--muted)" }}>Source Invoice: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cpItem.sourceInvoiceId}</span></div>
-                      </div>}
-                      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", gap: 10 }}>
-                        <button onClick={function() { paymentFailed(cpItem); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: "pointer" }}>Payment Failed</button>
-                        <span style={{ fontSize: 10, color: "var(--muted)", alignSelf: "center", fontStyle: "italic" }}>Returns {cpItem.isBundle ? "all items in bundle" : "this payment"} to the original queue</span>
-                      </div>
-                    </div>
-                  </div>}
-                  </div>;
-                })()}
-
-                {/* Failed Payments */}
-                {(function() {
-                  var failedPayments = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).slice().reverse();
-                  if (failedPayments.length === 0) return null;
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #C0392B30", overflow: "hidden", marginTop: 18 }}>
-                    <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#DC2626" }}></div>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Failed Payments</div>
-                      <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{failedPayments.length} failed</span>
-                    </div>
-                    <div style={{ maxHeight: 300, overflowX: "auto", overflowY: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{failedPayments.map(function(item) {
-                          var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : "Holdback";
-                          var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : "#059669";
-                          var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
-                          return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)", background: "#C0392B06" }}>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{item.id}</td>
-                            <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{item.executedDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 11, color: "#DC2626", fontWeight: 600 }}>{item.failedDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{recipient}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(item.amount, item.currency)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>
-                  </div>;
-                })()}
-
-                {/* Batch Execution Confirmation Modal */}
-                {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
-                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "28px 32px", maxWidth: 1020, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Supplier Payments" : "Execute Service Provider Payments"}</div>
-                      <button onClick={function() { setBatchConfirm(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Confirm execution of {batchConfirm.items.length} payment{batchConfirm.items.length > 1 ? "s" : ""}.</div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", "Status"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{batchConfirm.items.map(function(item, ii) {
-                          if (batchConfirm.type === "outbound") {
-                            var typeLabel = item.rowType === "funding" ? "Funding" : "Holdback";
-                            var typeColor = item.rowType === "funding" ? "#0EA5E9" : "#D97706";
-                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
-                              <td style={{ padding: "6px 10px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{item.rowType === "funding" ? item.inv.id : item.spqItem.id}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.supplierName}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.detail}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0EA5E9" }}>{money(item.amount, item.currency)}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.bankName || "\u2014"}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.bankDetails || "\u2014"}</td>
-                              <td style={{ padding: "6px 10px" }}>{(function() { var bi = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId); return bi.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>{"\u2713"}</span> : <span style={{ fontSize: 9, fontWeight: 700, color: "#EF4444" }}>{"\u2717"}</span>; })()}</td>
-                            </tr>;
-                          } else {
-                            return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
-                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED", fontWeight: 600 }}>{item.flowId}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.programName}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.serviceProvider}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{money(item.amount, item.currency)}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(item.date)}</td>
-                            </tr>;
-                          }
-                        })}</tbody>
-                      </table>
-                    </div>
-
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
-                      {/* Bank Details Summary */}
-                      {batchConfirm.type === "outbound" && batchConfirm.items.length > 0 && (function() {
-                        var firstItem = batchConfirm.items[0];
-                        var bankInfo = getSupplierBankDetails(firstItem.supplierId || firstItem.supplierName, firstItem.programId);
-                        return <div style={{ padding: "14px 18px", borderRadius: 10, background: bankInfo.bankVerified ? "#05966908" : "#F59E0B08", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 14 }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Payment Destination</div>
-                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u26A0"} Unverified</span>}
-                          </div>
-                          {bankInfo.bankName ? <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{bankInfo.bankName}</div>
-                            {bankInfo.bankDetails ? <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bankInfo.bankDetails}</div> : null}
-                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Paying: {firstItem.supplierName} via {firstItem.programName}</div>
-                          </div> : <div style={{ fontSize: 13, color: "#D97706", fontWeight: 600 }}>{"\u26A0"} No bank details on file — payment cannot be executed</div>}
-                        </div>;
-                      })()}
-                      {/* Deductions section — only for outbound payments */}
-                      {batchConfirm.type === "outbound" && (function() {
-                        var deductTotal = batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0);
-                        var grossTotal = batchConfirm.totalAmount;
-                        var netPayout = r2(grossTotal - deductTotal);
-                        var deductSupplier = batchConfirm.items[0] ? getParentSupplierName(batchConfirm.items[0].supplierName) : "";
-                        var deductProgramId = batchConfirm.items[0] ? batchConfirm.items[0].programId : "";
-                        var deductCcy = batchConfirm.currency;
-                        // Get eligible invoices: same parent supplier, same program, recovery_mode or overdue
-                        var eligibleDeduct = viewData.invoices.filter(function(inv) {
-                          if (getParentSupplierName(inv.supplierName) !== deductSupplier) return false;
-                          if (inv.currency !== deductCcy) return false;
-                          if (inv.fundingProgram !== deductProgramId) return false;
-                          if (inv.fundingStatus !== "recovery_mode" && inv.fundingStatus !== "overdue") return false;
-                          // Exclude any invoices that are part of the outbound batch itself
-                          if (batchConfirm.fundingItems && batchConfirm.fundingItems.some(function(fi) { return fi.id === inv.id; })) return false;
-                          return true;
-                        }).sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
-                        function getMaxForInv(inv) {
-                          if (inv.fundingStatus === "overdue") return r2(inv.penaltyInterest);
-                          return r2(inv.penaltyInterest + inv.interestOutstanding + inv.capitalOutstanding);
-                        }
-                        var deductRemaining = r2(grossTotal - deductTotal);
-
-                        return <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>Deductions (Recovery Mode & Overdue)</div>
-                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>Deduct amounts against invoices in Recovery Mode or Overdue for this supplier and program before sending payment.</div>
-                          {eligibleDeduct.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0", fontStyle: "italic", marginBottom: 10 }}>No eligible invoices for deduction.</div>}
-                          {eligibleDeduct.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto", marginBottom: 12 }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                              <thead><tr>{["Invoice", "Buyer", "Status", "Pen O/S", "Int O/S", "Cap O/S", "Max", "Deduct"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                              <tbody>{eligibleDeduct.map(function(inv) {
-                                var ex = batchDeductions.find(function(d) { return d.invoiceId === inv.id; });
-                                var aa = ex ? ex.amount : 0;
-                                var maxForThis = getMaxForInv(inv);
-                                var mx = r2(Math.min(maxForThis, deductRemaining + aa));
-                                var isOverdue = inv.fundingStatus === "overdue";
-                                var fst = FST[inv.fundingStatus] || FST.funded;
-                                var prP = 0, prI = 0, prC = 0;
-                                if (aa > 0) {
-                                  var rm = aa;
-                                  if (rm > 0 && inv.penaltyInterest > 0.001) { var x = Math.min(rm, inv.penaltyInterest); prP = x; rm -= x; }
-                                  if (!isOverdue) {
-                                    if (rm > 0 && inv.interestOutstanding > 0.001) { var x2 = Math.min(rm, inv.interestOutstanding); prI = x2; rm -= x2; }
-                                    if (rm > 0 && inv.capitalOutstanding > 0.001) { prC = Math.min(rm, inv.capitalOutstanding); }
-                                  }
-                                }
-                                return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#C0392B06" : "transparent" }}>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                                  <td style={{ padding: "5px 8px" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: fst.color }}>{fst.label}</span></td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" }}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prP, inv.currency)}</span>}</td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.interestOutstanding > 0 ? "#D97706" : "var(--muted)" }}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prI, inv.currency)}</span>}</td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prC, inv.currency)}</span>}</td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isOverdue ? "#DC2626" : "#8B5CF6", fontWeight: 600 }}>{money(maxForThis, inv.currency)}</td>
-                                  <td style={{ padding: "5px 8px" }}><div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                    <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; setBatchDeductions(function(prev) { var w = prev.filter(function(d) { return d.invoiceId !== iid; }); return val > 0.001 ? w.concat([{ invoiceId: iid, amount: r2(val) }]) : w; }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (aa > 0 ? "#DC2626" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 80 }} />
-                                    {mx > 0 && deductRemaining > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(maxForThis, deductRemaining)); var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }).concat([{ invoiceId: iid, amount: val }]); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>Max</button>}
-                                    {aa > 0 && <button onClick={function() { var iid = inv.id; setBatchDeductions(function(prev) { return prev.filter(function(d) { return d.invoiceId !== iid; }); }); }} style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "#DC2626", fontSize: 9, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
-                                  </div></td>
-                                </tr>;
-                              })}</tbody>
-                            </table>
-                          </div>}
-                          {deductTotal > 0 && <div style={{ background: "#C0392B08", borderRadius: 8, padding: "10px 14px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Deductions: <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(deductTotal, deductCcy)}</strong> against {batchDeductions.length} invoice{batchDeductions.length !== 1 ? "s" : ""}</div>
-                            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>Net Payout: <span style={{ color: "#059669" }}>{money(netPayout, deductCcy)}</span></div>
-                          </div>}
-                        </div>;
-                      })()}
-                    </div>
-
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      {(function() {
-                        var deductTotal = batchConfirm.type === "outbound" ? batchDeductions.reduce(function(s, d) { return s + d.amount; }, 0) : 0;
-                        var grossTotal = batchConfirm.type === "outbound" ? batchConfirm.totalAmount : batchConfirm.items.reduce(function(s, item) { return s + item.amount; }, 0);
-                        var netTotal = r2(grossTotal - deductTotal);
-                        return <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>
-                          {deductTotal > 0 ? <span>Gross: {money(grossTotal, batchConfirm.currency || "GBP")} {"\u2014"} Deductions: <span style={{ color: "#DC2626" }}>{money(deductTotal, batchConfirm.currency || "GBP")}</span> {"\u2014"} Net: <span style={{ color: "#059669" }}>{money(netTotal, batchConfirm.currency || "GBP")}</span></span> : <span>Total: {money(grossTotal, batchConfirm.currency || "GBP")}</span>}
-                        </div>;
-                      })()}
-                      {batchConfirm.type === "outbound" && (function() {
-                        // Check program available balance for funding items
-                        var fundingItems = batchConfirm.fundingItems || [];
-                        if (fundingItems.length === 0) return null;
-                        var totalCapNeeded = 0;
-                        fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
-                        var progId = fundingItems[0].fundingProgram;
-                        var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
-                        if (!prog) return null;
-                        var availBal = getProgramAvailableBalance(progId);
-                        if (totalCapNeeded <= availBal + 0.01) return null;
-                        return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#EF444414", border: "1px solid #EF444440", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ fontSize: 16 }}>{"\u26D4"}</span>
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>Insufficient Program Balance</div>
-                            <div style={{ fontSize: 11, color: "#EF4444", opacity: 0.8 }}>{prog.name}: Available {money(availBal, batchConfirm.currency)} — Required {money(r2(totalCapNeeded), batchConfirm.currency)}</div>
-                          </div>
-                        </div>;
-                      })()}
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {(function() {
-                          var fundingItems = batchConfirm.fundingItems || [];
-                          var insuffBal = false;
-                          if (batchConfirm.type === "outbound" && fundingItems.length > 0) {
-                            var totalCapNeeded = 0;
-                            fundingItems.forEach(function(inv) { totalCapNeeded += inv.capitalDue || 0; });
-                            var progId = fundingItems[0].fundingProgram;
-                            var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
-                            if (prog) { var availBal = getProgramAvailableBalance(progId); insuffBal = totalCapNeeded > availBal + 0.01; }
-                          }
-                          return <button disabled={insuffBal} onClick={function() {
-                          var now = new Date();
-                          var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                          if (batchConfirm.type === "outbound") {
-                            // Apply deductions — create credit adjustments on target invoices using outstanding balances
-                            var deductTotal = 0;
-                            batchDeductions.forEach(function(d) {
-                              var raw = INVOICES_DB.find(function(x) { return x.id === d.invoiceId; });
-                              if (!raw) return;
-                              // Use OUTSTANDING amounts from viewData for the waterfall
-                              var vInv = viewData.invoices.find(function(x) { return x.id === d.invoiceId; });
-                              var osPen = vInv ? vInv.penaltyInterest : 0;
-                              var osInt = vInv ? vInv.interestOutstanding : 0;
-                              var osCap = vInv ? vInv.capitalOutstanding : 0;
-                              var isOverdue = (vInv ? vInv.fundingStatus : raw.fundingStatus) === "overdue";
-                              var rm = d.amount;
-                              var dPen = 0, dInt = 0, dCap = 0;
-                              // Waterfall: penalty -> interest -> capital
-                              if (rm > 0 && osPen > 0.001) { dPen = r2(Math.min(rm, osPen)); rm = r2(rm - dPen); }
-                              if (!isOverdue) {
-                                if (rm > 0 && osInt > 0.001) { dInt = r2(Math.min(rm, osInt)); rm = r2(rm - dInt); }
-                                if (rm > 0 && osCap > 0.001) { dCap = r2(Math.min(rm, osCap)); rm = r2(rm - dCap); }
-                              }
-                              // Store as credit adjustment on the raw invoice
-                              if (!raw.adjustments) raw.adjustments = [];
-                              raw.adjustments.push({
-                                type: "credit", date: now.toISOString().split("T")[0], timestamp: now.toISOString(),
-                                display: nowDisp, penalty: dPen, interest: dInt, capital: dCap,
-                                total: r2(dPen + dInt + dCap), source: "outbound_deduction"
-                              });
-                              deductTotal += d.amount;
-                              auditLog("Outbound Deduction", d.invoiceId + ": " + money(d.amount, batchConfirm.currency) + " deducted (Pen " + money(dPen, batchConfirm.currency) + ", Int " + money(dInt, batchConfirm.currency) + ", Cap " + money(dCap, batchConfirm.currency) + ")", { invoiceId: d.invoiceId, deductAmount: d.amount, penalty: dPen, interest: dInt, capital: dCap, currency: batchConfirm.currency, supplierName: batchConfirm.items[0] ? batchConfirm.items[0].supplierName : "" });
-                            });
-
-                            var netAmount = r2(batchConfirm.totalAmount - deductTotal);
-                            // Execute funding items
-                            var fundingInvIds = [];
-                            (batchConfirm.fundingItems || []).forEach(function(inv) {
-                              executeFunding(inv.id);
-                              fundingInvIds.push(inv.id);
-                            });
-                            // Apply deductions to holdback HBP allocations — split disbursement into invoice allocations + reduced supplier return
-                            if (deductTotal > 0 && (batchConfirm.holdbackItems || []).length > 0) {
-                              var deductRemainingForHbp = deductTotal;
-                              (batchConfirm.holdbackItems || []).forEach(function(spq) {
-                                if (deductRemainingForHbp <= 0.001) return;
-                                var hbp = HOLDBACK_PAYMENTS_DB.find(function(x) { return x.hbPaymentId === spq.hbPaymentId; });
-                                if (!hbp) return;
-                                // Calculate how much of the deductions to take from this HBP
-                                var hbpOrigAmt = hbp.amount;
-                                var deductFromThis = r2(Math.min(deductRemainingForHbp, hbpOrigAmt));
-                                deductRemainingForHbp = r2(deductRemainingForHbp - deductFromThis);
-                                var netSupplierAmt = r2(hbpOrigAmt - deductFromThis);
-                                // Rebuild allocations: invoice allocations for each deduction + reduced disbursement
-                                var newAllocations = [];
-                                var deductUsed = 0;
-                                batchDeductions.forEach(function(d) {
-                                  if (deductUsed >= deductFromThis) return;
-                                  var allocAmt = r2(Math.min(d.amount, deductFromThis - deductUsed));
-                                  if (allocAmt > 0.001) {
-                                    newAllocations.push({ type: "invoice", targetId: d.invoiceId, amount: allocAmt });
-                                    deductUsed = r2(deductUsed + allocAmt);
-                                  }
-                                });
-                                if (netSupplierAmt > 0.001) {
-                                  newAllocations.push({ type: "disbursement", targetId: null, amount: netSupplierAmt });
-                                }
-                                hbp.allocations = newAllocations;
-                                // Update the SPQ entry amount to the net supplier payout
-                                spq.amount = netSupplierAmt;
-                                // Update the audit log context for this HBP
-                                var invAllocDetails = newAllocations.filter(function(a) { return a.type === "invoice"; });
-                                var logParts = [];
-                                invAllocDetails.forEach(function(a) { logParts.push(money(a.amount, hbp.currency) + " applied to " + a.targetId); });
-                                if (netSupplierAmt > 0.001) logParts.push(money(netSupplierAmt, hbp.currency) + " returned to supplier");
-                                auditLog("Holdback Disbursed", hbp.hbPaymentId + " from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (Total: " + money(hbpOrigAmt, hbp.currency) + ")", { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, supplierName: spq.supplierName, amount: hbpOrigAmt, supplierReturn: netSupplierAmt, invoiceAllocations: invAllocDetails.map(function(a) { return { invoiceId: a.targetId, amount: a.amount }; }), currency: hbp.currency });
-                              });
-                            }
-                            // Execute holdback items
-                            (batchConfirm.holdbackItems || []).forEach(function(spq) {
-                              executeQueuedPayment(spq.id);
-                            });
-                            // If bundle (>1 item), create consolidated completion record and remove individuals
-                            if (batchConfirm.items.length > 1) {
-                              var individualIds = [];
-                              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
-                                if (q.status === "Completed" && q.executedDisplay === nowDisp) {
-                                  if (q.type === "funding" && fundingInvIds.indexOf(q.invoiceId) >= 0) individualIds.push(q.id);
-                                  if (!q.type && batchConfirm.holdbackItems.some(function(h) { return h.id === q.id; })) individualIds.push(q.id);
-                                }
-                              });
-                              individualIds.forEach(function(rid) { var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; }); if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1); });
-                              var bundleId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
-                              var firstRow = batchConfirm.items[0];
-                              var allInvIds = fundingInvIds.slice();
-                              var allHbpIds = (batchConfirm.holdbackItems || []).map(function(h) { return h.id; });
-                              SUPPLIER_PAYMENT_QUEUE.push({
-                                id: bundleId, type: "funding", isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
-                                supplierName: firstRow.supplierName, supplierId: "",
-                                bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
-                                amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
-                                currency: batchConfirm.currency, status: "Completed",
-                                programId: firstRow.programId, programName: firstRow.programName,
-                                createdAt: now.toISOString(), createdDisplay: nowDisp,
-                                executedAt: now.toISOString(), executedDisplay: nowDisp
-                              });
-                            }
-                            setFeqSelected({});
-                          } else {
-                            // Disbursal execution
-                            var disTotalAmt = 0;
-                            var disFlowIds = [];
-                            batchConfirm.items.forEach(function(dis) {
-                              var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
-                              if (!fp || !fp.fundFlows) return;
-                              var ff = fp.fundFlows[dis.flowIndex];
-                              if (ff) {
-                                ff.status = "Completed";
-                                ff.executedAt = now.toISOString();
-                                ff.executedDisplay = nowDisp;
-                                disTotalAmt += dis.amount;
-                                disFlowIds.push(dis.flowId);
-                                auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
-                              }
-                            });
-                            var disId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
-                            var firstDis = batchConfirm.items[0];
-                            SUPPLIER_PAYMENT_QUEUE.push({
-                              id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
-                              serviceProvider: firstDis.serviceProvider,
-                              programId: firstDis.programId, programName: firstDis.programName,
-                              amount: r2(disTotalAmt), currency: firstDis.currency, status: "Completed",
-                              createdAt: now.toISOString(), createdDisplay: nowDisp,
-                              executedAt: now.toISOString(), executedDisplay: nowDisp
-                            });
-                            setDeqSelected({});
-                            setDataVer(function(v) { return v + 1; });
-                          }
-                          setBatchConfirm(null);
-                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: insuffBal ? "var(--border)" : (batchConfirm.type === "outbound" ? "#059669" : "#7C3AED"), color: insuffBal ? "var(--muted)" : "#fff", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: insuffBal ? "not-allowed" : "pointer", boxShadow: insuffBal ? "none" : "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>{insuffBal ? "Insufficient Balance" : "Confirm Execution"}</button>;
-                        })()}
-                        <button onClick={function() { setBatchConfirm(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>}
-
-                {/* Bundle Payment Dialog */}
-                {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
-                  <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600 }}>Bundle Payments to {bundleDialog.supplierName}</div>
-                      <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{bundleDialog.items.length > 1 ? "There are " + bundleDialog.items.length + " pending payments to this supplier in " + bundleDialog.currency + ". Select which to include in a single consolidated payment." : "Confirm execution of this payment."}</div>
-
-                    <div style={{ marginBottom: 16 }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["", "Queue ID", "HBP ID", "Source Inv", "Amount", "Bank", "Account"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{bundleDialog.items.map(function(bi) {
-                          var isSel = !!bundleDialog.selected[bi.id];
-                          var isTrigger = bi.id === bundleDialog.triggerId;
-                          return <tr key={bi.id} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent" }}>
-                            <td style={{ padding: "8px 8px" }}>
-                              <div onClick={function() { if (isTrigger) return; setBundleDialog(function(prev) { var s = Object.assign({}, prev.selected); if (s[bi.id]) delete s[bi.id]; else s[bi.id] = true; return Object.assign({}, prev, { selected: s }); }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: isTrigger ? "default" : "pointer", opacity: isTrigger ? 0.6 : 1 }}>{isSel ? "\u2713" : ""}</div>
-                            </td>
-                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{bi.id}{isTrigger ? " *" : ""}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{bi.hbPaymentId}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{bi.sourceInvoiceId}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(bi.amount, bi.currency)}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{bi.bankName || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bi.bankDetails || "\u2014"}</td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>
-
-                    {(function() {
-                      var selItems = bundleDialog.items.filter(function(bi) { return bundleDialog.selected[bi.id]; });
-                      var totalAmt = 0;
-                      selItems.forEach(function(si) { totalAmt += si.amount; });
-                      return <div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: "1px solid var(--border)", marginBottom: 14 }}>
-                          <div>
-                            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{selItems.length} payment{selItems.length !== 1 ? "s" : ""} selected</span>
-                            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                              <button onClick={function() { var s = {}; bundleDialog.items.forEach(function(bi) { s[bi.id] = true; }); setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--accent)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Select All</button>
-                              <button onClick={function() { var s = {}; s[bundleDialog.triggerId] = true; setBundleDialog(function(prev) { return Object.assign({}, prev, { selected: s }); }); }} style={{ fontSize: 10, color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0 }}>Original Only</button>
-                            </div>
-                          </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Consolidated Total</div>
-                            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalAmt), bundleDialog.currency)}</div>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={function() {
-                            selItems.forEach(function(si) { executeQueuedPayment(si.id); });
-                            if (selItems.length > 1) {
-                              var bundledIds = selItems.map(function(si) { return si.id; });
-                              auditLog("Bundled Payment Executed", selItems.length + " payments bundled for " + bundleDialog.supplierName + ": " + money(r2(totalAmt), bundleDialog.currency) + " (" + bundledIds.join(", ") + ")", { supplierName: bundleDialog.supplierName, totalAmount: r2(totalAmt), currency: bundleDialog.currency, queueIds: bundledIds, count: selItems.length });
-                            }
-                            setBundleDialog(null);
-                          }} disabled={selItems.length === 0} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: selItems.length > 0 ? "#059669" : "var(--border)", color: selItems.length > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: selItems.length > 0 ? "pointer" : "default", boxShadow: selItems.length > 0 ? "0 2px 10px #2E8B5730" : "none" }}>{selItems.length > 1 ? "Execute Bundled Payment (" + selItems.length + ")" : "Execute Payment"}</button>
-                          <button onClick={function() { setBundleDialog(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-                        </div>
-                      </div>;
-                    })()}
-                  </div>
-                </div>}
-              </div>;
-            })()}
-
             {/* Audit Log */}
             {!manageDetail && manageTab === "users" && (function() {
               var ROLE_OPTIONS = [
