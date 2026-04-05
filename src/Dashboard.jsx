@@ -1646,7 +1646,7 @@ export default function FactoringDashboard() {
         createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
         sourcePaymentId: allocPay.paymentId
       });
-      auditLog("Payment Remitted", allocPay.paymentId + ": " + money(r2(a.amount), allocPay.currency) + " from unfunded " + a.invoiceId + " queued for remittance to " + displayName + " (" + spqId + ")", { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(a.amount), currency: allocPay.currency, spqId: spqId, unfunded: true, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
+      auditLog("Remittance Queued", spqId + ": " + money(r2(a.amount), allocPay.currency) + " from unfunded " + a.invoiceId + " queued for remittance to " + displayName, { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(a.amount), currency: allocPay.currency, spqId: spqId, unfunded: true, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     });
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
@@ -1687,7 +1687,7 @@ export default function FactoringDashboard() {
     if (pay) {
       pay.allocations.push({ invoiceId: "REMIT-" + spqId, amount: r2(amount), remittance: true, supplierId: supplierEntityId, supplierName: displayName });
     }
-    auditLog("Payment Remitted", paymentId + ": " + money(r2(amount), currency) + " remitted to " + displayName + " (" + spqId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
+    auditLog("Remittance Queued", spqId + ": " + money(r2(amount), currency) + " queued for remittance to " + displayName + " (" + (prog ? prog.name : "") + ")", { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", programName: prog ? prog.name : "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
   }
@@ -4565,7 +4565,7 @@ export default function FactoringDashboard() {
                 }
                 return false;
               }
-              var soActionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Payment Remitted": "#059669", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Supplier Payment Executed": "#059669", "Outbound Deduction": "#DC2626", "Credit Note Created": "#0EA5E9", "Credit Note Allocated": "#059669", "Credit Note Unallocated": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706" };
+              var soActionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Payment Remitted": "#059669", "Remittance Queued": "#D97706", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Supplier Payment Executed": "#059669", "Outbound Deduction": "#DC2626", "Credit Note Created": "#0EA5E9", "Credit Note Allocated": "#059669", "Credit Note Unallocated": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706" };
 
               function soRenderContext(entry) {
                 var c = entry.context || {};
@@ -7923,9 +7923,9 @@ export default function FactoringDashboard() {
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Program (optional)</label>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Program</label>
                 <select value={remitPopup.programId} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { programId: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
-                  <option value="">No program</option>
+                  <option value="">Select program...</option>
                   {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name} ({fp.currency})</option>; })}
                 </select>
               </div>
@@ -7945,10 +7945,10 @@ export default function FactoringDashboard() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button disabled={!remitPopup.supplier} onClick={function() {
+              <button disabled={!remitPopup.supplier || !remitPopup.programId} onClick={function() {
                 if (allocs.length > 0) confirmAllocation();
                 remitToSupplier(remitPopup.paymentId, remitPopup.supplier, remitPopup.amount, remitPopup.currency, remitPopup.programId);
-              }} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: remitPopup.supplier ? "#059669" : "var(--border)", color: remitPopup.supplier ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: remitPopup.supplier ? "pointer" : "default" }}>{allocs.length > 0 ? "Allocate & Remit" : "Remit to Supplier"}</button>
+              }} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: remitPopup.supplier && remitPopup.programId ? "#059669" : "var(--border)", color: remitPopup.supplier && remitPopup.programId ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: remitPopup.supplier && remitPopup.programId ? "pointer" : "default" }}>{allocs.length > 0 ? "Allocate & Remit" : "Remit to Supplier"}</button>
               <button onClick={function() { setRemitPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
@@ -10495,7 +10495,7 @@ export default function FactoringDashboard() {
             })()}
 
             {!manageDetail && manageTab === "audit" && (function() {
-              var actionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Program Created": "#0EA5E9", "Program Edited": "#D97706", "Program Funds Added": "#059669", "Program Funds Disbursed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706", "Supplier Payment Executed": "#059669" };
+              var actionColors = { "Payment Created": "#0EA5E9", "Payment Allocated": "#059669", "Payment Unallocated": "#EF4444", "Payment Note Added": "#0EA5E9", "Invoice Created": "#0EA5E9", "Invoice Edited": "#D97706", "Invoice Approved": "#38BDF8", "Invoice Funded": "#059669", "Invoice Approval Cancelled": "#EF4444", "Do Not Fund Set": "#6B7280", "Do Not Fund Cleared": "#D97706", "Invoice Status Changed": "#D97706", "Funding Status Changed": "#D97706", "Invoice Note Added": "#0EA5E9", "Invoice Write-Off": "#6B7280", "Rate Changed": "#D97706", "Program Created": "#0EA5E9", "Program Edited": "#D97706", "Program Funds Added": "#059669", "Program Funds Disbursed": "#D97706", "Holdback Disbursed": "#0F172A", "Holdback Payment Cancelled": "#EF4444", "HBP Note Added": "#0F172A", "Supplier Payment Cancelled": "#EF4444", "Entity Created": "#0EA5E9", "Entity Edited": "#D97706", "Supplier Payment Executed": "#059669", "Remittance Queued": "#D97706" };
 
               function renderContext(entry) {
                 var c = entry.context || {};
