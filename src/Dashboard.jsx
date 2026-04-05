@@ -1492,6 +1492,11 @@ export default function FactoringDashboard() {
   var pds1 = useState(""), pdSearch = pds1[0], setPdSearch = pds1[1];
   var pdc1 = useState(""), pdCcyFilter = pdc1[0], setPdCcyFilter = pdc1[1];
   var pdd1 = useState(""), pdDateFilter = pdd1[0], setPdDateFilter = pdd1[1];
+  var oqs1 = useState(""), oqSearch = oqs1[0], setOqSearch = oqs1[1];
+  var oqp1 = useState(0), oqPage = oqp1[0], setOqPage = oqp1[1];
+  var ocs1 = useState(""), ocSearch = ocs1[0], setOcSearch = ocs1[1];
+  var ocp1 = useState(0), ocPage = ocp1[0], setOcPage = ocp1[1];
+  var ipg1 = useState(0), inPage = ipg1[0], setInPage = ipg1[1];
   var hds1 = useState(""), hdSearch = hds1[0], setHdSearch = hds1[1];
   var hdc1 = useState(""), hdCcyFilter = hdc1[0], setHdCcyFilter = hdc1[1];
   var hdd1 = useState(""), hdDateFilter = hdd1[0], setHdDateFilter = hdd1[1];
@@ -6896,7 +6901,7 @@ export default function FactoringDashboard() {
         {isP && !allocPay && <div>
           {/* Payment Sub-tabs */}
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
-            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
+            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOcSearch(""); setOcPage(0); setInPage(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
           </div>
 
           {/* === OUTBOUND PENDING TAB === */}
@@ -6964,14 +6969,27 @@ export default function FactoringDashboard() {
                         }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
                       </div>
                     </div>
-                    {outboundRows.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No supplier payments awaiting execution.</div>}
-                    {outboundRows.length > 0 && <div style={{ overflowX: "auto" }}>
+                    {/* Search bar */}
+                    {outboundRows.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <input type="text" value={oqSearch} onChange={function(e) { setOqSearch(e.target.value); setOqPage(0); }} placeholder="Search queue..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 }} />
+                      {oqSearch && <button onClick={function() { setOqSearch(""); setOqPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                    </div>}
+                    {(function() {
+                      var filteredOQ = outboundRows;
+                      if (oqSearch) { var q = oqSearch.toLowerCase(); filteredOQ = filteredOQ.filter(function(row) { return (row.supplierName || "").toLowerCase().indexOf(q) > -1 || (row.detail || "").toLowerCase().indexOf(q) > -1 || (row.programName || "").toLowerCase().indexOf(q) > -1 || (row.rowType || "").toLowerCase().indexOf(q) > -1 || (row.currency || "").toLowerCase().indexOf(q) > -1 || (row.rowId || "").toLowerCase().indexOf(q) > -1; }); }
+                      var oqPageSize = 20;
+                      var oqTotalPages = Math.max(1, Math.ceil(filteredOQ.length / oqPageSize));
+                      var oqCurPage = Math.min(oqPage, oqTotalPages - 1);
+                      var oqPageRows = filteredOQ.slice(oqCurPage * oqPageSize, (oqCurPage + 1) * oqPageSize);
+                      if (filteredOQ.length === 0) return <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{oqSearch ? "No items match your search." : "No supplier payments awaiting execution."}</div>;
+                      return <div>
+                    <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
                           <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
                           {["Type", "ID", "Date", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
                         </tr></thead>
-                        <tbody>{outboundRows.map(function(row) {
+                        <tbody>{oqPageRows.map(function(row) {
                           var isSel = !!feqSelected[row.rowId];
                           var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
                           var typeColor = row.rowType === "funding" ? "#0EA5E9" : "#D97706";
@@ -6998,7 +7016,16 @@ export default function FactoringDashboard() {
                           </tr>;
                         })}</tbody>
                       </table>
+                    </div>
+                    {oqTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {oqCurPage + 1} of {oqTotalPages} ({filteredOQ.length} items)</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button disabled={oqCurPage === 0} onClick={function() { setOqPage(oqCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage === 0 ? "transparent" : "var(--card)", color: oqCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
+                        <button disabled={oqCurPage >= oqTotalPages - 1} onClick={function() { setOqPage(oqCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage >= oqTotalPages - 1 ? "transparent" : "var(--card)", color: oqCurPage >= oqTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage >= oqTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
+                      </div>
                     </div>}
+                    </div>;
+                    })()}
                   </div>;
                 })()}
 
@@ -7466,14 +7493,25 @@ export default function FactoringDashboard() {
               var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
               return <div>
-              <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
+              {(function() {
+                var filteredOC = allCompleted;
+                if (ocSearch) { var q = ocSearch.toLowerCase(); filteredOC = filteredOC.filter(function(item) { return (item.id || "").toLowerCase().indexOf(q) > -1 || (item.supplierName || "").toLowerCase().indexOf(q) > -1 || (item.type || "").toLowerCase().indexOf(q) > -1 || (item.programName || "").toLowerCase().indexOf(q) > -1 || (item.invoiceId || "").toLowerCase().indexOf(q) > -1 || (item.invoiceIds ? item.invoiceIds.join(", ") : "").toLowerCase().indexOf(q) > -1 || (item.sourceInvoiceId || "").toLowerCase().indexOf(q) > -1 || (item.currency || "").toLowerCase().indexOf(q) > -1; }); }
+                var ocPageSize = 20;
+                var ocTotalPages = Math.max(1, Math.ceil(filteredOC.length / ocPageSize));
+                var ocCurPage = Math.min(ocPage, ocTotalPages - 1);
+                var ocPageItems = filteredOC.slice(ocCurPage * ocPageSize, (ocCurPage + 1) * ocPageSize);
+                return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments ({allCompleted.length})</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="text" value={ocSearch} onChange={function(e) { setOcSearch(e.target.value); setOcPage(0); }} placeholder="Search completed..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
+                    {ocSearch && <button onClick={function() { setOcSearch(""); setOcPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                  </div>
                 </div>
-                {allCompleted.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No completed outbound payments yet.</div> :
+                {filteredOC.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{ocSearch ? "No completed payments match your search." : "No completed outbound payments yet."}</div> :
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>{["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  {allCompleted.map(function(item) {
+                  {ocPageItems.map(function(item) {
                     var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : "#D97706";
                     var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Remittance" : (item.type || "Other");
                     var isOcExp = exp === "oc-" + item.id;
@@ -7502,7 +7540,15 @@ export default function FactoringDashboard() {
                     );
                   })}
                 </table></div>}
-              </div>
+                {ocTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {ocCurPage + 1} of {ocTotalPages} ({filteredOC.length} items)</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={ocCurPage === 0} onClick={function() { setOcPage(ocCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage === 0 ? "transparent" : "var(--card)", color: ocCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
+                    <button disabled={ocCurPage >= ocTotalPages - 1} onClick={function() { setOcPage(ocCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage >= ocTotalPages - 1 ? "transparent" : "var(--card)", color: ocCurPage >= ocTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage >= ocTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
+                  </div>
+                </div>}
+              </div>;
+              })()}
               {(function() {
                 var failedPayments = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).slice().reverse();
                 if (failedPayments.length === 0) return null;
@@ -7580,7 +7626,11 @@ export default function FactoringDashboard() {
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                {PAYMENTS_DB.filter(function(p) { var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; }).map(function(pay) {
+                {(function() { var filteredIncoming = PAYMENTS_DB.filter(function(p) { var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+                var inPageSize = 20;
+                var inTotalPages = Math.max(1, Math.ceil(filteredIncoming.length / inPageSize));
+                var inCurPage = Math.min(inPage, inTotalPages - 1);
+                return filteredIncoming.length === 0 ? <tbody><tr><td colSpan={7} style={{ padding: "24px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No payments match your filters.</td></tr></tbody> : <><tbody>{filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize).map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
                   var isPayExp = expPay === pay.paymentId;
@@ -7622,8 +7672,15 @@ export default function FactoringDashboard() {
                     <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {pay.notes && pay.notes.length > 0 ? "(" + pay.notes.length + ")" : ""}</div>{pay.notes && pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "#fff", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={expPay === pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "#fff", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
                   </td></tr>}
                   </tbody>;
-                })}
+                })}</tbody></>; })()}
               </table>
+            {inTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {inCurPage + 1} of {inTotalPages} ({filteredIncoming.length} payments)</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button disabled={inCurPage === 0} onClick={function() { setInPage(inCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
+                <button disabled={inCurPage >= inTotalPages - 1} onClick={function() { setInPage(inCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage >= inTotalPages - 1 ? "transparent" : "var(--card)", color: inCurPage >= inTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage >= inTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
+              </div>
+            </div>}
             </div>
           </div>
         </div>}
