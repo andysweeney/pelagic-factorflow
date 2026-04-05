@@ -2005,6 +2005,24 @@ export default function FactoringDashboard() {
     if (spqIdx === -1) return;
     var spq = SUPPLIER_PAYMENT_QUEUE[spqIdx];
     if (spq.status !== "Pending") return;
+
+    if (spq.type === "remittance") {
+      // For remittances: set status to Cancelled and remove the REMIT- allocation from the source payment
+      spq.status = "Cancelled";
+      var now = new Date();
+      spq.cancelledAt = now.toISOString();
+      spq.cancelledDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      if (spq.sourcePaymentId) {
+        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+        if (srcPay) {
+          srcPay.allocations = srcPay.allocations.filter(function(a) { return a.invoiceId !== "REMIT-" + spqId; });
+        }
+      }
+      auditLog("Supplier Payment Cancelled", spqId + " cancelled: " + money(spq.amount, spq.currency) + " remittance to " + spq.supplierName, { queueId: spqId, supplierName: spq.supplierName, supplierId: spq.supplierId, amount: spq.amount, currency: spq.currency, sourcePaymentId: spq.sourcePaymentId, programId: spq.programId, programName: spq.programName });
+      setDataVer(function(v) { return v + 1; });
+      return;
+    }
+
     // Find the associated HBP and remove the supplier disbursement allocation
     var hbp = HOLDBACK_PAYMENTS_DB.find(function(x) { return x.hbPaymentId === spq.hbPaymentId; });
     if (hbp) {
@@ -3197,7 +3215,7 @@ export default function FactoringDashboard() {
               ),
               React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 } },
                 React.createElement(PortalStat, { label: "Total Payments", value: String(spAllPaymentsToYou.length), color: spAccent }),
-                React.createElement(PortalStat, { label: "Total Received", value: money(r2(spAllPaymentsToYou.reduce(function(s, p) { return s + p.amount; }, 0)), spDisplayCcy), color: spGreen }),
+                React.createElement(PortalStat, { label: "Total Received", value: money(r2(spAllPaymentsToYou.filter(function(p) { return p.status === "Completed"; }).reduce(function(s, p) { return s + p.amount; }, 0)), spDisplayCcy), color: spGreen }),
                 React.createElement(PortalStat, { label: "Funding Payments", value: String(spFundingPays.length), color: "#3B82F6" }),
                 React.createElement(PortalStat, { label: "Holdback Returns", value: String(spHoldbackPays.length), color: "#8B5CF6" })
               ),
@@ -3226,7 +3244,7 @@ export default function FactoringDashboard() {
                           React.createElement("td", { style: Object.assign({}, portalTd, { color: spMuted }) }, p.currency),
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontSize: 11 }) }, p.reference),
                           React.createElement("td", { style: portalTd },
-                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: p.status === "Completed" ? spGreen : spAmber } }, p.status)
+                            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: p.status === "Completed" ? spGreen : p.status === "Failed" ? spRed : p.status === "Cancelled" ? spMuted : spAmber } }, p.status)
                           )
                         );
                       })
@@ -9827,7 +9845,7 @@ export default function FactoringDashboard() {
                           if (prog) prog.currentFundedBalance = r2(Math.max(0, (prog.currentFundedBalance || 0) - raw.capitalDue));
                         }
                       });
-                      auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
+                      auditLog("Funding Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". " + ids.length + " invoice(s) returned to Funding Queue.", { completedPaymentId: item.id, invoiceIds: ids, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
                     } else if (item.type === "disbursal") {
                       var fIds = item.flowIds || [];
                       fIds.forEach(function(flowId) {
@@ -9842,12 +9860,22 @@ export default function FactoringDashboard() {
                           });
                         });
                       });
-                      auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency });
+                      auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency, programId: item.programId, programName: item.programName });
+                    } else if (item.type === "remittance") {
+                      // Remittance failure — do NOT create a duplicate pending entry
+                      // Remove the REMIT- allocation from the source payment to free the balance
+                      if (item.sourcePaymentId) {
+                        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === item.sourcePaymentId; });
+                        if (srcPay) {
+                          srcPay.allocations = srcPay.allocations.filter(function(a) { return !(a.remittance && a.invoiceId === "REMIT-" + item.id); });
+                        }
+                      }
+                      auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
                     } else {
                       // Holdback — create a new pending copy and mark this as failed
                       var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
                       SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
-                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName });
+                      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
                     }
 
                     // Mark the original record as Failed
