@@ -1606,6 +1606,40 @@ export default function FactoringDashboard() {
   function getPayStatus(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); if (al < 0.01) return "unallocated"; if (al >= pay.amount - 0.01) return "allocated"; return "partial"; }
   function getPayRemaining(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); return r2(Math.max(0, pay.amount - al)); }
   var cf1 = useState(null), confirmData = cf1[0], setConfirmData = cf1[1];
+  function buildInvoiceStatement(inv) {
+    if (!inv.fundedDate) return [];
+    var rows = [];
+    // Row 1: Funding executed — opening balances
+    rows.push({ date: inv.fundedDate, event: "Funding Executed", cap: inv.capitalDue, int: inv.interestCharged, pen: 0, hb: inv.deferredPayment || r2((inv.holdback || 0) - (inv.interestCharged || 0)), type: "opening" });
+    // Work backwards from final balances to reconstruct each payment's before/after
+    // Final balances are the current outstanding amounts
+    var endCap = inv.capitalOutstanding || 0;
+    var endInt = inv.interestOutstanding || 0;
+    var endPen = inv.penaltyInterest || 0;
+    var endHb = inv.holdbackOutstanding || 0;
+    // Reverse through payments to build opening balances
+    var pays = (inv.payments || []).slice();
+    // Build snapshots working backwards
+    var snapshots = [];
+    for (var i = pays.length - 1; i >= 0; i--) {
+      var p = pays[i];
+      var closeCap = endCap, closeInt = endInt, closePen = endPen, closeHb = endHb;
+      var openCap = r2(closeCap + (p.appliedToCapital || 0));
+      var openInt = r2(closeInt + (p.appliedToInterest || 0));
+      var openPen = r2(closePen + (p.appliedToPenalty || 0));
+      var openHb = r2(closeHb + (p.appliedToHoldback || 0));
+      snapshots.unshift({ pay: p, openCap: openCap, openInt: openInt, openPen: openPen, openHb: openHb, closeCap: closeCap, closeInt: closeInt, closePen: closePen, closeHb: closeHb });
+      endCap = openCap; endInt = openInt; endPen = openPen; endHb = openHb;
+    }
+    // Build statement rows from snapshots
+    snapshots.forEach(function(s) {
+      rows.push({ date: s.pay.date, event: "Previous Balance", cap: s.openCap, int: s.openInt, pen: s.openPen, hb: s.openHb, type: "balance" });
+      rows.push({ date: s.pay.date, event: s.pay.paymentId + " applied", cap: -(s.pay.appliedToCapital || 0), int: -(s.pay.appliedToInterest || 0), pen: -(s.pay.appliedToPenalty || 0), hb: -(s.pay.appliedToHoldback || 0), type: "payment" });
+      rows.push({ date: s.pay.date, event: "Closing Balance", cap: s.closeCap, int: s.closeInt, pen: s.closePen, hb: s.closeHb, type: "balance" });
+    });
+    return rows;
+  }
+
   function confirmAllocation() {
     if (!allocPay || allocs.length === 0) return;
     var aff = {}; allocs.forEach(function(a) { aff[a.invoiceId] = true; });
@@ -3012,6 +3046,40 @@ export default function FactoringDashboard() {
                                     )
                                   );
                                 })(),
+                                /* Position Statement */
+                                (function() {
+                                  var stRows = buildInvoiceStatement(inv);
+                                  if (stRows.length === 0) return null;
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12 } }, "Position Statement"),
+                                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                      React.createElement("thead", null,
+                                        React.createElement("tr", null,
+                                          ["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) {
+                                            return React.createElement("th", { key: h, style: { textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h);
+                                          })
+                                        )
+                                      ),
+                                      React.createElement("tbody", null,
+                                        stRows.map(function(r, ri) {
+                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isPay = r.type === "payment";
+                                          var rowBg = isBal ? spCard : "transparent";
+                                          var borderStyle = (ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening") ? "2px solid " + spBorder : "1px solid " + spBorder + "60";
+                                          function valStyle(v) { return { padding: "6px 10px", fontSize: 11, fontFamily: spMono, textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : (v > 0.01 ? spText : spMuted) }; }
+                                          return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, background: rowBg } },
+                                            React.createElement("td", { style: { padding: "6px 10px", fontSize: 11, color: spText, whiteSpace: "nowrap" } }, fmt(r.date)),
+                                            React.createElement("td", { style: { padding: "6px 10px", fontSize: 11, color: isPay ? spAccent : isBal ? spText : spMuted, fontWeight: isBal ? 600 : 400 } }, r.event),
+                                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)),
+                                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)),
+                                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)),
+                                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), inv.currency) : money(Math.abs(r.hb), inv.currency))
+                                          );
+                                        })
+                                      )
+                                    )
+                                  );
+                                })(),
                                 /* Payment Waterfall (from processForDate) */
                                 inv.payments && inv.payments.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                   React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12 } }, "Payment Waterfall (" + inv.payments.length + ")"),
@@ -3976,6 +4044,32 @@ export default function FactoringDashboard() {
                                       {inv.adjustments.slice().reverse().map(function(a, ai) { return <div key={ai} style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", padding: "3px 0", borderBottom: "1px solid #f0f1f5", color: a.type === "credit" ? "#059669" : "#D97706" }}>{a.display} — {a.type === "credit" ? "Credit" : "Debit"}: Pen {money(a.penalty, inv.currency)} | Int {money(a.interest, inv.currency)} | Cap {money(a.capital, inv.currency)} = {money(a.total, inv.currency)}</div>; })}
                                     </div>}
                                   </div>}
+                                  {/* Position Statement */}
+                                  {(function() {
+                                    var stRows = buildInvoiceStatement(inv);
+                                    if (stRows.length === 0) return null;
+                                    return <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#0F172A", marginBottom: 6 }}>Position Statement</div>
+                                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                                        <tbody>{stRows.map(function(r, ri) {
+                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isPay = r.type === "payment";
+                                          var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening" ? "2px solid var(--border)" : "1px solid var(--border)";
+                                          function vs(v) { return { padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                                          return <tr key={ri} style={{ borderBottom: borderStyle, background: isBal ? "#F8FAFC" : "transparent" }}>
+                                            <td style={{ padding: "4px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(r.date)}</td>
+                                            <td style={{ padding: "4px 8px", fontSize: 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isBal ? 600 : 400 }}>{r.event}</td>
+                                            <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)}</td>
+                                            <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)}</td>
+                                            <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)}</td>
+                                            <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), inv.currency) : money(Math.abs(r.hb), inv.currency)}</td>
+                                          </tr>;
+                                        })}</tbody>
+                                      </table>
+                                    </div>;
+                                  })()}
+
                                   {/* Payments from Buyer */}
                                   {inv.payments.length > 0 && <div style={{ marginBottom: 10 }}>
                                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
@@ -6589,6 +6683,32 @@ export default function FactoringDashboard() {
                                       {inv.adjustments.slice().reverse().map(function(a, ai) { return <div key={ai} style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", padding: "3px 0", borderBottom: "1px solid #f0f1f5", color: a.type === "credit" ? "#059669" : "#D97706" }}>{a.display} — {a.type === "credit" ? "Credit" : "Debit"}: Pen {money(a.penalty, inv.currency)} | Int {money(a.interest, inv.currency)} | Cap {money(a.capital, inv.currency)} = {money(a.total, inv.currency)}</div>; })}
                                     </div>}
                                   </div>}
+                                  {/* Position Statement */}
+                                  {(function() {
+                                    var stRows = buildInvoiceStatement(inv);
+                                    if (stRows.length === 0) return null;
+                                    return <div style={{ marginBottom: 10 }}>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#0F172A", marginBottom: 6 }}>Position Statement</div>
+                                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                                        <tbody>{stRows.map(function(r, ri) {
+                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isPay = r.type === "payment";
+                                          var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening" ? "2px solid var(--border)" : "1px solid var(--border)";
+                                          function vs(v) { return { padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                                          return <tr key={ri} style={{ borderBottom: borderStyle, background: isBal ? "#F8FAFC" : "transparent" }}>
+                                            <td style={{ padding: "4px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(r.date)}</td>
+                                            <td style={{ padding: "4px 8px", fontSize: 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isBal ? 600 : 400 }}>{r.event}</td>
+                                            <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)}</td>
+                                            <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)}</td>
+                                            <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)}</td>
+                                            <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), inv.currency) : money(Math.abs(r.hb), inv.currency)}</td>
+                                          </tr>;
+                                        })}</tbody>
+                                      </table>
+                                    </div>;
+                                  })()}
+
                                   {/* Payments from Buyer */}
                                   {inv.payments.length > 0 && <div style={{ marginBottom: 10 }}>
                                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
