@@ -2945,6 +2945,7 @@ export default function FactoringDashboard() {
                                     React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.capitalOutstanding || 0) > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(inv.capitalOutstanding || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.interestOutstanding || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.interestOutstanding || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.penaltyAccrued || 0) > 0.01 ? spRed : spGreen }) }, money(inv.penaltyAccrued || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.penaltyInterest || 0) > 0.01 ? spRed : spGreen }) }, money(inv.penaltyInterest || 0, inv.currency))),
                                     React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: Object.assign({}, spLbl, { fontWeight: 700, color: spText }) }, "Total Outstanding Balance"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700, fontSize: 14 }) }, money(inv.balanceOwed || 0, inv.currency))),
@@ -3899,7 +3900,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || inv.penaltyInterest, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#0F172A" : "#059669", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
@@ -6512,7 +6513,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || inv.penaltyInterest, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid #e5e7eb", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#0F172A" : "#059669", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
@@ -8054,14 +8055,17 @@ export default function FactoringDashboard() {
                 // Build set of invoice IDs that already have allocations in the working set
                 var allocatedInvIds = {};
                 allocs.forEach(function(a) { allocatedInvIds[a.invoiceId] = true; });
-                // Build set of fully repaid invoice IDs from main viewData
-                var fullyRepaidIds = {};
-                viewData.invoices.forEach(function(inv) { if (inv.fundingStatus === "fully_repaid") fullyRepaidIds[inv.id] = true; });
+                // Build set of fully settled invoice IDs — only exclude when total buyer payments >= invoice face value
+                var fullySettledIds = {};
+                viewData.invoices.forEach(function(inv) {
+                  if (inv.paymentsToInvoice >= (inv.amount || 0) - 0.01 && inv.amount > 0.01) fullySettledIds[inv.id] = true;
+                });
                 var eligible = allocViewData.invoices.filter(function(inv) {
                   if (inv.currency !== allocPay.currency) return false;
                   // Always include invoices that already have allocations in the working set
                   if (allocatedInvIds[inv.id]) return true;
-                  if (fullyRepaidIds[inv.id]) return false;
+                  // Exclude only when full invoice value has been paid by buyers
+                  if (fullySettledIds[inv.id]) return false;
                   // Funded invoices with outstanding balance
                   if (inv.totalOutstanding > 0.01) return true;
                   // Zero-funded invoices (capitalDue === 0 but funded) — payments to be returned to supplier
