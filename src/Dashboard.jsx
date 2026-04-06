@@ -1635,14 +1635,20 @@ export default function FactoringDashboard() {
     snapshots.forEach(function(s) {
       rows.push({ date: s.pay.date, event: "Previous Balance", cap: s.openCap, int: s.openInt, pen: s.openPen, hb: s.openHb, type: "balance" });
       rows.push({ date: s.pay.date, event: s.pay.paymentId + " applied", cap: -(s.pay.appliedToCapital || 0), int: -(s.pay.appliedToInterest || 0), pen: -(s.pay.appliedToPenalty || 0), hb: -(s.pay.appliedToHoldback || 0), type: "payment" });
-      rows.push({ date: s.pay.date, event: "Closing Balance", cap: s.closeCap, int: s.closeInt, pen: s.closePen, hb: s.closeHb, type: "balance" });
+      rows.push({ date: s.pay.date, event: "Closing Balance", cap: s.closeCap, int: s.closeInt, pen: s.closePen, hb: s.closeHb, type: "closing" });
     });
     return rows;
   }
 
   function confirmAllocation() {
-    if (!allocPay || allocs.length === 0) return;
+    if (!allocPay) return;
+    // Filter out zero-amount entries — these are "removed" allocations
+    var activeAllocs = allocs.filter(function(a) { return a.amount > 0.001; });
+    // Build affected invoice set from ALL allocs (including zeros) so existing allocations to zeroed invoices get removed
     var aff = {}; allocs.forEach(function(a) { aff[a.invoiceId] = true; });
+    // Also include any existing payment allocations that aren't in the working set (they should be preserved)
+    // If activeAllocs is empty but there are affected invoices, this is an unallocation
+    if (activeAllocs.length === 0 && Object.keys(aff).length === 0) return;
     var later = [];
     PAYMENTS_DB.forEach(function(p) { if (p.paymentId === allocPay.paymentId || p.date <= allocPay.date) return; var c = p.allocations.filter(function(a) { return aff[a.invoiceId]; }); if (c.length > 0) later.push({ pid: p.paymentId, invs: c.map(function(a) { return a.invoiceId; }) }); });
     if (later.length > 0) {
@@ -1670,12 +1676,13 @@ export default function FactoringDashboard() {
         if (dedupMap[a.invoiceId]) { dedupMap[a.invoiceId].amount = r2(dedupMap[a.invoiceId].amount + a.amount); }
         else { dedupMap[a.invoiceId] = { invoiceId: a.invoiceId, amount: a.amount, allocDate: (a.allocDate && a.allocDate !== allocPay.date) ? a.allocDate : null }; }
       });
-      Object.keys(dedupMap).forEach(function(iid) { var entry = { invoiceId: iid, amount: dedupMap[iid].amount }; if (dedupMap[iid].allocDate) entry.allocDate = dedupMap[iid].allocDate; pay.allocations.push(entry); });
+      Object.keys(dedupMap).forEach(function(iid) { if (dedupMap[iid].amount < 0.001) return; var entry = { invoiceId: iid, amount: dedupMap[iid].amount }; if (dedupMap[iid].allocDate) entry.allocDate = dedupMap[iid].allocDate; pay.allocations.push(entry); });
     }
-    var allocSnapshot = allocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
-    auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + allocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
+    var activeAllocs = allocs.filter(function(a) { return a.amount > 0.001; });
+    var allocSnapshot = activeAllocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
+    if (activeAllocs.length > 0) auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(activeAllocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + activeAllocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
     // Create outbound payment queue entries for allocations to unfunded invoices
-    allocs.forEach(function(a) {
+    activeAllocs.forEach(function(a) {
       var rawInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
       if (!rawInv) return;
       var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
@@ -3068,14 +3075,15 @@ export default function FactoringDashboard() {
                                       ),
                                       React.createElement("tbody", null,
                                         stRows.map(function(r, ri) {
-                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isBal = r.type === "balance" || r.type === "opening" || r.type === "closing";
                                           var isPay = r.type === "payment";
                                           var rowBg = isBal ? spCard : "transparent";
                                           var borderStyle = (ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening") ? "2px solid " + spBorder : "1px solid " + spBorder + "60";
-                                          function valStyle(v) { return { padding: "6px 10px", fontSize: 11, fontFamily: spMono, textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : (v > 0.01 ? spText : spMuted) }; }
+                                          var isClose = r.type === "closing";
+                                          function valStyle(v) { return { padding: "6px 10px", fontSize: isClose ? 12 : 11, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : (v > 0.01 ? spText : spMuted) }; }
                                           return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, background: rowBg } },
                                             React.createElement("td", { style: { padding: "6px 10px", fontSize: 11, color: spText, whiteSpace: "nowrap" } }, fmt(r.date)),
-                                            React.createElement("td", { style: { padding: "6px 10px", fontSize: 11, color: isPay ? spAccent : isBal ? spText : spMuted, fontWeight: isBal ? 600 : 400 } }, r.event),
+                                            React.createElement("td", { style: { padding: "6px 10px", fontSize: isClose ? 12 : 11, color: isPay ? spAccent : isBal ? spText : spMuted, fontWeight: isClose ? 700 : isBal ? 600 : 400 } }, r.event),
                                             React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)),
                                             React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)),
                                             React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)),
@@ -4059,13 +4067,14 @@ export default function FactoringDashboard() {
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{stRows.map(function(r, ri) {
-                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isBal = r.type === "balance" || r.type === "opening" || r.type === "closing";
                                           var isPay = r.type === "payment";
                                           var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening" ? "2px solid var(--border)" : "1px solid var(--border)";
-                                          function vs(v) { return { padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                                          var isClose = r.type === "closing";
+                                          function vs(v) { return { padding: "4px 8px", fontSize: isClose ? 12 : 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
                                           return <tr key={ri} style={{ borderBottom: borderStyle, background: isBal ? "#F8FAFC" : "transparent" }}>
                                             <td style={{ padding: "4px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(r.date)}</td>
-                                            <td style={{ padding: "4px 8px", fontSize: 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isBal ? 600 : 400 }}>{r.event}</td>
+                                            <td style={{ padding: "4px 8px", fontSize: isClose ? 12 : 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isClose ? 700 : isBal ? 600 : 400 }}>{r.event}</td>
                                             <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)}</td>
                                             <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)}</td>
                                             <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)}</td>
@@ -6698,13 +6707,14 @@ export default function FactoringDashboard() {
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{stRows.map(function(r, ri) {
-                                          var isBal = r.type === "balance" || r.type === "opening";
+                                          var isBal = r.type === "balance" || r.type === "opening" || r.type === "closing";
                                           var isPay = r.type === "payment";
                                           var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && stRows[ri + 1].type === "balance" && r.type !== "opening" ? "2px solid var(--border)" : "1px solid var(--border)";
-                                          function vs(v) { return { padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                                          var isClose = r.type === "closing";
+                                          function vs(v) { return { padding: "4px 8px", fontSize: isClose ? 12 : 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
                                           return <tr key={ri} style={{ borderBottom: borderStyle, background: isBal ? "#F8FAFC" : "transparent" }}>
                                             <td style={{ padding: "4px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(r.date)}</td>
-                                            <td style={{ padding: "4px 8px", fontSize: 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isBal ? 600 : 400 }}>{r.event}</td>
+                                            <td style={{ padding: "4px 8px", fontSize: isClose ? 12 : 11, color: isPay ? "var(--accent)" : "var(--text)", fontWeight: isClose ? 700 : isBal ? 600 : 400 }}>{r.event}</td>
                                             <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), inv.currency) : money(Math.abs(r.cap), inv.currency)}</td>
                                             <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), inv.currency) : money(Math.abs(r.int), inv.currency)}</td>
                                             <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), inv.currency) : money(Math.abs(r.pen), inv.currency)}</td>
@@ -8242,9 +8252,9 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, ms, { color: "var(--text)" })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : <span>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</span>}</td>
                       <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? money(inv.amount, inv.currency) : money(adjTotal, inv.currency)}</td>
                       <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); var entry = { invoiceId: iid, amount: r2(val) }; if (ad !== allocPay.date) entry.allocDate = ad; return val > 0.001 ? w.concat([entry]) : w; }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
+                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); var entry = { invoiceId: iid, amount: r2(val) }; if (ad !== allocPay.date) entry.allocDate = ad; return w.concat([entry]); }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
                         {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var entry = { invoiceId: iid, amount: val }; if (ad !== allocPay.date) entry.allocDate = ad; return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([entry]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
-                        {aa > 0 && <button onClick={function() { var iid = inv.id; setAllocs(function(prev) { return prev.filter(function(a) { return a.invoiceId !== iid; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#DC2626", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
+                        {aa > 0 && <button onClick={function() { var iid = inv.id; setAllocs(function(prev) { return prev.map(function(a) { return a.invoiceId === iid ? Object.assign({}, a, { amount: 0 }) : a; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#DC2626", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
                       </div></td>
                     </tr>;
                   })}</tbody>
