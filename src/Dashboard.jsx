@@ -7731,8 +7731,7 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      {status !== "allocated" && <button onClick={function(e) { e.stopPropagation(); setAllocPay(pay); setAllocs([]); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Allocate</button>}
-                      {status !== "unallocated" && <button onClick={function(e) { e.stopPropagation(); unallocatePayment(pay.paymentId); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Unallocate</button>}
+                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -7882,7 +7881,8 @@ export default function FactoringDashboard() {
           <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Allocating: {allocPay.paymentId}</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{money(allocPay.amount, allocPay.currency)} - {fmt(allocPay.date)}</div></div>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{money(Math.max(0, getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0)), allocPay.currency)}</div></div>
+              <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{money(Math.max(0, (function() { var remitTotal = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitTotal += q.amount; }); return r2(allocPay.amount - remitTotal - allocs.reduce(function(s, a) { return s + a.amount; }, 0)); })()), allocPay.currency)}</div></div>
+              {allocs.length > 0 && <button onClick={function() { setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear All</button>}
               <button onClick={function() { setAllocPay(null); setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
@@ -7895,7 +7895,8 @@ export default function FactoringDashboard() {
             </div>
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
               {allocViewData && (function() {
-                var avail = getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                var remitTotal = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitTotal += q.amount; });
+                var avail = r2(allocPay.amount - remitTotal) - allocs.reduce(function(s, a) { return s + a.amount; }, 0);
                 // Build set of fully repaid invoice IDs from main viewData
                 var fullyRepaidIds = {};
                 viewData.invoices.forEach(function(inv) { if (inv.fundingStatus === "fully_repaid") fullyRepaidIds[inv.id] = true; });
@@ -7962,7 +7963,7 @@ export default function FactoringDashboard() {
               })()}
             </div>
           </div>
-          {(allocs.length > 0 || getPayRemaining(allocPay) > 0.01) && <div style={{ padding: "16px 22px" }}>
+          {(function() { var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); return allocs.length > 0 || r2(allocPay.amount - remitT) > 0.01; })() && <div style={{ padding: "16px 22px" }}>
             {confirmData && <div style={{ marginBottom: 14, padding: "14px 18px", borderRadius: 10, background: "#C08B3010", border: "1px solid #C08B3040" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#D97706", marginBottom: 8 }}>Later-dated payments will be unallocated:</div>
               {confirmData.later.map(function(l) { return <div key={l.pid} style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", marginBottom: 2 }}>{l.pid} ({l.invs.join(", ")})</div>; })}
@@ -7975,14 +7976,14 @@ export default function FactoringDashboard() {
               <div style={{ fontSize: 13 }}>
                 {allocs.length > 0 && React.createElement("span", null, React.createElement("span", { style: { color: "var(--muted)" } }, "Allocating: "), React.createElement("span", { style: { color: "#059669", fontWeight: 600 } }, money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency)), React.createElement("span", { style: { color: "var(--muted)" } }, " to " + allocs.length + " invoice" + (allocs.length !== 1 ? "s" : "")))}
                 {(function() {
-                  var remBal = r2(getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
+                  var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); var remBal = r2(allocPay.amount - remitT - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
                   return remBal > 0.01 ? React.createElement("span", { style: { color: "var(--muted)", marginLeft: allocs.length > 0 ? 12 : 0 } }, "Remaining: ", React.createElement("span", { style: { color: "var(--accent)", fontWeight: 600 } }, money(remBal, allocPay.currency))) : null;
                 })()}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {allocs.length > 0 && <button onClick={confirmAllocation} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 14px #2B4C7E40" }}>Confirm Allocation</button>}
                 {(function() {
-                  var remBal = r2(getPayRemaining(allocPay) - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
+                  var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); var remBal = r2(allocPay.amount - remitT - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
                   if (remBal < 0.01) return null;
                   return <button onClick={function() { setRemitPopup({ paymentId: allocPay.paymentId, amount: remBal, currency: allocPay.currency, supplier: "", programId: "" }); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #059669", background: "#05966910", color: "#059669", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Remit {money(remBal, allocPay.currency)} to Supplier</button>;
                 })()}
