@@ -2948,7 +2948,15 @@ export default function FactoringDashboard() {
                                     React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: Object.assign({}, spLbl, { fontWeight: 700, color: spText }) }, "Total Outstanding Balance"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.balanceOwed || 0) > 0.01 ? spRed : spGreen, fontWeight: 700, fontSize: 14 }) }, money(inv.balanceOwed || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Total Repaid"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, money(inv.totalRepaid || 0, inv.currency))),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : spMuted }) }, money(inv.holdbackAvailable || 0, inv.currency)))
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Total Funds Applied"), React.createElement("span", { style: Object.assign({}, spVal, { color: spGreen }) }, money(inv.totalFundsApplied || 0, inv.currency))),
+                                    React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Due"), React.createElement("span", { style: spVal }, money(inv.deferredPayment || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Received"), React.createElement("span", { style: spVal }, money(inv.holdbackReceived || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback O/S"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackOutstanding || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.holdbackOutstanding || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Available"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.holdbackAvailable || 0) > 0.01 ? "#8B5CF6" : (inv.holdbackAvailable || 0) < -0.01 ? spRed : spMuted }) }, (inv.holdbackAvailable || 0) < -0.01 ? money(Math.abs(inv.holdbackAvailable), inv.currency) : money(inv.holdbackAvailable || 0, inv.currency))),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Holdback Disbursed"), React.createElement("span", { style: spVal }, money(inv.holdbackDisbursed || 0, inv.currency))),
+                                    inv.holdbackOverdrawn > 0.01 ? React.createElement("div", { style: { marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B10", border: "1px solid #C0392B30" } }, React.createElement("span", { style: { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: spRed } }, "Holdback Overdrawn: "), React.createElement("span", { style: { fontSize: 10, fontFamily: spMono, color: spRed, fontWeight: 700 } }, money(inv.holdbackOverdrawn, inv.currency))) : null,
+                                    inv.writeOffTotal > 0 ? React.createElement("div", { style: { marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#78716c10", border: "1px solid #78716c30" } }, React.createElement("span", { style: { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: spMuted } }, "Written Off: "), React.createElement("span", { style: { fontSize: 10, fontFamily: spMono, color: spMuted } }, "Pen " + money(inv.writeOffPenalty, inv.currency) + " | Int " + money(inv.writeOffInterest, inv.currency) + " | Cap " + money(inv.writeOffCapital, inv.currency) + " = " + money(inv.writeOffTotal, inv.currency))) : null
                                   ) : null
                                 ),
                                 /* Status History */
@@ -3002,6 +3010,86 @@ export default function FactoringDashboard() {
                                     )
                                   );
                                 })(),
+                                /* Payment Waterfall (from processForDate) */
+                                inv.payments && inv.payments.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                  React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12 } }, "Payment Waterfall (" + inv.payments.length + ")"),
+                                  React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                    React.createElement("thead", null,
+                                      React.createElement("tr", null,
+                                        ["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) {
+                                          return React.createElement("th", { key: h, style: { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h);
+                                        })
+                                      )
+                                    ),
+                                    React.createElement("tbody", null,
+                                      inv.payments.map(function(p, pi) {
+                                        return React.createElement("tr", { key: pi, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAccent } }, p.paymentId),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spText } }, fmt(p.date)),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spGreen } }, money(p.amount, inv.currency)),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spRed } }, p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAmber } }, p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spText } }, p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: "#8B5CF6" } }, p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014")
+                                        );
+                                      })
+                                    )
+                                  )
+                                ) : null,
+                                /* Payments to Supplier */
+                                (function() {
+                                  var supPayments = [];
+                                  if (inv.fundingStatus !== "pending" && inv.fundedDate) supPayments.push({ type: "Cash Advance", id: inv.id, date: inv.fundedDate, amount: inv.capitalDue, currency: inv.currency, description: "Capital advanced on funding" });
+                                  HOLDBACK_PAYMENTS_DB.forEach(function(hbp) { if (hbp.sourceInvoiceId !== inv.id) return; hbp.allocations.forEach(function(a) { if (a.type === "disbursement") supPayments.push({ type: "Holdback Return", id: hbp.hbPaymentId, date: hbp.date, amount: a.amount, currency: hbp.currency, description: "Holdback returned to supplier" }); else if (a.type === "invoice") supPayments.push({ type: "Holdback to Invoice", id: hbp.hbPaymentId, date: hbp.date, amount: a.amount, currency: hbp.currency, description: "Applied to " + a.targetId }); }); });
+                                  if (supPayments.length === 0) return null;
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12 } }, "Payments to Supplier (" + supPayments.length + ")"),
+                                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                      React.createElement("thead", null, React.createElement("tr", null, ["Type", "Ref", "Date", "Amount"].map(function(h) { return React.createElement("th", { key: h, style: { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h); }))),
+                                      React.createElement("tbody", null, supPayments.map(function(sp, si) {
+                                        var tc = sp.type === "Cash Advance" ? spAccent : sp.type === "Holdback Return" ? "#8B5CF6" : spAmber;
+                                        return React.createElement("tr", { key: si, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontWeight: 600, color: tc } }, sp.type),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAccent } }, sp.id),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spText } }, fmt(sp.date)),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spGreen, fontWeight: 600 } }, money(sp.amount, sp.currency))
+                                        );
+                                      }))
+                                    )
+                                  );
+                                })(),
+                                /* Credit Notes Applied */
+                                (function() {
+                                  var invCNs = [];
+                                  CREDIT_NOTES_DB.forEach(function(cn) { if (cn.allocations) cn.allocations.forEach(function(a) { if (a.invoiceId === inv.id) invCNs.push({ creditNoteId: cn.creditNoteId, date: cn.date, reference: cn.reference, totalAmount: cn.amount, allocatedAmount: a.amount, currency: cn.currency }); }); });
+                                  if (invCNs.length === 0) return null;
+                                  var totalDilution = invCNs.reduce(function(s, c) { return s + c.allocatedAmount; }, 0);
+                                  return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                    React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAmber, marginBottom: 12 } }, "Credit Notes Applied (" + invCNs.length + ")"),
+                                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                                      React.createElement("thead", null, React.createElement("tr", null, ["CN ID", "Date", "CN Amount", "Applied"].map(function(h) { return React.createElement("th", { key: h, style: { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder } }, h); }))),
+                                      React.createElement("tbody", null, invCNs.map(function(c, ci) {
+                                        return React.createElement("tr", { key: ci, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAmber, fontWeight: 600 } }, c.creditNoteId),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spText } }, fmt(c.date)),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono } }, money(c.totalAmount, c.currency)),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spRed, fontWeight: 600 } }, money(c.allocatedAmount, c.currency))
+                                        );
+                                      })),
+                                      React.createElement("tfoot", null, React.createElement("tr", { style: { borderTop: "2px solid " + spBorder } }, React.createElement("td", { colSpan: 3, style: { padding: "8px 10px", fontSize: 11, fontWeight: 700, textAlign: "right", color: spText } }, "Total Dilution:"), React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spRed, fontWeight: 700 } }, money(r2(totalDilution), inv.currency))))
+                                    )
+                                  );
+                                })(),
+                                /* Adjustment History */
+                                inv.adjustments && inv.adjustments.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
+                                  React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Adjustments (" + inv.adjustments.length + ")"),
+                                  inv.adjustments.slice().reverse().map(function(a, ai) {
+                                    return React.createElement("div", { key: ai, style: { padding: "6px 0", borderBottom: ai < inv.adjustments.length - 1 ? "1px solid " + spBorder + "60" : "none", fontSize: 11, fontFamily: spMono, color: a.type === "credit" ? spGreen : spAmber } },
+                                      React.createElement("span", { style: { color: spMuted, marginRight: 8 } }, a.display),
+                                      a.type === "credit" ? "Credit" : "Debit", ": Pen ", money(a.penalty || 0, inv.currency), " | Int ", money(a.interest || 0, inv.currency), " | Cap ", money(a.capital || 0, inv.currency), " = ", money(a.total || 0, inv.currency)
+                                    );
+                                  })
+                                ) : null,
                                 /* Audit Log for this Invoice */
                                 (function() {
                                   var invAudit = AUDIT_LOG.filter(function(e) {
