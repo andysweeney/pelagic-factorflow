@@ -1593,8 +1593,8 @@ export default function FactoringDashboard() {
   var tp = Math.ceil(filtered.length / PS) || 1;
   var st = viewData.stats;
   function doSort(f) { if (sf === f) setSd(function(d) { return d === "asc" ? "desc" : "asc"; }); else { setSf(f); setSd("desc"); } setPg(0); }
-  function getPayStatus(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); if (al < 0.01) return "unallocated"; if (al >= pay.amount - 0.01) return "allocated"; return "partial"; }
-  function getPayRemaining(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); return r2(pay.amount - al); }
+  function getPayStatus(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); if (al < 0.01) return "unallocated"; if (al >= pay.amount - 0.01) return "allocated"; return "partial"; }
+  function getPayRemaining(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); return r2(Math.max(0, pay.amount - al)); }
   var cf1 = useState(null), confirmData = cf1[0], setConfirmData = cf1[1];
   function confirmAllocation() {
     if (!allocPay || allocs.length === 0) return;
@@ -1682,11 +1682,7 @@ export default function FactoringDashboard() {
       createdDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
       sourcePaymentId: paymentId
     });
-    // Record the remittance as a special allocation on the source payment to reduce its available balance
-    var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === paymentId; });
-    if (pay) {
-      pay.allocations.push({ invoiceId: "REMIT-" + spqId, amount: r2(amount), remittance: true, supplierId: supplierEntityId, supplierName: displayName });
-    }
+    // Balance reduction is now handled by getPayRemaining/getPayStatus checking SUPPLIER_PAYMENT_QUEUE directly
     auditLog("Remittance Queued", spqId + ": " + money(r2(amount), currency) + " queued for remittance to " + displayName + " (" + (prog ? prog.name : "") + ")", { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", programName: prog ? prog.name : "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
@@ -1725,12 +1721,7 @@ export default function FactoringDashboard() {
       });
       auditLog("Disbursal Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + (item.serviceProvider || "") + ". " + fIds.length + " disbursal(s) returned to queue.", { completedPaymentId: item.id, flowIds: fIds, amount: item.amount, currency: item.currency, programId: item.programId, programName: item.programName });
     } else if (item.type === "remittance") {
-      if (item.sourcePaymentId) {
-        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === item.sourcePaymentId; });
-        if (srcPay) {
-          srcPay.allocations = srcPay.allocations.filter(function(a) { return !(a.remittance && a.invoiceId === "REMIT-" + item.id); });
-        }
-      }
+      // getPayRemaining excludes Failed entries automatically — no allocation cleanup needed
       auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
     } else {
       var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
@@ -2066,17 +2057,11 @@ export default function FactoringDashboard() {
     if (spq.status !== "Pending") return;
 
     if (spq.type === "remittance") {
-      // For remittances: set status to Cancelled and remove the REMIT- allocation from the source payment
+      // For remittances: set status to Cancelled — getPayRemaining excludes Cancelled entries automatically
       spq.status = "Cancelled";
       var now = new Date();
       spq.cancelledAt = now.toISOString();
       spq.cancelledDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-      if (spq.sourcePaymentId) {
-        var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
-        if (srcPay) {
-          srcPay.allocations = srcPay.allocations.filter(function(a) { return a.invoiceId !== "REMIT-" + spqId; });
-        }
-      }
       auditLog("Supplier Payment Cancelled", spqId + " cancelled: " + money(spq.amount, spq.currency) + " remittance to " + spq.supplierName, { queueId: spqId, supplierName: spq.supplierName, supplierId: spq.supplierId, amount: spq.amount, currency: spq.currency, sourcePaymentId: spq.sourcePaymentId, programId: spq.programId, programName: spq.programName });
       setDataVer(function(v) { return v + 1; });
       return;
@@ -7633,22 +7618,23 @@ export default function FactoringDashboard() {
                 var pageItems = filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize);
                 return <div>
               <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                <colgroup><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /><col style={{ width: "5%" }} /><col style={{ width: "12%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "18%" }} /><col style={{ width: "4%" }} /></colgroup>
+                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                 <tbody>{pageItems.map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
                   var isPayExp = expPay === pay.paymentId;
                   return <tbody key={pay.paymentId}>
                     <tr style={{ borderBottom: isPayExp ? "none" : "1px solid var(--border)", background: isPayExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setExpPay(isPayExp ? null : pay.paymentId); }}>
-                    <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{pay.paymentId}</td>
-                    <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
-                    <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
-                    <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--muted)" }}>{pay.currency}</td>
-                    <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(al, pay.currency)}</td>
-                    <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
-                    <td style={{ padding: "9px 12px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
-                    <td style={{ padding: "9px 12px" }}><div style={{ display: "flex", gap: 6 }}>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{pay.paymentId}</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--muted)" }}>{pay.currency}</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(al, pay.currency)}</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
+                    <td style={{ padding: "8px 10px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
+                    <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
                       {status !== "allocated" && <button onClick={function(e) { e.stopPropagation(); setAllocPay(pay); setAllocs([]); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Allocate</button>}
                       {status !== "unallocated" && <button onClick={function(e) { e.stopPropagation(); unallocatePayment(pay.paymentId); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Unallocate</button>}
                     </div></td>
