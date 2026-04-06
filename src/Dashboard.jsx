@@ -1109,6 +1109,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var hbAvailable = r2(hbRecd - hbDisbursed); // Can go negative if payment unallocated after HBP disbursement
     var holdbackOverdrawn = r2(Math.max(0, hbDisbursed - hbRecd)); // Supplier owes this back
     var balOwed = r2(capBal + intBal + penBal + holdbackOverdrawn);
+    var debtBal = r2(capBal + intBal + penBal); // Debt balance excluding holdback — used for funding status
     var dilTotal = r2(cnDilutionByInvoice.get(rawInv.id) || 0);
     var amtPostDil = r2(rawInv.amount - dilTotal);
     var initialCapPlusInt = r2(rawInv.capitalDue + rawInv.interestCharged);
@@ -1121,9 +1122,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (rawInv.fundingStatus === "pending") fs = "pending";
     else if (rawInv.fundingStatus === "approved" && !terminalInvStatus) fs = "approved";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
-    else if (rawInv.fundingStatus === "write_off" && balOwed < 0.02 && hbBal < 0.02) fs = "fully_repaid";
-    else if (balOwed < 0.02 && hbBal < 0.02 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
-    else if ((statusAsOfDate === "Settled" || statusAsOfDate === "Cancelled") && balOwed > 0.01) fs = "recovery_mode";
+    else if (rawInv.fundingStatus === "write_off" && debtBal < 0.005) fs = "fully_repaid";
+    else if (debtBal < 0.005 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
+    else if ((statusAsOfDate === "Settled" || statusAsOfDate === "Cancelled") && debtBal > 0.01) fs = "recovery_mode";
     else if (statusAsOfDate === "Declined") fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < initialCapPlusInt - 0.01) fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < rawInv.amount - 0.01) fs = "at_risk";
@@ -1169,7 +1170,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       }
       statusAsOfDate = "Settled";
       // Re-evaluate funding status since settled with balance triggers recovery
-      if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && balOwed > 0.01) fs = "recovery_mode";
+      if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
     }
     // For unfunded invoices, compute max available capital from eligible programs and unallocated payment total
     var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv) : 0;
@@ -1210,9 +1211,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
 }
 
 var IST = { "Received": { bg: "#8C9AB514", color: "#94A3B8", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5714", color: "#10B981", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3014", color: "#F59E0B", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5720", color: "#059669", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728014", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B18", color: "#EF4444", border: "#DC262625", icon: "\u2715" }, "Disputed": { bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B20", color: "#DC2626", border: "#DC262630", icon: "\u2716" } };
-var FST = { pending: { label: "Pending", bg: "#C08B3014", color: "#D97706", border: "#C08B3030" }, approved: { label: "Approved", bg: "#567EBB14", color: "#38BDF8", border: "#567EBB30" }, funded: { label: "Funded", bg: "#2B4C7E14", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5720", color: "#059669", border: "#2E8B5740" }, partial_recovery: { label: "Part Paid", bg: "#C08B3018", color: "#D97706", border: "#C08B3040" }, at_risk: { label: "At Risk", bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B20", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B14", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728020", color: "#6B7280", border: "#6B728040" } };
+var FST = { pending: { label: "Pending", bg: "#C08B3014", color: "#D97706", border: "#C08B3030" }, approved: { label: "Approved", bg: "#567EBB14", color: "#38BDF8", border: "#567EBB30" }, funded: { label: "Funded", bg: "#2B4C7E14", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5720", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B20", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B14", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728020", color: "#6B7280", border: "#6B728040" } };
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
-var FUND_STATUSES = ["pending", "approved", "funded", "fully_repaid", "partial_recovery", "at_risk", "recovery_mode", "overdue", "write_off"];
+var FUND_STATUSES = ["pending", "approved", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off"];
 
 function Badge(p) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
@@ -1546,7 +1547,7 @@ export default function FactoringDashboard() {
     });
     var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
     var dilElig = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
-    var fdilFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+    var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
     var fbadFS = { "write_off": true, "recovery_mode": true };
     Object.keys(bySupplier).forEach(function(sup) {
       var invs = bySupplier[sup];
@@ -2335,7 +2336,7 @@ export default function FactoringDashboard() {
 
         // Dilution rates for this supplier on this program
         var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
-        var fdilEligibleFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+        var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
         var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
         // Current funded dilution
         var fdilNum = 0, fdilDen = 0;
@@ -2640,8 +2641,8 @@ export default function FactoringDashboard() {
                 if (!startDate) return null;
                 // Collect all events: funded adds to a status, payments move between statuses
                 // We'll compute snapshots by stepping through days
-                var statusKeys = ["funded", "partial_recovery", "overdue", "at_risk", "recovery_mode"];
-                var statusColors = { funded: "#0EA5E9", partial_recovery: "#D97706", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626" };
+                var statusKeys = ["funded", "overdue", "at_risk", "recovery_mode"];
+                var statusColors = { funded: "#0EA5E9", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626" };
                 var end = viewDate;
                 var totalDays = daysBetween(startDate, end);
                 var maxPoints = 120;
@@ -2715,7 +2716,7 @@ export default function FactoringDashboard() {
                     statusCap[fs] += inv.capitalOutstanding || 0;
                     statusCount[fs] += 1;
                   });
-                  var donutColors = { funded: "#0EA5E9", partial_recovery: "#D97706", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626", approved: "#38BDF8" };
+                  var donutColors = { funded: "#0EA5E9", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626", approved: "#38BDF8" };
                   Object.keys(statusCap).forEach(function(fs) {
                     if (statusCap[fs] < 0.01) return;
                     var fst = FST[fs] || FST.funded;
@@ -4109,7 +4110,7 @@ export default function FactoringDashboard() {
           var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
 
           // Current Funded Dilution Rate
-          var fdilEligibleFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+          var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
           var fdilNumerator = 0, fdilDenominator = 0;
           supInvs.forEach(function(inv) {
             if (!fdilEligibleFS[inv.fundingStatus]) return;
@@ -5140,7 +5141,7 @@ export default function FactoringDashboard() {
                   function bpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0; buyInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
                   var bd30 = bpDil(30), bd90 = bpDil(90);
                   // Funded dilution
-                  var fdilFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+                  var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
                   var bfN = 0, bfD = 0;
                   buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; bfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) bfN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") bfN += a; });
                   if (buyUnalloc > 0) bfN += buyUnalloc;
@@ -5549,7 +5550,7 @@ export default function FactoringDashboard() {
           {/* Program sub-tabs and selector */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-              {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (progTab === t ? "var(--accent)" : "var(--border)"), cursor: "pointer", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", boxShadow: progTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+              {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (progTab === t ? "var(--accent)" : "var(--border)"), cursor: "pointer", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", boxShadow: progTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
             </div>
             <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
               <option value="">Select Program...</option>
@@ -5641,7 +5642,7 @@ export default function FactoringDashboard() {
               var dilRate = dilDen > 0.01 ? (dilNum / dilDen) * 100 : 0;
 
               // Funded Dilution Rate (by funding status)
-              var fdilFS = { "funded": true, "partial_recovery": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+              var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
               var fdilNum = 0, fdilDen = 0;
               allProgInvs.forEach(function(inv) {
                 if (!fdilFS[inv.fundingStatus]) return;
@@ -6913,6 +6914,159 @@ export default function FactoringDashboard() {
                       );
                     })}
                   </table>
+                </div>}
+              </div>
+            </div>;
+          })()}
+
+          {isF && selectedProgram && progTab === "bank_statement" && (function() {
+            var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; });
+            if (!prog) return null;
+            var allProgInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
+            var progInvIds = {};
+            allProgInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
+
+            // Build ledger entries from all sources
+            var entries = [];
+
+            // 1. Fund inflows/disbursals from program fundFlows
+            (prog.fundFlows || []).forEach(function(ff) {
+              if (ff.type === "inflow") {
+                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", ref: ff.description || "Capital injection", counterparty: ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency });
+              } else if (ff.type === "outflow" || ff.type === "disbursal") {
+                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", ref: ff.description || "Capital withdrawal", counterparty: ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency });
+              }
+            });
+
+            // 2. Incoming buyer payments allocated to invoices on this program
+            PAYMENTS_DB.forEach(function(pay) {
+              pay.allocations.forEach(function(a) {
+                if (progInvIds[a.invoiceId]) {
+                  var inv = allProgInvs.find(function(x) { return x.id === a.invoiceId; });
+                  entries.push({ date: a.allocDate || pay.date, sortDate: (a.allocDate || pay.date) + "T12:00:00", type: "Buyer Payment", ref: pay.paymentId + " \u2192 " + a.invoiceId, counterparty: inv ? inv.buyerName : "\u2014", credit: a.amount, debit: 0, currency: pay.currency });
+                }
+              });
+            });
+
+            // 3. Capital advances (funding execution) — debits
+            SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+              if (spq.status === "Cancelled") return;
+              if (spq.type === "funding" && spq.status === "Completed") {
+                var matchesProgram = spq.programId === selectedProgram || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return progInvIds[iid]; })) || (spq.invoiceId && progInvIds[spq.invoiceId]);
+                if (matchesProgram) {
+                  var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdDisplay || "";
+                  entries.push({ date: execDate, sortDate: spq.executedAt || execDate + "T12:00:00", type: "Capital Advance", ref: spq.id + (spq.invoiceId ? " / " + spq.invoiceId : spq.invoiceIds && spq.invoiceIds.length > 0 ? " / " + spq.invoiceIds.join(", ") : ""), counterparty: spq.supplierName, credit: 0, debit: spq.amount, currency: spq.currency });
+                }
+              }
+            });
+
+            // 4. Holdback returns / holdback-to-invoice — debits
+            HOLDBACK_PAYMENTS_DB.forEach(function(hbp) {
+              if (!progInvIds[hbp.sourceInvoiceId]) return;
+              hbp.allocations.forEach(function(a) {
+                if (a.type === "disbursement") {
+                  var inv = allProgInvs.find(function(x) { return x.id === hbp.sourceInvoiceId; });
+                  entries.push({ date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback Return", ref: hbp.hbPaymentId + " / " + hbp.sourceInvoiceId, counterparty: inv ? inv.supplierName : "\u2014", credit: 0, debit: a.amount, currency: hbp.currency });
+                } else if (a.type === "invoice") {
+                  entries.push({ date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback to Invoice", ref: hbp.hbPaymentId + " \u2192 " + a.targetId, counterparty: "\u2014", credit: a.amount, debit: 0, currency: hbp.currency });
+                }
+              });
+            });
+
+            // 5. Remittances to suppliers — debits (only completed or pending)
+            SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+              if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram) {
+                var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "";
+                var statusLabel = spq.status === "Completed" ? "" : " [" + spq.status + "]";
+                entries.push({ date: execDate, sortDate: spq.executedAt || spq.createdAt || execDate + "T12:00:00", type: "Remittance" + statusLabel, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), counterparty: spq.supplierName, credit: 0, debit: spq.amount, currency: spq.currency });
+              }
+            });
+
+            // Sort chronologically
+            entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
+
+            // Calculate running balance
+            var runBal = 0;
+            entries.forEach(function(e) {
+              runBal = r2(runBal + e.credit - e.debit);
+              e.balance = runBal;
+            });
+
+            // Search and pagination
+            var bsSearch = allocSearch;
+            var bsFiltered = entries;
+            if (bsSearch) {
+              var q = bsSearch.toLowerCase();
+              bsFiltered = entries.filter(function(e) {
+                return (e.type || "").toLowerCase().indexOf(q) > -1 || (e.ref || "").toLowerCase().indexOf(q) > -1 || (e.counterparty || "").toLowerCase().indexOf(q) > -1 || (e.date || "").indexOf(q) > -1;
+              });
+            }
+            var bsPageSize = 20;
+            var bsTotalPages = Math.max(1, Math.ceil(bsFiltered.length / bsPageSize));
+            var bsCurPage = Math.min(pg, bsTotalPages - 1);
+            var bsPageItems = bsFiltered.slice(bsCurPage * bsPageSize, (bsCurPage + 1) * bsPageSize);
+
+            // Summary totals
+            var totalCredits = entries.reduce(function(s, e) { return s + e.credit; }, 0);
+            var totalDebits = entries.reduce(function(s, e) { return s + e.debit; }, 0);
+            var closingBal = entries.length > 0 ? entries[entries.length - 1].balance : 0;
+
+            return <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Total Credits</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalCredits), prog.currency)}</div>
+                </div>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Total Debits</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalDebits), prog.currency)}</div>
+                </div>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Net Position</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: closingBal >= 0 ? "#059669" : "#DC2626" }}>{money(r2(closingBal), prog.currency)}</div>
+                </div>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Transactions</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{entries.length}</div>
+                </div>
+              </div>
+
+              <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+                <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Bank Statement {"\u2014"} {prog.name}</div>
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{prog.currency}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="text" value={bsSearch} onChange={function(e) { setAllocSearch(e.target.value); setPg(0); }} placeholder="Search statement..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
+                    {bsSearch && <button onClick={function() { setAllocSearch(""); setPg(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                  </div>
+                </div>
+                {bsFiltered.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{bsSearch ? "No transactions match your search." : "No transactions recorded for this program."}</div> :
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Date", "Type", "Reference", "Counterparty", "Credit", "Debit", "Balance"].map(function(h) { return <th key={h} style={{ textAlign: h === "Credit" || h === "Debit" || h === "Balance" ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{bsPageItems.map(function(e, ei) {
+                      var typeColors = { "Fund Inflow": "#0EA5E9", "Fund Disbursal": "#7C3AED", "Buyer Payment": "#059669", "Capital Advance": "#0F172A", "Holdback Return": "#8B5CF6", "Holdback to Invoice": "#D97706" };
+                      var tc = typeColors[e.type] || (e.type.indexOf("Remittance") > -1 ? "#059669" : "var(--text-secondary)");
+                      return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(e.date)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 600, color: tc, whiteSpace: "nowrap" }}>{e.type}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.ref}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text)" }}>{e.counterparty}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600, textAlign: "right" }}>{e.credit > 0 ? money(e.credit, e.currency) : ""}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600, textAlign: "right" }}>{e.debit > 0 ? money(e.debit, e.currency) : ""}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", color: e.balance >= 0 ? "var(--text)" : "#DC2626" }}>{money(e.balance, e.currency)}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>}
+                {bsTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {bsCurPage + 1} of {bsTotalPages} ({bsFiltered.length} transactions)</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={bsCurPage === 0} onClick={function() { setPg(bsCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: bsCurPage === 0 ? "transparent" : "var(--card)", color: bsCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: bsCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
+                    <button disabled={bsCurPage >= bsTotalPages - 1} onClick={function() { setPg(bsCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: bsCurPage >= bsTotalPages - 1 ? "transparent" : "var(--card)", color: bsCurPage >= bsTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: bsCurPage >= bsTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  </div>
                 </div>}
               </div>
             </div>;
