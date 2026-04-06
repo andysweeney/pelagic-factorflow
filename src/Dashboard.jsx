@@ -1640,6 +1640,39 @@ export default function FactoringDashboard() {
     return rows;
   }
 
+  function buildSupplierStatement(invoices) {
+    var entries = [];
+    invoices.forEach(function(inv) {
+      if (!inv.fundedDate) return;
+      // Funding executed entry
+      entries.push({ date: inv.fundedDate, sortDate: inv.fundedDate + "T00:00:01", event: "Funding: " + inv.id, cap: inv.capitalDue, int: inv.interestCharged, pen: 0, hb: inv.deferredPayment || r2((inv.holdback || 0) - (inv.interestCharged || 0)), type: "funding", invoiceId: inv.id });
+      // Payment entries from annotatedPays
+      (inv.payments || []).forEach(function(p) {
+        entries.push({ date: p.date, sortDate: p.date + "T12:00:00", event: p.paymentId + " \u2192 " + inv.id, cap: -(p.appliedToCapital || 0), int: -(p.appliedToInterest || 0), pen: -(p.appliedToPenalty || 0), hb: -(p.appliedToHoldback || 0), type: "payment", invoiceId: inv.id });
+      });
+    });
+    // Sort chronologically
+    entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
+    // Build statement with running balances
+    var runCap = 0, runInt = 0, runPen = 0, runHb = 0;
+    var rows = [];
+    entries.forEach(function(e) {
+      if (e.type === "funding") {
+        runCap = r2(runCap + e.cap); runInt = r2(runInt + e.int); runPen = r2(runPen + e.pen); runHb = r2(runHb + e.hb);
+        rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "funding", balCap: runCap, balInt: runInt, balPen: runPen, balHb: runHb });
+      } else {
+        // Previous balance row
+        rows.push({ date: e.date, event: "Previous Balance", cap: runCap, int: runInt, pen: runPen, hb: runHb, type: "balance" });
+        // Payment applied
+        runCap = r2(runCap + e.cap); runInt = r2(runInt + e.int); runPen = r2(runPen + e.pen); runHb = r2(runHb + e.hb);
+        rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "payment" });
+        // Closing balance
+        rows.push({ date: e.date, event: "Closing Balance", cap: runCap, int: runInt, pen: runPen, hb: runHb, type: "closing" });
+      }
+    });
+    return rows;
+  }
+
   function confirmAllocation() {
     if (!allocPay) return;
     // Filter out zero-amount entries — these are "removed" allocations
@@ -2498,7 +2531,8 @@ export default function FactoringDashboard() {
           { k: "payments", l: "Payments to Pelagic", icon: React.createElement(ArrowUpRight, { size: 17 }) },
           { k: "program", l: "Payments to You", icon: React.createElement(ArrowDownRight, { size: 17 }) },
           { k: "manage", l: "Your Information", icon: React.createElement(Users, { size: 17 }) },
-          { k: "creditnotes", l: "Your History", icon: React.createElement(Clock, { size: 17 }) }
+          { k: "creditnotes", l: "Your History", icon: React.createElement(Clock, { size: 17 }) },
+          { k: "statement", l: "Statement", icon: React.createElement(FileText, { size: 17 }) }
         ];
 
         var portalTh = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont };
@@ -2529,7 +2563,7 @@ export default function FactoringDashboard() {
             /* Top bar with date picker */
             React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
-                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History" }[spPortalTab] || ""),
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Statement" }[spPortalTab] || ""),
                 spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
                   spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
                 ) : null
@@ -3769,7 +3803,48 @@ export default function FactoringDashboard() {
                   )
                 ) : null
               )
-            ); })()
+            ); })(),
+            spPortalTab === "statement" && (function() {
+              var stRows = buildSupplierStatement(spInvs);
+              return React.createElement("div", { style: { padding: "28px 36px" } },
+                stRows.length === 0 ? React.createElement("div", { style: { padding: "40px 28px", textAlign: "center", color: spMuted, fontSize: 14 } }, "No funded invoices yet. Your statement will appear here once invoices are funded.") :
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                  React.createElement("div", { style: { padding: "16px 22px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText } }, "Combined Position Statement"),
+                    React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spMono } }, stRows.length + " entries")
+                  ),
+                  React.createElement("div", { style: { overflowX: "auto" } },
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                      React.createElement("thead", null,
+                        React.createElement("tr", null,
+                          ["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) {
+                            return React.createElement("th", { key: h, style: { textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "2px solid " + spBorder } }, h);
+                          })
+                        )
+                      ),
+                      React.createElement("tbody", null,
+                        stRows.map(function(r, ri) {
+                          var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing";
+                          var isPay = r.type === "payment";
+                          var isClose = r.type === "closing";
+                          var isFunding = r.type === "funding";
+                          var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && (stRows[ri + 1].type === "balance" || stRows[ri + 1].type === "funding") && r.type !== "funding" ? "2px solid " + spBorder : "1px solid " + spBorder + "60";
+                          function valStyle(v) { return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : isFunding ? spAccent : (v > 0.01 ? spText : spMuted) }; }
+                          return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, background: isClose ? "#1A274440" : isBal ? spCard : "transparent" } },
+                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: spText, whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 } }, fmt(r.date)),
+                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? spAccent : isFunding ? "#10B981" : spText, fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 } }, r.event),
+                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), activeProgCcy) : money(Math.abs(r.cap), activeProgCcy)),
+                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), activeProgCcy) : money(Math.abs(r.int), activeProgCcy)),
+                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), activeProgCcy) : money(Math.abs(r.pen), activeProgCcy)),
+                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), activeProgCcy) : money(Math.abs(r.hb), activeProgCcy))
+                          );
+                        })
+                      )
+                    )
+                  )
+                )
+              );
+            })()
             )
           ),
           React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
@@ -3835,7 +3910,7 @@ export default function FactoringDashboard() {
         {/* Supplier Sub-tabs */}
         {isS && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-            {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", statement: "Statement" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
@@ -5145,6 +5220,52 @@ export default function FactoringDashboard() {
                       </tbody>
                     );
                   })}
+                </table>
+              </div>}
+            </div>
+          </div>;
+        })()}
+
+        {isS && supTab === "statement" && (function() {
+          var supInvs = viewData.invoices.filter(function(inv) {
+            if (!selectedSupplier) return false;
+            var selBranchId = parseEntityId(selectedSupplier).branchId;
+            if (selBranchId) return inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier);
+            return getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier);
+          });
+          if (supCurrency !== "all") supInvs = supInvs.filter(function(inv) { return inv.currency === supCurrency; });
+          var stRows = buildSupplierStatement(supInvs);
+          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supDisplayName = selectedSupplier ? getEntityDisplayName(selectedSupplier) : "";
+
+          return <div>
+            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+              <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Combined Position Statement {"\u2014"} {supDisplayName}</div>
+                  <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{stRows.length} entries</span>
+                </div>
+              </div>
+              {stRows.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No funded invoices for this supplier.</div> :
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                  <tbody>{stRows.map(function(r, ri) {
+                    var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing";
+                    var isPay = r.type === "payment";
+                    var isClose = r.type === "closing";
+                    var isFunding = r.type === "funding";
+                    var borderStyle = ri < stRows.length - 1 && stRows[ri + 1] && (stRows[ri + 1].type === "balance" || stRows[ri + 1].type === "funding") && r.type !== "funding" ? "2px solid var(--border)" : "1px solid var(--border)";
+                    function vs(v) { return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : isFunding ? "var(--accent)" : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                    return <tr key={ri} style={{ borderBottom: borderStyle, background: isClose ? "#F1F5F9" : isBal ? "#F8FAFC" : "transparent" }}>
+                      <td style={{ padding: "8px 12px", fontSize: isClose ? 13 : 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 }}>{fmt(r.date)}</td>
+                      <td style={{ padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? "var(--accent)" : isFunding ? "#059669" : "var(--text)", fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 }}>{r.event}</td>
+                      <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), displayCcy) : money(Math.abs(r.cap), displayCcy)}</td>
+                      <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), displayCcy) : money(Math.abs(r.int), displayCcy)}</td>
+                      <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), displayCcy) : money(Math.abs(r.pen), displayCcy)}</td>
+                      <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), displayCcy) : money(Math.abs(r.hb), displayCcy)}</td>
+                    </tr>;
+                  })}</tbody>
                 </table>
               </div>}
             </div>
