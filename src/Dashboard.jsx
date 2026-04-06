@@ -7897,11 +7897,16 @@ export default function FactoringDashboard() {
               {allocViewData && (function() {
                 var remitTotal = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitTotal += q.amount; });
                 var avail = r2(allocPay.amount - remitTotal) - allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                // Build set of invoice IDs that already have allocations in the working set
+                var allocatedInvIds = {};
+                allocs.forEach(function(a) { allocatedInvIds[a.invoiceId] = true; });
                 // Build set of fully repaid invoice IDs from main viewData
                 var fullyRepaidIds = {};
                 viewData.invoices.forEach(function(inv) { if (inv.fundingStatus === "fully_repaid") fullyRepaidIds[inv.id] = true; });
                 var eligible = allocViewData.invoices.filter(function(inv) {
                   if (inv.currency !== allocPay.currency) return false;
+                  // Always include invoices that already have allocations in the working set
+                  if (allocatedInvIds[inv.id]) return true;
                   if (fullyRepaidIds[inv.id]) return false;
                   // Funded invoices with outstanding balance
                   if (inv.totalOutstanding > 0.01) return true;
