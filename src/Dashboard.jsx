@@ -1664,7 +1664,13 @@ export default function FactoringDashboard() {
       }
       // Remove any existing allocations from this payment to the target invoices
       pay.allocations = pay.allocations.filter(function(a) { return !aff[a.invoiceId]; });
-      allocs.forEach(function(a) { var entry = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) entry.allocDate = a.allocDate; pay.allocations.push(entry); });
+      // Deduplicate allocs by invoiceId (consolidate amounts for same invoice)
+      var dedupMap = {};
+      allocs.forEach(function(a) {
+        if (dedupMap[a.invoiceId]) { dedupMap[a.invoiceId].amount = r2(dedupMap[a.invoiceId].amount + a.amount); }
+        else { dedupMap[a.invoiceId] = { invoiceId: a.invoiceId, amount: a.amount, allocDate: (a.allocDate && a.allocDate !== allocPay.date) ? a.allocDate : null }; }
+      });
+      Object.keys(dedupMap).forEach(function(iid) { var entry = { invoiceId: iid, amount: dedupMap[iid].amount }; if (dedupMap[iid].allocDate) entry.allocDate = dedupMap[iid].allocDate; pay.allocations.push(entry); });
     }
     var allocSnapshot = allocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
     auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + allocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
