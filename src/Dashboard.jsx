@@ -508,7 +508,10 @@ async function loadPersistedData() {
           deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
           notes: row.notes || [],
           createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display
+          executedAt: row.executed_at, executedDisplay: row.executed_display,
+          sourcePaymentId: row.source_payment_id || null,
+          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
+          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
         });
       });
     }
@@ -610,7 +613,10 @@ async function reloadSPQ() {
           deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
           notes: row.notes || [],
           createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display
+          executedAt: row.executed_at, executedDisplay: row.executed_display,
+          sourcePaymentId: row.source_payment_id || null,
+          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
+          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
         });
       });
     }
@@ -891,7 +897,10 @@ async function savePersistedData() {
         deduction_total: q.deductionTotal || 0,
         notes: q.notes || [],
         created_at: q.createdAt || null,
-        created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null
+        created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null,
+        source_payment_id: q.sourcePaymentId || null,
+        cancelled_at: q.cancelledAt || null, cancelled_display: q.cancelledDisplay || null,
+        failed_at: q.failedAt || null, failed_display: q.failedDisplay || null
       };
     });
     if (spqRows.length > 0) await supabase.from("supplier_payment_queue").upsert(spqRows, { onConflict: "id" });
@@ -7618,9 +7627,8 @@ export default function FactoringDashboard() {
                 var pageItems = filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize);
                 return <div>
               <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                <colgroup><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /><col style={{ width: "5%" }} /><col style={{ width: "12%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "18%" }} /><col style={{ width: "4%" }} /></colgroup>
-                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
                 <tbody>{pageItems.map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
