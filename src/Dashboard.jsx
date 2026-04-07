@@ -1042,7 +1042,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (rem > 0 && hbBal > 0.005) { var x4 = Math.min(rem, hbBal); hbBal -= x4; rem -= x4; toH = x4; hbRecd += x4; }
       cleanBal();
       annotatedPays.push(Object.assign({}, pay, {
-        appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH)
+        appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH),
+        postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal)
       }));
     }
     var invPenaltyRate = rawInv.penaltyRate || PENALTY_RATE;
@@ -1609,33 +1610,21 @@ export default function FactoringDashboard() {
   function buildInvoiceStatement(inv) {
     if (!inv.fundedDate) return [];
     var rows = [];
+    var openCap = inv.capitalDue, openInt = inv.interestCharged, openPen = 0;
+    var openHb = inv.deferredPayment || r2((inv.holdback || 0) - (inv.interestCharged || 0));
     // Row 1: Funding executed — opening balances
-    rows.push({ date: inv.fundedDate, event: "Funding Executed", cap: inv.capitalDue, int: inv.interestCharged, pen: 0, hb: inv.deferredPayment || r2((inv.holdback || 0) - (inv.interestCharged || 0)), type: "opening" });
-    // Work backwards from final balances to reconstruct each payment's before/after
-    // Final balances are the current outstanding amounts
-    var endCap = inv.capitalOutstanding || 0;
-    var endInt = inv.interestOutstanding || 0;
-    var endPen = inv.penaltyInterest || 0;
-    var endHb = inv.holdbackOutstanding || 0;
-    // Reverse through payments to build opening balances
+    rows.push({ date: inv.fundedDate, event: "Funding Executed", cap: openCap, int: openInt, pen: openPen, hb: openHb, type: "opening" });
+    // Each payment has post-application balance snapshots from processForDate
     var pays = (inv.payments || []).slice();
-    // Build snapshots working backwards
-    var snapshots = [];
-    for (var i = pays.length - 1; i >= 0; i--) {
-      var p = pays[i];
-      var closeCap = endCap, closeInt = endInt, closePen = endPen, closeHb = endHb;
-      var openCap = r2(closeCap + (p.appliedToCapital || 0));
-      var openInt = r2(closeInt + (p.appliedToInterest || 0));
-      var openPen = r2(closePen + (p.appliedToPenalty || 0));
-      var openHb = r2(closeHb + (p.appliedToHoldback || 0));
-      snapshots.unshift({ pay: p, openCap: openCap, openInt: openInt, openPen: openPen, openHb: openHb, closeCap: closeCap, closeInt: closeInt, closePen: closePen, closeHb: closeHb });
-      endCap = openCap; endInt = openInt; endPen = openPen; endHb = openHb;
-    }
-    // Build statement rows from snapshots
-    snapshots.forEach(function(s) {
-      rows.push({ date: s.pay.date, event: "Previous Balance", cap: s.openCap, int: s.openInt, pen: s.openPen, hb: s.openHb, type: "balance" });
-      rows.push({ date: s.pay.date, event: s.pay.paymentId + " applied", cap: -(s.pay.appliedToCapital || 0), int: -(s.pay.appliedToInterest || 0), pen: -(s.pay.appliedToPenalty || 0), hb: -(s.pay.appliedToHoldback || 0), type: "payment" });
-      rows.push({ date: s.pay.date, event: "Closing Balance", cap: s.closeCap, int: s.closeInt, pen: s.closePen, hb: s.closeHb, type: "closing" });
+    pays.forEach(function(p) {
+      // Previous balance = closing balance after previous payment's snapshot, or derived from this payment's post + applied
+      var prevCap = r2((p.postCapBal || 0) + (p.appliedToCapital || 0));
+      var prevInt = r2((p.postIntBal || 0) + (p.appliedToInterest || 0));
+      var prevPen = r2((p.postPenBal || 0) + (p.appliedToPenalty || 0));
+      var prevHb = r2((p.postHbBal || 0) + (p.appliedToHoldback || 0));
+      rows.push({ date: p.date, event: "Previous Balance", cap: prevCap, int: prevInt, pen: prevPen, hb: prevHb, type: "balance" });
+      rows.push({ date: p.date, event: p.paymentId + " applied", cap: -(p.appliedToCapital || 0), int: -(p.appliedToInterest || 0), pen: -(p.appliedToPenalty || 0), hb: -(p.appliedToHoldback || 0), type: "payment" });
+      rows.push({ date: p.date, event: "Closing Balance", cap: p.postCapBal || 0, int: p.postIntBal || 0, pen: p.postPenBal || 0, hb: p.postHbBal || 0, type: "closing" });
     });
     // Current position as of viewDate
     rows.push({ date: viewDate, event: "Current Position", cap: inv.capitalOutstanding || 0, int: inv.interestOutstanding || 0, pen: inv.penaltyInterest || 0, hb: inv.holdbackOutstanding || 0, type: "current" });
@@ -1648,28 +1637,37 @@ export default function FactoringDashboard() {
       if (!inv.fundedDate) return;
       // Funding executed entry
       entries.push({ date: inv.fundedDate, sortDate: inv.fundedDate + "T00:00:01", event: "Funding: " + inv.id, cap: inv.capitalDue, int: inv.interestCharged, pen: 0, hb: inv.deferredPayment || r2((inv.holdback || 0) - (inv.interestCharged || 0)), type: "funding", invoiceId: inv.id });
-      // Payment entries from annotatedPays
+      // Payment entries with post-application snapshots
       (inv.payments || []).forEach(function(p) {
-        entries.push({ date: p.date, sortDate: p.date + "T12:00:00", event: p.paymentId + " \u2192 " + inv.id, cap: -(p.appliedToCapital || 0), int: -(p.appliedToInterest || 0), pen: -(p.appliedToPenalty || 0), hb: -(p.appliedToHoldback || 0), type: "payment", invoiceId: inv.id });
+        entries.push({ date: p.date, sortDate: p.date + "T12:00:00", event: p.paymentId + " \u2192 " + inv.id, cap: -(p.appliedToCapital || 0), int: -(p.appliedToInterest || 0), pen: -(p.appliedToPenalty || 0), hb: -(p.appliedToHoldback || 0), type: "payment", invoiceId: inv.id, postCapBal: p.postCapBal || 0, postIntBal: p.postIntBal || 0, postPenBal: p.postPenBal || 0, postHbBal: p.postHbBal || 0 });
       });
     });
     // Sort chronologically
     entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
     // Build statement with running balances
-    var runCap = 0, runInt = 0, runPen = 0, runHb = 0;
+    // Track per-invoice balances so we can sum accurately
+    var invBals = {};
     var rows = [];
+    function totalBals() { var c = 0, i = 0, p = 0, h = 0; Object.keys(invBals).forEach(function(k) { var b = invBals[k]; c += b.cap; i += b.int; p += b.pen; h += b.hb; }); return { cap: r2(c), int: r2(i), pen: r2(p), hb: r2(h) }; }
     entries.forEach(function(e) {
       if (e.type === "funding") {
-        runCap = r2(runCap + e.cap); runInt = r2(runInt + e.int); runPen = r2(runPen + e.pen); runHb = r2(runHb + e.hb);
-        rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "funding", balCap: runCap, balInt: runInt, balPen: runPen, balHb: runHb });
+        if (!invBals[e.invoiceId]) invBals[e.invoiceId] = { cap: 0, int: 0, pen: 0, hb: 0 };
+        invBals[e.invoiceId].cap = r2(invBals[e.invoiceId].cap + e.cap);
+        invBals[e.invoiceId].int = r2(invBals[e.invoiceId].int + e.int);
+        invBals[e.invoiceId].hb = r2(invBals[e.invoiceId].hb + e.hb);
+        var t = totalBals();
+        rows.push({ date: e.date, event: e.event, cap: t.cap, int: t.int, pen: t.pen, hb: t.hb, type: "funding" });
       } else {
-        // Previous balance row
-        rows.push({ date: e.date, event: "Previous Balance", cap: runCap, int: runInt, pen: runPen, hb: runHb, type: "balance" });
-        // Payment applied
-        runCap = r2(runCap + e.cap); runInt = r2(runInt + e.int); runPen = r2(runPen + e.pen); runHb = r2(runHb + e.hb);
+        // Previous balance
+        var prevT = totalBals();
+        rows.push({ date: e.date, event: "Previous Balance", cap: prevT.cap, int: prevT.int, pen: prevT.pen, hb: prevT.hb, type: "balance" });
+        // Update per-invoice balances from snapshot
+        invBals[e.invoiceId] = { cap: e.postCapBal, int: e.postIntBal, pen: e.postPenBal, hb: e.postHbBal };
+        // Payment applied row
         rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "payment" });
         // Closing balance
-        rows.push({ date: e.date, event: "Closing Balance", cap: runCap, int: runInt, pen: runPen, hb: runHb, type: "closing" });
+        var closeT = totalBals();
+        rows.push({ date: e.date, event: "Closing Balance", cap: closeT.cap, int: closeT.int, pen: closeT.pen, hb: closeT.hb, type: "closing" });
       }
     });
     // Current position as of viewDate — sum actual outstanding from all invoices
