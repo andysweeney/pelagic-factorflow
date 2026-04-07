@@ -3833,10 +3833,10 @@ export default function FactoringDashboard() {
                           return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, background: isClose ? "#1A274440" : isBal ? spCard : "transparent" } },
                             React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: spText, whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 } }, fmt(r.date)),
                             React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? spAccent : isFunding ? "#10B981" : spText, fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 } }, r.event),
-                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), activeProgCcy) : money(Math.abs(r.cap), activeProgCcy)),
-                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), activeProgCcy) : money(Math.abs(r.int), activeProgCcy)),
-                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), activeProgCcy) : money(Math.abs(r.pen), activeProgCcy)),
-                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), activeProgCcy) : money(Math.abs(r.hb), activeProgCcy))
+                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), spDisplayCcy) : money(Math.abs(r.cap), spDisplayCcy)),
+                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), spDisplayCcy) : money(Math.abs(r.int), spDisplayCcy)),
+                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), spDisplayCcy) : money(Math.abs(r.pen), spDisplayCcy)),
+                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), spDisplayCcy) : money(Math.abs(r.hb), spDisplayCcy))
                           );
                         })
                       )
