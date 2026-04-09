@@ -306,7 +306,7 @@
         }
 
         /* ── Chart container ── */
-        .chart-container { position: relative; height: 350px; margin: 20px 0; }
+        .chart-container { position: relative; height: 420px; margin: 20px 0; }
 
         /* ── Detail panel ── */
         .detail-overlay {
@@ -1291,7 +1291,7 @@ function computeSupplierStats(invoices, creditNotes, format) {
 }
 
 function computeDilutionTimeSeries(invoices, creditNotes, format, startDate, endDate) {
-    // Sample at weekly intervals for performance
+    // Sample at regular intervals for performance
     var series = [];
     var current = new Date(startDate);
     var end = new Date(endDate);
@@ -1299,8 +1299,8 @@ function computeDilutionTimeSeries(invoices, creditNotes, format, startDate, end
 
     while (current <= end) {
         var dateStr = formatDateStr(current);
-        var dilution = computeDilutionOnDate(invoices, creditNotes, format, dateStr);
-        series.push({ date: dateStr, dilution: dilution });
+        var result = computeDilutionOnDate(invoices, creditNotes, format, dateStr);
+        series.push({ date: dateStr, dilution: result.dilution, invoiceOutstanding: result.invoiceOutstanding, cnOutstanding: result.cnOutstanding });
         current.setDate(current.getDate() + Math.max(interval, 1));
     }
 
@@ -1308,7 +1308,8 @@ function computeDilutionTimeSeries(invoices, creditNotes, format, startDate, end
     var todayVal = todayStr();
     var hasToday = series.some(function(s) { return s.date === todayVal; });
     if (!hasToday && todayVal >= startDate && todayVal <= endDate) {
-        series.push({ date: todayVal, dilution: computeDilutionOnDate(invoices, creditNotes, format, todayVal) });
+        var todayResult = computeDilutionOnDate(invoices, creditNotes, format, todayVal);
+        series.push({ date: todayVal, dilution: todayResult.dilution, invoiceOutstanding: todayResult.invoiceOutstanding, cnOutstanding: todayResult.cnOutstanding });
         series.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
     }
 
@@ -1332,7 +1333,11 @@ function computeDilutionOnDate(invoices, creditNotes, format, dateStr) {
             }
         });
 
-        return totalInvoiced > 0 ? totalUnpaid / totalInvoiced : 0;
+        return {
+            dilution: totalInvoiced > 0 ? totalUnpaid / totalInvoiced : 0,
+            invoiceOutstanding: totalInvoiced,
+            cnOutstanding: totalUnpaid
+        };
     } else {
         // Format 2: dilution from credit notes active on this date
         var totalInvoiceValue = 0;
@@ -1340,7 +1345,9 @@ function computeDilutionOnDate(invoices, creditNotes, format, dateStr) {
 
         invoices.forEach(function(inv) {
             if (inv.invoice_date && inv.invoice_date <= dateStr) {
-                totalInvoiceValue += inv.invoice_amount;
+                if (!inv.settled_date || inv.settled_date > dateStr) {
+                    totalInvoiceValue += inv.invoice_amount;
+                }
             }
         });
 
@@ -1353,7 +1360,11 @@ function computeDilutionOnDate(invoices, creditNotes, format, dateStr) {
             }
         });
 
-        return totalInvoiceValue > 0 ? totalCNValue / totalInvoiceValue : 0;
+        return {
+            dilution: totalInvoiceValue > 0 ? totalCNValue / totalInvoiceValue : 0,
+            invoiceOutstanding: totalInvoiceValue,
+            cnOutstanding: totalCNValue
+        };
     }
 }
 
@@ -1942,21 +1953,55 @@ function renderDetailOverview() {
     var series = s.dilution_series || [];
     if (state.detailChart) state.detailChart.destroy();
 
+    var ccySymbols = { GBP: '£', EUR: '€', USD: '$' };
+    var sym = ccySymbols[ccy] || ccy + ' ';
+
     var ctx = document.getElementById('detailChart').getContext('2d');
     state.detailChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: series.map(function(d) { return d.date; }),
-            datasets: [{
-                label: 'Dilution Rate (%)',
-                data: series.map(function(d) { return (d.dilution * 100).toFixed(2); }),
-                borderColor: '#EF4444',
-                backgroundColor: 'rgba(239,68,68,0.08)',
-                tension: 0.3,
-                fill: true,
-                pointRadius: 2,
-                pointHoverRadius: 5
-            }]
+            datasets: [
+                {
+                    label: 'Invoice Volume O/S (' + ccy + ')',
+                    data: series.map(function(d) { return d.invoiceOutstanding; }),
+                    borderColor: 'rgba(15,64,144,0.8)',
+                    backgroundColor: 'rgba(15,64,144,0.06)',
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 1,
+                    pointHoverRadius: 4,
+                    borderWidth: 2,
+                    yAxisID: 'y-volume',
+                    order: 2
+                },
+                {
+                    label: 'CN / Unpaid Volume O/S (' + ccy + ')',
+                    data: series.map(function(d) { return d.cnOutstanding; }),
+                    borderColor: 'rgba(255,223,0,0.9)',
+                    backgroundColor: 'rgba(255,223,0,0.08)',
+                    tension: 0.3,
+                    fill: true,
+                    pointRadius: 1,
+                    pointHoverRadius: 4,
+                    borderWidth: 2,
+                    yAxisID: 'y-volume',
+                    order: 1
+                },
+                {
+                    label: 'Dilution Rate (%)',
+                    data: series.map(function(d) { return (d.dilution * 100); }),
+                    borderColor: '#EF4444',
+                    backgroundColor: 'rgba(239,68,68,0.0)',
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    borderWidth: 2.5,
+                    yAxisID: 'y-dilution',
+                    order: 0
+                }
+            ]
         },
         options: {
             responsive: true,
@@ -1964,10 +2009,21 @@ function renderDetailOverview() {
             animation: { duration: 800 },
             interaction: { mode: 'index', intersect: false },
             scales: {
-                y: {
+                'y-dilution': {
+                    type: 'linear',
+                    position: 'left',
                     beginAtZero: true,
-                    title: { display: true, text: 'Dilution Rate (%)', font: { size: 12, weight: 'bold' } },
-                    ticks: { callback: function(v) { return v.toFixed(1) + '%'; } }
+                    title: { display: true, text: 'Dilution Rate (%)', color: '#EF4444', font: { size: 12, weight: 'bold' } },
+                    ticks: { color: '#EF4444', callback: function(v) { return v.toFixed(1) + '%'; } },
+                    grid: { drawOnChartArea: true, color: 'rgba(0,0,0,0.04)' }
+                },
+                'y-volume': {
+                    type: 'linear',
+                    position: 'right',
+                    beginAtZero: true,
+                    title: { display: true, text: 'Volume Outstanding (' + ccy + ')', color: '#0F4090', font: { size: 12, weight: 'bold' } },
+                    ticks: { color: '#0F4090', callback: function(v) { return sym + v.toLocaleString(); } },
+                    grid: { drawOnChartArea: false }
                 },
                 x: {
                     title: { display: true, text: 'Date', font: { size: 12, weight: 'bold' } },
@@ -1975,10 +2031,13 @@ function renderDetailOverview() {
                 }
             },
             plugins: {
-                legend: { display: true, position: 'top' },
+                legend: { display: true, position: 'top', labels: { font: { size: 11 } } },
                 tooltip: {
                     callbacks: {
-                        label: function(ctx) { return 'Dilution: ' + ctx.parsed.y + '%'; }
+                        label: function(ctx) {
+                            if (ctx.datasetIndex === 2) return 'Dilution: ' + ctx.parsed.y.toFixed(2) + '%';
+                            return ctx.dataset.label + ': ' + sym + ctx.parsed.y.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        }
                     }
                 }
             }
