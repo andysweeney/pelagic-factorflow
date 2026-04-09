@@ -1263,9 +1263,9 @@ function computeSupplierStats(invoices, creditNotes, format) {
         var minDate = allDates[0] || todayStr();
         var maxDate = allDates[allDates.length - 1] || todayStr();
 
-        // Compute daily dilution time series
+        // Compute daily dilution time series (capped at today — future dates are meaningless for dilution)
         var today = todayStr();
-        var dilutionSeries = computeDilutionTimeSeries(ccyInvoices, ccyCNs, format, minDate, maxDate > today ? maxDate : today);
+        var dilutionSeries = computeDilutionTimeSeries(ccyInvoices, ccyCNs, format, minDate, today);
 
         // Current dilution (latest date)
         var currentDilution = dilutionSeries.length > 0 ? dilutionSeries[dilutionSeries.length - 1].dilution : 0;
