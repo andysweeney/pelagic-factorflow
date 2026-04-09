@@ -1379,27 +1379,31 @@ function computePeriodDilution(invoices, creditNotes, format, days) {
     var todayStr_ = formatDateStr(today);
 
     if (format === 'format_1') {
+        // Invoices whose due date fell within the period
         var periodInvoices = invoices.filter(function(inv) {
-            return inv.invoice_date && inv.invoice_date >= startStr && inv.invoice_date <= todayStr_;
+            return inv.due_date && inv.due_date >= startStr && inv.due_date <= todayStr_;
         });
         var totalInvoiced = 0;
         var totalUnpaid = 0;
         periodInvoices.forEach(function(inv) {
             totalInvoiced += inv.invoice_amount;
-            // Only count as diluted if past due and not settled
-            if (inv.due_date && inv.due_date < todayStr_ && (!inv.settled_date || inv.settled_date > todayStr_)) {
+            // Past due and not settled = diluted
+            if (!inv.settled_date || inv.settled_date > todayStr_) {
                 var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
                 if (unpaid > 0) totalUnpaid += unpaid;
             }
         });
         return totalInvoiced > 0 ? totalUnpaid / totalInvoiced : 0;
     } else {
-        var periodInvoiceValue = 0;
-        invoices.forEach(function(inv) {
-            if (inv.invoice_date && inv.invoice_date >= startStr && inv.invoice_date <= todayStr_) {
-                periodInvoiceValue += inv.invoice_amount;
-            }
+        // Invoices whose due date fell within the period
+        var periodInvoices2 = invoices.filter(function(inv) {
+            return inv.due_date && inv.due_date >= startStr && inv.due_date <= todayStr_;
         });
+        var periodInvoiceValue = 0;
+        periodInvoices2.forEach(function(inv) {
+            periodInvoiceValue += inv.invoice_amount;
+        });
+        // Credit notes issued against invoices in this period (using CN date within period)
         var activeCNValue = 0;
         creditNotes.forEach(function(cn) {
             if (cn.cn_date && cn.cn_date >= startStr && cn.cn_date <= todayStr_) {
