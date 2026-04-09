@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pelagic Solutions — Prospect Pipeline</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
     <style>
         :root {
@@ -851,13 +851,17 @@ function initApp() {
 
     // Try to init Supabase if credentials available
     if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        console.log("Supabase init — window.supabase:", typeof window.supabase, window.supabase);
+        console.log("Supabase init — window.supabase keys:", window.supabase ? Object.keys(window.supabase) : "N/A");
         var sbLib = window.supabase;
         if (sbLib && sbLib.createClient) {
             supabase = sbLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        } else if (typeof createClient === "function") {
-            supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log("Supabase connected successfully");
+        } else if (sbLib && sbLib.default && sbLib.default.createClient) {
+            supabase = sbLib.default.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log("Supabase connected via default export");
         } else {
-            console.error("Supabase library not loaded. Running in local mode.");
+            console.error("Supabase library not loaded. Running in local mode. window.supabase =", window.supabase);
         }
         if (supabase) loadAllData();
     }
