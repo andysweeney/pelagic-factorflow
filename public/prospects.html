@@ -1561,9 +1561,14 @@ function saveToSupabase(result, buyerLabel, callback) {
                 });
             });
 
-            // Filter out rows with missing required dates
+            // Filter out rows with missing required dates and deduplicate by reference_number
+            var seenRefs = {};
             allInvoices = allInvoices.filter(function(inv) {
-                return inv.invoice_date && inv.due_date && inv.reference_number;
+                if (!inv.invoice_date || !inv.due_date || !inv.reference_number) return false;
+                var key = inv.upload_id + '|' + inv.reference_number;
+                if (seenRefs[key]) return false;
+                seenRefs[key] = true;
+                return true;
             });
             if (allInvoices.length === 0) { console.warn('No valid invoices to insert'); }
 
@@ -1616,7 +1621,7 @@ function batchInsert(table, records, batchSize, callback) {
     var idx = 0;
     function nextBatch() {
         if (idx >= batches.length) { callback(); return; }
-        sbClient.from(table).upsert(batches[idx], { onConflict: 'upload_id,reference_number' }).then(function(res) {
+        sbClient.from(table).insert(batches[idx]).then(function(res) {
             if (res.error) console.error('Batch insert error on ' + table + ' batch ' + (idx + 1) + '/' + batches.length + ':', res.error.message, res.error.details);
             idx++;
             nextBatch();
