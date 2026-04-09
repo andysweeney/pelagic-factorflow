@@ -306,7 +306,7 @@
         }
 
         /* ── Chart container ── */
-        .chart-container { position: relative; height: 420px; margin: 20px 0; }
+        .chart-container { position: relative; height: 480px; margin: 20px 0; }
 
         /* ── Detail panel ── */
         .detail-overlay {
@@ -1270,9 +1270,11 @@ function computeSupplierStats(invoices, creditNotes, format) {
         // Current dilution (latest date)
         var currentDilution = dilutionSeries.length > 0 ? dilutionSeries[dilutionSeries.length - 1].dilution : 0;
 
-        // 30-day and 90-day dilution
-        var dilution30d = computePeriodDilution(ccyInvoices, ccyCNs, format, 30);
-        var dilution90d = computePeriodDilution(ccyInvoices, ccyCNs, format, 90);
+        // Compute rolling dilution series for 30/90 day metrics and chart
+        var rollingSeries = computeRollingDilutionSeries(ccyInvoices, ccyCNs, format, minDate, today);
+        var lastDay = rollingSeries.daily.length > 0 ? rollingSeries.daily[rollingSeries.daily.length - 1] : null;
+        var dilution30d = lastDay ? lastDay.avg30 : 0;
+        var dilution90d = lastDay ? lastDay.avg90 : 0;
 
         result[ccy] = {
             invoice_count: count,
@@ -1283,6 +1285,7 @@ function computeSupplierStats(invoices, creditNotes, format) {
             dilution_30d: dilution30d,
             dilution_90d: dilution90d,
             dilution_series: dilutionSeries,
+            rolling_series: rollingSeries.sampled,
             date_range: { min: minDate, max: maxDate }
         };
     });
@@ -1371,49 +1374,114 @@ function computeDilutionOnDate(invoices, creditNotes, format, dateStr) {
     }
 }
 
-function computePeriodDilution(invoices, creditNotes, format, days) {
-    var today = new Date();
-    var startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - days);
-    var startStr = formatDateStr(startDate);
-    var todayStr_ = formatDateStr(today);
+function computeRollingDilutionSeries(invoices, creditNotes, format, startDate, endDate) {
+    // Build a map of dilution events by date
+    // For Format 1: event on due_date = (invoice_amount - amount_paid_to_date) if unpaid on due date
+    // For Format 2: event on cn_date = credit_note_amount (if not settled before cn_date)
+    var dilutionEvents = {};
 
     if (format === 'format_1') {
-        // Invoices whose due date fell within the period
-        var periodInvoices = invoices.filter(function(inv) {
-            return inv.due_date && inv.due_date >= startStr && inv.due_date <= todayStr_;
-        });
-        var totalInvoiced = 0;
-        var totalUnpaid = 0;
-        periodInvoices.forEach(function(inv) {
-            totalInvoiced += inv.invoice_amount;
-            // Past due and not settled = diluted
-            if (!inv.settled_date || inv.settled_date > todayStr_) {
+        invoices.forEach(function(inv) {
+            if (!inv.due_date) return;
+            // Was this invoice unpaid on its due date?
+            if (!inv.settled_date || inv.settled_date > inv.due_date) {
                 var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
-                if (unpaid > 0) totalUnpaid += unpaid;
-            }
-        });
-        return totalInvoiced > 0 ? totalUnpaid / totalInvoiced : 0;
-    } else {
-        // Invoices whose due date fell within the period
-        var periodInvoices2 = invoices.filter(function(inv) {
-            return inv.due_date && inv.due_date >= startStr && inv.due_date <= todayStr_;
-        });
-        var periodInvoiceValue = 0;
-        periodInvoices2.forEach(function(inv) {
-            periodInvoiceValue += inv.invoice_amount;
-        });
-        // Credit notes issued against invoices in this period (using CN date within period)
-        var activeCNValue = 0;
-        creditNotes.forEach(function(cn) {
-            if (cn.cn_date && cn.cn_date >= startStr && cn.cn_date <= todayStr_) {
-                if (!cn.settled_date || cn.settled_date > todayStr_) {
-                    activeCNValue += cn.credit_note_amount;
+                if (unpaid > 0) {
+                    if (!dilutionEvents[inv.due_date]) dilutionEvents[inv.due_date] = 0;
+                    dilutionEvents[inv.due_date] += unpaid;
                 }
             }
         });
-        return periodInvoiceValue > 0 ? activeCNValue / periodInvoiceValue : 0;
+    } else {
+        creditNotes.forEach(function(cn) {
+            if (!cn.cn_date) return;
+            if (!dilutionEvents[cn.cn_date]) dilutionEvents[cn.cn_date] = 0;
+            dilutionEvents[cn.cn_date] += cn.credit_note_amount;
+        });
     }
+
+    // Generate daily series from startDate to endDate
+    var current = new Date(startDate);
+    var end = new Date(endDate);
+    var dailyData = [];
+
+    while (current <= end) {
+        var dateStr = formatDateStr(current);
+
+        // Total outstanding receivables on this date
+        var outstanding = 0;
+        invoices.forEach(function(inv) {
+            if (inv.invoice_date && inv.invoice_date <= dateStr) {
+                if (!inv.settled_date || inv.settled_date > dateStr) {
+                    outstanding += inv.invoice_amount;
+                }
+            }
+        });
+
+        // Sum dilution events in trailing 30 days and 90 days
+        var dil30 = 0;
+        var dil90 = 0;
+        var d30Start = new Date(current);
+        d30Start.setDate(d30Start.getDate() - 30);
+        var d90Start = new Date(current);
+        d90Start.setDate(d90Start.getDate() - 90);
+        var d30StartStr = formatDateStr(d30Start);
+        var d90StartStr = formatDateStr(d90Start);
+
+        Object.keys(dilutionEvents).forEach(function(eventDate) {
+            if (eventDate > d90StartStr && eventDate <= dateStr) {
+                dil90 += dilutionEvents[eventDate];
+                if (eventDate > d30StartStr) {
+                    dil30 += dilutionEvents[eventDate];
+                }
+            }
+        });
+
+        dailyData.push({
+            date: dateStr,
+            outstanding: outstanding,
+            dil30amount: dil30,
+            dil90amount: dil90,
+            rate30: outstanding > 0 ? dil30 / outstanding : 0,
+            rate90: outstanding > 0 ? dil90 / outstanding : 0
+        });
+
+        current.setDate(current.getDate() + 1);
+    }
+
+    // Now compute rolling averages
+    // 30-day rolling avg of rate30, 90-day rolling avg of rate90
+    for (var i = 0; i < dailyData.length; i++) {
+        var sum30 = 0;
+        var count30 = 0;
+        var sum90 = 0;
+        var count90 = 0;
+
+        for (var j = Math.max(0, i - 89); j <= i; j++) {
+            sum90 += dailyData[j].rate90;
+            count90++;
+            if (j >= i - 29) {
+                sum30 += dailyData[j].rate30;
+                count30++;
+            }
+        }
+
+        dailyData[i].avg30 = count30 > 0 ? sum30 / count30 : 0;
+        dailyData[i].avg90 = count90 > 0 ? sum90 / count90 : 0;
+    }
+
+    // Downsample for chart performance (max ~150 points)
+    var sampled = [];
+    var step = Math.max(1, Math.floor(dailyData.length / 150));
+    for (var k = 0; k < dailyData.length; k += step) {
+        sampled.push(dailyData[k]);
+    }
+    // Always include the last day
+    if (sampled.length === 0 || sampled[sampled.length - 1].date !== dailyData[dailyData.length - 1].date) {
+        sampled.push(dailyData[dailyData.length - 1]);
+    }
+
+    return { sampled: sampled, daily: dailyData };
 }
 
 // ================================================================
@@ -1961,55 +2029,87 @@ function renderDetailOverview() {
 
     // Chart
     var series = s.dilution_series || [];
+    var rollingSeries = s.rolling_series || [];
     if (state.detailChart) state.detailChart.destroy();
 
     var ccySymbols = { GBP: '£', EUR: '€', USD: '$' };
     var sym = ccySymbols[ccy] || ccy + ' ';
 
+    // Use rolling series as the primary x-axis (it has more data points)
+    var chartLabels = rollingSeries.map(function(d) { return d.date; });
+
     var ctx = document.getElementById('detailChart').getContext('2d');
     state.detailChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: series.map(function(d) { return d.date; }),
+            labels: chartLabels,
             datasets: [
                 {
                     label: 'Invoice Volume O/S (' + ccy + ')',
-                    data: series.map(function(d) { return d.invoiceOutstanding; }),
-                    borderColor: 'rgba(15,64,144,0.8)',
-                    backgroundColor: 'rgba(15,64,144,0.06)',
+                    data: rollingSeries.map(function(d) { return d.outstanding; }),
+                    borderColor: 'rgba(15,64,144,0.6)',
+                    backgroundColor: 'rgba(15,64,144,0.04)',
                     tension: 0.3,
                     fill: true,
-                    pointRadius: 1,
-                    pointHoverRadius: 4,
-                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    borderWidth: 1.5,
                     yAxisID: 'y-volume',
-                    order: 2
+                    order: 5
                 },
                 {
-                    label: 'CN / Unpaid Volume O/S (' + ccy + ')',
-                    data: series.map(function(d) { return d.cnOutstanding; }),
-                    borderColor: 'rgba(255,223,0,0.9)',
-                    backgroundColor: 'rgba(255,223,0,0.08)',
-                    tension: 0.3,
-                    fill: true,
-                    pointRadius: 1,
-                    pointHoverRadius: 4,
-                    borderWidth: 2,
-                    yAxisID: 'y-volume',
-                    order: 1
+                    label: '30-Day Dilution Rate',
+                    data: rollingSeries.map(function(d) { return (d.rate30 * 100); }),
+                    borderColor: 'rgba(239,68,68,0.3)',
+                    backgroundColor: 'rgba(239,68,68,0.0)',
+                    tension: 0.1,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    borderWidth: 1,
+                    borderDash: [3, 3],
+                    yAxisID: 'y-dilution',
+                    order: 3
                 },
                 {
-                    label: 'Dilution Rate (%)',
-                    data: series.map(function(d) { return (d.dilution * 100); }),
+                    label: '30-Day Rolling Avg',
+                    data: rollingSeries.map(function(d) { return (d.avg30 * 100); }),
                     borderColor: '#EF4444',
                     backgroundColor: 'rgba(239,68,68,0.0)',
                     tension: 0.3,
                     fill: false,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
+                    pointRadius: 1,
+                    pointHoverRadius: 4,
                     borderWidth: 2.5,
                     yAxisID: 'y-dilution',
-                    order: 0
+                    order: 1
+                },
+                {
+                    label: '90-Day Dilution Rate',
+                    data: rollingSeries.map(function(d) { return (d.rate90 * 100); }),
+                    borderColor: 'rgba(245,158,11,0.3)',
+                    backgroundColor: 'rgba(245,158,11,0.0)',
+                    tension: 0.1,
+                    fill: false,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    borderWidth: 1,
+                    borderDash: [3, 3],
+                    yAxisID: 'y-dilution',
+                    order: 4
+                },
+                {
+                    label: '90-Day Rolling Avg',
+                    data: rollingSeries.map(function(d) { return (d.avg90 * 100); }),
+                    borderColor: '#F59E0B',
+                    backgroundColor: 'rgba(245,158,11,0.0)',
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 1,
+                    pointHoverRadius: 4,
+                    borderWidth: 2.5,
+                    yAxisID: 'y-dilution',
+                    order: 2
                 }
             ]
         },
@@ -2045,8 +2145,10 @@ function renderDetailOverview() {
                 tooltip: {
                     callbacks: {
                         label: function(ctx) {
-                            if (ctx.datasetIndex === 2) return 'Dilution: ' + ctx.parsed.y.toFixed(2) + '%';
-                            return ctx.dataset.label + ': ' + sym + ctx.parsed.y.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            if (ctx.dataset.yAxisID === 'y-volume') {
+                                return ctx.dataset.label + ': ' + sym + ctx.parsed.y.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                            }
+                            return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + '%';
                         }
                     }
                 }
