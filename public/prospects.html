@@ -455,7 +455,7 @@
     <h1>Pelagic <span>Solutions</span> — Prospect Pipeline</h1>
     <nav class="header-nav">
         <a href="#" class="active">Prospects</a>
-        <a href="#" id="linkToFactorFlow">FactorFlow →</a>
+        <a href="#" id="linkToFactorFlow" onclick="window.open(FACTORFLOW_URL, '_blank'); return false;">FactorFlow →</a>
     </nav>
 </header>
 
@@ -767,17 +767,20 @@
                 <div class="card" style="background:var(--bg); border:2px solid var(--gold);">
                     <div class="card-title" style="margin-bottom:16px;">Convert to Live Supplier</div>
                     <p style="font-size:13px; color:var(--text-mid); margin-bottom:20px; line-height:1.6;">
-                        This will create a new Supplier record in FactorFlow and import all historic invoice data. 
-                        The supplier will then appear in the main Admin Portal for funding.
+                        This will open FactorFlow's Admin Portal with the supplier creation form pre-filled with the information collected during prospecting.
+                        Create the supplier in FactorFlow, then return here to confirm the conversion.
                     </p>
                     <div class="form-row">
-                        <div class="form-group" style="min-width:250px;">
+                        <div class="form-group" style="min-width:300px;">
                             <label>Company Name (Real Name)</label>
                             <input type="text" id="convertCompanyName" placeholder="Enter real company name">
                         </div>
                     </div>
                     <div id="convertSummary" style="margin:16px 0; font-size:13px; color:var(--text-mid);"></div>
-                    <button class="btn btn-gold" id="convertBtn">Convert & Import to FactorFlow</button>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <button class="btn btn-gold" id="convertBtn">Open FactorFlow & Create Supplier →</button>
+                        <button class="btn btn-primary hidden" id="confirmConvertBtn">Confirm Conversion Complete</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -790,6 +793,7 @@
 // ================================================================
 var SUPABASE_URL = 'https://jgmyrxevvaxjsxiecmzf.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnbXlyeGV2dmF4anN4aWVjbXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDEwMzcsImV4cCI6MjA5MDcxNzAzN30.Iy6eh3yXOzyTvGq8uYYZqj2ZUlwP0yNJ6XHf7x892c4';
+var FACTORFLOW_URL = 'https://pelagic-factorflow.vercel.app';
 var supabase = null;
 var ROWS_PER_PAGE = 20;
 
@@ -1939,6 +1943,7 @@ function setupDetailPanel() {
     document.getElementById('detailSaveInfo').addEventListener('click', saveDetailInfo);
     document.getElementById('addNoteBtn').addEventListener('click', addNote);
     document.getElementById('convertBtn').addEventListener('click', convertProspect);
+    document.getElementById('confirmConvertBtn').addEventListener('click', confirmConversion);
 
     // Detail invoice filters
     document.getElementById('detailInvSearch').addEventListener('input', function() {
@@ -2425,35 +2430,133 @@ function convertProspect() {
     var companyName = document.getElementById('convertCompanyName').value.trim();
     if (!companyName) { alert('Please enter the real company name'); return; }
 
-    if (!confirm('Convert "' + prospect.supplier_identifier + '" to live supplier "' + companyName + '" and import all historic data?')) return;
+    // Build deep link URL with pre-filled data
+    var params = new URLSearchParams();
+    params.set('action', 'create-supplier');
+    params.set('name', companyName);
+    if (prospect.contact_name) params.set('contact_name', prospect.contact_name);
+    if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+    if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+    params.set('prospect_id', prospect.id);
+    params.set('upload_id', prospect.upload_id || '');
 
-    // In a full implementation, this would:
-    // 1. Create a SUPPLIERS_DB record via the FactorFlow API/Supabase
-    // 2. Bulk insert prospect_invoices into INVOICES_DB
-    // 3. Update prospect_suppliers with converted_supplier_id and converted_at
-    // 4. Change status to 'converted'
+    var url = FACTORFLOW_URL + '?' + params.toString();
 
-    alert('Conversion to FactorFlow will be implemented when connected to the main system.\n\nThis will create supplier "' + companyName + '" and import ' + (state.prospectInvoices[prospect.id] || []).length + ' invoices.');
+    // Open FactorFlow in new tab
+    window.open(url, '_blank');
+
+    // Show the confirm button
+    document.getElementById('confirmConvertBtn').classList.remove('hidden');
+}
+
+function confirmConversion() {
+    var prospect = state.selectedProspect;
+    if (!prospect) return;
+
+    var companyName = document.getElementById('convertCompanyName').value.trim();
+    if (!companyName) { alert('Please enter the company name'); return; }
+
+    if (!confirm('Confirm that "' + companyName + '" has been created in FactorFlow?\n\nThis will mark this prospect as converted and transfer all notes.')) return;
 
     if (supabase) {
-        supabase.from('prospect_suppliers').update({
-            status: 'converted',
-            company_name: companyName,
-            converted_at: new Date().toISOString()
-        }).eq('id', prospect.id).then(function() {
-            prospect.status = 'converted';
-            prospect.company_name = companyName;
+        // First, look up the newly created supplier in FactorFlow by name
+        supabase.from('suppliers').select('id').eq('name', companyName).then(function(supRes) {
+            var factorflowSupplierId = (supRes.data && supRes.data.length > 0) ? supRes.data[0].id : null;
 
-            supabase.from('prospect_notes').insert({
-                prospect_supplier_id: prospect.id,
-                note_type: 'system',
-                content: 'Supplier converted to FactorFlow as "' + companyName + '"'
-            }).then(function() {
-                renderDetailNotes();
-                renderPipeline();
+            // Update prospect status
+            var updateData = {
+                status: 'converted',
+                company_name: companyName,
+                converted_at: new Date().toISOString()
+            };
+            if (factorflowSupplierId) {
+                updateData.converted_supplier_id = factorflowSupplierId;
+            }
+
+            supabase.from('prospect_suppliers').update(updateData).eq('id', prospect.id).then(function() {
+                prospect.status = 'converted';
+                prospect.company_name = companyName;
+
+                // Add system note to prospect
+                supabase.from('prospect_notes').insert({
+                    prospect_supplier_id: prospect.id,
+                    note_type: 'system',
+                    content: 'Supplier converted to FactorFlow as "' + companyName + '"' + (factorflowSupplierId ? ' (ID: ' + factorflowSupplierId + ')' : '')
+                }).then(function() {
+                    // Transfer all prospect notes to entity_notes if we found the supplier
+                    if (factorflowSupplierId) {
+                        transferNotesToFactorFlow(prospect.id, factorflowSupplierId, companyName);
+                    }
+
+                    renderDetailNotes();
+                    renderPipeline();
+
+                    // Update detail panel to show converted state
+                    var statusSelect = document.getElementById('detailStatus');
+                    statusSelect.innerHTML = '<option value="converted">Converted</option>';
+                    statusSelect.value = 'converted';
+                    statusSelect.disabled = true;
+                    document.getElementById('detailSaveInfo').disabled = true;
+                    document.getElementById('detailSaveInfo').textContent = 'Converted';
+                    document.getElementById('detailTitle').textContent = 'Supplier: ' + prospect.supplier_identifier + ' (' + companyName + ')';
+
+                    // Hide convert tab
+                    var convertTabBtn = document.querySelector('[data-detail-tab="convert"]');
+                    convertTabBtn.classList.add('hidden');
+                    // Switch to overview
+                    document.querySelector('[data-detail-tab="overview"]').click();
+
+                    if (!factorflowSupplierId) {
+                        alert('Marked as converted, but could not find supplier "' + companyName + '" in FactorFlow to transfer notes. Please check the supplier was created with this exact name.');
+                    }
+                });
             });
         });
+    } else {
+        prospect.status = 'converted';
+        prospect.company_name = companyName;
+        renderPipeline();
+        alert('Marked as converted (local mode)');
     }
+}
+
+function transferNotesToFactorFlow(prospectSupplierId, factorflowSupplierId, companyName) {
+    // Load all prospect notes for this supplier
+    supabase.from('prospect_notes').select('*').eq('prospect_supplier_id', prospectSupplierId).order('created_at', { ascending: true }).then(function(res) {
+        var prospectNotes = res.data || [];
+        if (prospectNotes.length === 0) return;
+
+        // Build entity_notes records
+        var entityNotes = [];
+
+        // Add a header note indicating these were imported from prospects
+        entityNotes.push({
+            entity_id: factorflowSupplierId,
+            entity_type: 'supplier',
+            note_type: 'system',
+            content: 'Notes imported from Prospect Pipeline — ' + prospectNotes.length + ' notes transferred during conversion.'
+        });
+
+        // Transfer each prospect note
+        prospectNotes.forEach(function(pn) {
+            entityNotes.push({
+                entity_id: factorflowSupplierId,
+                entity_type: 'supplier',
+                note_type: pn.note_type,
+                content: '[Prospect] ' + pn.content,
+                created_at: pn.created_at
+            });
+        });
+
+        // Batch insert into entity_notes
+        supabase.from('entity_notes').insert(entityNotes).then(function(insertRes) {
+            if (insertRes.error) {
+                console.error('Error transferring notes:', insertRes.error);
+            } else {
+                console.log('Transferred ' + prospectNotes.length + ' notes to entity_notes for ' + companyName);
+            }
+        });
+    });
 }
 
 // ================================================================
