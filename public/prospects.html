@@ -794,7 +794,7 @@
 var SUPABASE_URL = 'https://jgmyrxevvaxjsxiecmzf.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnbXlyeGV2dmF4anN4aWVjbXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDEwMzcsImV4cCI6MjA5MDcxNzAzN30.Iy6eh3yXOzyTvGq8uYYZqj2ZUlwP0yNJ6XHf7x892c4';
 var FACTORFLOW_URL = 'https://pelagic-factorflow.vercel.app';
-var supabase = null;
+var sbClient = null;
 var ROWS_PER_PAGE = 20;
 
 // ================================================================
@@ -853,15 +853,16 @@ function initApp() {
     if (SUPABASE_URL && SUPABASE_ANON_KEY) {
         var sbRetries = 0;
         function tryInitSupabase() {
-            if (window.supabase && window.supabase.createClient) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            var lib = window.supabase;
+            if (lib && lib.createClient) {
+                sbClient = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 console.log("Supabase connected successfully");
                 loadAllData();
             } else if (sbRetries < 30) {
                 sbRetries++;
                 setTimeout(tryInitSupabase, 100);
             } else {
-                console.warn("Supabase library did not load after 3 seconds. Running in local mode. Check browser tracking prevention settings.");
+                console.warn("Supabase library did not load after 3 seconds. Running in local mode.");
             }
         }
         tryInitSupabase();
@@ -1101,7 +1102,7 @@ function processAndSave() {
             var result = processCSVData(state.invoiceData, state.cnData, state.detectedFormat);
             updateProcessing(50, 'Computed stats for ' + Object.keys(result.suppliers).length + ' suppliers');
 
-            if (supabase) {
+            if (sbClient) {
                 saveToSupabase(result, buyerLabel, function() {
                     updateProcessing(100, 'Saved to database');
                     setTimeout(function() {
@@ -1516,7 +1517,7 @@ function saveToSupabase(result, buyerLabel, callback) {
 
     updateProcessing(55, 'Saving upload record...');
 
-    supabase.from('prospect_uploads').insert(uploadRecord).select().then(function(res) {
+    sbClient.from('prospect_uploads').insert(uploadRecord).select().then(function(res) {
         if (res.error) { alert('Error saving upload: ' + res.error.message); return; }
         var uploadId = res.data[0].id;
 
@@ -1531,7 +1532,7 @@ function saveToSupabase(result, buyerLabel, callback) {
             };
         });
 
-        supabase.from('prospect_suppliers').upsert(supplierRecords, { onConflict: 'upload_id,supplier_identifier' }).select().then(function(sRes) {
+        sbClient.from('prospect_suppliers').upsert(supplierRecords, { onConflict: 'upload_id,supplier_identifier' }).select().then(function(sRes) {
             if (sRes.error) { alert('Error saving suppliers: ' + sRes.error.message); return; }
 
             updateProcessing(70, 'Saving invoice records...');
@@ -1609,7 +1610,7 @@ function batchInsert(table, records, batchSize, callback) {
     var idx = 0;
     function nextBatch() {
         if (idx >= batches.length) { callback(); return; }
-        supabase.from(table).upsert(batches[idx], { onConflict: 'upload_id,reference_number' }).then(function(res) {
+        sbClient.from(table).upsert(batches[idx], { onConflict: 'upload_id,reference_number' }).then(function(res) {
             if (res.error) console.error('Batch insert error:', res.error);
             idx++;
             nextBatch();
@@ -1622,13 +1623,13 @@ function batchInsert(table, records, batchSize, callback) {
 // LOAD DATA FROM SUPABASE
 // ================================================================
 function loadAllData() {
-    if (!supabase) return;
+    if (!sbClient) return;
 
     Promise.all([
-        supabase.from('prospect_uploads').select('*').order('upload_date', { ascending: false }),
-        supabase.from('prospect_suppliers').select('*').order('created_at', { ascending: false }),
-        supabase.from('prospect_invoices').select('*'),
-        supabase.from('prospect_credit_notes').select('*')
+        sbClient.from('prospect_uploads').select('*').order('upload_date', { ascending: false }),
+        sbClient.from('prospect_suppliers').select('*').order('created_at', { ascending: false }),
+        sbClient.from('prospect_invoices').select('*'),
+        sbClient.from('prospect_credit_notes').select('*')
     ]).then(function(results) {
         state.uploads = results[0].data || [];
         var suppliers = results[1].data || [];
@@ -1920,8 +1921,8 @@ function renderUploadsHistory() {
 }
 
 function deleteUpload(uploadId) {
-    if (supabase) {
-        supabase.from('prospect_uploads').delete().eq('id', uploadId).then(function() {
+    if (sbClient) {
+        sbClient.from('prospect_uploads').delete().eq('id', uploadId).then(function() {
             loadAllData();
         });
     } else {
@@ -2280,8 +2281,8 @@ function renderDetailNotes() {
     var prospect = state.selectedProspect;
     if (!prospect) return;
 
-    if (supabase) {
-        supabase.from('prospect_notes').select('*').eq('prospect_supplier_id', prospect.id).order('created_at', { ascending: false }).then(function(res) {
+    if (sbClient) {
+        sbClient.from('prospect_notes').select('*').eq('prospect_supplier_id', prospect.id).order('created_at', { ascending: false }).then(function(res) {
             var notes = res.data || [];
             renderNotesList(notes);
         });
@@ -2322,8 +2323,8 @@ function addNote() {
         created_at: new Date().toISOString()
     };
 
-    if (supabase) {
-        supabase.from('prospect_notes').insert({
+    if (sbClient) {
+        sbClient.from('prospect_notes').insert({
             prospect_supplier_id: prospect.id,
             note_type: type,
             content: text
@@ -2355,8 +2356,8 @@ function saveDetailInfo() {
 
     var oldStatus = prospect.status;
 
-    if (supabase) {
-        supabase.from('prospect_suppliers').update(updates).eq('id', prospect.id).then(function(res) {
+    if (sbClient) {
+        sbClient.from('prospect_suppliers').update(updates).eq('id', prospect.id).then(function(res) {
             if (res.error) { alert('Error saving: ' + res.error.message); return; }
 
             // Update local state
@@ -2364,7 +2365,7 @@ function saveDetailInfo() {
 
             // Add status change note if changed
             if (oldStatus !== updates.status) {
-                supabase.from('prospect_notes').insert({
+                sbClient.from('prospect_notes').insert({
                     prospect_supplier_id: prospect.id,
                     note_type: 'status_change',
                     content: 'Status changed from ' + oldStatus + ' to ' + updates.status
@@ -2470,9 +2471,9 @@ function confirmConversion() {
 
     if (!confirm('Confirm that "' + companyName + '" has been created in FactorFlow?\n\nThis will mark this prospect as converted and transfer all notes.')) return;
 
-    if (supabase) {
+    if (sbClient) {
         // First, look up the newly created supplier in FactorFlow by name
-        supabase.from('suppliers').select('id').eq('name', companyName).then(function(supRes) {
+        sbClient.from('suppliers').select('id').eq('name', companyName).then(function(supRes) {
             var factorflowSupplierId = (supRes.data && supRes.data.length > 0) ? supRes.data[0].id : null;
 
             // Update prospect status
@@ -2485,12 +2486,12 @@ function confirmConversion() {
                 updateData.converted_supplier_id = factorflowSupplierId;
             }
 
-            supabase.from('prospect_suppliers').update(updateData).eq('id', prospect.id).then(function() {
+            sbClient.from('prospect_suppliers').update(updateData).eq('id', prospect.id).then(function() {
                 prospect.status = 'converted';
                 prospect.company_name = companyName;
 
                 // Add system note to prospect
-                supabase.from('prospect_notes').insert({
+                sbClient.from('prospect_notes').insert({
                     prospect_supplier_id: prospect.id,
                     note_type: 'system',
                     content: 'Supplier converted to FactorFlow as "' + companyName + '"' + (factorflowSupplierId ? ' (ID: ' + factorflowSupplierId + ')' : '')
@@ -2534,7 +2535,7 @@ function confirmConversion() {
 
 function transferNotesToFactorFlow(prospectSupplierId, factorflowSupplierId, companyName) {
     // Load all prospect notes for this supplier
-    supabase.from('prospect_notes').select('*').eq('prospect_supplier_id', prospectSupplierId).order('created_at', { ascending: true }).then(function(res) {
+    sbClient.from('prospect_notes').select('*').eq('prospect_supplier_id', prospectSupplierId).order('created_at', { ascending: true }).then(function(res) {
         var prospectNotes = res.data || [];
         if (prospectNotes.length === 0) return;
 
@@ -2561,7 +2562,7 @@ function transferNotesToFactorFlow(prospectSupplierId, factorflowSupplierId, com
         });
 
         // Batch insert into entity_notes
-        supabase.from('entity_notes').insert(entityNotes).then(function(insertRes) {
+        sbClient.from('entity_notes').insert(entityNotes).then(function(insertRes) {
             if (insertRes.error) {
                 console.error('Error transferring notes:', insertRes.error);
             } else {
