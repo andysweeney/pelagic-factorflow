@@ -1318,17 +1318,20 @@ function computeDilutionTimeSeries(invoices, creditNotes, format, startDate, end
 
 function computeDilutionOnDate(invoices, creditNotes, format, dateStr) {
     if (format === 'format_1') {
-        // Format 1: dilution from invoices where invoice_date <= dateStr AND (not settled OR settled after dateStr)
+        // Format 1: only invoices past their due date with unpaid balance count as diluted
         var totalInvoiced = 0;
         var totalUnpaid = 0;
 
         invoices.forEach(function(inv) {
             if (inv.invoice_date && inv.invoice_date <= dateStr) {
-                // Include if not yet settled on this date
+                // Include in total if not yet settled on this date
                 if (!inv.settled_date || inv.settled_date > dateStr) {
                     totalInvoiced += inv.invoice_amount;
-                    var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
-                    if (unpaid > 0) totalUnpaid += unpaid;
+                    // Only count as diluted if past due date
+                    if (inv.due_date && inv.due_date < dateStr) {
+                        var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
+                        if (unpaid > 0) totalUnpaid += unpaid;
+                    }
                 }
             }
         });
@@ -1383,8 +1386,11 @@ function computePeriodDilution(invoices, creditNotes, format, days) {
         var totalUnpaid = 0;
         periodInvoices.forEach(function(inv) {
             totalInvoiced += inv.invoice_amount;
-            var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
-            if (unpaid > 0 && (!inv.settled_date || inv.settled_date > todayStr_)) totalUnpaid += unpaid;
+            // Only count as diluted if past due and not settled
+            if (inv.due_date && inv.due_date < todayStr_ && (!inv.settled_date || inv.settled_date > todayStr_)) {
+                var unpaid = inv.invoice_amount - (inv.amount_paid_to_date || 0);
+                if (unpaid > 0) totalUnpaid += unpaid;
+            }
         });
         return totalInvoiced > 0 ? totalUnpaid / totalInvoiced : 0;
     } else {
