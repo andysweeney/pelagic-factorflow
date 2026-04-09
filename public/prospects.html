@@ -1548,18 +1548,24 @@ function saveToSupabase(result, buyerLabel, callback) {
                     allInvoices.push({
                         upload_id: uploadId,
                         prospect_supplier_id: prospectSupplierId,
-                        buyer_identifier: inv.buyer_identifier,
-                        supplier_identifier: inv.supplier_identifier,
+                        buyer_identifier: inv.buyer_identifier || 'UNKNOWN',
+                        supplier_identifier: inv.supplier_identifier || sid,
                         reference_number: inv.reference_number,
-                        currency: inv.currency,
-                        invoice_amount: inv.invoice_amount,
-                        invoice_date: inv.invoice_date,
-                        due_date: inv.due_date,
-                        amount_paid_to_date: inv.amount_paid_to_date,
-                        settled_date: inv.settled_date
+                        currency: inv.currency || 'GBP',
+                        invoice_amount: inv.invoice_amount || 0,
+                        invoice_date: inv.invoice_date || null,
+                        due_date: inv.due_date || null,
+                        amount_paid_to_date: inv.amount_paid_to_date != null ? inv.amount_paid_to_date : null,
+                        settled_date: inv.settled_date || null
                     });
                 });
             });
+
+            // Filter out rows with missing required dates
+            allInvoices = allInvoices.filter(function(inv) {
+                return inv.invoice_date && inv.due_date && inv.reference_number;
+            });
+            if (allInvoices.length === 0) { console.warn('No valid invoices to insert'); }
 
             // Insert in batches of 500
             batchInsert('prospect_invoices', allInvoices, 500, function() {
@@ -1573,14 +1579,14 @@ function saveToSupabase(result, buyerLabel, callback) {
                         allCNs.push({
                             upload_id: uploadId,
                             prospect_supplier_id: prospectSupplierId,
-                            buyer_identifier: cn.buyer_identifier,
-                            supplier_identifier: cn.supplier_identifier,
+                            buyer_identifier: cn.buyer_identifier || 'UNKNOWN',
+                            supplier_identifier: cn.supplier_identifier || sid,
                             reference_number: cn.reference_number,
-                            currency: cn.currency,
-                            credit_note_amount: cn.credit_note_amount,
-                            cn_date: cn.cn_date,
-                            due_date: cn.due_date,
-                            settled_date: cn.settled_date
+                            currency: cn.currency || 'GBP',
+                            credit_note_amount: cn.credit_note_amount || 0,
+                            cn_date: cn.cn_date || null,
+                            due_date: cn.due_date || null,
+                            settled_date: cn.settled_date || null
                         });
                     });
                 });
@@ -1611,7 +1617,7 @@ function batchInsert(table, records, batchSize, callback) {
     function nextBatch() {
         if (idx >= batches.length) { callback(); return; }
         sbClient.from(table).upsert(batches[idx], { onConflict: 'upload_id,reference_number' }).then(function(res) {
-            if (res.error) console.error('Batch insert error:', res.error);
+            if (res.error) console.error('Batch insert error on ' + table + ' batch ' + (idx + 1) + '/' + batches.length + ':', res.error.message, res.error.details);
             idx++;
             nextBatch();
         });
