@@ -1188,7 +1188,7 @@ function processCSVData(invoiceRows, cnRows, format) {
         }
 
         suppliers[sid].invoices.push({
-            reference_number: ref || ('INV-' + suppliers[sid].invoices.length),
+            reference_number: ref || (sid + '-INV-' + String(suppliers[sid].invoices.length + 1).padStart(5, '0')),
             buyer_identifier: bid || buyerIdentifier || 'UNKNOWN',
             supplier_identifier: sid,
             currency: (currency || 'GBP').toUpperCase(),
@@ -1218,7 +1218,7 @@ function processCSVData(invoiceRows, cnRows, format) {
             }
 
             suppliers[sid].creditNotes.push({
-                reference_number: ref || ('CN-' + suppliers[sid].creditNotes.length),
+                reference_number: ref || (sid + '-CN-' + String(suppliers[sid].creditNotes.length + 1).padStart(5, '0')),
                 buyer_identifier: bid || buyerIdentifier || 'UNKNOWN',
                 supplier_identifier: sid,
                 currency: (currency || 'GBP').toUpperCase(),
