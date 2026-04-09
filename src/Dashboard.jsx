@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+    import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -392,7 +392,6 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          prospectBuyerId: row.prospect_buyer_id || "",
           paused: row.paused || false
         });
       });
@@ -687,7 +686,6 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          prospectBuyerId: row.prospect_buyer_id || "",
           paused: row.paused || false
         });
       });
@@ -779,7 +777,6 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-        prospect_buyer_id: b.prospectBuyerId || null,
         paused: b.paused || false
       };
     });
@@ -1328,36 +1325,6 @@ export default function FactoringDashboard() {
       if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
       if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].name);
       setDataVer(function(v) { return v + 1; });
-
-      // Handle deep link from Prospects portal
-      var urlParams = new URLSearchParams(window.location.search);
-      var action = urlParams.get("action");
-      if (action === "create-supplier") {
-        // Switch to Admin > Suppliers tab and open new entity form
-        setView("manage");
-        setManageTab("suppliers");
-        setManageEdit(null);
-        setShowNewEntity(true);
-        setChImportStep("skip");
-        // Pre-fill from URL params
-        var prefill = Object.assign({}, EMPTY_ADDR, {
-          name: urlParams.get("name") || "",
-          companyNumber: urlParams.get("company_number") || "",
-          incorporationDate: "",
-          companyStatus: "",
-          directors: [],
-          bankName: "",
-          bankDetails: "",
-          primaryContact: urlParams.get("contact_name") || "",
-          primaryEmail: urlParams.get("contact_email") || "",
-          primaryPhone: urlParams.get("contact_phone") || "",
-          prospectId: urlParams.get("prospect_id") || "",
-          prospectUploadId: urlParams.get("upload_id") || ""
-        });
-        setManageFields(prefill);
-        // Clean URL without reloading
-        window.history.replaceState(null, "", window.location.pathname);
-      }
     });
   }, []);
 
@@ -1447,10 +1414,6 @@ export default function FactoringDashboard() {
   var md1 = useState(null), manageDetail = md1[0], setManageDetail = md1[1];
   var mp1 = useState(null), managePopup = mp1[0], setManagePopup = mp1[1];
   var mdt1 = useState("overview"), manageDetailTab = mdt1[0], setManageDetailTab = mdt1[1];
-  var en1 = useState([]), entityNotes = en1[0], setEntityNotes = en1[1];
-  var ent1 = useState(""), entityNoteText = ent1[0], setEntityNoteText = ent1[1];
-  var entype1 = useState("note"), entityNoteType = entype1[0], setEntityNoteType = entype1[1];
-  var ps1 = useState([]), prospectSuppliers = ps1[0], setProspectSuppliers = ps1[1];
   var ap2 = useState(null), auditPopup = ap2[0], setAuditPopup = ap2[1];
   var st1 = useState("overview"), supTab = st1[0], setSupTab = st1[1];
   var pt1 = useState("overview"), progTab = pt1[0], setProgTab = pt1[1];
@@ -8807,133 +8770,6 @@ export default function FactoringDashboard() {
             }).catch(function() { /* silent fail — entity was already saved with the number */ });
           }
 
-          function loadEntityNotes(entityId, entityType) {
-            if (!supabase) { setEntityNotes([]); return; }
-            supabase.from("entity_notes").select("*").eq("entity_id", entityId).eq("entity_type", entityType).order("created_at", { ascending: false }).then(function(res) {
-              setEntityNotes(res.data || []);
-            });
-          }
-
-          function saveEntityNote(entityId, entityType) {
-            var text = entityNoteText.trim();
-            if (!text) return;
-            var noteRecord = { entity_id: entityId, entity_type: entityType, note_type: entityNoteType, content: text };
-            if (supabase) {
-              supabase.from("entity_notes").insert(noteRecord).then(function(res) {
-                if (res.error) { alert("Error saving note: " + res.error.message); return; }
-                setEntityNoteText("");
-                loadEntityNotes(entityId, entityType);
-              });
-            }
-          }
-
-          function loadProspectSuppliers() {
-            if (!supabase) return;
-            supabase.from("prospect_suppliers").select("id, supplier_identifier, status, company_name, contact_name, contact_email, contact_phone, upload_id, converted_supplier_id").order("created_at", { ascending: false }).then(function(res) {
-              setProspectSuppliers(res.data || []);
-            });
-          }
-
-          function linkProspectToSupplier(prospectId, supplierId, supplierName) {
-            if (!supabase || !prospectId) return;
-            // 1. Update prospect_suppliers with converted_supplier_id and status
-            supabase.from("prospect_suppliers").update({
-              status: "converted",
-              converted_supplier_id: supplierId,
-              company_name: supplierName,
-              converted_at: new Date().toISOString()
-            }).eq("id", prospectId).then(function(res) {
-              if (res.error) { console.error("Error linking prospect:", res.error); return; }
-
-              // 2. Transfer prospect notes to entity_notes
-              supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", prospectId).order("created_at", { ascending: true }).then(function(notesRes) {
-                var pNotes = notesRes.data || [];
-                if (pNotes.length > 0) {
-                  var entityNoteRecords = [];
-                  entityNoteRecords.push({
-                    entity_id: supplierId,
-                    entity_type: "supplier",
-                    note_type: "system",
-                    content: "Notes imported from Prospect Pipeline \u2014 " + pNotes.length + " notes transferred during conversion."
-                  });
-                  pNotes.forEach(function(pn) {
-                    entityNoteRecords.push({
-                      entity_id: supplierId,
-                      entity_type: "supplier",
-                      note_type: pn.note_type,
-                      content: "[Prospect] " + pn.content,
-                      created_at: pn.created_at
-                    });
-                  });
-                  supabase.from("entity_notes").insert(entityNoteRecords).then(function() {
-                    loadEntityNotes(supplierId, "supplier");
-                  });
-                }
-              });
-
-              // 3. Import historic invoices from prospect_invoices into INVOICES_DB
-              supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", prospectId).then(function(invRes) {
-                var pInvoices = invRes.data || [];
-                if (pInvoices.length > 0) {
-                  // Look up buyer name from BUYERS_DB using prospect buyer ID mapping
-                  var buyerName = pInvoices[0].buyer_identifier || "Unknown Buyer";
-                  var buyerId = "";
-                  BUYERS_DB.forEach(function(b) {
-                    if (b.prospectBuyerId && b.prospectBuyerId === pInvoices[0].buyer_identifier) {
-                      buyerName = b.name;
-                      buyerId = b.id;
-                    } else if (b.id === pInvoices[0].buyer_identifier || b.name === pInvoices[0].buyer_identifier) {
-                      buyerName = b.name;
-                      buyerId = b.id;
-                    }
-                  });
-
-                  var invoiceRows = pInvoices.map(function(pi, idx) {
-                    var invId = "HIST-" + supplierId + "-" + String(idx + 1).padStart(5, "0");
-                    return {
-                      id: invId,
-                      supplier_name: supplierName,
-                      supplier_id: supplierId,
-                      buyer_name: buyerName,
-                      buyer_id: buyerId,
-                      amount: pi.invoice_amount,
-                      currency: pi.currency || "GBP",
-                      invoice_date: pi.invoice_date || null,
-                      due_date: pi.due_date || null,
-                      invoice_reference: pi.reference_number || "",
-                      invoice_status: pi.settled_date ? "closed" : "open",
-                      funding_status: pi.settled_date ? "fully_repaid" : "pending",
-                      notes: JSON.stringify({ historic: true, prospect_upload_id: pi.upload_id, amount_paid_to_date: pi.amount_paid_to_date, settled_date: pi.settled_date })
-                    };
-                  });
-                  // Batch insert
-                  var batchSize = 500;
-                  var batches = [];
-                  for (var i = 0; i < invoiceRows.length; i += batchSize) {
-                    batches.push(invoiceRows.slice(i, i + batchSize));
-                  }
-                  var bIdx = 0;
-                  function nextBatch() {
-                    if (bIdx >= batches.length) {
-                      auditLog("Prospect Linked", "Linked prospect " + prospectId + " to supplier " + supplierId + " (" + supplierName + "). Imported " + pInvoices.length + " historic invoices and transferred notes.", { prospectId: prospectId, supplierId: supplierId, invoiceCount: pInvoices.length });
-                      setDataVer(function(v) { return v + 1; });
-                      loadProspectSuppliers();
-                      return;
-                    }
-                    supabase.from("invoices").insert(batches[bIdx]).then(function(res) {
-                      if (res.error) console.error("Invoice import batch " + (bIdx + 1) + " error:", res.error.message, res.error.details);
-                      bIdx++; nextBatch();
-                    });
-                  }
-                  nextBatch();
-                } else {
-                  auditLog("Prospect Linked", "Linked prospect " + prospectId + " to supplier " + supplierId + " (" + supplierName + "). No invoices to import.", { prospectId: prospectId, supplierId: supplierId });
-                  loadProspectSuppliers();
-                }
-              });
-            });
-          }
-
           function saveEntity() {
             var f = manageFields;
             if (!f.name) return;
@@ -9021,11 +8857,6 @@ export default function FactoringDashboard() {
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
                 }
-                // Link to prospect if newly selected (not already linked)
-                if (isSupTab && f.prospectId && !ent._prospectLinked) {
-                  ent._prospectLinked = true;
-                  linkProspectToSupplier(f.prospectId, manageEdit, f.name);
-                }
               }
             } else {
               var newId = prefix + "-" + String(db.length + 1).padStart(3, "0");
@@ -9038,21 +8869,16 @@ export default function FactoringDashboard() {
               if (coNum && (!f.directors || f.directors.length === 0)) {
                 chFetchAndUpdateEntity(newEnt, coNum);
               }
-              // Link to prospect if selected
-              if (isSupTab && f.prospectId) {
-                linkProspectToSupplier(f.prospectId, newId, f.name);
-              }
             }
             setManageEdit(null); setManageFields({}); setShowNewEntity(false);
             setDataVer(function(v) { return v + 1; });
           }
 
-          function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); loadProspectSuppliers(); }
+          function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); }
           function startNewEntity() {
             setManageEdit(null);
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
             setShowNewEntity(true);
-            loadProspectSuppliers();
             // Show CH import step for suppliers and buyers
             if (isSupTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
             else { setChImportStep(null); }
@@ -9270,7 +9096,7 @@ export default function FactoringDashboard() {
 
                 {/* Detail Sub-Tabs */}
                 <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
-                  {[{ key: "overview", label: "Overview" }, { key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") }, { key: "monitoring", label: "Monitoring" }, { key: "ch", label: "Companies House" }, { key: "branches", label: "Branches" + (det.branches && det.branches.length > 0 ? " (" + det.branches.length + ")" : "") }, { key: "notes", label: "Notes" }, { key: "auditlog", label: "Audit Log" }].map(function(t) {
+                  {[{ key: "overview", label: "Overview" }, { key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") }, { key: "monitoring", label: "Monitoring" }, { key: "ch", label: "Companies House" }, { key: "branches", label: "Branches" + (det.branches && det.branches.length > 0 ? " (" + det.branches.length + ")" : "") }, { key: "auditlog", label: "Audit Log" }].map(function(t) {
                     return <button key={t.key} onClick={function() { setManageDetailTab(t.key); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageDetailTab === t.key ? "var(--accent)" : "var(--border)"), background: manageDetailTab === t.key ? "var(--accent)" : "transparent", color: manageDetailTab === t.key ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", boxShadow: manageDetailTab === t.key ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t.label}</button>;
                   })}
                 </div>
@@ -9301,30 +9127,6 @@ export default function FactoringDashboard() {
                       {det.companyStatus && <div><div style={fieldLabel}>Company Status</div><div style={fieldValue}>{det.companyStatus}</div></div>}
                       {det.incorporationDate && <div><div style={fieldLabel}>Incorporated</div><div style={fieldValue}>{fmt(det.incorporationDate)}</div></div>}
                       {det.street1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</div></div>}
-                      {isSup && <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 14, marginTop: 4 }}>
-                        <div style={fieldLabel}>Linked Prospects</div>
-                        {(function() {
-                          var linked = prospectSuppliers.filter(function(ps) { return ps.converted_supplier_id === det.id; });
-                          if (linked.length > 0) {
-                            return <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                              {linked.map(function(lp) {
-                                return <span key={lp.id} style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 6, background: "#D1FAE5", color: "#065F46", border: "1px solid #05966930" }}>{lp.supplier_identifier}{lp.company_name ? " (" + lp.company_name + ")" : ""}</span>;
-                              })}
-                            </div>;
-                          }
-                          // Show link button for unlinked suppliers
-                          var available = prospectSuppliers.filter(function(ps) { return ps.status !== "converted" && ps.status !== "declined"; });
-                          if (available.length === 0) return <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>No prospects linked. No available prospects to link.</div>;
-                          return <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
-                            <span style={{ fontSize: 12, color: "var(--muted)" }}>No prospects linked.</span>
-                            <select id="detailProspectLink" style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11 }}>
-                              <option value="">Select prospect to link...</option>
-                              {available.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplier_identifier}{ps.company_name ? " (" + ps.company_name + ")" : ""} — {ps.status}</option>; })}
-                            </select>
-                            <button onClick={function() { var sel = document.getElementById("detailProspectLink"); if (sel && sel.value) { linkProspectToSupplier(sel.value, det.id, det.name); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Link & Import</button>
-                          </div>;
-                        })()}
-                      </div>}
                     </div>
                     {/* Contacts */}
                     {(det.primaryContact || det.primaryEmail || det.primaryPhone) && (function() {
@@ -9774,40 +9576,6 @@ export default function FactoringDashboard() {
                   </div>;
                 })()}
 
-                {/* Tab: Entity Notes */}
-                {manageDetailTab === "notes" && (function() {
-                  var detEntityForNotes = isSup ? SUPPLIERS_DB.find(function(s) { return s.name === det.name; }) : det.type === "service_provider" ? SERVICE_PROVIDERS_DB.find(function(s) { return s.name === det.name; }) : BUYERS_DB.find(function(b) { return b.name === det.name; });
-                  var noteEntityId = detEntityForNotes ? detEntityForNotes.id : "";
-                  var noteEntityType = isSup ? "supplier" : det.type === "service_provider" ? "service_provider" : "buyer";
-                  return <div>
-                    <div style={{ background: "var(--bg)", borderRadius: 10, padding: "20px 24px", marginBottom: 20, border: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, color: "var(--text)" }}>Add Note</div>
-                      <textarea value={entityNoteText} onChange={function(e) { setEntityNoteText(e.target.value); }} placeholder="Enter note, call summary, meeting notes..." rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "inherit", resize: "vertical", marginBottom: 10 }} />
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <select value={entityNoteType} onChange={function(e) { setEntityNoteType(e.target.value); }} style={{ padding: "7px 12px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "inherit" }}>
-                          <option value="note">Note</option>
-                          <option value="call">Call</option>
-                          <option value="email">Email</option>
-                          <option value="meeting">Meeting</option>
-                        </select>
-                        <button onClick={function() { saveEntityNote(noteEntityId, noteEntityType); }} disabled={!entityNoteText.trim()} style={{ padding: "7px 18px", borderRadius: 7, border: "none", background: entityNoteText.trim() ? "var(--accent)" : "var(--border)", color: entityNoteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: entityNoteText.trim() ? "pointer" : "default" }}>Add Note</button>
-                      </div>
-                    </div>
-                    {entityNotes.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "var(--muted)", fontSize: 13 }}>No notes yet. Add the first note above.</div>}
-                    {entityNotes.map(function(n, idx) {
-                      var typeBadgeColors = { note: { bg: "#E2E8F0", color: "#475569" }, call: { bg: "#DBEAFE", color: "#1D4ED8" }, email: { bg: "#FEF3C7", color: "#B45309" }, meeting: { bg: "#D1FAE5", color: "#065F46" }, status_change: { bg: "#E0E7FF", color: "#4338CA" }, system: { bg: "#FEE2E2", color: "#991B1B" } };
-                      var badge = typeBadgeColors[n.note_type] || typeBadgeColors.note;
-                      return <div key={n.id || idx} style={{ padding: "14px 0", borderBottom: idx < entityNotes.length - 1 ? "1px solid var(--border)" : "none" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                          <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: badge.bg, color: badge.color }}>{n.note_type}</span>
-                          <span style={{ fontSize: 11, color: "var(--muted)" }}>{n.created_at ? new Date(n.created_at).toLocaleDateString("en-GB") + " " + new Date(n.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}</span>
-                        </div>
-                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{n.content}</div>
-                      </div>;
-                    })}
-                  </div>;
-                })()}
-
                 {/* Tab: Entity Audit Log */}
                 {manageDetailTab === "auditlog" && (function() {
                   var entityAudit = AUDIT_LOG.filter(function(log) {
@@ -10142,25 +9910,6 @@ export default function FactoringDashboard() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
                 <div style={{ gridColumn: "1 / -1" }}>{fld("Company Name", "name", null, isCh && manageEdit)}</div>
-                {isSupTab && <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>Link to Prospect</label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <select value={f.prospectId || ""} onChange={function(e) { var pid = e.target.value; setManageFields(function(p) { var n = Object.assign({}, p, { prospectId: pid }); if (pid) { var ps = prospectSuppliers.find(function(x) { return x.id === pid; }); if (ps) { if (ps.contact_name && !n.primaryContact) n.primaryContact = ps.contact_name; if (ps.contact_email && !n.primaryEmail) n.primaryEmail = ps.contact_email; if (ps.contact_phone && !n.primaryPhone) n.primaryPhone = ps.contact_phone; if (ps.company_name && !n.name) n.name = ps.company_name; } } return n; }); }} style={{ flex: 1, padding: "8px 12px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "inherit" }}>
-                        <option value="">None — no prospect link</option>
-                        {prospectSuppliers.filter(function(ps) { return ps.status !== "converted" && ps.status !== "declined"; }).map(function(ps) {
-                          return <option key={ps.id} value={ps.id}>{ps.supplier_identifier}{ps.company_name ? " (" + ps.company_name + ")" : ""} — {ps.status}</option>;
-                        })}
-                        {prospectSuppliers.filter(function(ps) { return ps.status === "converted"; }).length > 0 && <optgroup label="Already Converted">
-                          {prospectSuppliers.filter(function(ps) { return ps.status === "converted"; }).map(function(ps) {
-                            return <option key={ps.id} value={ps.id} disabled>{ps.supplier_identifier}{ps.company_name ? " (" + ps.company_name + ")" : ""} — converted{ps.converted_supplier_id ? " → " + ps.converted_supplier_id : ""}</option>;
-                          })}
-                        </optgroup>}
-                      </select>
-                      {f.prospectId && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: "#D1FAE5", color: "#065F46", whiteSpace: "nowrap" }}>Will import notes & invoices on save</span>}
-                    </div>
-                  </div>
-                </div>}
                 {fld("Company Number", "companyNumber", null, isCh && manageEdit)}
                 {fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
                 {fld("Company Status", "companyStatus", null, isCh && manageEdit)}
@@ -10170,7 +9919,6 @@ export default function FactoringDashboard() {
                 {fld("State / County", "state", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
-                {manageTab === "buyers" && fld("Prospect Buyer ID", "prospectBuyerId")}
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
@@ -10346,7 +10094,7 @@ export default function FactoringDashboard() {
                     var isActive = manageEdit === ent.id;
                     return <tr key={ent.id} style={{ borderBottom: "1px solid var(--border)", background: isActive ? "var(--card-hover)" : "transparent" }}>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{ent.id}</td>
-                      <td style={{ padding: "9px 12px", fontSize: 12, fontWeight: 600 }}><span onClick={function() { setManageDetail({ type: isSupTab ? "supplier" : isSPTab ? "service_provider" : "buyer", name: ent.name }); loadEntityNotes(ent.id, isSupTab ? "supplier" : isSPTab ? "service_provider" : "buyer"); loadProspectSuppliers(); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 3 }}>{ent.name}</span></td>
+                      <td style={{ padding: "9px 12px", fontSize: 12, fontWeight: 600 }}><span onClick={function() { setManageDetail({ type: isSupTab ? "supplier" : isSPTab ? "service_provider" : "buyer", name: ent.name }); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 3 }}>{ent.name}</span></td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{ent.city || "\u2014"}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{ent.country || "\u2014"}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{ent.primaryContact || "\u2014"}</td>
@@ -11529,3 +11277,5 @@ export default function FactoringDashboard() {
     </div>
   );
 }
+
+    
