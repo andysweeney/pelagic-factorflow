@@ -679,7 +679,6 @@
                             <option value="interested">Interested</option>
                             <option value="negotiating">Negotiating</option>
                             <option value="onboarding">Onboarding</option>
-                            <option value="converted">Converted</option>
                             <option value="declined">Declined</option>
                         </select>
                     </div>
@@ -1963,8 +1962,26 @@ function openDetail(prospectId) {
     state.detailInvSearch = '';
     state.detailInvCurrency = '';
 
-    document.getElementById('detailTitle').textContent = 'Supplier: ' + prospect.supplier_identifier;
-    document.getElementById('detailStatus').value = prospect.status;
+    document.getElementById('detailTitle').textContent = 'Supplier: ' + prospect.supplier_identifier + (prospect.company_name ? ' (' + prospect.company_name + ')' : '');
+
+    // Handle converted status
+    var statusSelect = document.getElementById('detailStatus');
+    var saveBtn = document.getElementById('detailSaveInfo');
+    if (prospect.status === 'converted') {
+        // Show converted as read-only
+        statusSelect.innerHTML = '<option value="converted">Converted</option>';
+        statusSelect.value = 'converted';
+        statusSelect.disabled = true;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Converted';
+    } else {
+        statusSelect.innerHTML = '<option value="lead">Lead</option><option value="contacted">Contacted</option><option value="interested">Interested</option><option value="negotiating">Negotiating</option><option value="onboarding">Onboarding</option><option value="declined">Declined</option>';
+        statusSelect.value = prospect.status;
+        statusSelect.disabled = false;
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+    }
+
     document.getElementById('detailContactName').value = prospect.contact_name || '';
     document.getElementById('detailContactEmail').value = prospect.contact_email || '';
     document.getElementById('detailContactPhone').value = prospect.contact_phone || '';
@@ -1993,6 +2010,14 @@ function openDetail(prospectId) {
     renderDetailInvoices();
     renderDetailNotes();
     renderConvertTab();
+
+    // Show/hide Convert tab based on status
+    var convertTabBtn = document.querySelector('[data-detail-tab="convert"]');
+    if (prospect.status === 'onboarding') {
+        convertTabBtn.classList.remove('hidden');
+    } else {
+        convertTabBtn.classList.add('hidden');
+    }
 
     // Reset to overview tab
     document.querySelectorAll('[data-detail-tab]').forEach(function(b) { b.classList.remove('active'); });
@@ -2244,7 +2269,8 @@ function renderDetailNotes() {
             renderNotesList(notes);
         });
     } else {
-        renderNotesList([]);
+        var localNotes = (state.localNotes && state.localNotes[prospect.id]) || [];
+        renderNotesList(localNotes);
     }
 }
 
@@ -2271,6 +2297,14 @@ function addNote() {
     var type = document.getElementById('noteType').value;
     if (!text) return;
 
+    var noteRecord = {
+        id: 'note-' + Date.now(),
+        prospect_supplier_id: prospect.id,
+        note_type: type,
+        content: text,
+        created_at: new Date().toISOString()
+    };
+
     if (supabase) {
         supabase.from('prospect_notes').insert({
             prospect_supplier_id: prospect.id,
@@ -2281,6 +2315,13 @@ function addNote() {
             document.getElementById('noteText').value = '';
             renderDetailNotes();
         });
+    } else {
+        // Local mode
+        if (!state.localNotes) state.localNotes = {};
+        if (!state.localNotes[prospect.id]) state.localNotes[prospect.id] = [];
+        state.localNotes[prospect.id].unshift(noteRecord);
+        document.getElementById('noteText').value = '';
+        renderDetailNotes();
     }
 }
 
@@ -2313,11 +2354,35 @@ function saveDetailInfo() {
                 }).then(function() { renderDetailNotes(); });
             }
 
+            // Update convert tab visibility
+            var convertTabBtn = document.querySelector('[data-detail-tab="convert"]');
+            if (updates.status === 'onboarding') {
+                convertTabBtn.classList.remove('hidden');
+            } else {
+                convertTabBtn.classList.add('hidden');
+                // If convert tab was active, switch to overview
+                if (convertTabBtn.classList.contains('active')) {
+                    convertTabBtn.classList.remove('active');
+                    document.querySelector('[data-detail-tab="overview"]').classList.add('active');
+                    document.getElementById('detail-tab-convert').classList.add('hidden');
+                    document.getElementById('detail-tab-overview').classList.remove('hidden');
+                }
+            }
+
             renderPipeline();
             alert('Saved successfully');
         });
     } else {
         Object.assign(prospect, updates);
+
+        // Update convert tab visibility
+        var convertTabBtn = document.querySelector('[data-detail-tab="convert"]');
+        if (updates.status === 'onboarding') {
+            convertTabBtn.classList.remove('hidden');
+        } else {
+            convertTabBtn.classList.add('hidden');
+        }
+
         renderPipeline();
         alert('Saved (local mode)');
     }
