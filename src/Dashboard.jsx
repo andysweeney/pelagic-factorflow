@@ -392,6 +392,7 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          prospectBuyerId: row.prospect_buyer_id || "",
           paused: row.paused || false
         });
       });
@@ -686,6 +687,7 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          prospectBuyerId: row.prospect_buyer_id || "",
           paused: row.paused || false
         });
       });
@@ -777,6 +779,7 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
+        prospect_buyer_id: b.prospectBuyerId || null,
         paused: b.paused || false
       };
     });
@@ -8872,22 +8875,35 @@ export default function FactoringDashboard() {
               supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", prospectId).then(function(invRes) {
                 var pInvoices = invRes.data || [];
                 if (pInvoices.length > 0) {
-                  var invoiceRows = pInvoices.map(function(pi) {
+                  // Look up buyer name from BUYERS_DB using prospect buyer ID mapping
+                  var buyerName = pInvoices[0].buyer_identifier || "Unknown Buyer";
+                  var buyerId = "";
+                  BUYERS_DB.forEach(function(b) {
+                    if (b.prospectBuyerId && b.prospectBuyerId === pInvoices[0].buyer_identifier) {
+                      buyerName = b.name;
+                      buyerId = b.id;
+                    } else if (b.id === pInvoices[0].buyer_identifier || b.name === pInvoices[0].buyer_identifier) {
+                      buyerName = b.name;
+                      buyerId = b.id;
+                    }
+                  });
+
+                  var invoiceRows = pInvoices.map(function(pi, idx) {
+                    var invId = "HIST-" + supplierId + "-" + String(idx + 1).padStart(5, "0");
                     return {
+                      id: invId,
                       supplier_name: supplierName,
                       supplier_id: supplierId,
-                      buyer_name: pi.buyer_identifier,
-                      buyer_id: pi.buyer_identifier,
+                      buyer_name: buyerName,
+                      buyer_id: buyerId,
                       amount: pi.invoice_amount,
-                      currency: pi.currency,
-                      invoice_date: pi.invoice_date,
-                      due_date: pi.due_date,
-                      buyer_ref: pi.reference_number,
-                      supplier_ref: "",
-                      po_number: "",
+                      currency: pi.currency || "GBP",
+                      invoice_date: pi.invoice_date || null,
+                      due_date: pi.due_date || null,
+                      invoice_reference: pi.reference_number || "",
+                      invoice_status: pi.settled_date ? "closed" : "open",
                       funding_status: pi.settled_date ? "fully_repaid" : "pending",
-                      historic: true,
-                      prospect_upload_id: pi.upload_id
+                      notes: JSON.stringify({ historic: true, prospect_upload_id: pi.upload_id, amount_paid_to_date: pi.amount_paid_to_date, settled_date: pi.settled_date })
                     };
                   });
                   // Batch insert
@@ -8904,7 +8920,10 @@ export default function FactoringDashboard() {
                       loadProspectSuppliers();
                       return;
                     }
-                    supabase.from("invoices").insert(batches[bIdx]).then(function() { bIdx++; nextBatch(); });
+                    supabase.from("invoices").insert(batches[bIdx]).then(function(res) {
+                      if (res.error) console.error("Invoice import batch " + (bIdx + 1) + " error:", res.error.message, res.error.details);
+                      bIdx++; nextBatch();
+                    });
                   }
                   nextBatch();
                 } else {
@@ -10151,6 +10170,7 @@ export default function FactoringDashboard() {
                 {fld("State / County", "state", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
+                {manageTab === "buyers" && fld("Prospect Buyer ID", "prospectBuyerId")}
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
