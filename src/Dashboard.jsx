@@ -9282,13 +9282,21 @@ export default function FactoringDashboard() {
                               }
                               // 3. Load prospect invoices
                               var piRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", linkedProspect.id);
-                              if (piRes.error) { console.warn("prospect_invoices load error:", piRes.error); }
-                              if (piRes.data && piRes.data.length > 0) {
-                                console.log("prospect_invoices columns:", Object.keys(piRes.data[0]).join(", "));
-                                console.log("prospect_invoices sample row:", JSON.stringify(piRes.data[0]));
-                                var invCount = 0; var skipCount = 0;
-                                for (var ii = 0; ii < piRes.data.length; ii++) {
-                                  var pi = piRes.data[ii];
+                              if (piRes.error) {
+                                console.error("prospect_invoices load error:", piRes.error);
+                                setProspectLinkMsg("Error loading prospect invoices: " + piRes.error.message + " (check RLS on prospect_invoices)");
+                                setProspectLinkImporting(false);
+                                setDataVer(function(v) { return v + 1; });
+                                return;
+                              }
+                              var piData = piRes.data || [];
+                              console.log("prospect_invoices found:", piData.length, "for prospect_supplier_id:", linkedProspect.id);
+                              if (piData.length > 0) {
+                                console.log("prospect_invoices columns:", Object.keys(piData[0]).join(", "));
+                                console.log("prospect_invoices sample row:", JSON.stringify(piData[0]));
+                                var invCount = 0; var skipCount = 0; var errCount = 0; var lastErr = "";
+                                for (var ii = 0; ii < piData.length; ii++) {
+                                  var pi = piData[ii];
                                   // Use standardised prospect_invoices columns
                                   var invRef = pi.buyer_invoice_ref || pi.supplier_invoice_ref || pi.reference_number || (det.id + "-INV-" + String(ii + 1).padStart(5, "0"));
                                   // Prefix with supplier ID for uniqueness
@@ -9298,20 +9306,28 @@ export default function FactoringDashboard() {
                                   if (existingInv) { skipCount++; continue; }
                                   // Look up buyer via prospect_buyer_id
                                   var buyerIdentifier = pi.buyer_identifier || "";
-                                  var buyerName = buyerIdentifier || "Unknown";
+                                  var buyerName = "";
                                   var buyerId = "";
                                   if (buyerIdentifier) {
                                     var mappedBuyer = BUYERS_DB.find(function(b) { return b.prospectBuyerId === buyerIdentifier; });
                                     if (mappedBuyer) { buyerName = mappedBuyer.name; buyerId = mappedBuyer.id; }
+                                  }
+                                  // If no mapped buyer found, use supplier name as fallback for buyer_name
+                                  // (the invoices table FK requires buyer_name to exist in buyers.name)
+                                  if (!buyerName) {
+                                    // Try to find any buyer — if only one exists, use it
+                                    if (BUYERS_DB.length === 1) { buyerName = BUYERS_DB[0].name; buyerId = BUYERS_DB[0].id; }
+                                    else { buyerName = buyerIdentifier || "Unknown Buyer"; }
                                   }
                                   // Build the invoice ID
                                   var newInvId = det.id + "-HIST-" + String(ii + 1).padStart(5, "0");
                                   var invDate = pi.invoice_date || "";
                                   var dueDate = pi.due_date || (invDate ? addDays(invDate, 60) : "");
                                   var poNumber = pi.purchase_order || null;
+                                  var invAmount = parseFloat(pi.invoice_amount) || 0;
                                   var invObj = {
                                     id: newInvId, supplierName: det.name, supplierId: det.id, buyerName: buyerName, buyerId: buyerId,
-                                    amount: parseFloat(pi.invoice_amount) || 0, currency: pi.currency || "GBP",
+                                    amount: invAmount, currency: pi.currency || "GBP",
                                     capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
                                     advanceRate: 0, annualRate: 0, penaltyRate: 0,
                                     invoiceDate: invDate, dueDate: dueDate, fundedDate: null,
@@ -9326,7 +9342,7 @@ export default function FactoringDashboard() {
                                   // Insert directly to Supabase (FK requires supplier to exist)
                                   var insResult = await supabase.from("invoices").insert({
                                     id: newInvId, supplier_name: det.name, supplier_id: det.id, buyer_name: buyerName, buyer_id: buyerId,
-                                    amount: invObj.amount, currency: invObj.currency,
+                                    amount: invAmount, currency: invObj.currency,
                                     capital_due: 0, holdback: 0, interest_charged: 0, deferred_payment: 0, days_to_maturity: 0,
                                     advance_rate: 0, annual_rate: 0, penalty_rate: 0,
                                     invoice_date: invDate || null, due_date: dueDate || null, funded_date: null,
@@ -9339,12 +9355,16 @@ export default function FactoringDashboard() {
                                     notes: invObj.notes
                                   });
                                   if (!insResult.error) { INVOICES_DB.push(invObj); invCount++; }
-                                  else { console.error("Invoice insert error:", insResult.error); skipCount++; }
+                                  else { console.error("Invoice insert error [" + newInvId + "]:", insResult.error.message, insResult.error.details, insResult.error.hint); errCount++; lastErr = insResult.error.message; }
                                 }
-                                auditLog("Prospect Invoices Imported", invCount + " historic invoices imported from prospect " + linkedProspect.supplierName + " to " + det.id + (skipCount > 0 ? " (" + skipCount + " skipped)" : ""), { entityId: det.id, prospectId: linkedProspect.id, imported: invCount, skipped: skipCount });
-                                setProspectLinkMsg("Imported " + invCount + " invoices" + (skipCount > 0 ? " (" + skipCount + " skipped/duplicates)" : "") + " and transferred notes.");
+                                var msg = "Imported " + invCount + " invoices";
+                                if (skipCount > 0) msg += " (" + skipCount + " skipped/duplicates)";
+                                if (errCount > 0) msg += ". " + errCount + " FAILED — last error: " + lastErr;
+                                msg += ". Notes transferred.";
+                                auditLog("Prospect Invoices Imported", invCount + " historic invoices imported from prospect " + linkedProspect.supplierName + " to " + det.id + (skipCount > 0 ? " (" + skipCount + " skipped)" : "") + (errCount > 0 ? " (" + errCount + " errors)" : ""), { entityId: det.id, prospectId: linkedProspect.id, imported: invCount, skipped: skipCount, errors: errCount });
+                                setProspectLinkMsg(msg);
                               } else {
-                                setProspectLinkMsg("No prospect invoices found. Notes transferred.");
+                                setProspectLinkMsg("No prospect invoices found for this supplier (prospect_supplier_id: " + linkedProspect.id + "). Notes transferred.");
                               }
                               setDataVer(function(v) { return v + 1; });
                             } catch (err) { console.error("Prospect import error:", err); setProspectLinkMsg("Error: " + (err.message || "Import failed")); }
