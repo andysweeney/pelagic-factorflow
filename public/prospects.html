@@ -30,6 +30,17 @@
             --shadow-lg: 0 4px 12px rgba(0,0,0,0.1), 0 12px 36px rgba(0,0,0,0.06);
         }
 
+        .mapping-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 5px; background: #F8F9FB; border: 1px solid #E0E4EA; }
+        .mapping-row.matched { background: #F0FFF4; border-color: #A3E4B8; }
+        .mapping-row.required { border-left: 3px solid var(--danger); }
+        .mapping-row .mapping-label { flex: 1; font-size: 12px; font-weight: 600; color: var(--text); min-width: 0; }
+        .mapping-row .mapping-label .req { color: var(--danger); margin-left: 2px; }
+        .mapping-row select { flex: 1.2; padding: 6px 10px; border-radius: 4px; border: 1px solid #D0D0D0; font-size: 12px; background: #fff; color: var(--text); cursor: pointer; }
+        .mapping-row select.auto-matched { background: #F0FFF4; border-color: #22C55E; }
+        .mapping-row .match-badge { font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 700; white-space: nowrap; }
+        .mapping-row .match-badge.auto { background: #DCFCE7; color: #166534; }
+        .mapping-row .match-badge.manual { background: #FEF3C7; color: #92400E; }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Trebuchet MS', 'Lucida Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
 
@@ -533,6 +544,14 @@
                 </div>
             </div>
 
+            <!-- Column Mapping Step -->
+            <div id="mappingSection" class="hidden" style="margin-top:20px;">
+                <div class="card-title" style="margin-bottom:4px;">Column Mapping</div>
+                <p style="font-size:12px; color:var(--text-mid); margin-bottom:16px;">Map your CSV columns to the required fields. Required fields are marked with <span style="color:var(--danger);font-weight:700;">*</span>. Auto-matched columns are highlighted in green.</p>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px 24px;" id="mappingGrid"></div>
+                <div id="mappingWarnings" style="margin-top:12px;"></div>
+            </div>
+
             <div style="margin-top:20px; display:flex; gap:12px;">
                 <button class="btn btn-primary" id="processBtn" disabled>Process & Save</button>
                 <button class="btn btn-secondary" id="clearBtn">Clear</button>
@@ -973,18 +992,36 @@ function handleCNFile(file) {
     });
 }
 
+// ================================================================
+// REQUIRED FIELDS — these map to the Admin Portal invoice schema
+// ================================================================
+var INVOICE_FIELDS = [
+    { key: 'supplier',          label: 'Supplier',             required: true,  hints: ['supplier', 'supplier_id', 'supplierid', 'vendor', 'vendor_id', 'vendorid', 'supplier_name'] },
+    { key: 'buyer',             label: 'Buyer',                required: true,  hints: ['buyer', 'buyer_id', 'buyerid', 'customer', 'customer_id', 'debtor'] },
+    { key: 'buyer_invoice_ref', label: 'Buyer Invoice Ref',    required: false, hints: ['buyer_invoice_ref', 'buyerinvoiceref', 'buyer_ref', 'buyerref', 'reference_number', 'referencenumber', 'ref', 'invoice_number', 'invoicenumber', 'inv_no', 'invoice_ref'] },
+    { key: 'supplier_invoice_ref', label: 'Supplier Invoice Ref', required: false, hints: ['supplier_invoice_ref', 'supplierinvoiceref', 'supplier_ref', 'supplierref', 'supplier_inv_ref'] },
+    { key: 'purchase_order',    label: 'Purchase Order No.',   required: false, hints: ['purchase_order', 'purchaseorder', 'po', 'po_number', 'ponumber', 'po_no'] },
+    { key: 'invoice_amount',    label: 'Invoice Amount',       required: true,  hints: ['invoice_amount', 'invoiceamount', 'amount', 'inv_amount', 'invoice_value', 'gross_amount', 'total'] },
+    { key: 'approved_amount',   label: 'Approved Amount',      required: false, hints: ['approved_amount', 'approvedamount', 'approved', 'net_amount', 'netamount'] },
+    { key: 'payments_to_invoice', label: 'Payments to Invoice', required: false, hints: ['payments_to_invoice', 'paymentstoinvoice', 'amount_paid', 'amountpaid', 'paid_to_date', 'paidtodate', 'amount_paid_to_date', 'amountpaidtodate', 'paid_amount', 'paidamount'] },
+    { key: 'currency',          label: 'Currency',             required: false, hints: ['currency', 'ccy', 'curr', 'currency_code'] },
+    { key: 'invoice_date',      label: 'Invoice Date',         required: true,  hints: ['invoice_date', 'invoicedate', 'inv_date', 'invdate', 'date'] },
+    { key: 'due_date',          label: 'Due Date',             required: true,  hints: ['due_date', 'duedate', 'payment_due', 'paymentdue', 'maturity_date'] },
+    { key: 'buyer_received_date', label: 'Buyer Received Date', required: false, hints: ['buyer_received_date', 'buyerreceiveddate', 'received_date', 'receiveddate', 'receipt_date'] },
+    { key: 'cancelled_date',    label: 'Cancelled Date',       required: false, hints: ['cancelled_date', 'cancelleddate', 'cancellation_date', 'canceled_date'] },
+    { key: 'approval_date',     label: 'Approval Date',        required: false, hints: ['approval_date', 'approvaldate', 'approved_date', 'approveddate'] },
+    { key: 'declined_date',     label: 'Declined Date',        required: false, hints: ['declined_date', 'declineddate', 'rejection_date', 'rejecteddate', 'rejected_date'] },
+    { key: 'disputed_date',     label: 'Disputed Date',        required: false, hints: ['disputed_date', 'disputeddate', 'dispute_date', 'disputedate'] },
+    { key: 'settled_date',      label: 'Settled Date',         required: false, hints: ['settled_date', 'settleddate', 'settlement_date', 'settlementdate', 'paid_date', 'paiddate'] }
+];
+
 function detectFormat(fields) {
     var lowerFields = fields.map(function(f) { return f.toLowerCase().replace(/[^a-z0-9]/g, ''); });
     var indicator = document.getElementById('formatIndicator');
 
-    // Format 1: has "amount paid" type column
+    // Auto-detect format
     var hasPayment = lowerFields.some(function(f) {
         return f.indexOf('amountpaid') >= 0 || f.indexOf('paidtodate') >= 0 || f.indexOf('paidamount') >= 0 || f.indexOf('amtpaid') >= 0;
-    });
-
-    // Format 2: has credit note amount OR no payment column
-    var hasCreditNote = lowerFields.some(function(f) {
-        return f.indexOf('creditnote') >= 0 || f.indexOf('creditamount') >= 0 || f.indexOf('cnamount') >= 0;
     });
 
     if (hasPayment) {
@@ -998,6 +1035,98 @@ function detectFormat(fields) {
         indicator.className = 'format-pill active';
         document.getElementById('cnUploadCol').classList.remove('hidden');
     }
+
+    // Build column mapping UI
+    buildColumnMapper(fields);
+}
+
+function buildColumnMapper(csvColumns) {
+    state.csvColumns = csvColumns;
+    state.columnMapping = {};
+
+    var grid = document.getElementById('mappingGrid');
+    grid.innerHTML = '';
+    var section = document.getElementById('mappingSection');
+    section.classList.remove('hidden');
+
+    INVOICE_FIELDS.forEach(function(field) {
+        // Try auto-match
+        var autoMatch = autoMatchColumn(field.hints, csvColumns);
+        if (autoMatch) state.columnMapping[field.key] = autoMatch;
+
+        var row = document.createElement('div');
+        row.className = 'mapping-row' + (field.required ? ' required' : '') + (autoMatch ? ' matched' : '');
+        row.id = 'mapping-row-' + field.key;
+
+        var label = document.createElement('div');
+        label.className = 'mapping-label';
+        label.innerHTML = field.label + (field.required ? '<span class="req">*</span>' : '');
+
+        var select = document.createElement('select');
+        select.id = 'map-' + field.key;
+        select.className = autoMatch ? 'auto-matched' : '';
+        select.innerHTML = '<option value="">— Skip / Not in CSV —</option>';
+        csvColumns.forEach(function(col) {
+            var opt = document.createElement('option');
+            opt.value = col;
+            opt.textContent = col;
+            if (col === autoMatch) opt.selected = true;
+            select.appendChild(opt);
+        });
+        select.addEventListener('change', function() {
+            state.columnMapping[field.key] = this.value || null;
+            var r = document.getElementById('mapping-row-' + field.key);
+            if (this.value) { r.classList.add('matched'); this.classList.add('auto-matched'); }
+            else { r.classList.remove('matched'); this.classList.remove('auto-matched'); }
+            checkProcessReady();
+            updateMappingWarnings();
+        });
+
+        var badge = document.createElement('span');
+        badge.className = 'match-badge ' + (autoMatch ? 'auto' : '');
+        badge.textContent = autoMatch ? 'Auto' : '';
+        badge.id = 'badge-' + field.key;
+
+        row.appendChild(label);
+        row.appendChild(select);
+        row.appendChild(badge);
+        grid.appendChild(row);
+    });
+
+    updateMappingWarnings();
+    checkProcessReady();
+}
+
+function autoMatchColumn(hints, csvColumns) {
+    for (var i = 0; i < hints.length; i++) {
+        var normalizedHint = hints[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+        for (var j = 0; j < csvColumns.length; j++) {
+            var normalizedCol = csvColumns[j].toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (normalizedCol === normalizedHint) return csvColumns[j];
+        }
+    }
+    return null;
+}
+
+function updateMappingWarnings() {
+    var warnings = [];
+    INVOICE_FIELDS.forEach(function(field) {
+        if (field.required && !state.columnMapping[field.key]) {
+            warnings.push('<span style="color:var(--danger);font-weight:600;">' + field.label + '</span> is required but not mapped.');
+        }
+    });
+    var el = document.getElementById('mappingWarnings');
+    if (warnings.length > 0) {
+        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#FEF2F2; border:1px solid #FECACA; font-size:12px; color:#991B1B;">' + warnings.join('<br>') + '</div>';
+    } else {
+        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#F0FFF4; border:1px solid #A3E4B8; font-size:12px; color:#166534; font-weight:600;">All required fields mapped ✓</div>';
+    }
+}
+
+function getMappedValue(row, fieldKey) {
+    var csvCol = state.columnMapping[fieldKey];
+    if (!csvCol) return null;
+    return row[csvCol] != null ? String(row[csvCol]).trim() : null;
 }
 
 function checkProcessReady() {
@@ -1007,7 +1136,14 @@ function checkProcessReady() {
     } else if (state.invoiceData && state.cnData && state.detectedFormat === 'format_2') {
         ready = true;
     } else if (state.invoiceData && state.detectedFormat === 'format_2' && !state.cnData) {
-        ready = false; // Need CN file for format 2
+        ready = false;
+    }
+
+    // Check required field mappings
+    if (ready && state.columnMapping) {
+        INVOICE_FIELDS.forEach(function(field) {
+            if (field.required && !state.columnMapping[field.key]) ready = false;
+        });
     }
 
     var buyerLabel = document.getElementById('buyerLabel').value.trim();
@@ -1024,9 +1160,9 @@ function updatePreview() {
     var buyers = {};
     var totalInvAmt = 0;
     state.invoiceData.forEach(function(row) {
-        var sid = mapField(row, ['supplier_id', 'supplierid', 'supplier', 'vendor_id', 'vendorid', 'vendor']);
-        var bid = mapField(row, ['buyer_id', 'buyerid', 'buyer']);
-        var amt = parseFloat(mapField(row, ['invoice_amount', 'invoiceamount', 'amount', 'inv_amount', 'invoice_value'])) || 0;
+        var sid = getMappedValue(row, 'supplier') || mapField(row, ['supplier_id', 'supplierid', 'supplier', 'vendor_id', 'vendorid', 'vendor']);
+        var bid = getMappedValue(row, 'buyer') || mapField(row, ['buyer_id', 'buyerid', 'buyer']);
+        var amt = parseFloat(getMappedValue(row, 'invoice_amount') || mapField(row, ['invoice_amount', 'invoiceamount', 'amount', 'inv_amount', 'invoice_value'])) || 0;
         if (sid) suppliers[sid] = true;
         if (bid) buyers[bid] = true;
         totalInvAmt += amt;
@@ -1168,17 +1304,26 @@ function processCSVData(invoiceRows, cnRows, format) {
     var suppliers = {};
     var buyerIdentifier = null;
 
-    // Process invoices
+    // Process invoices using column mapping
+    var mapping = state.columnMapping || {};
     invoiceRows.forEach(function(row) {
-        var sid = mapField(row, ['supplier_id', 'supplierid', 'supplier', 'vendor_id', 'vendorid', 'vendor']);
-        var bid = mapField(row, ['buyer_id', 'buyerid', 'buyer']);
-        var currency = mapField(row, ['currency', 'ccy', 'curr']);
-        var amount = parseFloat(mapField(row, ['invoice_amount', 'invoiceamount', 'amount', 'inv_amount', 'invoice_value'])) || 0;
-        var invDate = mapField(row, ['invoice_date', 'invoicedate', 'inv_date', 'date']);
-        var dueDate = mapField(row, ['due_date', 'duedate', 'payment_due', 'paymentdue']);
-        var ref = mapField(row, ['reference_number', 'referencenumber', 'ref', 'invoice_number', 'invoicenumber', 'inv_no', 'invoice_ref']);
-        var settledDate = mapField(row, ['settled_date', 'settleddate', 'settlement_date', 'settlementdate']);
-        var paidToDate = format === 'format_1' ? parseFloat(mapField(row, ['amount_paid_to_date', 'amountpaidtodate', 'paid_to_date', 'paidtodate', 'amount_paid', 'amountpaid', 'paid_amount', 'paidamount'])) || 0 : null;
+        var sid = getMappedValue(row, 'supplier');
+        var bid = getMappedValue(row, 'buyer');
+        var currency = getMappedValue(row, 'currency');
+        var amount = parseFloat(getMappedValue(row, 'invoice_amount')) || 0;
+        var approvedAmount = getMappedValue(row, 'approved_amount') != null ? parseFloat(getMappedValue(row, 'approved_amount')) : null;
+        var paymentsToInv = getMappedValue(row, 'payments_to_invoice') != null ? parseFloat(getMappedValue(row, 'payments_to_invoice')) : null;
+        var invDate = getMappedValue(row, 'invoice_date');
+        var dueDate = getMappedValue(row, 'due_date');
+        var buyerRef = getMappedValue(row, 'buyer_invoice_ref');
+        var supplierRef = getMappedValue(row, 'supplier_invoice_ref');
+        var poNumber = getMappedValue(row, 'purchase_order');
+        var buyerReceivedDate = getMappedValue(row, 'buyer_received_date');
+        var cancelledDate = getMappedValue(row, 'cancelled_date');
+        var approvalDate = getMappedValue(row, 'approval_date');
+        var declinedDate = getMappedValue(row, 'declined_date');
+        var disputedDate = getMappedValue(row, 'disputed_date');
+        var settledDate = getMappedValue(row, 'settled_date');
 
         if (!sid) return;
         if (!buyerIdentifier && bid) buyerIdentifier = bid;
@@ -1187,16 +1332,28 @@ function processCSVData(invoiceRows, cnRows, format) {
             suppliers[sid] = { invoices: [], creditNotes: [], stats: {} };
         }
 
+        var ref = buyerRef || supplierRef || (sid + '-INV-' + String(suppliers[sid].invoices.length + 1).padStart(5, '0'));
+
         suppliers[sid].invoices.push({
-            reference_number: ref || (sid + '-INV-' + String(suppliers[sid].invoices.length + 1).padStart(5, '0')),
+            reference_number: ref,
             buyer_identifier: bid || buyerIdentifier || 'UNKNOWN',
             supplier_identifier: sid,
             currency: (currency || 'GBP').toUpperCase(),
             invoice_amount: amount,
+            approved_amount: approvedAmount,
+            payments_to_invoice: paymentsToInv,
             invoice_date: parseDate(invDate),
             due_date: parseDate(dueDate),
-            amount_paid_to_date: paidToDate,
-            settled_date: parseDate(settledDate)
+            buyer_invoice_ref: buyerRef || null,
+            supplier_invoice_ref: supplierRef || null,
+            purchase_order: poNumber || null,
+            buyer_received_date: parseDate(buyerReceivedDate),
+            cancelled_date: parseDate(cancelledDate),
+            approval_date: parseDate(approvalDate),
+            declined_date: parseDate(declinedDate),
+            disputed_date: parseDate(disputedDate),
+            settled_date: parseDate(settledDate),
+            amount_paid_to_date: paymentsToInv
         });
     });
 
@@ -1553,10 +1710,20 @@ function saveToSupabase(result, buyerLabel, callback) {
                         reference_number: inv.reference_number,
                         currency: inv.currency || 'GBP',
                         invoice_amount: inv.invoice_amount || 0,
+                        approved_amount: inv.approved_amount != null ? inv.approved_amount : null,
+                        payments_to_invoice: inv.payments_to_invoice != null ? inv.payments_to_invoice : null,
                         invoice_date: inv.invoice_date || null,
                         due_date: inv.due_date || null,
-                        amount_paid_to_date: inv.amount_paid_to_date != null ? inv.amount_paid_to_date : null,
-                        settled_date: inv.settled_date || null
+                        buyer_invoice_ref: inv.buyer_invoice_ref || null,
+                        supplier_invoice_ref: inv.supplier_invoice_ref || null,
+                        purchase_order: inv.purchase_order || null,
+                        buyer_received_date: inv.buyer_received_date || null,
+                        cancelled_date: inv.cancelled_date || null,
+                        approval_date: inv.approval_date || null,
+                        declined_date: inv.declined_date || null,
+                        disputed_date: inv.disputed_date || null,
+                        settled_date: inv.settled_date || null,
+                        amount_paid_to_date: inv.amount_paid_to_date != null ? inv.amount_paid_to_date : null
                     });
                 });
             });
@@ -2705,6 +2872,7 @@ function clearUpload() {
     state.invoiceFile = null;
     state.cnFile = null;
     state.invoiceData = null;
+    state.columnMapping = {};
     state.cnData = null;
     state.detectedFormat = null;
 
