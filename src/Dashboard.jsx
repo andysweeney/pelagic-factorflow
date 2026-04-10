@@ -564,20 +564,18 @@ async function loadPersistedData() {
       psRes.data.forEach(function(row) {
         PROSPECT_SUPPLIERS_DB.push({
           id: row.id,
-          supplierName: row.supplier_name || row.name || row.supplierName || row.supplier || "",
+          supplierName: row.company_name || row.supplier_label || row.supplier_identifier || "",
+          supplierIdentifier: row.supplier_identifier || "",
           status: row.status || "",
-          dilutionRateLive: row.dilution_rate_live != null ? row.dilution_rate_live : (row.dilutionRateLive != null ? row.dilutionRateLive : (row.dilution_live != null ? row.dilution_live : null)),
-          dilutionRate30d: row.dilution_rate_30d != null ? row.dilution_rate_30d : (row.dilutionRate30d != null ? row.dilutionRate30d : (row.dilution_30d != null ? row.dilution_30d : null)),
-          dilutionRate90d: row.dilution_rate_90d != null ? row.dilution_rate_90d : (row.dilutionRate90d != null ? row.dilutionRate90d : (row.dilution_90d != null ? row.dilution_90d : null)),
-          convertedSupplierId: row.converted_supplier_id || row.convertedSupplierId || null,
-          uploadId: row.upload_id || row.uploadId || null
+          contactName: row.contact_name || "",
+          contactEmail: row.contact_email || "",
+          dilutionRateLive: null,
+          dilutionRate30d: null,
+          dilutionRate90d: null,
+          convertedSupplierId: row.converted_supplier_id || null,
+          uploadId: row.upload_id || null
         });
       });
-      if (psRes.data.length > 0) {
-        console.log("PROSPECT_SUPPLIERS raw columns: " + Object.keys(psRes.data[0]).join(", "));
-        console.log("PROSPECT_SUPPLIERS raw row[0]:", JSON.stringify(psRes.data[0]));
-        console.log("PROSPECT_SUPPLIERS mapped[0]:", JSON.stringify(PROSPECT_SUPPLIERS_DB[0]));
-      }
     }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
@@ -9251,8 +9249,8 @@ export default function FactoringDashboard() {
                     return <div style={{ background: "#567EBB08", borderRadius: 12, border: "1px solid #567EBB30", padding: "20px 28px", marginBottom: 20 }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#2B4C7E", marginBottom: 4 }}>Linked Prospect: {linkedProspect.supplierName}</div>
-                          <div style={{ fontSize: 11, color: "var(--muted)" }}>Dilution — Live: {linkedProspect.dilutionRateLive != null ? (linkedProspect.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"} | 30d: {linkedProspect.dilutionRate30d != null ? (linkedProspect.dilutionRate30d * 100).toFixed(1) + "%" : "N/A"} | 90d: {linkedProspect.dilutionRate90d != null ? (linkedProspect.dilutionRate90d * 100).toFixed(1) + "%" : "N/A"}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#2B4C7E", marginBottom: 4 }}>Linked Prospect: {linkedProspect.supplierIdentifier || ""}{linkedProspect.supplierName ? " — " + linkedProspect.supplierName : ""}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>Status: {linkedProspect.status}{linkedProspect.contactName ? " | Contact: " + linkedProspect.contactName : ""}{linkedProspect.contactEmail ? " (" + linkedProspect.contactEmail + ")" : ""}</div>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
                           <button disabled={prospectLinkImporting} onClick={async function() {
@@ -9263,7 +9261,10 @@ export default function FactoringDashboard() {
                               if (supCheck.error || !supCheck.data) { setProspectLinkMsg("Error: Supplier not found in database. Save the supplier first."); setProspectLinkImporting(false); return; }
                               // 2. Transfer prospect notes to entity_notes
                               var pnRes = await supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", linkedProspect.id).order("created_at", { ascending: true });
+                              if (pnRes.error) { console.warn("prospect_notes load error:", pnRes.error); }
                               if (pnRes.data && pnRes.data.length > 0) {
+                                console.log("prospect_notes columns:", Object.keys(pnRes.data[0]).join(", "));
+                                console.log("prospect_notes sample:", JSON.stringify(pnRes.data[0]));
                                 var noteCount = 0;
                                 for (var ni = 0; ni < pnRes.data.length; ni++) {
                                   var pn = pnRes.data[ni];
@@ -9271,7 +9272,7 @@ export default function FactoringDashboard() {
                                   var already = ENTITY_NOTES_DB.find(function(en) { return en.prospectNoteId === pn.id; });
                                   if (!already) {
                                     var noteId = "EN-" + det.id + "-PN-" + pn.id;
-                                    var noteObj = { id: noteId, entityId: det.id, entityType: "supplier", text: pn.note_text || pn.text || "", display: pn.display_time || pn.created_at || "", createdAt: pn.created_at || new Date().toISOString(), source: "prospect", prospectNoteId: pn.id };
+                                    var noteObj = { id: noteId, entityId: det.id, entityType: "supplier", text: pn.note_text || pn.text || pn.content || pn.note || "", display: pn.display_time || pn.created_at || "", createdAt: pn.created_at || new Date().toISOString(), source: "prospect", prospectNoteId: pn.id };
                                     ENTITY_NOTES_DB.push(noteObj);
                                     await supabase.from("entity_notes").insert({ id: noteId, entity_id: det.id, entity_type: "supplier", note_text: noteObj.text, display_time: noteObj.display, created_at: noteObj.createdAt, source: "prospect", prospect_note_id: pn.id });
                                     noteCount++;
@@ -9281,39 +9282,46 @@ export default function FactoringDashboard() {
                               }
                               // 3. Load prospect invoices
                               var piRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", linkedProspect.id);
+                              if (piRes.error) { console.warn("prospect_invoices load error:", piRes.error); }
                               if (piRes.data && piRes.data.length > 0) {
+                                console.log("prospect_invoices columns:", Object.keys(piRes.data[0]).join(", "));
+                                console.log("prospect_invoices sample row:", JSON.stringify(piRes.data[0]));
                                 var invCount = 0; var skipCount = 0;
                                 for (var ii = 0; ii < piRes.data.length; ii++) {
                                   var pi = piRes.data[ii];
-                                  // Generate unique reference: SUP-xxx-INV-nnnnn
-                                  var invRef = det.id + "-INV-" + String(ii + 1).padStart(5, "0");
+                                  // Use standardised prospect_invoices columns
+                                  var invRef = pi.buyer_invoice_ref || pi.supplier_invoice_ref || pi.reference_number || (det.id + "-INV-" + String(ii + 1).padStart(5, "0"));
+                                  // Prefix with supplier ID for uniqueness
+                                  var uniqueRef = det.id + "-" + invRef;
                                   // Check for duplicate
-                                  var existingInv = INVOICES_DB.find(function(inv) { return inv.invoiceReference === invRef; });
+                                  var existingInv = INVOICES_DB.find(function(inv) { return inv.invoiceReference === uniqueRef; });
                                   if (existingInv) { skipCount++; continue; }
                                   // Look up buyer via prospect_buyer_id
-                                  var buyerName = pi.buyer_name || pi.buyer_id || "Unknown";
+                                  var buyerIdentifier = pi.buyer_identifier || "";
+                                  var buyerName = buyerIdentifier || "Unknown";
                                   var buyerId = "";
-                                  if (pi.buyer_id) {
-                                    var mappedBuyer = BUYERS_DB.find(function(b) { return b.prospectBuyerId === pi.buyer_id; });
+                                  if (buyerIdentifier) {
+                                    var mappedBuyer = BUYERS_DB.find(function(b) { return b.prospectBuyerId === buyerIdentifier; });
                                     if (mappedBuyer) { buyerName = mappedBuyer.name; buyerId = mappedBuyer.id; }
                                   }
                                   // Build the invoice ID
                                   var newInvId = det.id + "-HIST-" + String(ii + 1).padStart(5, "0");
-                                  var invDate = pi.invoice_date || pi.date || "";
+                                  var invDate = pi.invoice_date || "";
                                   var dueDate = pi.due_date || (invDate ? addDays(invDate, 60) : "");
+                                  var poNumber = pi.purchase_order || null;
                                   var invObj = {
                                     id: newInvId, supplierName: det.name, supplierId: det.id, buyerName: buyerName, buyerId: buyerId,
-                                    amount: parseFloat(pi.amount) || 0, currency: pi.currency || "GBP",
+                                    amount: parseFloat(pi.invoice_amount) || 0, currency: pi.currency || "GBP",
                                     capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
                                     advanceRate: 0, annualRate: 0, penaltyRate: 0,
                                     invoiceDate: invDate, dueDate: dueDate, fundedDate: null,
-                                    createdDate: new Date().toISOString().split("T")[0], approvedDate: null, fullyRepaidDate: null,
+                                    createdDate: new Date().toISOString().split("T")[0], approvedDate: pi.approval_date || null, fullyRepaidDate: pi.settled_date || null,
                                     invoiceStatus: "Historic", fundingStatus: "not_applicable",
-                                    fundingProgram: null, partialApprovedAmount: 0,
-                                    invoiceReference: invRef, purchaseOrder: null,
+                                    fundingProgram: null, partialApprovedAmount: parseFloat(pi.approved_amount) || 0,
+                                    invoiceReference: uniqueRef, purchaseOrder: poNumber,
                                     invoiceStatusHistory: [{ status: "Historic", date: new Date().toISOString().split("T")[0], note: "Imported from prospect pipeline" }],
                                     adjustments: [], doNotFund: true,
-                                    notes: [{ text: "Historic invoice imported from prospect " + linkedProspect.supplierName + ". Original buyer ID: " + (pi.buyer_id || "N/A"), display: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) }]
+                                    notes: [{ text: "Historic invoice imported from prospect " + linkedProspect.supplierName + ". Buyer: " + buyerIdentifier + (poNumber ? " PO: " + poNumber : ""), display: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) }]
                                   };
                                   // Insert directly to Supabase (FK requires supplier to exist)
                                   var insResult = await supabase.from("invoices").insert({
@@ -9322,10 +9330,10 @@ export default function FactoringDashboard() {
                                     capital_due: 0, holdback: 0, interest_charged: 0, deferred_payment: 0, days_to_maturity: 0,
                                     advance_rate: 0, annual_rate: 0, penalty_rate: 0,
                                     invoice_date: invDate || null, due_date: dueDate || null, funded_date: null,
-                                    created_date: invObj.createdDate, approved_date: null, fully_repaid_date: null,
+                                    created_date: invObj.createdDate, approved_date: pi.approval_date || null, fully_repaid_date: pi.settled_date || null,
                                     invoice_status: "Historic", funding_status: "not_applicable",
-                                    funding_program: null, partial_approved_amount: 0,
-                                    invoice_reference: invRef, purchase_order: null,
+                                    funding_program: null, partial_approved_amount: invObj.partialApprovedAmount,
+                                    invoice_reference: uniqueRef, purchase_order: poNumber,
                                     invoice_status_history: invObj.invoiceStatusHistory,
                                     adjustments: [], do_not_fund: true,
                                     notes: invObj.notes
@@ -10124,17 +10132,19 @@ export default function FactoringDashboard() {
                           var psRes = await supabase.from("prospect_suppliers").select("*");
                           if (psRes.error) { alert("Error loading prospects: " + psRes.error.message + "\n\nCheck that RLS policy USING (true) exists on prospect_suppliers table."); return; }
                           PROSPECT_SUPPLIERS_DB.length = 0;
-                          if (psRes.data && psRes.data.length > 0) console.log("Reload prospect_suppliers sample row:", Object.keys(psRes.data[0]), psRes.data[0]);
                           (psRes.data || []).forEach(function(row) {
                             PROSPECT_SUPPLIERS_DB.push({
                               id: row.id,
-                              supplierName: row.supplier_name || row.name || row.supplierName || row.supplier || "",
+                              supplierName: row.company_name || row.supplier_label || row.supplier_identifier || "",
+                              supplierIdentifier: row.supplier_identifier || "",
                               status: row.status || "",
-                              dilutionRateLive: row.dilution_rate_live != null ? row.dilution_rate_live : (row.dilutionRateLive != null ? row.dilutionRateLive : (row.dilution_live != null ? row.dilution_live : null)),
-                              dilutionRate30d: row.dilution_rate_30d != null ? row.dilution_rate_30d : (row.dilutionRate30d != null ? row.dilutionRate30d : (row.dilution_30d != null ? row.dilution_30d : null)),
-                              dilutionRate90d: row.dilution_rate_90d != null ? row.dilution_rate_90d : (row.dilutionRate90d != null ? row.dilutionRate90d : (row.dilution_90d != null ? row.dilution_90d : null)),
-                              convertedSupplierId: row.converted_supplier_id || row.convertedSupplierId || null,
-                              uploadId: row.upload_id || row.uploadId || null
+                              contactName: row.contact_name || "",
+                              contactEmail: row.contact_email || "",
+                              dilutionRateLive: null,
+                              dilutionRate30d: null,
+                              dilutionRate90d: null,
+                              convertedSupplierId: row.converted_supplier_id || null,
+                              uploadId: row.upload_id || null
                             });
                           });
                           setDataVer(function(v) { return v + 1; });
@@ -10145,7 +10155,7 @@ export default function FactoringDashboard() {
                     </div>
                     {availableProspects.length > 0 || currentVal ? <select value={currentVal} onChange={function(e) { setManageFields(function(p) { return Object.assign({}, p, { prospectId: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #567EBB40", background: currentVal ? "#567EBB08" : "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>
                       <option value="">— No prospect link —</option>
-                      {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierName} (Dil: {ps.dilutionRateLive != null ? (ps.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"})</option>; })}
+                      {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierIdentifier ? ps.supplierIdentifier + " — " : ""}{ps.supplierName || "(unnamed)"} [{ps.status}]</option>; })}
                     </select> : <div style={{ padding: "8px 12px", borderRadius: 8, border: "1px dashed var(--border)", background: "var(--bg)", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No unconverted prospects available. Upload prospect data via the Prospects page, then click Reload.</div>}
                   </div>;
                 })()}
