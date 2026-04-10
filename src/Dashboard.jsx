@@ -1,4 +1,4 @@
-    import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -345,6 +345,8 @@ var AUDIT_LOG = [];
 var SUPPLIER_PAYMENT_QUEUE = [];
 var CREDIT_NOTES_DB = [];
 var FUNDING_PROGRAMS_DB = [];
+var ENTITY_NOTES_DB = [];
+var PROSPECT_SUPPLIERS_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -392,7 +394,8 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          prospectBuyerId: row.prospect_buyer_id || ""
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -540,6 +543,31 @@ async function loadPersistedData() {
       });
     }
     _lastSavedAuditIndex = AUDIT_LOG.length;
+    // Load entity notes
+    var enRes = await supabase.from("entity_notes").select("*").order("created_at", { ascending: true });
+    if (enRes.data && enRes.data.length > 0) {
+      ENTITY_NOTES_DB.length = 0;
+      enRes.data.forEach(function(row) {
+        ENTITY_NOTES_DB.push({
+          id: row.id, entityId: row.entity_id, entityType: row.entity_type || "supplier",
+          text: row.note_text || "", display: row.display_time || "",
+          createdAt: row.created_at, source: row.source || "manual",
+          prospectNoteId: row.prospect_note_id || null
+        });
+      });
+    }
+    // Load prospect suppliers (for linking dropdown)
+    var psRes = await supabase.from("prospect_suppliers").select("id, supplier_name, status, dilution_rate_live, dilution_rate_30d, dilution_rate_90d, converted_supplier_id, upload_id");
+    if (psRes.data && psRes.data.length > 0) {
+      PROSPECT_SUPPLIERS_DB.length = 0;
+      psRes.data.forEach(function(row) {
+        PROSPECT_SUPPLIERS_DB.push({
+          id: row.id, supplierName: row.supplier_name, status: row.status,
+          dilutionRateLive: row.dilution_rate_live, dilutionRate30d: row.dilution_rate_30d, dilutionRate90d: row.dilution_rate_90d,
+          convertedSupplierId: row.converted_supplier_id || null, uploadId: row.upload_id
+        });
+      });
+    }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
   return false;
@@ -686,7 +714,8 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          prospectBuyerId: row.prospect_buyer_id || ""
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -777,7 +806,8 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-        paused: b.paused || false
+        paused: b.paused || false,
+        prospect_buyer_id: b.prospectBuyerId || null
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -915,6 +945,19 @@ async function savePersistedData() {
       };
     });
     if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
+
+    // Save entity notes — full upsert
+    if (ENTITY_NOTES_DB.length > 0) {
+      var enRows = ENTITY_NOTES_DB.map(function(n) {
+        return {
+          id: n.id, entity_id: n.entityId, entity_type: n.entityType || "supplier",
+          note_text: n.text, display_time: n.display,
+          created_at: n.createdAt, source: n.source || "manual",
+          prospect_note_id: n.prospectNoteId || null
+        };
+      });
+      await supabase.from("entity_notes").upsert(enRows, { onConflict: "id" });
+    }
 
     // Save audit log — append only (insert entries added since last save)
     if (AUDIT_LOG.length > _lastSavedAuditIndex) {
@@ -1527,6 +1570,8 @@ export default function FactoringDashboard() {
   var um3 = useState(null), userEdit = um3[0], setUserEdit = um3[1]; // null | "new" | user object
   var um4 = useState({}), userFields = um4[0], setUserFields = um4[1];
   var um5 = useState(""), userSaveMsg = um5[0], setUserSaveMsg = um5[1];
+  var pli1 = useState(false), prospectLinkImporting = pli1[0], setProspectLinkImporting = pli1[1];
+  var plm1 = useState(""), prospectLinkMsg = plm1[0], setProspectLinkMsg = plm1[1];
   var PS = 25;
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
 
@@ -5439,6 +5484,7 @@ export default function FactoringDashboard() {
                   {buyer.primaryContact && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Contact</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryContact}</div></div>}
                   {buyer.primaryEmail && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Email</div><div style={{ fontSize: 13, color: "var(--accent)" }}>{buyer.primaryEmail}</div></div>}
                   {buyer.primaryPhone && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Phone</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryPhone}</div></div>}
+                  {buyer.prospectBuyerId && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Prospect Buyer ID</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#567EBB" }}>{buyer.prospectBuyerId}</div></div>}
                   {buyer.directors && buyer.directors.filter(function(d) { return !d.resignedDate; }).length > 0 && <div style={{ gridColumn: "1 / -1", marginTop: 4, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Active Directors</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -5485,9 +5531,10 @@ export default function FactoringDashboard() {
                       {bFld("Contact 5 Email", "contact5Email", "email")}
                       {bFld("Contact 5 Phone", "contact5Phone", "tel")}
                       <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}><input type="checkbox" checked={f.contact5Signatory || false} onChange={function() { setManageFields(function(p) { return Object.assign({}, p, { contact5Signatory: !p.contact5Signatory }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: f.contact5Signatory ? "#059669" : "var(--muted)" }}>Authorised Signatory</span></label>
+                      <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 6 }}>{bFld("Prospect Buyer ID", "prospectBuyerId")}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
+                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", prospectBuyerId: "Prospect Buyer ID" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
                       <button onClick={function() { setExp(null); }} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                     </div>
                   </div>;
@@ -8852,7 +8899,19 @@ export default function FactoringDashboard() {
                 });
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
-                Object.assign(ent, f);
+                // Strip non-DB fields before assigning to entity
+                var cleanF = Object.assign({}, f);
+                delete cleanF.prospectId;
+                delete cleanF._prospectLinked;
+                Object.assign(ent, cleanF);
+                // Handle prospect link (update prospect_suppliers table if changed)
+                if (isSupTab && f.prospectId) {
+                  var ps = PROSPECT_SUPPLIERS_DB.find(function(p) { return p.id === f.prospectId; });
+                  if (ps && ps.convertedSupplierId !== manageEdit) {
+                    ps.convertedSupplierId = manageEdit;
+                    supabase.from("prospect_suppliers").update({ converted_supplier_id: manageEdit }).eq("id", f.prospectId).then(function() {});
+                  }
+                }
                 // If company number was added or changed, auto-fetch from CH
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
@@ -8860,8 +8919,20 @@ export default function FactoringDashboard() {
               }
             } else {
               var newId = prefix + "-" + String(db.length + 1).padStart(3, "0");
-              var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, f);
+              var cleanCreateF = Object.assign({}, f);
+              var _prospectIdForCreate = cleanCreateF.prospectId || null;
+              delete cleanCreateF.prospectId;
+              delete cleanCreateF._prospectLinked;
+              var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, cleanCreateF);
               db.push(newEnt);
+              // Handle prospect link for new entity
+              if (isSupTab && _prospectIdForCreate) {
+                var ps = PROSPECT_SUPPLIERS_DB.find(function(p) { return p.id === _prospectIdForCreate; });
+                if (ps) {
+                  ps.convertedSupplierId = newId;
+                  supabase.from("prospect_suppliers").update({ converted_supplier_id: newId }).eq("id", _prospectIdForCreate).then(function() {});
+                }
+              }
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
               auditLog("Entity Created", entityLabel + " " + newId + " (" + f.name + ") created", { entityType: entityLabel, entityId: newId, name: f.name, fields: Object.assign({}, f) });
               // If new entity has a company number but no directors yet (manual creation), auto-fetch
@@ -8874,7 +8945,15 @@ export default function FactoringDashboard() {
             setDataVer(function(v) { return v + 1; });
           }
 
-          function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); }
+          function startEntityEdit(ent) {
+            var fields = Object.assign({}, ent);
+            // If supplier, check for linked prospect
+            if (isSupTab) {
+              var linkedPs = PROSPECT_SUPPLIERS_DB.find(function(ps) { return ps.convertedSupplierId === ent.id; });
+              if (linkedPs) fields.prospectId = linkedPs.id;
+            }
+            setManageEdit(ent.id); setManageFields(fields); setShowNewEntity(false); setChImportStep(null);
+          }
           function startNewEntity() {
             setManageEdit(null);
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
@@ -9154,23 +9233,126 @@ export default function FactoringDashboard() {
                     </div>}
                   </div>
 
+                  {/* Prospect Link & Import */}
+                  {isSup && (function() {
+                    var linkedProspect = PROSPECT_SUPPLIERS_DB.find(function(ps) { return ps.convertedSupplierId === det.id; });
+                    if (!linkedProspect) return null;
+                    return <div style={{ background: "#567EBB08", borderRadius: 12, border: "1px solid #567EBB30", padding: "20px 28px", marginBottom: 20 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#2B4C7E", marginBottom: 4 }}>Linked Prospect: {linkedProspect.supplierName}</div>
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>Dilution — Live: {linkedProspect.dilutionRateLive != null ? (linkedProspect.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"} | 30d: {linkedProspect.dilutionRate30d != null ? (linkedProspect.dilutionRate30d * 100).toFixed(1) + "%" : "N/A"} | 90d: {linkedProspect.dilutionRate90d != null ? (linkedProspect.dilutionRate90d * 100).toFixed(1) + "%" : "N/A"}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button disabled={prospectLinkImporting} onClick={async function() {
+                            setProspectLinkImporting(true); setProspectLinkMsg("Importing...");
+                            try {
+                              // 1. Verify supplier exists in Supabase
+                              var supCheck = await supabase.from("suppliers").select("id").eq("id", det.id).single();
+                              if (supCheck.error || !supCheck.data) { setProspectLinkMsg("Error: Supplier not found in database. Save the supplier first."); setProspectLinkImporting(false); return; }
+                              // 2. Transfer prospect notes to entity_notes
+                              var pnRes = await supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", linkedProspect.id).order("created_at", { ascending: true });
+                              if (pnRes.data && pnRes.data.length > 0) {
+                                var noteCount = 0;
+                                for (var ni = 0; ni < pnRes.data.length; ni++) {
+                                  var pn = pnRes.data[ni];
+                                  // Check if already imported (by prospect_note_id)
+                                  var already = ENTITY_NOTES_DB.find(function(en) { return en.prospectNoteId === pn.id; });
+                                  if (!already) {
+                                    var noteId = "EN-" + det.id + "-PN-" + pn.id;
+                                    var noteObj = { id: noteId, entityId: det.id, entityType: "supplier", text: pn.note_text || pn.text || "", display: pn.display_time || pn.created_at || "", createdAt: pn.created_at || new Date().toISOString(), source: "prospect", prospectNoteId: pn.id };
+                                    ENTITY_NOTES_DB.push(noteObj);
+                                    await supabase.from("entity_notes").insert({ id: noteId, entity_id: det.id, entity_type: "supplier", note_text: noteObj.text, display_time: noteObj.display, created_at: noteObj.createdAt, source: "prospect", prospect_note_id: pn.id });
+                                    noteCount++;
+                                  }
+                                }
+                                if (noteCount > 0) auditLog("Prospect Notes Imported", noteCount + " notes imported from prospect " + linkedProspect.supplierName + " to " + det.id, { entityId: det.id, prospectId: linkedProspect.id, noteCount: noteCount });
+                              }
+                              // 3. Load prospect invoices
+                              var piRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", linkedProspect.id);
+                              if (piRes.data && piRes.data.length > 0) {
+                                var invCount = 0; var skipCount = 0;
+                                for (var ii = 0; ii < piRes.data.length; ii++) {
+                                  var pi = piRes.data[ii];
+                                  // Generate unique reference: SUP-xxx-INV-nnnnn
+                                  var invRef = det.id + "-INV-" + String(ii + 1).padStart(5, "0");
+                                  // Check for duplicate
+                                  var existingInv = INVOICES_DB.find(function(inv) { return inv.invoiceReference === invRef; });
+                                  if (existingInv) { skipCount++; continue; }
+                                  // Look up buyer via prospect_buyer_id
+                                  var buyerName = pi.buyer_name || pi.buyer_id || "Unknown";
+                                  var buyerId = "";
+                                  if (pi.buyer_id) {
+                                    var mappedBuyer = BUYERS_DB.find(function(b) { return b.prospectBuyerId === pi.buyer_id; });
+                                    if (mappedBuyer) { buyerName = mappedBuyer.name; buyerId = mappedBuyer.id; }
+                                  }
+                                  // Build the invoice ID
+                                  var newInvId = det.id + "-HIST-" + String(ii + 1).padStart(5, "0");
+                                  var invDate = pi.invoice_date || pi.date || "";
+                                  var dueDate = pi.due_date || (invDate ? addDays(invDate, 60) : "");
+                                  var invObj = {
+                                    id: newInvId, supplierName: det.name, supplierId: det.id, buyerName: buyerName, buyerId: buyerId,
+                                    amount: parseFloat(pi.amount) || 0, currency: pi.currency || "GBP",
+                                    capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
+                                    advanceRate: 0, annualRate: 0, penaltyRate: 0,
+                                    invoiceDate: invDate, dueDate: dueDate, fundedDate: null,
+                                    createdDate: new Date().toISOString().split("T")[0], approvedDate: null, fullyRepaidDate: null,
+                                    invoiceStatus: "Historic", fundingStatus: "not_applicable",
+                                    fundingProgram: null, partialApprovedAmount: 0,
+                                    invoiceReference: invRef, purchaseOrder: null,
+                                    invoiceStatusHistory: [{ status: "Historic", date: new Date().toISOString().split("T")[0], note: "Imported from prospect pipeline" }],
+                                    adjustments: [], doNotFund: true,
+                                    notes: [{ text: "Historic invoice imported from prospect " + linkedProspect.supplierName + ". Original buyer ID: " + (pi.buyer_id || "N/A"), display: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) }]
+                                  };
+                                  // Insert directly to Supabase (FK requires supplier to exist)
+                                  var insResult = await supabase.from("invoices").insert({
+                                    id: newInvId, supplier_name: det.name, supplier_id: det.id, buyer_name: buyerName, buyer_id: buyerId,
+                                    amount: invObj.amount, currency: invObj.currency,
+                                    capital_due: 0, holdback: 0, interest_charged: 0, deferred_payment: 0, days_to_maturity: 0,
+                                    advance_rate: 0, annual_rate: 0, penalty_rate: 0,
+                                    invoice_date: invDate || null, due_date: dueDate || null, funded_date: null,
+                                    created_date: invObj.createdDate, approved_date: null, fully_repaid_date: null,
+                                    invoice_status: "Historic", funding_status: "not_applicable",
+                                    funding_program: null, partial_approved_amount: 0,
+                                    invoice_reference: invRef, purchase_order: null,
+                                    invoice_status_history: invObj.invoiceStatusHistory,
+                                    adjustments: [], do_not_fund: true,
+                                    notes: invObj.notes
+                                  });
+                                  if (!insResult.error) { INVOICES_DB.push(invObj); invCount++; }
+                                  else { console.error("Invoice insert error:", insResult.error); skipCount++; }
+                                }
+                                auditLog("Prospect Invoices Imported", invCount + " historic invoices imported from prospect " + linkedProspect.supplierName + " to " + det.id + (skipCount > 0 ? " (" + skipCount + " skipped)" : ""), { entityId: det.id, prospectId: linkedProspect.id, imported: invCount, skipped: skipCount });
+                                setProspectLinkMsg("Imported " + invCount + " invoices" + (skipCount > 0 ? " (" + skipCount + " skipped/duplicates)" : "") + " and transferred notes.");
+                              } else {
+                                setProspectLinkMsg("No prospect invoices found. Notes transferred.");
+                              }
+                              setDataVer(function(v) { return v + 1; });
+                            } catch (err) { console.error("Prospect import error:", err); setProspectLinkMsg("Error: " + (err.message || "Import failed")); }
+                            setProspectLinkImporting(false);
+                          }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: prospectLinkImporting ? "var(--border)" : "#2B4C7E", color: "#fff", fontSize: 12, fontWeight: 700, cursor: prospectLinkImporting ? "default" : "pointer" }}>{prospectLinkImporting ? "Importing..." : "Link & Import"}</button>
+                        </div>
+                      </div>
+                      {prospectLinkMsg && <div style={{ fontSize: 12, color: prospectLinkMsg.startsWith("Error") ? "#DC2626" : "#059669", fontWeight: 600, padding: "8px 0" }}>{prospectLinkMsg}</div>}
+                    </div>;
+                  })()}
+
                   {/* Notes & Files — side by side */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                     {/* Notes */}
                     <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "24px 28px" }}>
-                      <div style={sectionTitle}>Notes {det.entityNotes && det.entityNotes.length > 0 ? "(" + det.entityNotes.length + ")" : ""}</div>
-                      {det.entityNotes && det.entityNotes.length > 0 && <div style={{ maxHeight: 180, overflowY: "auto", marginBottom: 12 }}>
-                        {det.entityNotes.slice().reverse().map(function(n, ni) {
-                          return <div key={ni} style={{ padding: "10px 14px", borderRadius: 10, background: "var(--bg)", marginBottom: 5, border: "1px solid var(--border)" }}>
-                            <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginBottom: 3 }}>{n.display}</div>
-                            <div style={{ fontSize: 13, color: "var(--text)" }}>{n.text}</div>
+                      <div style={sectionTitle}>Notes {(function() { var c = ENTITY_NOTES_DB.filter(function(n) { return n.entityId === det.id; }).length; return c > 0 ? "(" + c + ")" : ""; })()}</div>
+                      {(function() { var entNotes = ENTITY_NOTES_DB.filter(function(n) { return n.entityId === det.id; }); return entNotes.length > 0 ? <div style={{ maxHeight: 180, overflowY: "auto", marginBottom: 12 }}>
+                        {entNotes.slice().reverse().map(function(n, ni) {
+                          return <div key={n.id || ni} style={{ padding: "10px 14px", borderRadius: 10, background: n.source === "prospect" ? "#567EBB08" : "var(--bg)", marginBottom: 5, border: "1px solid " + (n.source === "prospect" ? "#567EBB30" : "var(--border)") }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</span>{n.source === "prospect" && <span style={{ fontSize: 8, fontWeight: 700, color: "#567EBB", background: "#567EBB14", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase" }}>Prospect</span>}</div>
+                            <div style={{ fontSize: 13, color: "var(--text)", marginTop: 3 }}>{n.text}</div>
                           </div>;
                         })}
-                      </div>}
-                      {(!det.entityNotes || det.entityNotes.length === 0) && <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>}
+                      </div> : <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>; })()}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
-                        <button onClick={function() { if (!noteText.trim() || !detEntity) return; if (!detEntity.entityNotes) detEntity.entityNotes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); detEntity.entityNotes.push({ text: noteText.trim(), display: nd }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
+                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
+                        <button onClick={function() { if (!noteText.trim() || !detEntity) return; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
                       </div>
                     </div>
 
@@ -9919,6 +10101,18 @@ export default function FactoringDashboard() {
                 {fld("State / County", "state", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
+                {isSupTab && (function() {
+                  var availableProspects = PROSPECT_SUPPLIERS_DB.filter(function(ps) { return !ps.convertedSupplierId || (manageEdit && ps.convertedSupplierId === manageEdit); });
+                  if (availableProspects.length === 0) return null;
+                  var currentVal = f.prospectId || "";
+                  return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Link to Prospect Supplier</label>
+                    <select value={currentVal} onChange={function(e) { setManageFields(function(p) { return Object.assign({}, p, { prospectId: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #567EBB40", background: currentVal ? "#567EBB08" : "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>
+                      <option value="">— No prospect link —</option>
+                      {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierName} (Dil: {ps.dilutionRateLive != null ? (ps.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"})</option>; })}
+                    </select>
+                  </div>;
+                })()}
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
@@ -11277,5 +11471,3 @@ export default function FactoringDashboard() {
     </div>
   );
 }
-
-    
