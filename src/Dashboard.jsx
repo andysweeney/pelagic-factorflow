@@ -560,7 +560,6 @@ async function loadPersistedData() {
     var psRes = await supabase.from("prospect_suppliers").select("*");
     if (psRes.error) { console.warn("prospect_suppliers load error (check RLS policies):", psRes.error); }
     if (psRes.data) {
-      if (psRes.data.length > 0) console.log("prospect_suppliers sample row columns:", Object.keys(psRes.data[0]), "sample row:", psRes.data[0]);
       PROSPECT_SUPPLIERS_DB.length = 0;
       psRes.data.forEach(function(row) {
         PROSPECT_SUPPLIERS_DB.push({
@@ -574,7 +573,11 @@ async function loadPersistedData() {
           uploadId: row.upload_id || row.uploadId || null
         });
       });
-      console.log("Prospect suppliers loaded:", PROSPECT_SUPPLIERS_DB.length, "first:", PROSPECT_SUPPLIERS_DB[0]);
+      if (psRes.data.length > 0) {
+        console.log("PROSPECT_SUPPLIERS raw columns: " + Object.keys(psRes.data[0]).join(", "));
+        console.log("PROSPECT_SUPPLIERS raw row[0]:", JSON.stringify(psRes.data[0]));
+        console.log("PROSPECT_SUPPLIERS mapped[0]:", JSON.stringify(PROSPECT_SUPPLIERS_DB[0]));
+      }
     }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
