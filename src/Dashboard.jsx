@@ -8827,7 +8827,7 @@ export default function FactoringDashboard() {
                 var newCoNum = (f.companyNumber || "").trim();
                 // Build field-level change log
                 var changes = [];
-                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
+                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", prospectBuyerId: "Prospect Buyer ID" };
                 Object.keys(trackFields).forEach(function(k) {
                   var oldVal = ent[k] !== undefined && ent[k] !== null ? String(ent[k]) : "";
                   var newVal = f[k] !== undefined && f[k] !== null ? String(f[k]) : "";
@@ -10103,7 +10103,6 @@ export default function FactoringDashboard() {
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
                 {isSupTab && (function() {
                   var availableProspects = PROSPECT_SUPPLIERS_DB.filter(function(ps) { return !ps.convertedSupplierId || (manageEdit && ps.convertedSupplierId === manageEdit); });
-                  if (availableProspects.length === 0) return null;
                   var currentVal = f.prospectId || "";
                   return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Link to Prospect Supplier</label>
@@ -10111,8 +10110,10 @@ export default function FactoringDashboard() {
                       <option value="">— No prospect link —</option>
                       {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierName} (Dil: {ps.dilutionRateLive != null ? (ps.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"})</option>; })}
                     </select>
+                    {availableProspects.length === 0 && !currentVal && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic", marginTop: 2 }}>No unconverted prospects available. Upload prospect data via the Prospects page first.</div>}
                   </div>;
                 })()}
+                {manageTab === "buyers" && fld("Prospect Buyer ID", "prospectBuyerId")}
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
