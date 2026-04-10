@@ -560,15 +560,21 @@ async function loadPersistedData() {
     var psRes = await supabase.from("prospect_suppliers").select("*");
     if (psRes.error) { console.warn("prospect_suppliers load error (check RLS policies):", psRes.error); }
     if (psRes.data) {
+      if (psRes.data.length > 0) console.log("prospect_suppliers sample row columns:", Object.keys(psRes.data[0]), "sample row:", psRes.data[0]);
       PROSPECT_SUPPLIERS_DB.length = 0;
       psRes.data.forEach(function(row) {
         PROSPECT_SUPPLIERS_DB.push({
-          id: row.id, supplierName: row.supplier_name, status: row.status,
-          dilutionRateLive: row.dilution_rate_live, dilutionRate30d: row.dilution_rate_30d, dilutionRate90d: row.dilution_rate_90d,
-          convertedSupplierId: row.converted_supplier_id || null, uploadId: row.upload_id
+          id: row.id,
+          supplierName: row.supplier_name || row.name || row.supplierName || row.supplier || "",
+          status: row.status || "",
+          dilutionRateLive: row.dilution_rate_live != null ? row.dilution_rate_live : (row.dilutionRateLive != null ? row.dilutionRateLive : (row.dilution_live != null ? row.dilution_live : null)),
+          dilutionRate30d: row.dilution_rate_30d != null ? row.dilution_rate_30d : (row.dilutionRate30d != null ? row.dilutionRate30d : (row.dilution_30d != null ? row.dilution_30d : null)),
+          dilutionRate90d: row.dilution_rate_90d != null ? row.dilution_rate_90d : (row.dilutionRate90d != null ? row.dilutionRate90d : (row.dilution_90d != null ? row.dilution_90d : null)),
+          convertedSupplierId: row.converted_supplier_id || row.convertedSupplierId || null,
+          uploadId: row.upload_id || row.uploadId || null
         });
       });
-      console.log("Prospect suppliers loaded:", PROSPECT_SUPPLIERS_DB.length);
+      console.log("Prospect suppliers loaded:", PROSPECT_SUPPLIERS_DB.length, "first:", PROSPECT_SUPPLIERS_DB[0]);
     }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
@@ -10115,11 +10121,17 @@ export default function FactoringDashboard() {
                           var psRes = await supabase.from("prospect_suppliers").select("*");
                           if (psRes.error) { alert("Error loading prospects: " + psRes.error.message + "\n\nCheck that RLS policy USING (true) exists on prospect_suppliers table."); return; }
                           PROSPECT_SUPPLIERS_DB.length = 0;
+                          if (psRes.data && psRes.data.length > 0) console.log("Reload prospect_suppliers sample row:", Object.keys(psRes.data[0]), psRes.data[0]);
                           (psRes.data || []).forEach(function(row) {
                             PROSPECT_SUPPLIERS_DB.push({
-                              id: row.id, supplierName: row.supplier_name, status: row.status,
-                              dilutionRateLive: row.dilution_rate_live, dilutionRate30d: row.dilution_rate_30d, dilutionRate90d: row.dilution_rate_90d,
-                              convertedSupplierId: row.converted_supplier_id || null, uploadId: row.upload_id
+                              id: row.id,
+                              supplierName: row.supplier_name || row.name || row.supplierName || row.supplier || "",
+                              status: row.status || "",
+                              dilutionRateLive: row.dilution_rate_live != null ? row.dilution_rate_live : (row.dilutionRateLive != null ? row.dilutionRateLive : (row.dilution_live != null ? row.dilution_live : null)),
+                              dilutionRate30d: row.dilution_rate_30d != null ? row.dilution_rate_30d : (row.dilutionRate30d != null ? row.dilutionRate30d : (row.dilution_30d != null ? row.dilution_30d : null)),
+                              dilutionRate90d: row.dilution_rate_90d != null ? row.dilution_rate_90d : (row.dilutionRate90d != null ? row.dilutionRate90d : (row.dilution_90d != null ? row.dilution_90d : null)),
+                              convertedSupplierId: row.converted_supplier_id || row.convertedSupplierId || null,
+                              uploadId: row.upload_id || row.uploadId || null
                             });
                           });
                           setDataVer(function(v) { return v + 1; });
