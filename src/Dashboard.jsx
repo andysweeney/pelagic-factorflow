@@ -557,8 +557,9 @@ async function loadPersistedData() {
       });
     }
     // Load prospect suppliers (for linking dropdown)
-    var psRes = await supabase.from("prospect_suppliers").select("id, supplier_name, status, dilution_rate_live, dilution_rate_30d, dilution_rate_90d, converted_supplier_id, upload_id");
-    if (psRes.data && psRes.data.length > 0) {
+    var psRes = await supabase.from("prospect_suppliers").select("*");
+    if (psRes.error) { console.warn("prospect_suppliers load error (check RLS policies):", psRes.error); }
+    if (psRes.data) {
       PROSPECT_SUPPLIERS_DB.length = 0;
       psRes.data.forEach(function(row) {
         PROSPECT_SUPPLIERS_DB.push({
@@ -567,6 +568,7 @@ async function loadPersistedData() {
           convertedSupplierId: row.converted_supplier_id || null, uploadId: row.upload_id
         });
       });
+      console.log("Prospect suppliers loaded:", PROSPECT_SUPPLIERS_DB.length);
     }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
@@ -10102,15 +10104,34 @@ export default function FactoringDashboard() {
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
                 {isSupTab && (function() {
-                  var availableProspects = PROSPECT_SUPPLIERS_DB.filter(function(ps) { return !ps.convertedSupplierId || (manageEdit && ps.convertedSupplierId === manageEdit); });
+                  var allProspects = PROSPECT_SUPPLIERS_DB;
+                  var availableProspects = allProspects.filter(function(ps) { return !ps.convertedSupplierId || (manageEdit && ps.convertedSupplierId === manageEdit); });
                   var currentVal = f.prospectId || "";
                   return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Link to Prospect Supplier</label>
-                    <select value={currentVal} onChange={function(e) { setManageFields(function(p) { return Object.assign({}, p, { prospectId: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #567EBB40", background: currentVal ? "#567EBB08" : "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Link to Prospect Supplier</label>
+                      <button onClick={async function() {
+                        try {
+                          var psRes = await supabase.from("prospect_suppliers").select("*");
+                          if (psRes.error) { alert("Error loading prospects: " + psRes.error.message + "\n\nCheck that RLS policy USING (true) exists on prospect_suppliers table."); return; }
+                          PROSPECT_SUPPLIERS_DB.length = 0;
+                          (psRes.data || []).forEach(function(row) {
+                            PROSPECT_SUPPLIERS_DB.push({
+                              id: row.id, supplierName: row.supplier_name, status: row.status,
+                              dilutionRateLive: row.dilution_rate_live, dilutionRate30d: row.dilution_rate_30d, dilutionRate90d: row.dilution_rate_90d,
+                              convertedSupplierId: row.converted_supplier_id || null, uploadId: row.upload_id
+                            });
+                          });
+                          setDataVer(function(v) { return v + 1; });
+                          if (PROSPECT_SUPPLIERS_DB.length === 0) alert("Query succeeded but returned 0 rows.\n\nPossible causes:\n1. No data in prospect_suppliers table\n2. RLS policy is blocking access — add: ALTER TABLE prospect_suppliers ENABLE ROW LEVEL SECURITY; CREATE POLICY \"Allow all\" ON prospect_suppliers USING (true);");
+                        } catch (err) { alert("Fetch error: " + err.message); }
+                      }} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", cursor: "pointer", fontWeight: 600 }}>{"\u21bb"} Reload</button>
+                      <span style={{ fontSize: 9, color: "var(--muted)" }}>({allProspects.length} loaded, {availableProspects.length} available)</span>
+                    </div>
+                    {availableProspects.length > 0 || currentVal ? <select value={currentVal} onChange={function(e) { setManageFields(function(p) { return Object.assign({}, p, { prospectId: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #567EBB40", background: currentVal ? "#567EBB08" : "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>
                       <option value="">— No prospect link —</option>
                       {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierName} (Dil: {ps.dilutionRateLive != null ? (ps.dilutionRateLive * 100).toFixed(1) + "%" : "N/A"})</option>; })}
-                    </select>
-                    {availableProspects.length === 0 && !currentVal && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic", marginTop: 2 }}>No unconverted prospects available. Upload prospect data via the Prospects page first.</div>}
+                    </select> : <div style={{ padding: "8px 12px", borderRadius: 8, border: "1px dashed var(--border)", background: "var(--bg)", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No unconverted prospects available. Upload prospect data via the Prospects page, then click Reload.</div>}
                   </div>;
                 })()}
                 {manageTab === "buyers" && fld("Prospect Buyer ID", "prospectBuyerId")}
