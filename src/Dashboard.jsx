@@ -346,7 +346,6 @@ var SUPPLIER_PAYMENT_QUEUE = [];
 var CREDIT_NOTES_DB = [];
 var FUNDING_PROGRAMS_DB = [];
 var ENTITY_NOTES_DB = [];
-var PROSPECT_SUPPLIERS_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -394,8 +393,7 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false,
-          prospectBuyerId: row.prospect_buyer_id || ""
+          paused: row.paused || false
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -556,27 +554,6 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load prospect suppliers (for linking dropdown)
-    var psRes = await supabase.from("prospect_suppliers").select("*");
-    if (psRes.error) { console.warn("prospect_suppliers load error (check RLS policies):", psRes.error); }
-    if (psRes.data) {
-      PROSPECT_SUPPLIERS_DB.length = 0;
-      psRes.data.forEach(function(row) {
-        PROSPECT_SUPPLIERS_DB.push({
-          id: row.id,
-          supplierName: row.company_name || row.supplier_label || row.supplier_identifier || "",
-          supplierIdentifier: row.supplier_identifier || "",
-          status: row.status || "",
-          contactName: row.contact_name || "",
-          contactEmail: row.contact_email || "",
-          dilutionRateLive: null,
-          dilutionRate30d: null,
-          dilutionRate90d: null,
-          convertedSupplierId: row.converted_supplier_id || null,
-          uploadId: row.upload_id || null
-        });
-      });
-    }
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
   return false;
@@ -723,8 +700,7 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false,
-          prospectBuyerId: row.prospect_buyer_id || ""
+          paused: row.paused || false
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -815,8 +791,7 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-        paused: b.paused || false,
-        prospect_buyer_id: b.prospectBuyerId || null
+        paused: b.paused || false
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -1579,8 +1554,6 @@ export default function FactoringDashboard() {
   var um3 = useState(null), userEdit = um3[0], setUserEdit = um3[1]; // null | "new" | user object
   var um4 = useState({}), userFields = um4[0], setUserFields = um4[1];
   var um5 = useState(""), userSaveMsg = um5[0], setUserSaveMsg = um5[1];
-  var pli1 = useState(false), prospectLinkImporting = pli1[0], setProspectLinkImporting = pli1[1];
-  var plm1 = useState(""), prospectLinkMsg = plm1[0], setProspectLinkMsg = plm1[1];
   var PS = 25;
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
 
@@ -5493,7 +5466,6 @@ export default function FactoringDashboard() {
                   {buyer.primaryContact && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Contact</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryContact}</div></div>}
                   {buyer.primaryEmail && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Email</div><div style={{ fontSize: 13, color: "var(--accent)" }}>{buyer.primaryEmail}</div></div>}
                   {buyer.primaryPhone && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Phone</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryPhone}</div></div>}
-                  {buyer.prospectBuyerId && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Prospect Buyer ID</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#567EBB" }}>{buyer.prospectBuyerId}</div></div>}
                   {buyer.directors && buyer.directors.filter(function(d) { return !d.resignedDate; }).length > 0 && <div style={{ gridColumn: "1 / -1", marginTop: 4, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Active Directors</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -5540,10 +5512,9 @@ export default function FactoringDashboard() {
                       {bFld("Contact 5 Email", "contact5Email", "email")}
                       {bFld("Contact 5 Phone", "contact5Phone", "tel")}
                       <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}><input type="checkbox" checked={f.contact5Signatory || false} onChange={function() { setManageFields(function(p) { return Object.assign({}, p, { contact5Signatory: !p.contact5Signatory }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: f.contact5Signatory ? "#059669" : "var(--muted)" }}>Authorised Signatory</span></label>
-                      <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 6 }}>{bFld("Prospect Buyer ID", "prospectBuyerId")}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", prospectBuyerId: "Prospect Buyer ID" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
+                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
                       <button onClick={function() { setExp(null); }} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                     </div>
                   </div>;
@@ -8836,7 +8807,7 @@ export default function FactoringDashboard() {
                 var newCoNum = (f.companyNumber || "").trim();
                 // Build field-level change log
                 var changes = [];
-                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", prospectBuyerId: "Prospect Buyer ID" };
+                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
                 Object.keys(trackFields).forEach(function(k) {
                   var oldVal = ent[k] !== undefined && ent[k] !== null ? String(ent[k]) : "";
                   var newVal = f[k] !== undefined && f[k] !== null ? String(f[k]) : "";
@@ -8908,19 +8879,7 @@ export default function FactoringDashboard() {
                 });
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
-                // Strip non-DB fields before assigning to entity
-                var cleanF = Object.assign({}, f);
-                delete cleanF.prospectId;
-                delete cleanF._prospectLinked;
-                Object.assign(ent, cleanF);
-                // Handle prospect link (update prospect_suppliers table if changed)
-                if (isSupTab && f.prospectId) {
-                  var ps = PROSPECT_SUPPLIERS_DB.find(function(p) { return p.id === f.prospectId; });
-                  if (ps && ps.convertedSupplierId !== manageEdit) {
-                    ps.convertedSupplierId = manageEdit;
-                    supabase.from("prospect_suppliers").update({ converted_supplier_id: manageEdit }).eq("id", f.prospectId).then(function() {});
-                  }
-                }
+                Object.assign(ent, f);
                 // If company number was added or changed, auto-fetch from CH
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
@@ -8928,20 +8887,8 @@ export default function FactoringDashboard() {
               }
             } else {
               var newId = prefix + "-" + String(db.length + 1).padStart(3, "0");
-              var cleanCreateF = Object.assign({}, f);
-              var _prospectIdForCreate = cleanCreateF.prospectId || null;
-              delete cleanCreateF.prospectId;
-              delete cleanCreateF._prospectLinked;
-              var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, cleanCreateF);
+              var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, f);
               db.push(newEnt);
-              // Handle prospect link for new entity
-              if (isSupTab && _prospectIdForCreate) {
-                var ps = PROSPECT_SUPPLIERS_DB.find(function(p) { return p.id === _prospectIdForCreate; });
-                if (ps) {
-                  ps.convertedSupplierId = newId;
-                  supabase.from("prospect_suppliers").update({ converted_supplier_id: newId }).eq("id", _prospectIdForCreate).then(function() {});
-                }
-              }
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
               auditLog("Entity Created", entityLabel + " " + newId + " (" + f.name + ") created", { entityType: entityLabel, entityId: newId, name: f.name, fields: Object.assign({}, f) });
               // If new entity has a company number but no directors yet (manual creation), auto-fetch
@@ -8954,15 +8901,7 @@ export default function FactoringDashboard() {
             setDataVer(function(v) { return v + 1; });
           }
 
-          function startEntityEdit(ent) {
-            var fields = Object.assign({}, ent);
-            // If supplier, check for linked prospect
-            if (isSupTab) {
-              var linkedPs = PROSPECT_SUPPLIERS_DB.find(function(ps) { return ps.convertedSupplierId === ent.id; });
-              if (linkedPs) fields.prospectId = linkedPs.id;
-            }
-            setManageEdit(ent.id); setManageFields(fields); setShowNewEntity(false); setChImportStep(null);
-          }
+          function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); }
           function startNewEntity() {
             setManageEdit(null);
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
@@ -9241,140 +9180,6 @@ export default function FactoringDashboard() {
                       <div><div style={fieldLabel}>Verification</div><div style={{ marginTop: 2 }}>{det.bankVerified ? <Badge label="Verified" bg="#2E8B5714" color="#059669" border="#2E8B5730" icon={"\u2713"} /> : <Badge label="Unverified" bg="#C0392B14" color="#EF4444" border="#DC262625" icon="!" />}</div></div>
                     </div>}
                   </div>
-
-                  {/* Prospect Link & Import */}
-                  {isSup && (function() {
-                    var linkedProspect = PROSPECT_SUPPLIERS_DB.find(function(ps) { return ps.convertedSupplierId === det.id; });
-                    if (!linkedProspect) return null;
-                    return <div style={{ background: "#567EBB08", borderRadius: 12, border: "1px solid #567EBB30", padding: "20px 28px", marginBottom: 20 }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#2B4C7E", marginBottom: 4 }}>Linked Prospect: {linkedProspect.supplierIdentifier || ""}{linkedProspect.supplierName ? " — " + linkedProspect.supplierName : ""}</div>
-                          <div style={{ fontSize: 11, color: "var(--muted)" }}>Status: {linkedProspect.status}{linkedProspect.contactName ? " | Contact: " + linkedProspect.contactName : ""}{linkedProspect.contactEmail ? " (" + linkedProspect.contactEmail + ")" : ""}</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button disabled={prospectLinkImporting} onClick={async function() {
-                            setProspectLinkImporting(true); setProspectLinkMsg("Importing...");
-                            try {
-                              // 1. Verify supplier exists in Supabase
-                              var supCheck = await supabase.from("suppliers").select("id").eq("id", det.id).single();
-                              if (supCheck.error || !supCheck.data) { setProspectLinkMsg("Error: Supplier not found in database. Save the supplier first."); setProspectLinkImporting(false); return; }
-                              // 2. Transfer prospect notes to entity_notes
-                              var pnRes = await supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", linkedProspect.id).order("created_at", { ascending: true });
-                              if (pnRes.error) { console.warn("prospect_notes load error:", pnRes.error); }
-                              if (pnRes.data && pnRes.data.length > 0) {
-                                console.log("prospect_notes columns:", Object.keys(pnRes.data[0]).join(", "));
-                                console.log("prospect_notes sample:", JSON.stringify(pnRes.data[0]));
-                                var noteCount = 0;
-                                for (var ni = 0; ni < pnRes.data.length; ni++) {
-                                  var pn = pnRes.data[ni];
-                                  // Check if already imported (by prospect_note_id)
-                                  var already = ENTITY_NOTES_DB.find(function(en) { return en.prospectNoteId === pn.id; });
-                                  if (!already) {
-                                    var noteId = "EN-" + det.id + "-PN-" + pn.id;
-                                    var noteObj = { id: noteId, entityId: det.id, entityType: "supplier", text: pn.note_text || pn.text || pn.content || pn.note || "", display: pn.display_time || pn.created_at || "", createdAt: pn.created_at || new Date().toISOString(), source: "prospect", prospectNoteId: pn.id };
-                                    ENTITY_NOTES_DB.push(noteObj);
-                                    await supabase.from("entity_notes").insert({ id: noteId, entity_id: det.id, entity_type: "supplier", note_text: noteObj.text, display_time: noteObj.display, created_at: noteObj.createdAt, source: "prospect", prospect_note_id: pn.id });
-                                    noteCount++;
-                                  }
-                                }
-                                if (noteCount > 0) auditLog("Prospect Notes Imported", noteCount + " notes imported from prospect " + linkedProspect.supplierName + " to " + det.id, { entityId: det.id, prospectId: linkedProspect.id, noteCount: noteCount });
-                              }
-                              // 3. Load prospect invoices
-                              var piRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", linkedProspect.id);
-                              if (piRes.error) {
-                                console.error("prospect_invoices load error:", piRes.error);
-                                setProspectLinkMsg("Error loading prospect invoices: " + piRes.error.message + " (check RLS on prospect_invoices)");
-                                setProspectLinkImporting(false);
-                                setDataVer(function(v) { return v + 1; });
-                                return;
-                              }
-                              var piData = piRes.data || [];
-                              console.log("prospect_invoices found:", piData.length, "for prospect_supplier_id:", linkedProspect.id);
-                              if (piData.length > 0) {
-                                console.log("prospect_invoices columns:", Object.keys(piData[0]).join(", "));
-                                console.log("prospect_invoices sample row:", JSON.stringify(piData[0]));
-                                var invCount = 0; var skipCount = 0; var errCount = 0; var lastErr = "";
-                                for (var ii = 0; ii < piData.length; ii++) {
-                                  var pi = piData[ii];
-                                  // Use standardised prospect_invoices columns
-                                  var invRef = pi.buyer_invoice_ref || pi.supplier_invoice_ref || pi.reference_number || (det.id + "-INV-" + String(ii + 1).padStart(5, "0"));
-                                  // Prefix with supplier ID for uniqueness
-                                  var uniqueRef = det.id + "-" + invRef;
-                                  // Check for duplicate
-                                  var existingInv = INVOICES_DB.find(function(inv) { return inv.invoiceReference === uniqueRef; });
-                                  if (existingInv) { skipCount++; continue; }
-                                  // Look up buyer via prospect_buyer_id
-                                  var buyerIdentifier = pi.buyer_identifier || "";
-                                  var buyerName = "";
-                                  var buyerId = "";
-                                  if (buyerIdentifier) {
-                                    var mappedBuyer = BUYERS_DB.find(function(b) { return b.prospectBuyerId === buyerIdentifier; });
-                                    if (mappedBuyer) { buyerName = mappedBuyer.name; buyerId = mappedBuyer.id; }
-                                  }
-                                  // If no mapped buyer found, use supplier name as fallback for buyer_name
-                                  // (the invoices table FK requires buyer_name to exist in buyers.name)
-                                  if (!buyerName) {
-                                    // Try to find any buyer — if only one exists, use it
-                                    if (BUYERS_DB.length === 1) { buyerName = BUYERS_DB[0].name; buyerId = BUYERS_DB[0].id; }
-                                    else { buyerName = buyerIdentifier || "Unknown Buyer"; }
-                                  }
-                                  // Build the invoice ID
-                                  var newInvId = det.id + "-HIST-" + String(ii + 1).padStart(5, "0");
-                                  var invDate = pi.invoice_date || "";
-                                  var dueDate = pi.due_date || (invDate ? addDays(invDate, 60) : "");
-                                  var poNumber = pi.purchase_order || null;
-                                  var invAmount = parseFloat(pi.invoice_amount) || 0;
-                                  var invObj = {
-                                    id: newInvId, supplierName: det.name, supplierId: det.id, buyerName: buyerName, buyerId: buyerId,
-                                    amount: invAmount, currency: pi.currency || "GBP",
-                                    capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
-                                    advanceRate: 0, annualRate: 0, penaltyRate: 0,
-                                    invoiceDate: invDate, dueDate: dueDate, fundedDate: null,
-                                    createdDate: new Date().toISOString().split("T")[0], approvedDate: pi.approval_date || null, fullyRepaidDate: pi.settled_date || null,
-                                    invoiceStatus: "Historic", fundingStatus: "not_applicable",
-                                    fundingProgram: null, partialApprovedAmount: parseFloat(pi.approved_amount) || 0,
-                                    invoiceReference: uniqueRef, purchaseOrder: poNumber,
-                                    invoiceStatusHistory: [{ status: "Historic", date: new Date().toISOString().split("T")[0], note: "Imported from prospect pipeline" }],
-                                    adjustments: [], doNotFund: true,
-                                    notes: [{ text: "Historic invoice imported from prospect " + linkedProspect.supplierName + ". Buyer: " + buyerIdentifier + (poNumber ? " PO: " + poNumber : ""), display: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) }]
-                                  };
-                                  // Insert directly to Supabase (FK requires supplier to exist)
-                                  var insResult = await supabase.from("invoices").insert({
-                                    id: newInvId, supplier_name: det.name, supplier_id: det.id, buyer_name: buyerName, buyer_id: buyerId,
-                                    amount: invAmount, currency: invObj.currency,
-                                    capital_due: 0, holdback: 0, interest_charged: 0, deferred_payment: 0, days_to_maturity: 0,
-                                    advance_rate: 0, annual_rate: 0, penalty_rate: 0,
-                                    invoice_date: invDate || null, due_date: dueDate || null, funded_date: null,
-                                    created_date: invObj.createdDate, approved_date: pi.approval_date || null, fully_repaid_date: pi.settled_date || null,
-                                    invoice_status: "Historic", funding_status: "not_applicable",
-                                    funding_program: null, partial_approved_amount: invObj.partialApprovedAmount,
-                                    invoice_reference: uniqueRef, purchase_order: poNumber,
-                                    invoice_status_history: invObj.invoiceStatusHistory,
-                                    adjustments: [], do_not_fund: true,
-                                    notes: invObj.notes
-                                  });
-                                  if (!insResult.error) { INVOICES_DB.push(invObj); invCount++; }
-                                  else { console.error("Invoice insert error [" + newInvId + "]:", insResult.error.message, insResult.error.details, insResult.error.hint); errCount++; lastErr = insResult.error.message; }
-                                }
-                                var msg = "Imported " + invCount + " invoices";
-                                if (skipCount > 0) msg += " (" + skipCount + " skipped/duplicates)";
-                                if (errCount > 0) msg += ". " + errCount + " FAILED — last error: " + lastErr;
-                                msg += ". Notes transferred.";
-                                auditLog("Prospect Invoices Imported", invCount + " historic invoices imported from prospect " + linkedProspect.supplierName + " to " + det.id + (skipCount > 0 ? " (" + skipCount + " skipped)" : "") + (errCount > 0 ? " (" + errCount + " errors)" : ""), { entityId: det.id, prospectId: linkedProspect.id, imported: invCount, skipped: skipCount, errors: errCount });
-                                setProspectLinkMsg(msg);
-                              } else {
-                                setProspectLinkMsg("No prospect invoices found for this supplier (prospect_supplier_id: " + linkedProspect.id + "). Notes transferred.");
-                              }
-                              setDataVer(function(v) { return v + 1; });
-                            } catch (err) { console.error("Prospect import error:", err); setProspectLinkMsg("Error: " + (err.message || "Import failed")); }
-                            setProspectLinkImporting(false);
-                          }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: prospectLinkImporting ? "var(--border)" : "#2B4C7E", color: "#fff", fontSize: 12, fontWeight: 700, cursor: prospectLinkImporting ? "default" : "pointer" }}>{prospectLinkImporting ? "Importing..." : "Link & Import"}</button>
-                        </div>
-                      </div>
-                      {prospectLinkMsg && <div style={{ fontSize: 12, color: prospectLinkMsg.startsWith("Error") ? "#DC2626" : "#059669", fontWeight: 600, padding: "8px 0" }}>{prospectLinkMsg}</div>}
-                    </div>;
-                  })()}
 
                   {/* Notes & Files — side by side */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
@@ -10140,46 +9945,7 @@ export default function FactoringDashboard() {
                 {fld("State / County", "state", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
                 {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
-                {isSupTab && (function() {
-                  var allProspects = PROSPECT_SUPPLIERS_DB;
-                  var availableProspects = allProspects.filter(function(ps) { return !ps.convertedSupplierId || (manageEdit && ps.convertedSupplierId === manageEdit); });
-                  var currentVal = f.prospectId || "";
-                  return <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Link to Prospect Supplier</label>
-                      <button onClick={async function() {
-                        try {
-                          var psRes = await supabase.from("prospect_suppliers").select("*");
-                          if (psRes.error) { alert("Error loading prospects: " + psRes.error.message + "\n\nCheck that RLS policy USING (true) exists on prospect_suppliers table."); return; }
-                          PROSPECT_SUPPLIERS_DB.length = 0;
-                          (psRes.data || []).forEach(function(row) {
-                            PROSPECT_SUPPLIERS_DB.push({
-                              id: row.id,
-                              supplierName: row.company_name || row.supplier_label || row.supplier_identifier || "",
-                              supplierIdentifier: row.supplier_identifier || "",
-                              status: row.status || "",
-                              contactName: row.contact_name || "",
-                              contactEmail: row.contact_email || "",
-                              dilutionRateLive: null,
-                              dilutionRate30d: null,
-                              dilutionRate90d: null,
-                              convertedSupplierId: row.converted_supplier_id || null,
-                              uploadId: row.upload_id || null
-                            });
-                          });
-                          setDataVer(function(v) { return v + 1; });
-                          if (PROSPECT_SUPPLIERS_DB.length === 0) alert("Query succeeded but returned 0 rows.\n\nPossible causes:\n1. No data in prospect_suppliers table\n2. RLS policy is blocking access — add: ALTER TABLE prospect_suppliers ENABLE ROW LEVEL SECURITY; CREATE POLICY \"Allow all\" ON prospect_suppliers USING (true);");
-                        } catch (err) { alert("Fetch error: " + err.message); }
-                      }} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", cursor: "pointer", fontWeight: 600 }}>{"\u21bb"} Reload</button>
-                      <span style={{ fontSize: 9, color: "var(--muted)" }}>({allProspects.length} loaded, {availableProspects.length} available)</span>
-                    </div>
-                    {availableProspects.length > 0 || currentVal ? <select value={currentVal} onChange={function(e) { setManageFields(function(p) { return Object.assign({}, p, { prospectId: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #567EBB40", background: currentVal ? "#567EBB08" : "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>
-                      <option value="">— No prospect link —</option>
-                      {availableProspects.map(function(ps) { return <option key={ps.id} value={ps.id}>{ps.supplierIdentifier ? ps.supplierIdentifier + " — " : ""}{ps.supplierName || "(unnamed)"} [{ps.status}]</option>; })}
-                    </select> : <div style={{ padding: "8px 12px", borderRadius: 8, border: "1px dashed var(--border)", background: "var(--bg)", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No unconverted prospects available. Upload prospect data via the Prospects page, then click Reload.</div>}
-                  </div>;
-                })()}
-                {manageTab === "buyers" && fld("Prospect Buyer ID", "prospectBuyerId")}
+
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
