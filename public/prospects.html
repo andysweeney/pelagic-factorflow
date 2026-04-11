@@ -1831,7 +1831,7 @@ function loadAllData() {
     // Use a helper to paginate large tables
     function fetchAll(table, orderCol) {
         var allRows = [];
-        var pageSize = 5000;
+        var pageSize = 1000;
         function fetchPage(from) {
             return sbClient.from(table).select('*').order(orderCol || 'created_at', { ascending: true }).range(from, from + pageSize - 1).then(function(res) {
                 if (res.error) { console.error('Error fetching ' + table + ':', res.error.message); return allRows; }
