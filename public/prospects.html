@@ -1689,13 +1689,32 @@ function saveToSupabase(result, buyerLabel, callback) {
             };
         });
 
-        sbClient.from('prospect_suppliers').upsert(supplierRecords, { onConflict: 'upload_id,supplier_identifier' }).select().then(function(sRes) {
-            if (sRes.error) { alert('Error saving suppliers: ' + sRes.error.message); return; }
+        // Batch upsert suppliers (Supabase may truncate .select() responses on large upserts)
+        var supplierMap = {};
+        var supBatchSize = 200;
+        var supBatches = [];
+        for (var si = 0; si < supplierRecords.length; si += supBatchSize) {
+            supBatches.push(supplierRecords.slice(si, si + supBatchSize));
+        }
+        var supBatchIdx = 0;
+        function nextSupBatch() {
+            if (supBatchIdx >= supBatches.length) {
+                // All suppliers saved — now insert invoices
+                updateProcessing(70, 'Saving invoice records (' + Object.keys(supplierMap).length + ' suppliers mapped)...');
+                onAllSuppliersSaved();
+                return;
+            }
+            sbClient.from('prospect_suppliers').upsert(supBatches[supBatchIdx], { onConflict: 'upload_id,supplier_identifier' }).select().then(function(sRes) {
+                if (sRes.error) { alert('Error saving suppliers batch ' + (supBatchIdx + 1) + ': ' + sRes.error.message); return; }
+                sRes.data.forEach(function(s) { supplierMap[s.supplier_identifier] = s.id; });
+                updateProcessing(60 + Math.round(10 * (supBatchIdx + 1) / supBatches.length), 'Saved supplier batch ' + (supBatchIdx + 1) + '/' + supBatches.length + '...');
+                supBatchIdx++;
+                nextSupBatch();
+            });
+        }
+        nextSupBatch();
 
-            updateProcessing(70, 'Saving invoice records...');
-
-            var supplierMap = {};
-            sRes.data.forEach(function(s) { supplierMap[s.supplier_identifier] = s.id; });
+        function onAllSuppliersSaved() {
 
             // Batch invoices
             var allInvoices = [];
@@ -1740,6 +1759,9 @@ function saveToSupabase(result, buyerLabel, callback) {
                 return true;
             });
             if (allInvoices.length === 0) { console.warn('No valid invoices to insert'); }
+            console.log('Inserting ' + allInvoices.length + ' invoices in batches of 500 (' + Math.ceil(allInvoices.length / 500) + ' batches). Supplier map has ' + Object.keys(supplierMap).length + ' entries.');
+            var unmapped = allInvoices.filter(function(inv) { return !inv.prospect_supplier_id; });
+            if (unmapped.length > 0) console.warn(unmapped.length + ' invoices have no prospect_supplier_id!');
 
             // Insert in batches of 500
             batchInsert('prospect_invoices', allInvoices, 500, function() {
@@ -1775,7 +1797,7 @@ function saveToSupabase(result, buyerLabel, callback) {
                     callback();
                 }
             });
-        });
+        }
     });
 }
 
