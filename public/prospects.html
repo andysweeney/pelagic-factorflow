@@ -1702,7 +1702,7 @@ function saveToSupabase(result, buyerLabel, callback) {
             supplierIds.forEach(function(sid) {
                 var prospectSupplierId = supplierMap[sid];
                 result.suppliers[sid].invoices.forEach(function(inv) {
-                    allInvoices.push({
+                    var invRecord = {
                         upload_id: uploadId,
                         prospect_supplier_id: prospectSupplierId,
                         buyer_identifier: inv.buyer_identifier || 'UNKNOWN',
@@ -1710,21 +1710,23 @@ function saveToSupabase(result, buyerLabel, callback) {
                         reference_number: inv.reference_number,
                         currency: inv.currency || 'GBP',
                         invoice_amount: inv.invoice_amount || 0,
-                        approved_amount: inv.approved_amount != null ? inv.approved_amount : null,
-                        payments_to_invoice: inv.payments_to_invoice != null ? inv.payments_to_invoice : null,
                         invoice_date: inv.invoice_date || null,
                         due_date: inv.due_date || null,
-                        buyer_invoice_ref: inv.buyer_invoice_ref || null,
-                        supplier_invoice_ref: inv.supplier_invoice_ref || null,
-                        purchase_order: inv.purchase_order || null,
-                        buyer_received_date: inv.buyer_received_date || null,
-                        cancelled_date: inv.cancelled_date || null,
-                        approval_date: inv.approval_date || null,
-                        declined_date: inv.declined_date || null,
-                        disputed_date: inv.disputed_date || null,
-                        settled_date: inv.settled_date || null,
-                        amount_paid_to_date: inv.amount_paid_to_date != null ? inv.amount_paid_to_date : null
-                    });
+                        amount_paid_to_date: inv.amount_paid_to_date != null ? inv.amount_paid_to_date : null,
+                        settled_date: inv.settled_date || null
+                    };
+                    // Add extended columns only if they have values (avoids errors if columns don't exist yet)
+                    if (inv.approved_amount != null) invRecord.approved_amount = inv.approved_amount;
+                    if (inv.payments_to_invoice != null) invRecord.payments_to_invoice = inv.payments_to_invoice;
+                    if (inv.buyer_invoice_ref) invRecord.buyer_invoice_ref = inv.buyer_invoice_ref;
+                    if (inv.supplier_invoice_ref) invRecord.supplier_invoice_ref = inv.supplier_invoice_ref;
+                    if (inv.purchase_order) invRecord.purchase_order = inv.purchase_order;
+                    if (inv.buyer_received_date) invRecord.buyer_received_date = inv.buyer_received_date;
+                    if (inv.cancelled_date) invRecord.cancelled_date = inv.cancelled_date;
+                    if (inv.approval_date) invRecord.approval_date = inv.approval_date;
+                    if (inv.declined_date) invRecord.declined_date = inv.declined_date;
+                    if (inv.disputed_date) invRecord.disputed_date = inv.disputed_date;
+                    allInvoices.push(invRecord);
                 });
             });
 
@@ -1789,7 +1791,7 @@ function batchInsert(table, records, batchSize, callback) {
     function nextBatch() {
         if (idx >= batches.length) { callback(); return; }
         sbClient.from(table).insert(batches[idx]).then(function(res) {
-            if (res.error) console.error('Batch insert error on ' + table + ' batch ' + (idx + 1) + '/' + batches.length + ':', res.error.message, res.error.details);
+            if (res.error) { console.error('Batch insert error on ' + table + ' batch ' + (idx + 1) + '/' + batches.length + ':', res.error.message, res.error.details); if (idx === 0) alert('Error inserting ' + table + ': ' + res.error.message + (res.error.details ? '\n' + res.error.details : '') + (res.error.hint ? '\n' + res.error.hint : '')); }
             idx++;
             nextBatch();
         });
