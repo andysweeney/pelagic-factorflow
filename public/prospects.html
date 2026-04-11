@@ -621,21 +621,21 @@
             <div id="pipelineCharts" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px;">
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Total Volume</div>
-                    <canvas id="chartVolume" height="200"></canvas>
+                    <div style="position:relative; height:180px;"><canvas id="chartVolume"></canvas></div>
                 </div>
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Invoice Count</div>
-                    <canvas id="chartCount" height="200"></canvas>
+                    <div style="position:relative; height:180px;"><canvas id="chartCount"></canvas></div>
                 </div>
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Avg Invoice Tenor (Days)</div>
-                    <canvas id="chartTenor" height="200"></canvas>
+                    <div style="position:relative; height:180px;"><canvas id="chartTenor"></canvas></div>
                 </div>
             </div>
             <div id="pipelineDilutionChart" style="margin-bottom:20px;">
                 <div class="card" style="margin-bottom:0; padding:16px 20px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Dilution Over Time — Quartile Bands</div>
-                    <canvas id="chartDilutionTime" height="140"></canvas>
+                    <div style="position:relative; height:220px;"><canvas id="chartDilutionTime"></canvas></div>
                 </div>
             </div>
 
@@ -2119,7 +2119,12 @@ function renderPipeline() {
         renderPipeline();
     });
 
-    renderPipelineCharts(filtered);
+    // Only re-render charts if the filtered set changed (not on pagination)
+    var chartKey = filtered.length + '-' + (state.filterCurrency || '') + '-' + (state.filterSearch || '') + '-' + (state.filterStatus || '') + '-' + (state.filterBuyer || '');
+    if (chartKey !== state._lastChartKey) {
+        state._lastChartKey = chartKey;
+        renderPipelineCharts(filtered);
+    }
 }
 
 // ================================================================
@@ -2211,9 +2216,9 @@ function renderPipelineCharts(filtered) {
 
     // — LINE CHART: Dilution over time with quartile bands —
     var dates = Object.keys(dilutionsByDate).sort();
-    // Sample to max ~120 points for performance
-    if (dates.length > 120) {
-        var step = Math.ceil(dates.length / 120);
+    // Sample to max ~60 points for performance
+    if (dates.length > 60) {
+        var step = Math.ceil(dates.length / 60);
         dates = dates.filter(function(_, i) { return i % step === 0 || i === dates.length - 1; });
     }
 
