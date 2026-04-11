@@ -2066,9 +2066,7 @@ function renderPipeline() {
     // Render UNFILTERED stats (full portfolio)
     var allProspects = state.prospects;
     var allVolume = 0, allInvCount = 0, allDilSum = 0, allDilN = 0;
-    var allStatusCounts = { lead: 0, contacted: 0, interested: 0, negotiating: 0, onboarding: 0, converted: 0, declined: 0 };
     allProspects.forEach(function(p) {
-        allStatusCounts[p.status] = (allStatusCounts[p.status] || 0) + 1;
         var stats = state.computedStats[p.id] || {};
         Object.keys(stats).forEach(function(ccy) {
             allVolume += stats[ccy].total_volume || 0;
@@ -2082,11 +2080,7 @@ function renderPipeline() {
         '<div class="stat-card"><div class="stat-label">Total Prospects</div><div class="stat-value">' + allProspects.length + '</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Total Volume</div><div class="stat-value">' + formatCurrency(allVolume) + '</div></div>' +
         '<div class="stat-card"><div class="stat-label">Total Invoices</div><div class="stat-value">' + allInvCount.toLocaleString() + '</div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (allAvgDil * 100).toFixed(2) + '%</div></div>' +
-        '<div class="stat-card success"><div class="stat-label">Leads</div><div class="stat-value">' + allStatusCounts.lead + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Contacted</div><div class="stat-value">' + allStatusCounts.contacted + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Interested</div><div class="stat-value">' + allStatusCounts.interested + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Converted</div><div class="stat-value">' + allStatusCounts.converted + '</div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (allAvgDil * 100).toFixed(2) + '%</div></div>';
 
     // Render FILTERED stats
     var totalSuppliers = filtered.length;
@@ -2106,19 +2100,12 @@ function renderPipeline() {
     });
     var avgDilution = dilCount > 0 ? totalDilution / dilCount : 0;
 
-    var statusCounts = { lead: 0, contacted: 0, interested: 0, negotiating: 0, onboarding: 0, converted: 0, declined: 0 };
-    filtered.forEach(function(p) { statusCounts[p.status] = (statusCounts[p.status] || 0) + 1; });
-
     var isFiltered = filtered.length !== allProspects.length;
     document.getElementById('pipelineStats').innerHTML =
         '<div class="stat-card"><div class="stat-label">Prospects' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + totalSuppliers + (isFiltered ? '<span style="font-size:11px;color:var(--text-light);"> / ' + allProspects.length + '</span>' : '') + '</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Volume' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + formatCurrency(totalVolume) + '</div></div>' +
         '<div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value">' + totalInvCount.toLocaleString() + '</div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>' +
-        '<div class="stat-card success"><div class="stat-label">Leads</div><div class="stat-value">' + statusCounts.lead + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Contacted</div><div class="stat-value">' + statusCounts.contacted + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Interested</div><div class="stat-value">' + statusCounts.interested + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Converted</div><div class="stat-value">' + statusCounts.converted + '</div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>';
 
     // Render table rows
     var tbody = document.getElementById('pipelineBody');
