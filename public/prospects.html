@@ -1827,16 +1827,35 @@ function batchInsert(table, records, batchSize, callback) {
 function loadAllData() {
     if (!sbClient) return;
 
+    // Supabase defaults to 1000 row limit — we need all rows
+    // Use a helper to paginate large tables
+    function fetchAll(table, orderCol) {
+        var allRows = [];
+        var pageSize = 5000;
+        function fetchPage(from) {
+            return sbClient.from(table).select('*').order(orderCol || 'created_at', { ascending: true }).range(from, from + pageSize - 1).then(function(res) {
+                if (res.error) { console.error('Error fetching ' + table + ':', res.error.message); return allRows; }
+                allRows = allRows.concat(res.data || []);
+                if (res.data && res.data.length === pageSize) {
+                    return fetchPage(from + pageSize);
+                }
+                return allRows;
+            });
+        }
+        return fetchPage(0);
+    }
+
     Promise.all([
         sbClient.from('prospect_uploads').select('*').order('upload_date', { ascending: false }),
-        sbClient.from('prospect_suppliers').select('*').order('created_at', { ascending: false }),
-        sbClient.from('prospect_invoices').select('*'),
-        sbClient.from('prospect_credit_notes').select('*')
+        fetchAll('prospect_suppliers', 'created_at'),
+        fetchAll('prospect_invoices', 'id'),
+        fetchAll('prospect_credit_notes', 'id')
     ]).then(function(results) {
-        state.uploads = results[0].data || [];
-        var suppliers = results[1].data || [];
-        var invoices = results[2].data || [];
-        var cns = results[3].data || [];
+        state.uploads = (results[0].data ? results[0].data : results[0]) || [];
+        var suppliers = results[1] || [];
+        var invoices = results[2] || [];
+        var cns = results[3] || [];
+        console.log('Loaded: ' + state.uploads.length + ' uploads, ' + suppliers.length + ' suppliers, ' + invoices.length + ' invoices, ' + cns.length + ' credit notes');
 
         // Map buyer labels to suppliers
         var uploadMap = {};
