@@ -644,6 +644,16 @@
                     <div style="position:relative; height:180px;"><canvas id="chartTenor"></canvas></div>
                 </div>
             </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+                <div class="card" style="margin-bottom:0; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Invoices by Size (Volume)</div>
+                    <div style="position:relative; height:200px;"><canvas id="chartInvSize"></canvas></div>
+                </div>
+                <div class="card" style="margin-bottom:0; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Invoices by Maturity (Volume)</div>
+                    <div style="position:relative; height:200px;"><canvas id="chartInvMaturity"></canvas></div>
+                </div>
+            </div>
             <div id="pipelineDilutionChart" style="margin-bottom:20px;">
                 <div class="card" style="margin-bottom:0; padding:16px 20px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Dilution Over Time — Quartile Bands</div>
@@ -2207,9 +2217,37 @@ function renderPipelineCharts(filtered) {
     });
 
     // — Dynamic bucketing: split data into ~5-6 natural groups using quantiles —
-    renderDoughnut('chartVolume', dynamicBuckets(volumes, 'currency'));
-    renderDoughnut('chartCount', dynamicBuckets(counts, 'count'));
-    renderDoughnut('chartTenor', dynamicBuckets(tenors, 'days'));
+    renderDoughnut('chartVolume', dynamicBuckets(volumes, 'currency'), 'volume', 'suppliers');
+    renderDoughnut('chartCount', dynamicBuckets(counts, 'count'), 'count', 'suppliers');
+    renderDoughnut('chartTenor', dynamicBuckets(tenors, 'days'), 'count', 'suppliers');
+
+    // — Invoice-level charts (size and maturity, volume-weighted) —
+    var invSizes = [];   // { value: amount, amount: amount } for each invoice
+    var invMaturities = []; // { value: days to maturity, amount: amount }
+
+    filtered.forEach(function(p) {
+        var invs = state.prospectInvoices[p.id] || [];
+        invs.forEach(function(inv) {
+            var amt = parseFloat(inv.invoice_amount) || 0;
+            if (amt <= 0) return;
+            invSizes.push(amt);
+
+            if (inv.invoice_date && inv.due_date) {
+                var d1 = new Date(inv.invoice_date);
+                var d2 = new Date(inv.due_date);
+                var days = Math.round((d2 - d1) / 86400000);
+                if (days > 0 && days < 730) {
+                    invMaturities.push({ days: days, amount: amt });
+                }
+            }
+        });
+    });
+
+    // Invoice size buckets (volume-weighted)
+    renderDoughnut('chartInvSize', dynamicBucketsWeighted(invSizes, null, 'currency'), 'volume', 'invoices');
+
+    // Invoice maturity buckets (volume-weighted by days)
+    renderDoughnut('chartInvMaturity', dynamicBucketsWeighted(invMaturities.map(function(m) { return m.amount; }), invMaturities.map(function(m) { return m.days; }), 'days'), 'volume', 'invoices');
 
     // — LINE CHART: Dilution over time with quartile bands —
     var dates = Object.keys(dilutionsByDate).sort();
@@ -2274,6 +2312,51 @@ var _doughnutPalette = [
     '#FFDF00', '#F59E0B', '#D97706', '#22C55E', '#EF4444', '#8B5CF6'
 ];
 
+// Dynamic buckets for invoice-level data where amounts ARE the values (size chart)
+// or where bucketBy provides the dimension and amounts provides the weight (maturity chart)
+function dynamicBucketsWeighted(amounts, bucketBy, format) {
+    if (!amounts || amounts.length === 0) return {};
+    // If bucketBy is null, bucket by the amounts themselves
+    var keys = bucketBy || amounts;
+    var sorted = keys.slice().sort(function(a, b) { return a - b; });
+    var n = sorted.length;
+
+    var numBuckets = Math.min(6, Math.max(3, Math.ceil(Math.sqrt(n) / 8)));
+    var breaks = [];
+    for (var i = 1; i < numBuckets; i++) {
+        var idx = Math.floor(n * i / numBuckets);
+        breaks.push(roundBreak(sorted[idx], format));
+    }
+    var unique = [breaks[0]];
+    for (var j = 1; j < breaks.length; j++) {
+        if (breaks[j] > unique[unique.length - 1]) unique.push(breaks[j]);
+    }
+    breaks = unique;
+
+    var labels = [];
+    labels.push(formatBreak(null, breaks[0], format));
+    for (var k = 0; k < breaks.length - 1; k++) {
+        labels.push(formatBreak(breaks[k], breaks[k + 1], format));
+    }
+    labels.push(formatBreak(breaks[breaks.length - 1], null, format));
+
+    var buckets = {};
+    labels.forEach(function(l) { buckets[l] = { count: 0, sum: 0 }; });
+
+    for (var m = 0; m < keys.length; m++) {
+        var v = keys[m];
+        var amt = amounts[m];
+        var placed = false;
+        if (v < breaks[0]) { buckets[labels[0]].count++; buckets[labels[0]].sum += amt; placed = true; }
+        for (var q = 0; q < breaks.length - 1 && !placed; q++) {
+            if (v >= breaks[q] && v < breaks[q + 1]) { buckets[labels[q + 1]].count++; buckets[labels[q + 1]].sum += amt; placed = true; }
+        }
+        if (!placed) { buckets[labels[labels.length - 1]].count++; buckets[labels[labels.length - 1]].sum += amt; }
+    }
+
+    return buckets;
+}
+
 function dynamicBuckets(values, format) {
     if (!values || values.length === 0) return {};
     var sorted = values.slice().sort(function(a, b) { return a - b; });
@@ -2296,26 +2379,24 @@ function dynamicBuckets(values, format) {
     breaks = unique;
 
     // Build buckets
-    var buckets = {};
     var labels = [];
-    // First bucket
     labels.push(formatBreak(null, breaks[0], format));
-    // Middle buckets
     for (var k = 0; k < breaks.length - 1; k++) {
         labels.push(formatBreak(breaks[k], breaks[k + 1], format));
     }
-    // Last bucket
     labels.push(formatBreak(breaks[breaks.length - 1], null, format));
 
-    labels.forEach(function(l) { buckets[l] = 0; });
+    // Track both count and sum per bucket
+    var buckets = {};
+    labels.forEach(function(l) { buckets[l] = { count: 0, sum: 0 }; });
 
     values.forEach(function(v) {
         var placed = false;
-        if (v < breaks[0]) { buckets[labels[0]]++; placed = true; }
+        if (v < breaks[0]) { buckets[labels[0]].count++; buckets[labels[0]].sum += v; placed = true; }
         for (var m = 0; m < breaks.length - 1 && !placed; m++) {
-            if (v >= breaks[m] && v < breaks[m + 1]) { buckets[labels[m + 1]]++; placed = true; }
+            if (v >= breaks[m] && v < breaks[m + 1]) { buckets[labels[m + 1]].count++; buckets[labels[m + 1]].sum += v; placed = true; }
         }
-        if (!placed) buckets[labels[labels.length - 1]]++;
+        if (!placed) { buckets[labels[labels.length - 1]].count++; buckets[labels[labels.length - 1]].sum += v; }
     });
 
     return buckets;
@@ -2355,14 +2436,26 @@ function formatBreak(low, high, format) {
     return fmt(low) + '–' + fmt(high);
 }
 
-function renderDoughnut(canvasId, buckets) {
+function renderDoughnut(canvasId, buckets, mode, itemLabel) {
     destroyChart(canvasId);
     var labels = Object.keys(buckets);
-    var data = labels.map(function(k) { return buckets[k]; });
-    // Remove zero segments
-    var filtered = []; var fLabels = []; var fColors = [];
-    for (var i = 0; i < data.length; i++) {
-        if (data[i] > 0) { filtered.push(data[i]); fLabels.push(labels[i]); fColors.push(_doughnutPalette[i % _doughnutPalette.length]); }
+    var isVolMode = mode === 'volume';
+    var unit = itemLabel || 'items';
+
+    // Extract data based on mode; store both count and sum for tooltips
+    var chartData = []; var fLabels = []; var fColors = [];
+    var countData = []; var sumData = [];
+    for (var i = 0; i < labels.length; i++) {
+        var b = buckets[labels[i]];
+        var count = typeof b === 'object' ? b.count : b;
+        var sum = typeof b === 'object' ? b.sum : b;
+        if (count > 0) {
+            fLabels.push(labels[i]);
+            chartData.push(isVolMode ? sum : count);
+            countData.push(count);
+            sumData.push(sum);
+            fColors.push(_doughnutPalette[i % _doughnutPalette.length]);
+        }
     }
 
     var ctx = document.getElementById(canvasId).getContext('2d');
@@ -2370,7 +2463,7 @@ function renderDoughnut(canvasId, buckets) {
         type: 'doughnut',
         data: {
             labels: fLabels,
-            datasets: [{ data: filtered, backgroundColor: fColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
+            datasets: [{ data: chartData, backgroundColor: fColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
         },
         options: {
             responsive: true,
@@ -2383,7 +2476,11 @@ function renderDoughnut(canvasId, buckets) {
                         label: function(ctx) {
                             var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
                             var pct = total > 0 ? (ctx.parsed / total * 100).toFixed(1) : '0';
-                            return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                            var idx = ctx.dataIndex;
+                            if (isVolMode) {
+                                return ctx.label + ': ' + formatCurrency(sumData[idx]) + ' (' + pct + '%) \u2014 ' + countData[idx].toLocaleString() + ' ' + unit;
+                            }
+                            return ctx.label + ': ' + countData[idx].toLocaleString() + ' ' + unit + ' (' + pct + '%)';
                         }
                     }
                 }
