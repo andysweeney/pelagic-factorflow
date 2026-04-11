@@ -617,6 +617,28 @@
             <!-- Stats summary -->
             <div class="stats-grid" id="pipelineStats"></div>
 
+            <!-- Dashboard Charts -->
+            <div id="pipelineCharts" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:20px;">
+                <div class="card" style="margin-bottom:0; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Total Volume</div>
+                    <canvas id="chartVolume" height="200"></canvas>
+                </div>
+                <div class="card" style="margin-bottom:0; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Invoice Count</div>
+                    <canvas id="chartCount" height="200"></canvas>
+                </div>
+                <div class="card" style="margin-bottom:0; padding:16px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Suppliers by Avg Invoice Tenor (Days)</div>
+                    <canvas id="chartTenor" height="200"></canvas>
+                </div>
+            </div>
+            <div id="pipelineDilutionChart" style="margin-bottom:20px;">
+                <div class="card" style="margin-bottom:0; padding:16px 20px;">
+                    <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy); margin-bottom:10px;">Dilution Over Time — Quartile Bands</div>
+                    <canvas id="chartDilutionTime" height="140"></canvas>
+                </div>
+            </div>
+
             <!-- Table -->
             <div class="table-wrap">
                 <table id="pipelineTable">
@@ -2095,6 +2117,195 @@ function renderPipeline() {
     renderPagination('pipelinePagination', state.pipelinePage, totalPages, filtered.length, function(page) {
         state.pipelinePage = page;
         renderPipeline();
+    });
+
+    renderPipelineCharts(filtered);
+}
+
+// ================================================================
+// PIPELINE DASHBOARD CHARTS
+// ================================================================
+var _chartInstances = {};
+function destroyChart(id) { if (_chartInstances[id]) { _chartInstances[id].destroy(); delete _chartInstances[id]; } }
+
+function renderPipelineCharts(filtered) {
+    var ccy = state.filterCurrency || null;
+
+    // Collect per-supplier metrics
+    var volumes = [];
+    var counts = [];
+    var tenors = [];
+    var dilutionsByDate = {};
+
+    filtered.forEach(function(p) {
+        var stats = state.computedStats[p.id] || {};
+        var ccyKeys = ccy ? [ccy] : Object.keys(stats);
+        var totalVol = 0, totalCount = 0, tenorSum = 0, tenorN = 0;
+
+        ccyKeys.forEach(function(c) {
+            var s = stats[c];
+            if (!s) return;
+            totalVol += s.total_volume || 0;
+            totalCount += s.invoice_count || 0;
+
+            // Collect dilution time series for quartile chart
+            if (s.dilution_series) {
+                s.dilution_series.forEach(function(pt) {
+                    if (!dilutionsByDate[pt.date]) dilutionsByDate[pt.date] = [];
+                    dilutionsByDate[pt.date].push(pt.dilution || 0);
+                });
+            }
+        });
+
+        volumes.push(totalVol);
+        counts.push(totalCount);
+
+        // Compute average tenor from invoices
+        var invs = state.prospectInvoices[p.id] || [];
+        invs.forEach(function(inv) {
+            if (inv.invoice_date && inv.due_date) {
+                var d1 = new Date(inv.invoice_date);
+                var d2 = new Date(inv.due_date);
+                var days = Math.round((d2 - d1) / 86400000);
+                if (days > 0 && days < 365) { tenorSum += days; tenorN++; }
+            }
+        });
+        if (tenorN > 0) tenors.push(Math.round(tenorSum / tenorN));
+    });
+
+    // — PIE 1: Volume buckets —
+    var volBuckets = { '<100k': 0, '100k–500k': 0, '500k–1m': 0, '1m–5m': 0, '5m–20m': 0, '>20m': 0 };
+    volumes.forEach(function(v) {
+        if (v < 100000) volBuckets['<100k']++;
+        else if (v < 500000) volBuckets['100k–500k']++;
+        else if (v < 1000000) volBuckets['500k–1m']++;
+        else if (v < 5000000) volBuckets['1m–5m']++;
+        else if (v < 20000000) volBuckets['5m–20m']++;
+        else volBuckets['>20m']++;
+    });
+    renderDoughnut('chartVolume', volBuckets);
+
+    // — PIE 2: Invoice count buckets —
+    var cntBuckets = { '<10': 0, '10–25': 0, '25–50': 0, '50–75': 0, '75–100': 0, '>100': 0 };
+    counts.forEach(function(c) {
+        if (c < 10) cntBuckets['<10']++;
+        else if (c < 25) cntBuckets['10–25']++;
+        else if (c < 50) cntBuckets['25–50']++;
+        else if (c < 75) cntBuckets['50–75']++;
+        else if (c < 100) cntBuckets['75–100']++;
+        else cntBuckets['>100']++;
+    });
+    renderDoughnut('chartCount', cntBuckets);
+
+    // — PIE 3: Tenor buckets —
+    var tenBuckets = { '<30d': 0, '30d': 0, '31–45d': 0, '46–60d': 0, '61–90d': 0, '>90d': 0 };
+    tenors.forEach(function(t) {
+        if (t < 30) tenBuckets['<30d']++;
+        else if (t === 30) tenBuckets['30d']++;
+        else if (t <= 45) tenBuckets['31–45d']++;
+        else if (t <= 60) tenBuckets['46–60d']++;
+        else if (t <= 90) tenBuckets['61–90d']++;
+        else tenBuckets['>90d']++;
+    });
+    renderDoughnut('chartTenor', tenBuckets);
+
+    // — LINE CHART: Dilution over time with quartile bands —
+    var dates = Object.keys(dilutionsByDate).sort();
+    // Sample to max ~120 points for performance
+    if (dates.length > 120) {
+        var step = Math.ceil(dates.length / 120);
+        dates = dates.filter(function(_, i) { return i % step === 0 || i === dates.length - 1; });
+    }
+
+    var labels = [];
+    var medianData = [], q1Data = [], q3Data = [], p10Data = [], p90Data = [];
+
+    dates.forEach(function(d) {
+        var vals = dilutionsByDate[d].slice().sort(function(a, b) { return a - b; });
+        if (vals.length < 4) return;
+        labels.push(d);
+        var pct = function(p) { var idx = Math.floor(vals.length * p); return (vals[Math.min(idx, vals.length - 1)] || 0) * 100; };
+        p10Data.push(pct(0.10));
+        q1Data.push(pct(0.25));
+        medianData.push(pct(0.50));
+        q3Data.push(pct(0.75));
+        p90Data.push(pct(0.90));
+    });
+
+    destroyChart('chartDilutionTime');
+    var ctx = document.getElementById('chartDilutionTime').getContext('2d');
+    _chartInstances['chartDilutionTime'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                { label: 'P90', data: p90Data, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.04)', borderWidth: 1, borderDash: [3,3], pointRadius: 0, fill: '+1', tension: 0.3 },
+                { label: 'Q3 (75th)', data: q3Data, borderColor: 'rgba(245,158,11,0.5)', backgroundColor: 'rgba(245,158,11,0.06)', borderWidth: 1.5, pointRadius: 0, fill: '+1', tension: 0.3 },
+                { label: 'Median', data: medianData, borderColor: '#0F4090', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+                { label: 'Q1 (25th)', data: q1Data, borderColor: 'rgba(34,197,94,0.5)', backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1.5, pointRadius: 0, fill: '-1', tension: 0.3 },
+                { label: 'P10', data: p10Data, borderColor: 'rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.04)', borderWidth: 1, borderDash: [3,3], pointRadius: 0, fill: '-1', tension: 0.3 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top', labels: { font: { size: 10 }, usePointStyle: true, pointStyle: 'line', padding: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2) + '%'; },
+                        title: function(items) { return items[0].label; }
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { font: { size: 9 }, maxTicksLimit: 12, maxRotation: 0 }, grid: { display: false } },
+                y: { ticks: { font: { size: 10 }, callback: function(v) { return v.toFixed(1) + '%'; } }, grid: { color: 'rgba(0,0,0,0.05)' }, title: { display: true, text: 'Dilution %', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+var _doughnutPalette = [
+    '#0F4090', '#1A5BC4', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE',
+    '#FFDF00', '#F59E0B', '#D97706', '#22C55E', '#EF4444', '#8B5CF6'
+];
+
+function renderDoughnut(canvasId, buckets) {
+    destroyChart(canvasId);
+    var labels = Object.keys(buckets);
+    var data = labels.map(function(k) { return buckets[k]; });
+    // Remove zero segments
+    var filtered = []; var fLabels = []; var fColors = [];
+    for (var i = 0; i < data.length; i++) {
+        if (data[i] > 0) { filtered.push(data[i]); fLabels.push(labels[i]); fColors.push(_doughnutPalette[i % _doughnutPalette.length]); }
+    }
+
+    var ctx = document.getElementById(canvasId).getContext('2d');
+    _chartInstances[canvasId] = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: fLabels,
+            datasets: [{ data: filtered, backgroundColor: fColors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '55%',
+            plugins: {
+                legend: { position: 'right', labels: { font: { size: 10 }, padding: 6, usePointStyle: true, pointStyle: 'circle' } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                            var pct = total > 0 ? (ctx.parsed / total * 100).toFixed(1) : '0';
+                            return ctx.label + ': ' + ctx.parsed + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 
