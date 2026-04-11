@@ -2178,41 +2178,10 @@ function renderPipelineCharts(filtered) {
         if (tenorN > 0) tenors.push(Math.round(tenorSum / tenorN));
     });
 
-    // — PIE 1: Volume buckets —
-    var volBuckets = { '<100k': 0, '100k–500k': 0, '500k–1m': 0, '1m–5m': 0, '5m–20m': 0, '>20m': 0 };
-    volumes.forEach(function(v) {
-        if (v < 100000) volBuckets['<100k']++;
-        else if (v < 500000) volBuckets['100k–500k']++;
-        else if (v < 1000000) volBuckets['500k–1m']++;
-        else if (v < 5000000) volBuckets['1m–5m']++;
-        else if (v < 20000000) volBuckets['5m–20m']++;
-        else volBuckets['>20m']++;
-    });
-    renderDoughnut('chartVolume', volBuckets);
-
-    // — PIE 2: Invoice count buckets —
-    var cntBuckets = { '<10': 0, '10–25': 0, '25–50': 0, '50–75': 0, '75–100': 0, '>100': 0 };
-    counts.forEach(function(c) {
-        if (c < 10) cntBuckets['<10']++;
-        else if (c < 25) cntBuckets['10–25']++;
-        else if (c < 50) cntBuckets['25–50']++;
-        else if (c < 75) cntBuckets['50–75']++;
-        else if (c < 100) cntBuckets['75–100']++;
-        else cntBuckets['>100']++;
-    });
-    renderDoughnut('chartCount', cntBuckets);
-
-    // — PIE 3: Tenor buckets —
-    var tenBuckets = { '<30d': 0, '30d': 0, '31–45d': 0, '46–60d': 0, '61–90d': 0, '>90d': 0 };
-    tenors.forEach(function(t) {
-        if (t < 30) tenBuckets['<30d']++;
-        else if (t === 30) tenBuckets['30d']++;
-        else if (t <= 45) tenBuckets['31–45d']++;
-        else if (t <= 60) tenBuckets['46–60d']++;
-        else if (t <= 90) tenBuckets['61–90d']++;
-        else tenBuckets['>90d']++;
-    });
-    renderDoughnut('chartTenor', tenBuckets);
+    // — Dynamic bucketing: split data into ~5-6 natural groups using quantiles —
+    renderDoughnut('chartVolume', dynamicBuckets(volumes, 'currency'));
+    renderDoughnut('chartCount', dynamicBuckets(counts, 'count'));
+    renderDoughnut('chartTenor', dynamicBuckets(tenors, 'days'));
 
     // — LINE CHART: Dilution over time with quartile bands —
     var dates = Object.keys(dilutionsByDate).sort();
@@ -2276,6 +2245,87 @@ var _doughnutPalette = [
     '#0F4090', '#1A5BC4', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE',
     '#FFDF00', '#F59E0B', '#D97706', '#22C55E', '#EF4444', '#8B5CF6'
 ];
+
+function dynamicBuckets(values, format) {
+    if (!values || values.length === 0) return {};
+    var sorted = values.slice().sort(function(a, b) { return a - b; });
+    var n = sorted.length;
+    if (n === 0) return {};
+
+    // Find ~5 natural breakpoints using quantiles, then round to clean numbers
+    var numBuckets = Math.min(6, Math.max(3, Math.ceil(Math.sqrt(n) / 4)));
+    var breaks = [];
+    for (var i = 1; i < numBuckets; i++) {
+        var idx = Math.floor(n * i / numBuckets);
+        var raw = sorted[idx];
+        breaks.push(roundBreak(raw, format));
+    }
+    // Deduplicate breaks
+    var unique = [breaks[0]];
+    for (var j = 1; j < breaks.length; j++) {
+        if (breaks[j] > unique[unique.length - 1]) unique.push(breaks[j]);
+    }
+    breaks = unique;
+
+    // Build buckets
+    var buckets = {};
+    var labels = [];
+    // First bucket
+    labels.push(formatBreak(null, breaks[0], format));
+    // Middle buckets
+    for (var k = 0; k < breaks.length - 1; k++) {
+        labels.push(formatBreak(breaks[k], breaks[k + 1], format));
+    }
+    // Last bucket
+    labels.push(formatBreak(breaks[breaks.length - 1], null, format));
+
+    labels.forEach(function(l) { buckets[l] = 0; });
+
+    values.forEach(function(v) {
+        var placed = false;
+        if (v < breaks[0]) { buckets[labels[0]]++; placed = true; }
+        for (var m = 0; m < breaks.length - 1 && !placed; m++) {
+            if (v >= breaks[m] && v < breaks[m + 1]) { buckets[labels[m + 1]]++; placed = true; }
+        }
+        if (!placed) buckets[labels[labels.length - 1]]++;
+    });
+
+    return buckets;
+}
+
+function roundBreak(val, format) {
+    if (format === 'currency') {
+        if (val >= 10000000) return Math.round(val / 5000000) * 5000000;
+        if (val >= 1000000) return Math.round(val / 1000000) * 1000000;
+        if (val >= 100000) return Math.round(val / 100000) * 100000;
+        if (val >= 10000) return Math.round(val / 10000) * 10000;
+        return Math.round(val / 1000) * 1000;
+    }
+    if (format === 'days') {
+        if (val >= 90) return Math.round(val / 30) * 30;
+        if (val >= 30) return Math.round(val / 15) * 15;
+        return Math.round(val / 5) * 5;
+    }
+    // count
+    if (val >= 100) return Math.round(val / 25) * 25;
+    if (val >= 20) return Math.round(val / 10) * 10;
+    return Math.round(val / 5) * 5;
+}
+
+function formatBreak(low, high, format) {
+    var fmt = function(v) {
+        if (format === 'currency') {
+            if (v >= 1000000) return (v / 1000000).toFixed(v % 1000000 === 0 ? 0 : 1) + 'm';
+            if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 0) + 'k';
+            return v.toLocaleString();
+        }
+        if (format === 'days') return v + 'd';
+        return v.toLocaleString();
+    };
+    if (low === null) return '<' + fmt(high);
+    if (high === null) return '>' + fmt(low);
+    return fmt(low) + '–' + fmt(high);
+}
 
 function renderDoughnut(canvasId, buckets) {
     destroyChart(canvasId);
