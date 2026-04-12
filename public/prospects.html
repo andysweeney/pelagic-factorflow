@@ -1945,7 +1945,7 @@ function renderUnfilteredStats() {
     var allAvgDil = allDilN > 0 ? allDilSum / allDilN : 0;
     var allOsSupCount = Object.keys(allOutstandingSups).length;
     var allDilSupCount = Object.keys(allDilutedSups).length;
-    var allDilPct = allVolume > 0 ? (allDiluted / allVolume * 100).toFixed(2) : '0.00';
+    var allDilPct = allOutstanding > 0 ? (allDiluted / allOutstanding * 100).toFixed(2) : '0.00';
     var el = document.getElementById('pipelineStatsAll');
     if (el) el.innerHTML =
         '<div class="stat-card"><div class="stat-label">Total Prospects</div><div class="stat-value">' + allProspects.length + '</div></div>' +
@@ -2039,7 +2039,7 @@ function renderPipeline() {
     var avgDilution = dilCount > 0 ? totalDilution / dilCount : 0;
     var fOsSupCount = Object.keys(fOutstandingSups).length;
     var fDilSupCount = Object.keys(fDilutedSups).length;
-    var fDilPct = totalVolume > 0 ? (fDiluted / totalVolume * 100).toFixed(2) : '0.00';
+    var fDilPct = fOutstanding > 0 ? (fDiluted / fOutstanding * 100).toFixed(2) : '0.00';
 
     var isFiltered = filtered.length !== state.prospects.length;
     document.getElementById('pipelineStats').innerHTML =
