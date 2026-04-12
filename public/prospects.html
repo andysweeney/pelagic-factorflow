@@ -390,9 +390,10 @@
             <!-- Column Mapping Step -->
             <div id="mappingSection" class="hidden" style="margin-top:20px;">
                 <div class="card-title" style="margin-bottom:4px;">Column Mapping</div>
-                <p style="font-size:12px; color:var(--text-mid); margin-bottom:16px;">Map your CSV columns to the required fields. Required fields are marked with <span style="color:var(--danger);font-weight:700;">*</span>. Auto-matched columns are highlighted in green.</p>
+                <p style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">Map your CSV columns to the required fields. Required fields are marked with <span style="color:var(--danger);font-weight:700;">*</span>. Auto-matched columns are highlighted in green.</p>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px 24px;" id="mappingGrid"></div>
                 <div id="mappingWarnings" style="margin-top:12px;"></div>
+                <div id="mappingDiagnostic" style="margin-top:16px;"></div>
             </div>
 
             <div style="margin-top:20px; display:flex; gap:12px;">
@@ -1027,10 +1028,91 @@ function updateMappingWarnings() {
     });
     var el = document.getElementById('mappingWarnings');
     if (warnings.length > 0) {
-        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#FEF2F2; border:1px solid #FECACA; font-size:12px; color:#991B1B;">' + warnings.join('<br>') + '</div>';
+        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#EF444415; border:1px solid #EF444440; font-size:12px; color:var(--danger);">' + warnings.join('<br>') + '</div>';
     } else {
-        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#F0FFF4; border:1px solid #A3E4B8; font-size:12px; color:#166534; font-weight:600;">All required fields mapped ✓</div>';
+        el.innerHTML = '<div style="padding:10px 14px; border-radius:5px; background:#10B98115; border:1px solid #10B98140; font-size:12px; color:var(--success); font-weight:600;">All required fields mapped ✓</div>';
     }
+    updateMappingDiagnostic();
+}
+
+function updateMappingDiagnostic() {
+    var el = document.getElementById('mappingDiagnostic');
+    if (!el || !state.invoiceData || state.invoiceData.length === 0) { if (el) el.innerHTML = ''; return; }
+
+    var sampleRows = state.invoiceData.slice(0, 5);
+    var mappedFields = INVOICE_FIELDS.filter(function(f) { return state.columnMapping[f.key]; });
+
+    if (mappedFields.length === 0) { el.innerHTML = ''; return; }
+
+    // Build diagnostic: show mapped fields with sample values and stats
+    var html = '<div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:8px;">Mapping Preview — First 5 Rows</div>';
+    html += '<div style="overflow-x:auto; border:1px solid var(--border); border-radius:6px;"><table style="width:100%; border-collapse:collapse; font-size:11px;">';
+    html += '<thead><tr>';
+    mappedFields.forEach(function(f) {
+        html += '<th style="text-align:left; padding:6px 8px; color:var(--muted); font-size:9px; text-transform:uppercase; border-bottom:1px solid var(--border); background:var(--card); white-space:nowrap;">' + f.label + '<br><span style="color:var(--accent); font-weight:400; text-transform:none;">← ' + state.columnMapping[f.key] + '</span></th>';
+    });
+    html += '</tr></thead><tbody>';
+
+    sampleRows.forEach(function(row, ri) {
+        html += '<tr>';
+        mappedFields.forEach(function(f) {
+            var val = getMappedValue(row, f.key);
+            var isEmpty = !val || val === '' || val === 'null' || val === 'undefined';
+            var isNum = f.key.indexOf('amount') >= 0 || f.key === 'invoice_amount' || f.key === 'approved_amount' || f.key === 'payments_to_invoice';
+            var style = 'padding:5px 8px; border-bottom:1px solid var(--border); font-family:var(--mono); ';
+            if (isEmpty) {
+                style += 'color:var(--muted); font-style:italic;';
+                val = '—';
+            } else if (isNum && isNaN(parseFloat(val))) {
+                style += 'color:var(--danger);';
+            } else {
+                style += 'color:var(--text);';
+            }
+            html += '<td style="' + style + '">' + (val || '—') + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // Summary stats
+    var totalRows = state.invoiceData.length;
+    var issues = [];
+
+    mappedFields.forEach(function(f) {
+        var emptyCount = 0;
+        var nanCount = 0;
+        var isNum = f.key.indexOf('amount') >= 0 || f.key === 'invoice_amount' || f.key === 'approved_amount' || f.key === 'payments_to_invoice';
+        state.invoiceData.forEach(function(row) {
+            var val = getMappedValue(row, f.key);
+            if (!val || val === '') emptyCount++;
+            else if (isNum && isNaN(parseFloat(val))) nanCount++;
+        });
+        if (f.required && emptyCount > 0) {
+            issues.push('<span style="color:var(--danger);">⚠ ' + f.label + ': ' + emptyCount + ' empty rows (' + (emptyCount / totalRows * 100).toFixed(1) + '%)</span>');
+        }
+        if (nanCount > 0) {
+            issues.push('<span style="color:var(--warning);">⚠ ' + f.label + ': ' + nanCount + ' non-numeric values</span>');
+        }
+    });
+
+    // Check unique suppliers and buyers
+    var suppliers = {}, buyers = {};
+    state.invoiceData.forEach(function(row) {
+        var s = getMappedValue(row, 'supplier'); if (s) suppliers[s] = true;
+        var b = getMappedValue(row, 'buyer'); if (b) buyers[b] = true;
+    });
+
+    html += '<div style="margin-top:10px; display:flex; gap:16px; flex-wrap:wrap; font-size:11px;">';
+    html += '<span style="color:var(--text-secondary);">Rows: <strong style="color:var(--text); font-family:var(--mono);">' + totalRows.toLocaleString() + '</strong></span>';
+    html += '<span style="color:var(--text-secondary);">Suppliers: <strong style="color:var(--text); font-family:var(--mono);">' + Object.keys(suppliers).length.toLocaleString() + '</strong></span>';
+    html += '<span style="color:var(--text-secondary);">Buyers: <strong style="color:var(--text); font-family:var(--mono);">' + Object.keys(buyers).length.toLocaleString() + '</strong></span>';
+    html += '</div>';
+
+    if (issues.length > 0) {
+        html += '<div style="margin-top:8px; padding:8px 12px; border-radius:5px; background:#F59E0B10; border:1px solid #F59E0B30; font-size:11px; line-height:1.8;">' + issues.join('<br>') + '</div>';
+    }
+
+    el.innerHTML = html;
 }
 
 function getMappedValue(row, fieldKey) {
