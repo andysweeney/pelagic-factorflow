@@ -487,24 +487,29 @@
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:10px;">Suppliers by Total Volume</div>
                     <div style="position:relative; height:180px;"><canvas id="chartVolume"></canvas></div>
+                    <div id="table-chartVolume" style="margin-top:10px; max-height:160px; overflow-y:auto;"></div>
                 </div>
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:10px;">Suppliers by Invoice Count</div>
                     <div style="position:relative; height:180px;"><canvas id="chartCount"></canvas></div>
+                    <div id="table-chartCount" style="margin-top:10px; max-height:160px; overflow-y:auto;"></div>
                 </div>
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:10px;">Suppliers by Avg Invoice Tenor (Days)</div>
                     <div style="position:relative; height:180px;"><canvas id="chartTenor"></canvas></div>
+                    <div id="table-chartTenor" style="margin-top:10px; max-height:160px; overflow-y:auto;"></div>
                 </div>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:10px;">Invoices by Size (Volume)</div>
                     <div style="position:relative; height:200px;"><canvas id="chartInvSize"></canvas></div>
+                    <div id="table-chartInvSize" style="margin-top:10px; max-height:160px; overflow-y:auto;"></div>
                 </div>
                 <div class="card" style="margin-bottom:0; padding:16px;">
                     <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--accent); margin-bottom:10px;">Invoices by Maturity (Volume)</div>
                     <div style="position:relative; height:200px;"><canvas id="chartInvMaturity"></canvas></div>
+                    <div id="table-chartInvMaturity" style="margin-top:10px; max-height:160px; overflow-y:auto;"></div>
                 </div>
             </div>
             <div id="pipelineDilutionChart" style="margin-bottom:20px;">
@@ -525,6 +530,7 @@
                             <th data-sort="invoice_count" class="text-right">Invoices <span class="sort-arrow"></span></th>
                             <th data-sort="total_volume" class="text-right">Total Volume <span class="sort-arrow"></span></th>
                             <th data-sort="avg_invoice" class="text-right">Avg Invoice <span class="sort-arrow"></span></th>
+                            <th data-sort="outstanding" class="text-right">Outstanding <span class="sort-arrow"></span></th>
                             <th data-sort="current_dilution" class="text-right">Current Dilution <span class="sort-arrow"></span></th>
                             <th data-sort="dilution_30d" class="text-right">30-Day Dil. <span class="sort-arrow"></span></th>
                             <th data-sort="dilution_90d" class="text-right">90-Day Dil. <span class="sort-arrow"></span></th>
@@ -1897,6 +1903,12 @@ function getFilteredProspects() {
             case 'current_dilution': valA = ccyA.current_dilution || 0; valB = ccyB.current_dilution || 0; break;
             case 'dilution_30d': valA = ccyA.dilution_30d || 0; valB = ccyB.dilution_30d || 0; break;
             case 'dilution_90d': valA = ccyA.dilution_90d || 0; valB = ccyB.dilution_90d || 0; break;
+            case 'outstanding':
+                var osA = 0, osB = 0;
+                var fCcy = state.filterCurrency || null;
+                (state.prospectInvoices[a.id] || []).forEach(function(inv) { if (fCcy && (inv.currency || '').toUpperCase() !== fCcy) return; var am = parseFloat(inv.invoice_amount) || 0; var pd = parseFloat(inv.amount_paid_to_date) || 0; if (!inv.settled_date && am > pd) osA += am - pd; });
+                (state.prospectInvoices[b.id] || []).forEach(function(inv) { if (fCcy && (inv.currency || '').toUpperCase() !== fCcy) return; var am = parseFloat(inv.invoice_amount) || 0; var pd = parseFloat(inv.amount_paid_to_date) || 0; if (!inv.settled_date && am > pd) osB += am - pd; });
+                valA = osA; valB = osB; break;
             default: valA = 0; valB = 0;
         }
 
@@ -2060,6 +2072,16 @@ function renderPipeline() {
         var primaryCcy = state.filterCurrency && stats[state.filterCurrency] ? state.filterCurrency : ccyKeys[0] || 'GBP';
         var s = stats[primaryCcy] || {};
 
+        // Compute outstanding balance for this supplier
+        var pInvs = state.prospectInvoices[p.id] || [];
+        var pOutstanding = 0, pOsInvCount = 0;
+        pInvs.forEach(function(inv) {
+            if (state.filterCurrency && (inv.currency || '').toUpperCase() !== state.filterCurrency) return;
+            var amt = parseFloat(inv.invoice_amount) || 0;
+            var paid = parseFloat(inv.amount_paid_to_date) || 0;
+            if (!inv.settled_date && amt > paid) { pOutstanding += amt - paid; pOsInvCount++; }
+        });
+
         var tr = document.createElement('tr');
         tr.className = 'clickable';
         tr.innerHTML =
@@ -2069,6 +2091,7 @@ function renderPipeline() {
             '<td class="text-right">' + (s.invoice_count || 0).toLocaleString() + '</td>' +
             '<td class="text-right">' + formatCurrencyWithCode(s.total_volume || 0, primaryCcy) + '</td>' +
             '<td class="text-right">' + formatCurrencyWithCode(s.avg_invoice || 0, primaryCcy) + '</td>' +
+            '<td class="text-right" style="font-weight:600; color:' + (pOutstanding > 0 ? 'var(--warning)' : 'var(--muted)') + ';">' + formatCurrencyWithCode(pOutstanding, primaryCcy) + (pOsInvCount > 0 ? ' <span style="font-size:10px;color:var(--muted);">(' + pOsInvCount + ')</span>' : '') + '</td>' +
             '<td class="text-right" style="color:' + dilutionColor(s.current_dilution) + ';font-weight:700;">' + ((s.current_dilution || 0) * 100).toFixed(2) + '%</td>' +
             '<td class="text-right">' + ((s.dilution_30d || 0) * 100).toFixed(2) + '%</td>' +
             '<td class="text-right">' + ((s.dilution_90d || 0) * 100).toFixed(2) + '%</td>' +
@@ -2430,9 +2453,30 @@ function renderDoughnut(canvasId, buckets, mode, itemLabel) {
             }
         }
     });
-}
 
-function exportPipeline() {
+    // Render breakdown table underneath the chart
+    var tableEl = document.getElementById('table-' + canvasId);
+    if (tableEl) {
+        var total = chartData.reduce(function(a, b) { return a + b; }, 0);
+        var html = '<table style="width:100%; border-collapse:collapse; font-size:11px;">';
+        html += '<thead><tr><th style="text-align:left; padding:4px 8px; color:var(--muted); font-size:9px; text-transform:uppercase; border-bottom:1px solid var(--border);">Range</th>';
+        html += '<th style="text-align:right; padding:4px 8px; color:var(--muted); font-size:9px; text-transform:uppercase; border-bottom:1px solid var(--border);">Count</th>';
+        if (isVolMode) html += '<th style="text-align:right; padding:4px 8px; color:var(--muted); font-size:9px; text-transform:uppercase; border-bottom:1px solid var(--border);">Volume</th>';
+        html += '<th style="text-align:right; padding:4px 8px; color:var(--muted); font-size:9px; text-transform:uppercase; border-bottom:1px solid var(--border);">%</th>';
+        html += '</tr></thead><tbody>';
+        for (var t = 0; t < fLabels.length; t++) {
+            var pct = total > 0 ? (chartData[t] / total * 100).toFixed(1) : '0.0';
+            html += '<tr style="border-bottom:1px solid var(--border);">';
+            html += '<td style="padding:4px 8px; color:var(--text);"><span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:' + fColors[t] + '; margin-right:6px; vertical-align:middle;"></span>' + fLabels[t] + '</td>';
+            html += '<td style="text-align:right; padding:4px 8px; font-family:var(--mono); color:var(--text-secondary);">' + countData[t].toLocaleString() + '</td>';
+            if (isVolMode) html += '<td style="text-align:right; padding:4px 8px; font-family:var(--mono); color:var(--text-secondary);">' + formatCurrency(sumData[t]) + '</td>';
+            html += '<td style="text-align:right; padding:4px 8px; font-family:var(--mono); color:var(--accent);">' + pct + '%</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        tableEl.innerHTML = html;
+    }
+}
     var filtered = getFilteredProspects();
     var rows = [['Supplier ID', 'Supplier Label', 'Buyer', 'Status', 'Currency', 'Invoice Count', 'Total Volume', 'Avg Invoice', 'Current Dilution %', '30-Day Dilution %', '90-Day Dilution %']];
     filtered.forEach(function(p) {
