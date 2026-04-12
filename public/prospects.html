@@ -1914,6 +1914,8 @@ function renderUnfilteredStats() {
     var ccy = state.filterCurrency || null;
     var allVolume = 0, allInvCount = 0, allDilSum = 0, allDilN = 0;
     var allOutstanding = 0, allOutstandingSups = {};
+    var allDiluted = 0, allDilutedSups = {};
+    var today = new Date().toISOString().split('T')[0];
     allProspects.forEach(function(p) {
         var stats = state.computedStats[p.id] || {};
         var ccyKeys = ccy ? [ccy] : Object.keys(stats);
@@ -1930,14 +1932,20 @@ function renderUnfilteredStats() {
             var amt = parseFloat(inv.invoice_amount) || 0;
             var paid = parseFloat(inv.amount_paid_to_date) || 0;
             if (!inv.settled_date && amt > paid) {
-                allOutstanding += amt - paid;
+                var shortfall = amt - paid;
+                allOutstanding += shortfall;
                 allOutstandingSups[p.id] = true;
+                if (inv.due_date && inv.due_date < today) {
+                    allDiluted += shortfall;
+                    allDilutedSups[p.id] = true;
+                }
             }
         });
     });
     var allAvgDil = allDilN > 0 ? allDilSum / allDilN : 0;
     var allOsSupCount = Object.keys(allOutstandingSups).length;
-    var allOsDilPct = allVolume > 0 ? (allOutstanding / allVolume * 100).toFixed(2) : '0.00';
+    var allDilSupCount = Object.keys(allDilutedSups).length;
+    var allDilPct = allVolume > 0 ? (allDiluted / allVolume * 100).toFixed(2) : '0.00';
     var el = document.getElementById('pipelineStatsAll');
     if (el) el.innerHTML =
         '<div class="stat-card"><div class="stat-label">Total Prospects</div><div class="stat-value">' + allProspects.length + '</div></div>' +
@@ -1945,7 +1953,7 @@ function renderUnfilteredStats() {
         '<div class="stat-card"><div class="stat-label">Total Invoices</div><div class="stat-value">' + allInvCount.toLocaleString() + '</div></div>' +
         '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (allAvgDil * 100).toFixed(2) + '%</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Outstanding Balance</div><div class="stat-value">' + formatCurrency(allOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + allOsSupCount + ' suppliers)</span></div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(allOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + allOsDilPct + '%)</span></div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(allDiluted) + ' <span style="font-size:11px;color:var(--muted);">(' + allDilPct + '%)</span></div></div>';
 }
 
 function renderPipeline() {
@@ -1995,6 +2003,8 @@ function renderPipeline() {
     var totalDilution = 0;
     var dilCount = 0;
     var fOutstanding = 0, fOutstandingSups = {};
+    var fDiluted = 0, fDilutedSups = {};
+    var todayF = new Date().toISOString().split('T')[0];
     var ccy = state.filterCurrency || null;
     filtered.forEach(function(p) {
         var stats = state.computedStats[p.id] || {};
@@ -2016,14 +2026,20 @@ function renderPipeline() {
             var amt = parseFloat(inv.invoice_amount) || 0;
             var paid = parseFloat(inv.amount_paid_to_date) || 0;
             if (!inv.settled_date && amt > paid) {
-                fOutstanding += amt - paid;
+                var shortfall = amt - paid;
+                fOutstanding += shortfall;
                 fOutstandingSups[p.id] = true;
+                if (inv.due_date && inv.due_date < todayF) {
+                    fDiluted += shortfall;
+                    fDilutedSups[p.id] = true;
+                }
             }
         });
     });
     var avgDilution = dilCount > 0 ? totalDilution / dilCount : 0;
     var fOsSupCount = Object.keys(fOutstandingSups).length;
-    var fOsDilPct = totalVolume > 0 ? (fOutstanding / totalVolume * 100).toFixed(2) : '0.00';
+    var fDilSupCount = Object.keys(fDilutedSups).length;
+    var fDilPct = totalVolume > 0 ? (fDiluted / totalVolume * 100).toFixed(2) : '0.00';
 
     var isFiltered = filtered.length !== state.prospects.length;
     document.getElementById('pipelineStats').innerHTML =
@@ -2032,7 +2048,7 @@ function renderPipeline() {
         '<div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value">' + totalInvCount.toLocaleString() + '</div></div>' +
         '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Outstanding Balance</div><div class="stat-value">' + formatCurrency(fOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + fOsSupCount + ' suppliers)</span></div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(fOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + fOsDilPct + '%)</span></div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(fDiluted) + ' <span style="font-size:11px;color:var(--muted);">(' + fDilPct + '%)</span></div></div>';
 
     // Render table rows
     var tbody = document.getElementById('pipelineBody');
