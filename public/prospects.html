@@ -1911,22 +1911,41 @@ function getFilteredProspects() {
 
 function renderUnfilteredStats() {
     var allProspects = state.prospects;
+    var ccy = state.filterCurrency || null;
     var allVolume = 0, allInvCount = 0, allDilSum = 0, allDilN = 0;
+    var allOutstanding = 0, allOutstandingSups = {};
     allProspects.forEach(function(p) {
         var stats = state.computedStats[p.id] || {};
-        Object.keys(stats).forEach(function(ccy) {
-            allVolume += stats[ccy].total_volume || 0;
-            allInvCount += stats[ccy].invoice_count || 0;
-            if (stats[ccy].current_dilution > 0) { allDilSum += stats[ccy].current_dilution; allDilN++; }
+        var ccyKeys = ccy ? [ccy] : Object.keys(stats);
+        ccyKeys.forEach(function(c) {
+            var s = stats[c];
+            if (!s) return;
+            allVolume += s.total_volume || 0;
+            allInvCount += s.invoice_count || 0;
+            if (s.current_dilution > 0) { allDilSum += s.current_dilution; allDilN++; }
+        });
+        var invs = state.prospectInvoices[p.id] || [];
+        invs.forEach(function(inv) {
+            if (ccy && (inv.currency || '').toUpperCase() !== ccy) return;
+            var amt = parseFloat(inv.invoice_amount) || 0;
+            var paid = parseFloat(inv.amount_paid_to_date) || 0;
+            if (!inv.settled_date && amt > paid) {
+                allOutstanding += amt - paid;
+                allOutstandingSups[p.id] = true;
+            }
         });
     });
     var allAvgDil = allDilN > 0 ? allDilSum / allDilN : 0;
+    var allOsSupCount = Object.keys(allOutstandingSups).length;
+    var allOsDilPct = allVolume > 0 ? (allOutstanding / allVolume * 100).toFixed(2) : '0.00';
     var el = document.getElementById('pipelineStatsAll');
     if (el) el.innerHTML =
         '<div class="stat-card"><div class="stat-label">Total Prospects</div><div class="stat-value">' + allProspects.length + '</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Total Volume</div><div class="stat-value">' + formatCurrency(allVolume) + '</div></div>' +
         '<div class="stat-card"><div class="stat-label">Total Invoices</div><div class="stat-value">' + allInvCount.toLocaleString() + '</div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (allAvgDil * 100).toFixed(2) + '%</div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (allAvgDil * 100).toFixed(2) + '%</div></div>' +
+        '<div class="stat-card gold"><div class="stat-label">Outstanding Balance</div><div class="stat-value">' + formatCurrency(allOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + allOsSupCount + ' suppliers)</span></div></div>' +
+        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(allOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + allOsDilPct + '%)</span></div></div>';
 }
 
 function renderPipeline() {
@@ -1975,25 +1994,45 @@ function renderPipeline() {
     var totalVolume = 0, totalInvCount = 0;
     var totalDilution = 0;
     var dilCount = 0;
+    var fOutstanding = 0, fOutstandingSups = {};
+    var ccy = state.filterCurrency || null;
     filtered.forEach(function(p) {
         var stats = state.computedStats[p.id] || {};
-        Object.keys(stats).forEach(function(ccy) {
-            totalVolume += stats[ccy].total_volume || 0;
-            totalInvCount += stats[ccy].invoice_count || 0;
-            if (stats[ccy].current_dilution > 0) {
-                totalDilution += stats[ccy].current_dilution;
+        var ccyKeys = ccy ? [ccy] : Object.keys(stats);
+        ccyKeys.forEach(function(c) {
+            var s = stats[c];
+            if (!s) return;
+            totalVolume += s.total_volume || 0;
+            totalInvCount += s.invoice_count || 0;
+            if (s.current_dilution > 0) {
+                totalDilution += s.current_dilution;
                 dilCount++;
+            }
+        });
+        // Compute outstanding from raw invoices, filtered by currency
+        var invs = state.prospectInvoices[p.id] || [];
+        invs.forEach(function(inv) {
+            if (ccy && (inv.currency || '').toUpperCase() !== ccy) return;
+            var amt = parseFloat(inv.invoice_amount) || 0;
+            var paid = parseFloat(inv.amount_paid_to_date) || 0;
+            if (!inv.settled_date && amt > paid) {
+                fOutstanding += amt - paid;
+                fOutstandingSups[p.id] = true;
             }
         });
     });
     var avgDilution = dilCount > 0 ? totalDilution / dilCount : 0;
+    var fOsSupCount = Object.keys(fOutstandingSups).length;
+    var fOsDilPct = totalVolume > 0 ? (fOutstanding / totalVolume * 100).toFixed(2) : '0.00';
 
     var isFiltered = filtered.length !== state.prospects.length;
     document.getElementById('pipelineStats').innerHTML =
         '<div class="stat-card"><div class="stat-label">Prospects' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + totalSuppliers + (isFiltered ? '<span style="font-size:11px;color:var(--muted);"> / ' + state.prospects.length + '</span>' : '') + '</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Volume' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + formatCurrency(totalVolume) + '</div></div>' +
         '<div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value">' + totalInvCount.toLocaleString() + '</div></div>' +
-        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>';
+        '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>' +
+        '<div class="stat-card gold"><div class="stat-label">Outstanding Balance</div><div class="stat-value">' + formatCurrency(fOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + fOsSupCount + ' suppliers)</span></div></div>' +
+        '<div class="stat-card danger"><div class="stat-label">Outstanding Dilution</div><div class="stat-value">' + formatCurrency(fOutstanding) + ' <span style="font-size:11px;color:var(--muted);">(' + fOsDilPct + '%)</span></div></div>';
 
     // Render table rows
     var tbody = document.getElementById('pipelineBody');
