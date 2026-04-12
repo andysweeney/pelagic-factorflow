@@ -1988,9 +1988,9 @@ function renderPipeline() {
     });
     var avgDilution = dilCount > 0 ? totalDilution / dilCount : 0;
 
-    var isFiltered = filtered.length !== allProspects.length;
+    var isFiltered = filtered.length !== state.prospects.length;
     document.getElementById('pipelineStats').innerHTML =
-        '<div class="stat-card"><div class="stat-label">Prospects' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + totalSuppliers + (isFiltered ? '<span style="font-size:11px;color:var(--text-light);"> / ' + allProspects.length + '</span>' : '') + '</div></div>' +
+        '<div class="stat-card"><div class="stat-label">Prospects' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + totalSuppliers + (isFiltered ? '<span style="font-size:11px;color:var(--muted);"> / ' + state.prospects.length + '</span>' : '') + '</div></div>' +
         '<div class="stat-card gold"><div class="stat-label">Volume' + (isFiltered ? ' (filtered)' : '') + '</div><div class="stat-value">' + formatCurrency(totalVolume) + '</div></div>' +
         '<div class="stat-card"><div class="stat-label">Invoices</div><div class="stat-value">' + totalInvCount.toLocaleString() + '</div></div>' +
         '<div class="stat-card danger"><div class="stat-label">Avg Dilution</div><div class="stat-value">' + (avgDilution * 100).toFixed(2) + '%</div></div>';
