@@ -1944,6 +1944,13 @@ function renderPipeline() {
     if (contentEl) contentEl.style.display = 'block';
 
     var filtered = getFilteredProspects();
+    console.log('renderPipeline: currency=' + state.filterCurrency + ', prospects=' + state.prospects.length + ', filtered=' + filtered.length);
+    if (filtered.length === 0 && state.prospects.length > 0) {
+        // Debug: check why filtering returns empty
+        var sampleP = state.prospects[0];
+        var sampleStats = state.computedStats[sampleP.id] || {};
+        console.log('Sample prospect stats keys:', Object.keys(sampleStats), 'looking for:', state.filterCurrency);
+    }
     var totalPages = Math.ceil(filtered.length / ROWS_PER_PAGE) || 1;
     if (state.pipelinePage > totalPages) state.pipelinePage = totalPages;
 
