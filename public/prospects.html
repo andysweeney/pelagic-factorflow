@@ -2544,10 +2544,12 @@ function openDetail(prospectId) {
     document.getElementById('detail-tab-overview').classList.remove('hidden');
 
     document.getElementById('detailOverlay').classList.add('open');
+    document.querySelector('.detail-panel').classList.add('open');
 }
 
 function closeDetail() {
     document.getElementById('detailOverlay').classList.remove('open');
+    document.querySelector('.detail-panel').classList.remove('open');
     state.selectedProspect = null;
     if (state.detailChart) { state.detailChart.destroy(); state.detailChart = null; }
 }
