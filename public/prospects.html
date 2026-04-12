@@ -422,6 +422,9 @@
             <div style="background:#0D1526; border-radius:var(--radius); padding:14px 18px; margin-bottom:16px; border:1px solid var(--border);">
                 <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-light); margin-bottom:8px;">Filters</div>
                 <div class="filter-bar" style="margin-bottom:8px;">
+                    <select id="filterUpload" style="min-width:220px;">
+                        <option value="">All Datasets</option>
+                    </select>
                     <input type="text" id="filterSearch" placeholder="Search supplier ID..." style="width:200px;">
                     <select id="filterBuyer" style="min-width:150px;">
                         <option value="">All Buyers</option>
@@ -744,6 +747,7 @@ var state = {
     filterBuyer: '',
     filterStatus: '',
     filterCurrency: '',
+    filterUpload: '',
     filterDilMin: null,
     filterDilMax: null,
     filterVolMin: null,
@@ -1802,6 +1806,16 @@ function loadAllData() {
             buyerSelect.innerHTML += '<option value="' + b + '">' + b + '</option>';
         });
 
+        // Populate upload/dataset filter
+        var uploadSelect = document.getElementById('filterUpload');
+        uploadSelect.innerHTML = '<option value="">All Datasets</option>';
+        state.uploads.forEach(function(u) {
+            var label = u.buyer_label || u.id.substring(0, 8);
+            var date = u.upload_date ? new Date(u.upload_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+            var supCount = state.prospects.filter(function(p) { return p.upload_id === u.id; }).length;
+            uploadSelect.innerHTML += '<option value="' + u.id + '">' + label + (date ? ' — ' + date : '') + ' (' + supCount + ' suppliers)</option>';
+        });
+
         renderPipeline();
         renderUploadsHistory();
     });
@@ -1811,7 +1825,7 @@ function loadAllData() {
 // PIPELINE VIEW
 // ================================================================
 function setupFilters() {
-    ['filterSearch', 'filterBuyer', 'filterStatus', 'filterCurrency'].forEach(function(id) {
+    ['filterUpload', 'filterSearch', 'filterBuyer', 'filterStatus', 'filterCurrency'].forEach(function(id) {
         document.getElementById(id).addEventListener('input', function() {
             state[id] = this.value;
             state.pipelinePage = 1;
@@ -1833,7 +1847,7 @@ function setupFilters() {
     });
 
     document.getElementById('resetFiltersBtn').addEventListener('click', function() {
-        ['filterSearch', 'filterBuyer', 'filterStatus', 'filterCurrency'].forEach(function(id) {
+        ['filterUpload', 'filterSearch', 'filterBuyer', 'filterStatus', 'filterCurrency'].forEach(function(id) {
             document.getElementById(id).value = '';
             state[id] = '';
         });
@@ -1868,6 +1882,7 @@ function getFilteredProspects() {
         var primaryCcy = state.filterCurrency || Object.keys(stats)[0] || 'GBP';
         var ccyStats = stats[primaryCcy] || {};
 
+        if (state.filterUpload && p.upload_id !== state.filterUpload) return false;
         if (state.filterSearch && p.supplier_identifier.toLowerCase().indexOf(state.filterSearch.toLowerCase()) < 0) return false;
         if (state.filterBuyer && p.buyer_label !== state.filterBuyer) return false;
         if (state.filterStatus && p.status !== state.filterStatus) return false;
@@ -1922,7 +1937,7 @@ function getFilteredProspects() {
 }
 
 function renderUnfilteredStats() {
-    var allProspects = state.prospects;
+    var allProspects = state.filterUpload ? state.prospects.filter(function(p) { return p.upload_id === state.filterUpload; }) : state.prospects;
     var ccy = state.filterCurrency || null;
     var allVolume = 0, allInvCount = 0, allDilSum = 0, allDilN = 0;
     var allOutstanding = 0, allOutstandingSups = {};
@@ -2114,7 +2129,7 @@ function renderPipeline() {
     });
 
     // Only re-render charts if the filtered set changed (not on pagination)
-    var chartKey = filtered.length + '-' + (state.filterCurrency || '') + '-' + (state.filterSearch || '') + '-' + (state.filterStatus || '') + '-' + (state.filterBuyer || '');
+    var chartKey = filtered.length + '-' + (state.filterUpload || '') + '-' + (state.filterCurrency || '') + '-' + (state.filterSearch || '') + '-' + (state.filterStatus || '') + '-' + (state.filterBuyer || '');
     if (chartKey !== state._lastChartKey) {
         state._lastChartKey = chartKey;
         renderPipelineCharts(filtered);
