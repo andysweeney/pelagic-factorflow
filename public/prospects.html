@@ -2494,6 +2494,8 @@ function renderDoughnut(canvasId, buckets, mode, itemLabel) {
         tableEl.innerHTML = html;
     }
 }
+
+function exportPipeline() {
     var filtered = getFilteredProspects();
     var rows = [['Supplier ID', 'Supplier Label', 'Buyer', 'Status', 'Currency', 'Invoice Count', 'Total Volume', 'Avg Invoice', 'Current Dilution %', '30-Day Dilution %', '90-Day Dilution %']];
     filtered.forEach(function(p) {
