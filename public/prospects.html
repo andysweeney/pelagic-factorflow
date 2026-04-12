@@ -801,9 +801,11 @@ function initApp() {
 // ================================================================
 function setupTabs() {
     var tabBtns = document.querySelectorAll('.tab-bar .tab-btn[data-tab]');
+    console.log('setupTabs: found ' + tabBtns.length + ' tab buttons');
     tabBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
             var tab = btn.getAttribute('data-tab');
+            console.log('Tab clicked: ' + tab);
             tabBtns.forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
