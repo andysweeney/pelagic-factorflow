@@ -8995,7 +8995,7 @@ export default function FactoringDashboard() {
           }
 
           return <div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
               {["suppliers", "buyers", "service_providers", "programs", "invoices", "csv_import", "csv_review", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); if (t === "users") loadUsers(); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageTab === t ? "var(--accent)" : "var(--border)"), background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", textTransform: "capitalize", boxShadow: manageTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
             </div>
 
