@@ -555,13 +555,15 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load CSV review queue
-    var rqRes = await supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true });
-    if (rqRes.data) {
-      CSV_REVIEW_QUEUE_DB = rqRes.data.map(function(row) {
-        return { dbId: row.id, invoiceId: row.invoice_id, reference: row.invoice_reference, field: row.field_name, label: row.field_label, oldValue: row.old_value, newValue: row.new_value, csvRow: row.csv_row, timestamp: row.created_at, status: row.status };
-      });
-    }
+    // Load CSV review queue (table may not exist yet)
+    try {
+      var rqRes = await supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true });
+      if (rqRes.data) {
+        CSV_REVIEW_QUEUE_DB = rqRes.data.map(function(row) {
+          return { dbId: row.id, invoiceId: row.invoice_id, reference: row.invoice_reference, field: row.field_name, label: row.field_label, oldValue: row.old_value, newValue: row.new_value, csvRow: row.csv_row, timestamp: row.created_at, status: row.status };
+        });
+      }
+    } catch (rqErr) { console.warn("csv_review_queue table not found — skipping. Run the CREATE TABLE SQL to enable this feature."); }
 
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
