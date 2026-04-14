@@ -8558,16 +8558,14 @@ export default function FactoringDashboard() {
                       sourcePaymentId: allocPay.paymentId
                     });
 
-                    // Program: awaiting disbursal
+                    // Program: credit the inflow, debit tracked via SPQ entry
                     if (prog) {
                       if (!prog.fundFlows) prog.fundFlows = [];
                       var flowIdIn = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
                       prog.fundFlows.push({ flowId: flowIdIn, type: "inflow", amount: r2(routingRemaining), date: allocPay.date, serviceProvider: "Payment " + allocPay.paymentId, reason: "Pass-through received for " + routing.supplierName });
-                      var flowIdOut = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
-                      prog.fundFlows.push({ flowId: flowIdOut, type: "outflow", amount: r2(routingRemaining), date: allocPay.date, serviceProvider: routing.supplierName, reason: "Pass-through to " + routing.supplierName + " (" + spqId + ")", status: "Pending", programId: prog.id, programName: prog.name, currency: allocPay.currency });
 
-                      auditLog("Program Funds Added", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pass-through credit from " + allocPay.paymentId + " for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "add", amount: r2(routingRemaining), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowIdIn, passThrough: true });
-                      auditLog("Awaiting Disbursal", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pending disbursal to " + routing.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "disburse", amount: r2(routingRemaining), currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, spqId: spqId, flowId: flowIdOut, passThrough: true });
+                      auditLog("Program Funds Added", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pass-through credit from " + allocPay.paymentId + " for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "inflow", amount: r2(routingRemaining), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowIdIn, passThrough: true });
+                      auditLog("Awaiting Disbursal", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pending disbursal to " + routing.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "disburse", amount: r2(routingRemaining), currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, spqId: spqId, passThrough: true });
                     }
 
                     auditLog("Remittance Queued", spqId + ": " + money(r2(routingRemaining), allocPay.currency) + " queued for remittance to " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(routingRemaining), currency: allocPay.currency, spqId: spqId, programId: routing.programId, programName: routing.programName });
