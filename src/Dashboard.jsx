@@ -347,6 +347,7 @@ var CREDIT_NOTES_DB = [];
 var FUNDING_PROGRAMS_DB = [];
 var ENTITY_NOTES_DB = [];
 var CSV_REVIEW_QUEUE_DB = [];
+var ENTITY_ALIASES_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -564,6 +565,16 @@ async function loadPersistedData() {
         });
       }
     } catch (rqErr) { console.warn("csv_review_queue table not found — skipping. Run the CREATE TABLE SQL to enable this feature."); }
+
+    // Load entity aliases
+    try {
+      var alRes = await supabase.from("entity_aliases").select("*");
+      if (alRes.data) {
+        ENTITY_ALIASES_DB = alRes.data.map(function(row) {
+          return { id: row.id, aliasName: row.alias_name, entityType: row.entity_type, entityId: row.entity_id, entityName: row.entity_name };
+        });
+      }
+    } catch (alErr) { console.warn("entity_aliases table not found — skipping."); }
 
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
@@ -1573,6 +1584,8 @@ export default function FactoringDashboard() {
   var csvImp4 = useState(false), csvImportProcessing = csvImp4[0], setCsvImportProcessing = csvImp4[1];
   var csvImp5 = useState([]), csvImportCols = csvImp5[0], setCsvImportCols = csvImp5[1];
   var csvRev1 = useState([]), csvReviewQueue = csvRev1[0], setCsvReviewQueue = csvRev1[1];
+  var csvRes1 = useState(null), csvResolution = csvRes1[0], setCsvResolution = csvRes1[1]; // { suppliers: {csvName: entityId}, buyers: {csvName: entityId}, unresolved: [...] }
+  var csvRes2 = useState("mapping"), csvImportStep = csvRes2[0], setCsvImportStep = csvRes2[1]; // "mapping" | "resolution" | "processing" | "done"
   var PS = 25;
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
 
@@ -10816,7 +10829,7 @@ export default function FactoringDashboard() {
             {/* Payment Queue */}
             {/* Audit Log */}
 
-            {!manageDetail && manageTab === "csv_import" && (function() {
+                        {!manageDetail && manageTab === "csv_import" && (function() {
               var CSV_FIELDS = [
                 { key: "invoice_ref", label: "Invoice Reference", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no","buyer_invoice_ref","buyer_ref"] },
                 { key: "supplier", label: "Supplier", required: true, hints: ["supplier","supplier_name","supplier_id","vendor","vendor_name"] },
@@ -10864,7 +10877,8 @@ export default function FactoringDashboard() {
                   setCsvImportData(rows);
                   setCsvImportCols(headers);
                   setCsvImportResult(null);
-                  // Auto-map
+                  setCsvImportStep("mapping");
+                  setCsvResolution(null);
                   var mapping = {};
                   CSV_FIELDS.forEach(function(f) {
                     var match = autoMatch(f.hints, headers);
@@ -10893,6 +10907,83 @@ export default function FactoringDashboard() {
                 return !isNaN(dt.getTime()) ? dt.toISOString().split("T")[0] : null;
               }
 
+              // --- RESOLUTION STEP: resolve CSV names to entities ---
+              function resolveEntities() {
+                var supplierNames = {};
+                var buyerNames = {};
+                csvImportData.forEach(function(row) {
+                  var s = getMapped(row, "supplier");
+                  var b = getMapped(row, "buyer");
+                  if (s) supplierNames[s] = (supplierNames[s] || 0) + 1;
+                  if (b) buyerNames[b] = (buyerNames[b] || 0) + 1;
+                });
+
+                var supplierMap = {};
+                var buyerMap = {};
+                var unresolved = [];
+
+                // Try exact match against entities and aliases
+                Object.keys(supplierNames).forEach(function(csvName) {
+                  var exactSup = SUPPLIERS_DB.find(function(s) { return s.name === csvName; });
+                  if (exactSup) { supplierMap[csvName] = { id: exactSup.id, name: exactSup.name, match: "exact" }; return; }
+                  var alias = ENTITY_ALIASES_DB.find(function(a) { return a.aliasName === csvName && a.entityType === "supplier"; });
+                  if (alias) { supplierMap[csvName] = { id: alias.entityId, name: alias.entityName, match: "alias" }; return; }
+                  unresolved.push({ csvName: csvName, type: "supplier", count: supplierNames[csvName], resolvedTo: null });
+                });
+
+                Object.keys(buyerNames).forEach(function(csvName) {
+                  var exactBuy = BUYERS_DB.find(function(b) { return b.name === csvName; });
+                  if (exactBuy) { buyerMap[csvName] = { id: exactBuy.id, name: exactBuy.name, match: "exact" }; return; }
+                  var alias = ENTITY_ALIASES_DB.find(function(a) { return a.aliasName === csvName && a.entityType === "buyer"; });
+                  if (alias) { buyerMap[csvName] = { id: alias.entityId, name: alias.entityName, match: "alias" }; return; }
+                  unresolved.push({ csvName: csvName, type: "buyer", count: buyerNames[csvName], resolvedTo: null });
+                });
+
+                setCsvResolution({ suppliers: supplierMap, buyers: buyerMap, unresolved: unresolved });
+                setCsvImportStep(unresolved.length > 0 ? "resolution" : "processing");
+              }
+
+              function resolveEntity(idx, entityId) {
+                setCsvResolution(function(prev) {
+                  var updated = JSON.parse(JSON.stringify(prev));
+                  var item = updated.unresolved[idx];
+                  if (!entityId) { item.resolvedTo = null; return updated; }
+                  var entity = item.type === "supplier"
+                    ? SUPPLIERS_DB.find(function(s) { return s.id === entityId; })
+                    : BUYERS_DB.find(function(b) { return b.id === entityId; });
+                  if (entity) {
+                    item.resolvedTo = { id: entity.id, name: entity.name };
+                  }
+                  return updated;
+                });
+              }
+
+              function confirmResolution() {
+                var res = csvResolution;
+                var allResolved = res.unresolved.every(function(u) { return u.resolvedTo; });
+                if (!allResolved) { alert("Please resolve all unmatched names before proceeding."); return; }
+
+                // Save aliases and apply resolutions
+                res.unresolved.forEach(function(u) {
+                  if (u.type === "supplier") {
+                    res.suppliers[u.csvName] = { id: u.resolvedTo.id, name: u.resolvedTo.name, match: "resolved" };
+                  } else {
+                    res.buyers[u.csvName] = { id: u.resolvedTo.id, name: u.resolvedTo.name, match: "resolved" };
+                  }
+                  // Save alias to DB
+                  var newAlias = { aliasName: u.csvName, entityType: u.type, entityId: u.resolvedTo.id, entityName: u.resolvedTo.name };
+                  ENTITY_ALIASES_DB.push(newAlias);
+                  if (supabase) {
+                    supabase.from("entity_aliases").insert({ alias_name: u.csvName, entity_type: u.type, entity_id: u.resolvedTo.id, entity_name: u.resolvedTo.name });
+                  }
+                });
+
+                res.unresolved = [];
+                setCsvResolution(res);
+                setCsvImportStep("processing");
+              }
+
+              // --- PROCESSING ---
               function processCsvImport() {
                 if (!csvImportData || csvImportData.length === 0) return;
                 setCsvImportProcessing(true);
@@ -10901,13 +10992,21 @@ export default function FactoringDashboard() {
                 var now = new Date();
                 var nowStr = now.toISOString().split("T")[0];
                 var nowDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                var res = csvResolution || { suppliers: {}, buyers: {} };
 
                 csvImportData.forEach(function(row, rowIdx) {
                   var ref = getMapped(row, "invoice_ref");
                   if (!ref) { errors.push("Row " + (rowIdx + 2) + ": no invoice reference"); return; }
 
-                  var supplierName = getMapped(row, "supplier");
-                  var buyerName = getMapped(row, "buyer");
+                  var csvSupplierName = getMapped(row, "supplier");
+                  var csvBuyerName = getMapped(row, "buyer");
+
+                  // Resolve names via alias map
+                  var supResolved = csvSupplierName ? (res.suppliers[csvSupplierName] || null) : null;
+                  var buyResolved = csvBuyerName ? (res.buyers[csvBuyerName] || null) : null;
+                  var supplierName = supResolved ? supResolved.name : csvSupplierName;
+                  var buyerName = buyResolved ? buyResolved.name : csvBuyerName;
+
                   var amountStr = getMapped(row, "invoice_amount");
                   var amount = amountStr ? parseFloat(amountStr) : null;
                   var currency = getMapped(row, "currency") || "GBP";
@@ -10936,8 +11035,8 @@ export default function FactoringDashboard() {
                     }
                     var sup = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
                     var buy = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                    if (!sup) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): supplier '" + supplierName + "' not found"); return; }
-                    if (!buy) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): buyer '" + buyerName + "' not found"); return; }
+                    if (!sup) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): supplier '" + supplierName + "' not found (CSV: '" + csvSupplierName + "')"); return; }
+                    if (!buy) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): buyer '" + buyerName + "' not found (CSV: '" + csvBuyerName + "')"); return; }
 
                     var newId = "INV-" + String(INVOICES_DB.length + created + 1).padStart(5, "0");
                     var statusHist = [{ status: "Received", date: nowStr, note: "Created via CSV import" }];
@@ -10949,7 +11048,6 @@ export default function FactoringDashboard() {
                     if (disputedDate) { statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" }); invStatus = "Disputed"; }
                     if (settledDate) { statusHist.push({ status: "Settled", date: settledDate, note: "Via CSV import" }); invStatus = "Settled"; }
 
-                    // Determine if this is a historic invoice (not eligible for funding)
                     var isHistoric = false;
                     if (cancelledDate || declinedDate || disputedDate || settledDate) isHistoric = true;
                     if (dueDate && dueDate < nowStr) isHistoric = true;
@@ -10958,6 +11056,9 @@ export default function FactoringDashboard() {
 
                     var csvNotes = ["Created via CSV import" + (isHistoric ? " (Historic)" : "")];
                     if (amountPaid !== null) csvNotes.push("Amount Paid to Date: " + money(amountPaid, currency) + " (Payments to Invoice: " + money(amount - amountPaid, currency) + ")");
+                    if (supResolved && supResolved.match !== "exact") csvNotes.push("Supplier resolved: '" + csvSupplierName + "' \u2192 " + sup.name);
+                    if (buyResolved && buyResolved.match !== "exact") csvNotes.push("Buyer resolved: '" + csvBuyerName + "' \u2192 " + buy.name);
+
                     INVOICES_DB.push({
                       id: newId, supplierName: sup.name, supplierId: sup.id, buyerName: buy.name, buyerId: buy.id,
                       amount: amount, currency: currency.toUpperCase(),
@@ -10979,36 +11080,30 @@ export default function FactoringDashboard() {
                   }
 
                   // UPDATE existing invoice — compare fields
-                  var isFunded = existing.fundingStatus !== "pending" && existing.fundingStatus !== "approved" && existing.fundedDate;
+                  var isFunded = existing.fundingStatus !== "pending" && existing.fundingStatus !== "approved" && existing.fundingStatus !== "historic" && existing.fundedDate;
                   var changes = [];
 
-                  // Category 3: fields that require review if funded or identity mismatch
                   function queueForReview(field, label, oldVal, newVal) {
                     reviewItems.push({ invoiceId: existing.id, reference: ref, field: field, label: label, oldValue: oldVal, newValue: newVal, csvRow: rowIdx + 2, timestamp: now.toISOString() });
                     queued++;
                   }
 
-                  // Identity checks — always queue if different
                   if (supplierName && supplierName !== existing.supplierName) { queueForReview("supplierName", "Supplier", existing.supplierName, supplierName); }
                   if (buyerName && buyerName !== existing.buyerName) { queueForReview("buyerName", "Buyer", existing.buyerName, buyerName); }
                   if (currency && currency.toUpperCase() !== existing.currency) { queueForReview("currency", "Currency", existing.currency, currency.toUpperCase()); }
 
-                  // Amount — queue if funded, auto-apply if unfunded
                   if (amount !== null && Math.abs(amount - existing.amount) > 0.01) {
                     if (isFunded) { queueForReview("amount", "Invoice Amount", existing.amount, amount); }
                     else { changes.push("Amount: " + money(existing.amount, existing.currency) + " \u2192 " + money(amount, existing.currency)); existing.amount = amount; }
                   }
 
-                  // Approved amount
                   if (approvedAmount !== null && Math.abs(approvedAmount - (existing.partialApprovedAmount || 0)) > 0.01) {
                     if (isFunded) { queueForReview("partialApprovedAmount", "Approved Amount", existing.partialApprovedAmount, approvedAmount); }
                     else { changes.push("Approved Amount: " + (existing.partialApprovedAmount || 0) + " \u2192 " + approvedAmount); existing.partialApprovedAmount = approvedAmount; }
                   }
 
-                  // PO — always auto-apply
                   if (po && po !== (existing.purchaseOrder || "")) { changes.push("PO: " + (existing.purchaseOrder || "\u2014") + " \u2192 " + po); existing.purchaseOrder = po; }
 
-                  // Date fields on funded invoices
                   if (invoiceDate && invoiceDate !== existing.invoiceDate) {
                     if (isFunded) { queueForReview("invoiceDate", "Invoice Date", existing.invoiceDate, invoiceDate); }
                     else { changes.push("Invoice Date: " + (existing.invoiceDate || "\u2014") + " \u2192 " + invoiceDate); existing.invoiceDate = invoiceDate; }
@@ -11018,7 +11113,6 @@ export default function FactoringDashboard() {
                     else { changes.push("Due Date: " + (existing.dueDate || "\u2014") + " \u2192 " + dueDate); existing.dueDate = dueDate; }
                   }
 
-                  // Status-trigger dates
                   function applyStatusDate(dateVal, statusName, field) {
                     if (!dateVal) return;
                     var hasStatus = existing.invoiceStatusHistory.some(function(h) { return h.status === statusName; });
@@ -11048,7 +11142,6 @@ export default function FactoringDashboard() {
                     }
                   }
 
-                  // Amount Paid to Date — informational, stored as metadata and logged
                   if (amountPaid !== null) {
                     var prevPaid = existing.csvAmountPaid || 0;
                     if (Math.abs(amountPaid - prevPaid) > 0.01) {
@@ -11090,60 +11183,128 @@ export default function FactoringDashboard() {
                 });
                 setDataVer(function(v) { return v + 1; });
                 setCsvImportProcessing(false);
+                setCsvImportStep("done");
               }
 
               var mapping = csvImportMapping;
               var cols = csvImportCols;
               var requiredOk = CSV_FIELDS.filter(function(f) { return f.required; }).every(function(f) { return mapping[f.key]; });
+              var step = csvImportStep;
 
               return <div>
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px", marginBottom: 20 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>CSV Invoice Import</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>CSV Invoice Import</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Upload invoices, map columns, resolve entity names, then process.</div>
 
-                  {/* File upload */}
-                  <div style={{ marginBottom: 20 }}>
-                    <input type="file" accept=".csv" onChange={function(e) { if (e.target.files[0]) handleCsvFile(e.target.files[0]); }} style={{ fontSize: 13 }} />
+                  {/* Step indicator */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+                    {["mapping", "resolution", "processing", "done"].map(function(s, si) {
+                      var active = s === step;
+                      var done = ["mapping", "resolution", "processing", "done"].indexOf(step) > si;
+                      return <div key={s} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, background: active ? "var(--accent)" : done ? "#10B98120" : "var(--bg)", border: "1px solid " + (active ? "var(--accent)" : done ? "#10B98140" : "var(--border)"), textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: active ? "#fff" : done ? "#10B981" : "var(--muted)" }}>{si + 1}. {s === "mapping" ? "Map Columns" : s === "resolution" ? "Resolve Names" : s === "processing" ? "Process" : "Results"}</div>;
+                    })}
                   </div>
 
-                  {/* Column mapping */}
-                  {csvImportData && <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Column Mapping <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>({csvImportData.length.toLocaleString()} rows loaded)</span></div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", marginBottom: 12 }}>
-                      {CSV_FIELDS.map(function(f) {
-                        var matched = mapping[f.key];
-                        return <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: matched ? "#10B98108" : "var(--bg)", border: "1px solid " + (matched ? "#10B98130" : "var(--border)"), borderLeft: f.required ? "3px solid " + (matched ? "#10B981" : "#EF4444") : "1px solid " + (matched ? "#10B98130" : "var(--border)") }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, flex: 1, color: "var(--text)" }}>{f.label}{f.required ? <span style={{ color: "#EF4444" }}> *</span> : ""}</span>
-                          <select value={matched || ""} onChange={function(e) { setCsvImportMapping(function(p) { var n = Object.assign({}, p); if (e.target.value) n[f.key] = e.target.value; else delete n[f.key]; return n; }); }} style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11 }}>
-                            <option value="">— Skip —</option>
-                            {cols.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
-                          </select>
-                          {matched && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: "#10B98120", color: "#10B981", fontWeight: 700 }}>✓</span>}
-                        </div>;
-                      })}
+                  {/* STEP 1: File upload & column mapping */}
+                  {step === "mapping" && <div>
+                    <div style={{ marginBottom: 20 }}>
+                      <input type="file" accept=".csv" onChange={function(e) { if (e.target.files[0]) handleCsvFile(e.target.files[0]); }} style={{ fontSize: 13 }} />
                     </div>
 
-                    {/* Preview first 3 rows */}
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 6 }}>Preview (first 3 rows)</div>
-                    <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 16 }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{CSV_FIELDS.filter(function(f) { return mapping[f.key]; }).map(function(f) {
-                          return <th key={f.key} style={{ padding: "5px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{f.label}<br/><span style={{ color: "var(--accent)", fontWeight: 400, textTransform: "none", fontSize: 8 }}>{"\u2190"} {mapping[f.key]}</span></th>;
-                        })}</tr></thead>
-                        <tbody>{csvImportData.slice(0, 3).map(function(row, ri) {
-                          return <tr key={ri}>{CSV_FIELDS.filter(function(f) { return mapping[f.key]; }).map(function(f) {
-                            var val = getMapped(row, f.key);
-                            return <td key={f.key} style={{ padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: val ? "var(--text)" : "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{val || "\u2014"}</td>;
-                          })}</tr>;
-                        })}</tbody>
-                      </table>
-                    </div>
+                    {csvImportData && <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Column Mapping <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 400 }}>({csvImportData.length.toLocaleString()} rows loaded)</span></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", marginBottom: 12 }}>
+                        {CSV_FIELDS.map(function(f) {
+                          var matched = mapping[f.key];
+                          return <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: matched ? "#10B98108" : "var(--bg)", border: "1px solid " + (matched ? "#10B98130" : "var(--border)"), borderLeft: f.required ? "3px solid " + (matched ? "#10B981" : "#EF4444") : "1px solid " + (matched ? "#10B98130" : "var(--border)") }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, flex: 1, color: "var(--text)" }}>{f.label}{f.required ? <span style={{ color: "#EF4444" }}> *</span> : ""}</span>
+                            <select value={matched || ""} onChange={function(e) { var fk = f.key; setCsvImportMapping(function(p) { var n = Object.assign({}, p); if (e.target.value) n[fk] = e.target.value; else delete n[fk]; return n; }); }} style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11 }}>
+                              <option value="">— Skip —</option>
+                              {cols.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+                            </select>
+                            {matched && <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: "#10B98120", color: "#10B981", fontWeight: 700 }}>{"\u2713"}</span>}
+                          </div>;
+                        })}
+                      </div>
 
-                    <button onClick={processCsvImport} disabled={csvImportProcessing || !requiredOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: requiredOk && !csvImportProcessing ? "var(--accent)" : "var(--border)", color: requiredOk ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: requiredOk && !csvImportProcessing ? "pointer" : "default" }}>{csvImportProcessing ? "Processing..." : "Process Import"}</button>
-                    {!requiredOk && <span style={{ marginLeft: 12, fontSize: 11, color: "#EF4444" }}>Map all required fields (*) to proceed</span>}
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 6 }}>Preview (first 3 rows)</div>
+                      <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 16 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead><tr>{CSV_FIELDS.filter(function(f) { return mapping[f.key]; }).map(function(f) {
+                            return <th key={f.key} style={{ padding: "5px 8px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{f.label}</th>;
+                          })}</tr></thead>
+                          <tbody>{csvImportData.slice(0, 3).map(function(row, ri) {
+                            return <tr key={ri}>{CSV_FIELDS.filter(function(f) { return mapping[f.key]; }).map(function(f) {
+                              var val = getMapped(row, f.key);
+                              return <td key={f.key} style={{ padding: "4px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: val ? "var(--text)" : "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" }}>{val || "\u2014"}</td>;
+                            })}</tr>;
+                          })}</tbody>
+                        </table>
+                      </div>
+
+                      <button onClick={resolveEntities} disabled={!requiredOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: requiredOk ? "var(--accent)" : "var(--border)", color: requiredOk ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: requiredOk ? "pointer" : "default" }}>Next: Resolve Entities {"\u2192"}</button>
+                      {!requiredOk && <span style={{ marginLeft: 12, fontSize: 11, color: "#EF4444" }}>Map all required fields (*) to proceed</span>}
+                    </div>}
                   </div>}
 
-                  {/* Results */}
-                  {csvImportResult && <div style={{ marginTop: 16, padding: 20, borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                  {/* STEP 2: Entity resolution */}
+                  {step === "resolution" && csvResolution && <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Resolve Entity Names</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>The following CSV names could not be exactly matched to existing entities. Map each one to an existing supplier or buyer. This mapping will be saved for future imports.</div>
+
+                    {/* Show resolved matches summary */}
+                    {(Object.keys(csvResolution.suppliers).length > 0 || Object.keys(csvResolution.buyers).length > 0) && <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#10B98108", border: "1px solid #10B98130" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#10B981", marginBottom: 6 }}>Auto-resolved ({Object.keys(csvResolution.suppliers).length + Object.keys(csvResolution.buyers).length} matched)</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8 }}>
+                        {Object.entries(csvResolution.suppliers).map(function(e) { return <div key={e[0]}><span style={{ color: "var(--muted)" }}>Supplier:</span> "{e[0]}" {"\u2192"} <strong>{e[1].name}</strong> <span style={{ fontSize: 9, color: "#10B981" }}>({e[1].match})</span></div>; })}
+                        {Object.entries(csvResolution.buyers).map(function(e) { return <div key={e[0]}><span style={{ color: "var(--muted)" }}>Buyer:</span> "{e[0]}" {"\u2192"} <strong>{e[1].name}</strong> <span style={{ fontSize: 9, color: "#10B981" }}>({e[1].match})</span></div>; })}
+                      </div>
+                    </div>}
+
+                    {/* Unresolved items */}
+                    {csvResolution.unresolved.length > 0 && <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
+                        <thead><tr>
+                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>CSV Name</th>
+                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Type</th>
+                          <th style={{ textAlign: "right", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Invoices</th>
+                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Map To</th>
+                        </tr></thead>
+                        <tbody>{csvResolution.unresolved.map(function(item, idx) {
+                          var entities = item.type === "supplier" ? SUPPLIERS_DB : BUYERS_DB;
+                          return <tr key={idx} style={{ borderBottom: "1px solid var(--border)", background: item.resolvedTo ? "#10B98108" : "#F59E0B08" }}>
+                            <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>"{item.csvName}"</td>
+                            <td style={{ padding: "10px 12px" }}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: item.type === "supplier" ? "#0EA5E914" : "#8B5CF614", color: item.type === "supplier" ? "#0EA5E9" : "#8B5CF6", fontWeight: 700, textTransform: "uppercase" }}>{item.type}</span></td>
+                            <td style={{ padding: "10px 12px", textAlign: "right", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.count}</td>
+                            <td style={{ padding: "10px 12px" }}>
+                              <select value={item.resolvedTo ? item.resolvedTo.id : ""} onChange={function(e) { resolveEntity(idx, e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (item.resolvedTo ? "#10B98140" : "#F59E0B40"), background: "var(--bg)", color: "var(--text)", fontSize: 12, minWidth: 200 }}>
+                                <option value="">— Select {item.type} —</option>
+                                {entities.map(function(ent) { return <option key={ent.id} value={ent.id}>{ent.name}</option>; })}
+                              </select>
+                              {item.resolvedTo && <span style={{ marginLeft: 8, fontSize: 10, color: "#10B981", fontWeight: 600 }}>{"\u2713"} {item.resolvedTo.name}</span>}
+                            </td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
+                      <button onClick={confirmResolution} disabled={csvResolution.unresolved.some(function(u) { return !u.resolvedTo; })} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "var(--accent)" : "var(--border)", color: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "pointer" : "default" }}>Confirm & Process {"\u2192"}</button>
+                    </div>
+                  </div>}
+
+                  {/* STEP 3: Ready to process (auto-advances if no resolution needed) */}
+                  {step === "processing" && <div style={{ textAlign: "center", padding: "30px 0" }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>All entities resolved. Ready to process {csvImportData.length.toLocaleString()} rows.</div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                      <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
+                      <button onClick={processCsvImport} disabled={csvImportProcessing} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: csvImportProcessing ? "default" : "pointer" }}>{csvImportProcessing ? "Processing..." : "Process Import"}</button>
+                    </div>
+                  </div>}
+
+                  {/* STEP 4: Results */}
+                  {step === "done" && csvImportResult && <div>
                     <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Import Results</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 12 }}>
                       <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", borderTop: "2px solid #10B981" }}><div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Created</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#10B981" }}>{csvImportResult.created}</div></div>
@@ -11152,14 +11313,17 @@ export default function FactoringDashboard() {
                       <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", borderTop: "2px solid var(--muted)" }}><div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Unchanged</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{csvImportResult.skipped}</div></div>
                       <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", borderTop: "2px solid #EF4444" }}><div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Errors</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#EF4444" }}>{csvImportResult.errors.length}</div></div>
                     </div>
-                    {csvImportResult.errors.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", padding: "10px 14px", borderRadius: 6, background: "#EF444410", border: "1px solid #EF444430", fontSize: 11, color: "#EF4444", lineHeight: 1.8 }}>
+                    {csvImportResult.errors.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", padding: "10px 14px", borderRadius: 6, background: "#EF444410", border: "1px solid #EF444430", fontSize: 11, color: "#EF4444", lineHeight: 1.8, marginBottom: 12 }}>
                       {csvImportResult.errors.map(function(err, ei) { return <div key={ei}>{err}</div>; })}
                     </div>}
                     {csvImportResult.queued > 0 && <div style={{ marginTop: 10, fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{csvImportResult.queued} items require admin review. <span onClick={function() { setManageTab("csv_review"); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>Go to Review Queue {"\u2192"}</span></div>}
+                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
                   </div>}
                 </div>
               </div>;
             })()}
+
+
 
             {/* CSV Review Queue */}
             {!manageDetail && manageTab === "csv_review" && (function() {
