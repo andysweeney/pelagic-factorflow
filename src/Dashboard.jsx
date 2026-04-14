@@ -1572,6 +1572,9 @@ export default function FactoringDashboard() {
   var payR1 = useState([]), payRoutings = payR1[0], setPayRoutings = payR1[1]; // [{supplierId, supplierName, programId, programName, amount}]
   var payR2 = useState("route"), payAllocPhase = payR2[0], setPayAllocPhase = payR2[1]; // "route" | "allocate"
   var payR3 = useState(null), activeRouting = payR3[0], setActiveRouting = payR3[1]; // index into payRoutings for phase 2
+  var payR4 = useState(""), routeProgV = payR4[0], setRouteProgV = payR4[1];
+  var payR5 = useState(""), routeSupV = payR5[0], setRouteSupV = payR5[1];
+  var payR6 = useState(""), routeAmtV = payR6[0], setRouteAmtV = payR6[1];
   var wp1 = useState(""), woPenalty = wp1[0], setWoPenalty = wp1[1];
   var wi1 = useState(""), woInterest = wi1[0], setWoInterest = wi1[1];
   var wc1 = useState(""), woCapital = wc1[0], setWoCapital = wc1[1];
@@ -8218,7 +8221,7 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
+                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -8402,39 +8405,38 @@ export default function FactoringDashboard() {
 
               {/* Add routing form */}
               {remaining > 0.01 && (function() {
-                var rProg = useState(""), rProgV = rProg[0], setRProgV = rProg[1];
-                var rSup = useState(""), rSupV = rSup[0], setRSupV = rSup[1];
-                var rAmt = useState(String(remaining)), rAmtV = rAmt[0], setRAmtV = rAmt[1];
+                // Reset amount if it doesn't match remaining
+                if (routeAmtV === "" || parseFloat(routeAmtV) > remaining + 0.01) setRouteAmtV(String(remaining));
 
                 return <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Add Allocation</div>
                   <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 180 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Program *</label>
-                      <select value={rProgV} onChange={function(e) { setRProgV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
+                      <select value={routeProgV} onChange={function(e) { setRouteProgV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
                         <option value="">Select program...</option>
                         {FUNDING_PROGRAMS_DB.filter(function(fp) { return fp.currency === allocPay.currency; }).map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
                       </select>
                     </div>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Supplier *</label>
-                      <select value={rSupV} onChange={function(e) { setRSupV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
+                      <select value={routeSupV} onChange={function(e) { setRouteSupV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
                         <option value="">Select supplier / branch...</option>
                         {allSupEntities.map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
                       </select>
                     </div>
                     <div style={{ minWidth: 120 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Amount</label>
-                      <input type="number" value={rAmtV} onChange={function(e) { setRAmtV(e.target.value); }} step="0.01" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
+                      <input type="number" value={routeAmtV} onChange={function(e) { setRouteAmtV(e.target.value); }} step="0.01" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
                     </div>
-                    <button disabled={!rProgV || !rSupV || !(parseFloat(rAmtV) > 0)} onClick={function() {
-                      var amt = r2(Math.min(parseFloat(rAmtV) || 0, remaining));
+                    <button disabled={!routeProgV || !routeSupV || !(parseFloat(routeAmtV) > 0)} onClick={function() {
+                      var amt = r2(Math.min(parseFloat(routeAmtV) || 0, remaining));
                       if (amt <= 0) return;
-                      var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === rProgV; });
-                      var supName = getEntityDisplayName(rSupV) || rSupV;
-                      setPayRoutings(function(prev) { return prev.concat([{ supplierId: rSupV, supplierName: supName, programId: rProgV, programName: prog ? prog.name : rProgV, amount: amt }]); });
-                      setRProgV(""); setRSupV(""); setRAmtV(String(r2(remaining - amt)));
-                    }} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "var(--accent)" : "var(--border)", color: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "pointer" : "default", whiteSpace: "nowrap" }}>Allocate</button>
+                      var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routeProgV; });
+                      var supName = getEntityDisplayName(routeSupV) || routeSupV;
+                      setPayRoutings(function(prev) { return prev.concat([{ supplierId: routeSupV, supplierName: supName, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]); });
+                      setRouteProgV(""); setRouteSupV(""); setRouteAmtV(String(r2(remaining - amt)));
+                    }} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: routeProgV && routeSupV && parseFloat(routeAmtV) > 0 ? "var(--accent)" : "var(--border)", color: routeProgV && routeSupV && parseFloat(routeAmtV) > 0 ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: routeProgV && routeSupV && parseFloat(routeAmtV) > 0 ? "pointer" : "default", whiteSpace: "nowrap" }}>Allocate</button>
                   </div>
                 </div>;
               })()}
@@ -8581,7 +8583,7 @@ export default function FactoringDashboard() {
                   } else {
                     // All done
                     auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
-                    setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
+                    setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
                     setDataVer(function(v) { return v + 1; });
                   }
                 }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{allocs.length > 0 && routingRemaining > 0.01 ? "Apply & Pass Through" : allocs.length > 0 ? "Confirm Allocation" : "Pass Through to Supplier"}</button>
