@@ -10832,7 +10832,8 @@ export default function FactoringDashboard() {
                 { key: "cancelled_date", label: "Cancelled Date", required: false, hints: ["cancelled_date","cancellation_date","canceled_date"] },
                 { key: "declined_date", label: "Declined Date", required: false, hints: ["declined_date","rejection_date","rejected_date"] },
                 { key: "disputed_date", label: "Disputed Date", required: false, hints: ["disputed_date","dispute_date"] },
-                { key: "settled_date", label: "Settled Date", required: false, hints: ["settled_date","settlement_date","paid_date"] }
+                { key: "settled_date", label: "Settled Date", required: false, hints: ["settled_date","settlement_date","paid_date"] },
+                { key: "amount_paid", label: "Amount Paid to Date", required: false, hints: ["amount_paid","amount_paid_to_date","amountpaid","paid_to_date","paidtodate","payments_to_invoice","paid_amount"] }
               ];
 
               function autoMatch(hints, cols) {
@@ -10920,6 +10921,8 @@ export default function FactoringDashboard() {
                   var declinedDate = parseDateVal(getMapped(row, "declined_date"));
                   var disputedDate = parseDateVal(getMapped(row, "disputed_date"));
                   var settledDate = parseDateVal(getMapped(row, "settled_date"));
+                  var amountPaidStr = getMapped(row, "amount_paid");
+                  var amountPaid = amountPaidStr ? parseFloat(amountPaidStr) : null;
 
                   // Find existing invoice by reference
                   var existing = INVOICES_DB.find(function(inv) { return inv.invoiceReference === ref; });
@@ -10945,6 +10948,8 @@ export default function FactoringDashboard() {
                     if (disputedDate) { statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" }); invStatus = "Disputed"; }
                     if (settledDate) { statusHist.push({ status: "Settled", date: settledDate, note: "Via CSV import" }); invStatus = "Settled"; }
 
+                    var csvNotes = ["Created via CSV import"];
+                    if (amountPaid !== null) csvNotes.push("Amount Paid to Date: " + money(amountPaid, currency) + " (Payments to Invoice: " + money(amount - amountPaid, currency) + ")");
                     INVOICES_DB.push({
                       id: newId, supplierName: sup.name, supplierId: sup.id, buyerName: buy.name, buyerId: buy.id,
                       amount: amount, currency: currency.toUpperCase(),
@@ -10957,7 +10962,8 @@ export default function FactoringDashboard() {
                       invoiceReference: ref, purchaseOrder: po || null,
                       invoiceStatusHistory: statusHist,
                       adjustments: [], doNotFund: false,
-                      notes: [{ text: "Created via CSV import", display: nowDisplay }]
+                      csvAmountPaid: amountPaid,
+                      notes: csvNotes.map(function(t) { return { text: t, display: nowDisplay }; })
                     });
                     auditLog("Invoice Created (CSV)", "Invoice " + newId + " (" + ref + ") created via CSV import. " + sup.name + " / " + buy.name + " / " + money(amount, currency), { invoiceId: newId, reference: ref, source: "csv_import" });
                     created++;
@@ -11031,6 +11037,16 @@ export default function FactoringDashboard() {
                     if (!hasReceived) {
                       existing.invoiceStatusHistory.push({ status: "Buyer Received", date: buyerReceivedDate, note: "Via CSV import" });
                       changes.push("Buyer Received: " + buyerReceivedDate);
+                    }
+                  }
+
+                  // Amount Paid to Date — informational, stored as metadata and logged
+                  if (amountPaid !== null) {
+                    var prevPaid = existing.csvAmountPaid || 0;
+                    if (Math.abs(amountPaid - prevPaid) > 0.01) {
+                      var paymentsToInv = existing.amount - amountPaid;
+                      existing.csvAmountPaid = amountPaid;
+                      changes.push("Amount Paid: " + money(prevPaid, existing.currency) + " \u2192 " + money(amountPaid, existing.currency) + " (Payments to Invoice: " + money(paymentsToInv, existing.currency) + ")");
                     }
                   }
 
