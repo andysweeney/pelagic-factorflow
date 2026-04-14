@@ -1569,6 +1569,9 @@ export default function FactoringDashboard() {
   var chLive2 = useState(false), chLiveLoading = chLive2[0], setChLiveLoading = chLive2[1];
   var aps1 = useState(""), allocProgFilter = aps1[0], setAllocProgFilter = aps1[1];
   var ass1 = useState(""), allocSupFilter = ass1[0], setAllocSupFilter = ass1[1];
+  var payR1 = useState([]), payRoutings = payR1[0], setPayRoutings = payR1[1]; // [{supplierId, supplierName, programId, programName, amount}]
+  var payR2 = useState("route"), payAllocPhase = payR2[0], setPayAllocPhase = payR2[1]; // "route" | "allocate"
+  var payR3 = useState(null), activeRouting = payR3[0], setActiveRouting = payR3[1]; // index into payRoutings for phase 2
   var wp1 = useState(""), woPenalty = wp1[0], setWoPenalty = wp1[1];
   var wi1 = useState(""), woInterest = wi1[0], setWoInterest = wi1[1];
   var wc1 = useState(""), woCapital = wc1[0], setWoCapital = wc1[1];
@@ -2096,7 +2099,7 @@ export default function FactoringDashboard() {
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
       createdDisplay: useDisplay,
-      executedAt: viewDate !== REF_DATE ? viewDate + "T12:00:00.000Z" : now.toISOString(),
+      executedAt: now.toISOString(),
       executedDisplay: useDisplay
     });
     auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
@@ -8215,7 +8218,7 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
+                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -8361,173 +8364,233 @@ export default function FactoringDashboard() {
         </div>}
 
         {/* Allocation Panel */}
-        {isP && allocPay && <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
-          <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Allocating: {allocPay.paymentId}</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{money(allocPay.amount, allocPay.currency)} - {fmt(allocPay.date)}</div></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{money(Math.max(0, (function() { var remitTotal = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitTotal += q.amount; }); return r2(allocPay.amount - remitTotal - allocs.reduce(function(s, a) { return s + a.amount; }, 0)); })()), allocPay.currency)}</div></div>
-              {allocs.length > 0 && <button onClick={function() { setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear All</button>}
-              <button onClick={function() { setAllocPay(null); setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-            </div>
-          </div>
-          <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Select invoices</span>
-              <select value={allocProgFilter} onChange={function(e) { setAllocProgFilter(e.target.value); setAllocSupFilter(""); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 160 }}><option value="">All Programs</option>{FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>
-              <select value={allocSupFilter} onChange={function(e) { setAllocSupFilter(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 160 }}><option value="">All Suppliers</option>{(function() { if (!allocProgFilter) return SUPPLIERS_DB; var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === allocProgFilter; }); if (!prog || !prog.eligibleSuppliers || prog.eligibleSuppliers.length === 0) return SUPPLIERS_DB; return SUPPLIERS_DB.filter(function(s) { return prog.eligibleSuppliers.indexOf(s.id) > -1 || prog.eligibleSuppliers.some(function(eid) { return getParentEntityId(eid) === s.id; }); }); })().map(function(s) { return <option key={s.id} value={s.name}>{s.name}</option>; })}</select>
-              <input type="text" value={allocSearch} onChange={function(e) { setAllocSearch(e.target.value); }} placeholder="Search..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 150 }} />
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto" }}>
-              {allocViewData && (function() {
-                var remitTotal = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitTotal += q.amount; });
-                var avail = r2(allocPay.amount - remitTotal) - allocs.reduce(function(s, a) { return s + a.amount; }, 0);
-                // Build set of invoice IDs that already have allocations in the working set
-                var allocatedInvIds = {};
-                allocs.forEach(function(a) { allocatedInvIds[a.invoiceId] = true; });
-                // Build set of fully settled invoice IDs — only exclude when total buyer payments >= invoice face value
-                var fullySettledIds = {};
-                viewData.invoices.forEach(function(inv) {
-                  if (inv.paymentsToInvoice >= (inv.amount || 0) - 0.01 && inv.amount > 0.01) fullySettledIds[inv.id] = true;
-                });
-                var eligible = allocViewData.invoices.filter(function(inv) {
-                  if (inv.currency !== allocPay.currency) return false;
-                  // Always include invoices that already have allocations in the working set
-                  if (allocatedInvIds[inv.id]) return true;
-                  // Exclude only when full invoice value has been paid by buyers
-                  if (fullySettledIds[inv.id]) return false;
-                  // Funded invoices with outstanding balance
-                  if (inv.totalOutstanding > 0.01) return true;
-                  // Zero-funded invoices (capitalDue === 0 but funded) — payments to be returned to supplier
-                  if (inv.capitalDue === 0 && inv.fundedDate) return true;
-                  // Pending/unfunded invoices — payments can be received and held for return to supplier
-                  if (inv.fundingStatus === "pending" || (inv.fundingStatus === "approved" && !inv.fundedDate)) return true;
-                  return false;
-                });
-                // Filter by funding program
-                if (allocProgFilter) eligible = eligible.filter(function(inv) { return inv.fundingProgram === allocProgFilter; });
-                // Filter by supplier
-                if (allocSupFilter) eligible = eligible.filter(function(inv) { return inv.supplierName === allocSupFilter; });
-                if (allocSearch) { var s = allocSearch.toLowerCase(); eligible = eligible.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) >= 0 || inv.buyerName.toLowerCase().indexOf(s) >= 0; }); }
-                eligible.sort(function(a, b) { return a.dueDate < b.dueDate ? -1 : 1; });
-                return <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Invoice", "Buyer", "Status", "Alloc Date", "Pen O/S", "Int O/S", "Cap O/S", "Total O/S", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{eligible.map(function(inv) {
-                    var ex = allocs.find(function(a) { return a.invoiceId === inv.id; });
-                    var aa = ex ? ex.amount : 0;
-                    var allocDate = ex ? ex.allocDate || allocPay.date : allocPay.date;
-                    // For unfunded or zero-funded invoices with genuinely no debt, max allocation is the invoice amount
-                    var isNoDebt = inv.totalOutstanding < 0.01 && inv.holdbackOverdrawn < 0.01;
-                    // Recalculate penalty interest if allocation date differs from viewDate
-                    var adjPen = inv.penaltyInterest;
-                    if (allocDate < viewDate && inv.penaltyInterest > 0 && inv.capitalOutstanding > 0.01) {
-                      // Penalty accrued up to allocDate instead of viewDate — reduce by days saved
-                      var invPenRate = inv.penaltyRate || 0;
-                      var daysSaved = daysBetween(allocDate, viewDate);
-                      var dailyPen = inv.capitalOutstanding * (invPenRate / 360);
-                      adjPen = r2(Math.max(0, inv.penaltyInterest - (dailyPen * daysSaved)));
-                    }
-                    var adjTotal = isNoDebt ? inv.amount : r2(adjPen + inv.interestOutstanding + inv.capitalOutstanding + Math.max(inv.holdbackOutstanding || 0, inv.holdbackOverdrawn || 0));
-                    var invMax = isNoDebt ? inv.amount : adjTotal;
-                    var mx = r2(Math.min(invMax, avail + aa));
-                    var prP = 0, prI = 0, prC = 0;
-                    if (aa > 0 && !isNoDebt) { var rm = aa, pB = adjPen, iB = inv.interestOutstanding, cB = inv.capitalOutstanding; if (rm > 0 && pB > 0.001) { var x = Math.min(rm, pB); prP = x; rm -= x; } if (rm > 0 && iB > 0.001) { var x2 = Math.min(rm, iB); prI = x2; rm -= x2; } if (rm > 0 && cB > 0.001) { prC = Math.min(rm, cB); } }
-                    var ms = { padding: "8px 8px", fontSize: 12.5, fontFamily: "'JetBrains Mono', monospace" };
-                    var fst = FST[inv.fundingStatus] || FST.funded;
-                    var noDebtLabel = inv.fundingStatus === "pending" ? "Unfunded" : inv.capitalDue === 0 ? "Zero funded" : "\u2014";
-                    var dateChanged = allocDate !== allocPay.date;
-                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#2B4C7E08" : "transparent" }}>
-                      <td style={Object.assign({}, ms, { color: "var(--accent)" })}>{inv.id}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                      <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: fst.color }}>{fst.label}</span></td>
-                      <td style={{ padding: "5px 8px" }}><input type="date" value={allocDate} onChange={function(e) { var newDate = e.target.value; if (!newDate) return; var iid = inv.id; setAllocs(function(prev) { var exists = prev.find(function(a) { return a.invoiceId === iid; }); if (exists) { return prev.map(function(a) { return a.invoiceId === iid ? Object.assign({}, a, { allocDate: newDate }) : a; }); } else { return prev.concat([{ invoiceId: iid, amount: 0, allocDate: newDate }]); } }); }} style={{ padding: "4px 6px", borderRadius: 5, border: "1px solid " + (dateChanged ? "#D97706" : "var(--border)"), background: dateChanged ? "#C08B3008" : "var(--bg)", color: dateChanged ? "#D97706" : "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 110 }} /></td>
-                      <td style={Object.assign({}, ms, { color: adjPen > 0 ? "#DC2626" : "var(--muted)" })}>{adjPen > 0 ? money(adjPen, inv.currency) : "\u2014"}{dateChanged && inv.penaltyInterest !== adjPen && <span style={{ color: "#D97706", fontSize: 9, display: "block" }}>was {money(inv.penaltyInterest, inv.currency)}</span>}{prP > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prP, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: inv.interestOutstanding > 0 ? "#D97706" : "var(--muted)" })}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prI, inv.currency)}</span>}</td>
-                      <td style={Object.assign({}, ms, { color: "var(--text)" })}>{isNoDebt ? <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 10 }}>{noDebtLabel}</span> : <span>{money(inv.capitalOutstanding, inv.currency)}{prC > 0 && <span style={{ color: "#059669", fontSize: 10 }}> -{money(prC, inv.currency)}</span>}</span>}</td>
-                      <td style={Object.assign({}, ms, { fontWeight: 600 })}>{isNoDebt ? money(inv.amount, inv.currency) : money(adjTotal, inv.currency)}</td>
-                      <td style={{ padding: "5px 10px" }}><div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <input type="number" step="0.01" min="0" max={mx} value={aa > 0 ? aa : ""} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, mx); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var w = prev.filter(function(a) { return a.invoiceId !== iid; }); var entry = { invoiceId: iid, amount: r2(val) }; if (ad !== allocPay.date) entry.allocDate = ad; return w.concat([entry]); }); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aa > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
-                        {mx > 0 && avail > 0.01 && aa < 0.01 && <button onClick={function() { var val = r2(Math.min(invMax, avail)); var iid = inv.id; var ad = allocDate; setAllocs(function(prev) { var entry = { invoiceId: iid, amount: val }; if (ad !== allocPay.date) entry.allocDate = ad; return prev.filter(function(a) { return a.invoiceId !== iid; }).concat([entry]); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Max</button>}
-                        {aa > 0 && <button onClick={function() { var iid = inv.id; setAllocs(function(prev) { return prev.map(function(a) { return a.invoiceId === iid ? Object.assign({}, a, { amount: 0 }) : a; }); }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "#DC2626", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>}
-                      </div></td>
+                {isP && allocPay && (function() {
+          var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === allocPay.paymentId; });
+          var routedTotal = payRoutings.reduce(function(s, r) { return s + r.amount; }, 0);
+          var remaining = r2(allocPay.amount - routedTotal);
+          var phase = payAllocPhase;
+
+          // Get all supplier entities including branches
+          var allSupEntities = getAllSupplierEntities();
+
+          // PHASE 1: Route payment to Program + Supplier
+          if (phase === "route") {
+            return <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
+              <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div><div style={{ fontSize: 14, fontWeight: 700 }}>Step 1: Allocate Payment to Program & Supplier</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{allocPay.paymentId} — {money(allocPay.amount, allocPay.currency)} received {fmt(allocPay.date)}</div></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div><div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "var(--accent)" : "#10B981" }}>{money(remaining, allocPay.currency)}</div></div>
+                  <button onClick={function() { setAllocPay(null); setPayRoutings([]); setPayAllocPhase("route"); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                </div>
+              </div>
+
+              {/* Existing routings */}
+              {payRoutings.length > 0 && <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>Allocated</div>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>{["Program", "Supplier", "Amount", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                  <tbody>{payRoutings.map(function(r, ri) {
+                    return <tr key={ri} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)" }}>{r.programName}</td>
+                      <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)" }}>{r.supplierName}</td>
+                      <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{money(r.amount, allocPay.currency)}</td>
+                      <td style={{ padding: "8px 10px" }}><button onClick={function() { setPayRoutings(function(prev) { var n = prev.slice(); n.splice(ri, 1); return n; }); }} style={{ fontSize: 10, color: "#EF4444", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>Remove</button></td>
                     </tr>;
                   })}</tbody>
-                </table>;
-              })()}
-            </div>
-          </div>
-          {(function() { var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); return allocs.length > 0 || r2(allocPay.amount - remitT) > 0.01; })() && <div style={{ padding: "16px 22px" }}>
-            {confirmData && <div style={{ marginBottom: 14, padding: "14px 18px", borderRadius: 10, background: "#C08B3010", border: "1px solid #C08B3040" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#D97706", marginBottom: 8 }}>Later-dated payments will be unallocated:</div>
-              {confirmData.later.map(function(l) { return <div key={l.pid} style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", marginBottom: 2 }}>{l.pid} ({l.invs.join(", ")})</div>; })}
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={function() { executeAllocation(confirmData.later, confirmData.aff); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#D97706", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Proceed</button>
-                <button onClick={function() { setConfirmData(null); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-              </div>
-            </div>}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 13 }}>
-                {allocs.length > 0 && React.createElement("span", null, React.createElement("span", { style: { color: "var(--muted)" } }, "Allocating: "), React.createElement("span", { style: { color: "#059669", fontWeight: 600 } }, money(allocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency)), React.createElement("span", { style: { color: "var(--muted)" } }, " to " + allocs.length + " invoice" + (allocs.length !== 1 ? "s" : "")))}
-                {(function() {
-                  var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); var remBal = r2(allocPay.amount - remitT - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
-                  return remBal > 0.01 ? React.createElement("span", { style: { color: "var(--muted)", marginLeft: allocs.length > 0 ? 12 : 0 } }, "Remaining: ", React.createElement("span", { style: { color: "var(--accent)", fontWeight: 600 } }, money(remBal, allocPay.currency))) : null;
-                })()}
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {allocs.length > 0 && <button onClick={confirmAllocation} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 14px #2B4C7E40" }}>Confirm Allocation</button>}
-                {(function() {
-                  var remitT = 0; SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === allocPay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") remitT += q.amount; }); var remBal = r2(allocPay.amount - remitT - allocs.reduce(function(s, a) { return s + a.amount; }, 0));
-                  if (remBal < 0.01) return null;
-                  return <button onClick={function() { setRemitPopup({ paymentId: allocPay.paymentId, amount: remBal, currency: allocPay.currency, supplier: "", programId: "" }); }} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #059669", background: "#05966910", color: "#059669", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Remit {money(remBal, allocPay.currency)} to Supplier</button>;
-                })()}
-              </div>
-            </div>
-          </div>}
-        </div>}
+                </table>
+              </div>}
 
-        {/* Remit to Supplier Popup */}
-        {remitPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setRemitPopup(null); }}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: "28px", maxWidth: 480, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#059669", marginBottom: 4 }}>Remit to Supplier</div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Send {money(remitPopup.amount, remitPopup.currency)} from {remitPopup.paymentId} directly to a supplier</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 20 }}>
-              <div>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Supplier</label>
-                <select value={remitPopup.supplier} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
-                  <option value="">Select supplier...</option>
-                  {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Program</label>
-                <select value={remitPopup.programId} onChange={function(e) { setRemitPopup(function(p) { return Object.assign({}, p, { programId: e.target.value }); }); }} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }}>
-                  <option value="">Select program...</option>
-                  {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name} ({fp.currency})</option>; })}
-                </select>
-              </div>
-              <div style={{ padding: "12px 16px", borderRadius: 8, background: "#05966908", border: "1px solid #05966920" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: "var(--muted)" }}>Amount to remit</span>
-                  <span style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(remitPopup.amount, remitPopup.currency)}</span>
+              {/* Add routing form */}
+              {remaining > 0.01 && (function() {
+                var rProg = useState(""), rProgV = rProg[0], setRProgV = rProg[1];
+                var rSup = useState(""), rSupV = rSup[0], setRSupV = rSup[1];
+                var rAmt = useState(String(remaining)), rAmtV = rAmt[0], setRAmtV = rAmt[1];
+
+                return <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Add Allocation</div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 180 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Program *</label>
+                      <select value={rProgV} onChange={function(e) { setRProgV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
+                        <option value="">Select program...</option>
+                        {FUNDING_PROGRAMS_DB.filter(function(fp) { return fp.currency === allocPay.currency; }).map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
+                      </select>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Supplier *</label>
+                      <select value={rSupV} onChange={function(e) { setRSupV(e.target.value); }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12 }}>
+                        <option value="">Select supplier / branch...</option>
+                        {allSupEntities.map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
+                      </select>
+                    </div>
+                    <div style={{ minWidth: 120 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Amount</label>
+                      <input type="number" value={rAmtV} onChange={function(e) { setRAmtV(e.target.value); }} step="0.01" style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }} />
+                    </div>
+                    <button disabled={!rProgV || !rSupV || !(parseFloat(rAmtV) > 0)} onClick={function() {
+                      var amt = r2(Math.min(parseFloat(rAmtV) || 0, remaining));
+                      if (amt <= 0) return;
+                      var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === rProgV; });
+                      var supName = getEntityDisplayName(rSupV) || rSupV;
+                      setPayRoutings(function(prev) { return prev.concat([{ supplierId: rSupV, supplierName: supName, programId: rProgV, programName: prog ? prog.name : rProgV, amount: amt }]); });
+                      setRProgV(""); setRSupV(""); setRAmtV(String(r2(remaining - amt)));
+                    }} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "var(--accent)" : "var(--border)", color: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: rProgV && rSupV && parseFloat(rAmtV) > 0 ? "pointer" : "default", whiteSpace: "nowrap" }}>Allocate</button>
+                  </div>
+                </div>;
+              })()}
+
+              {/* Proceed button */}
+              {remaining < 0.01 && payRoutings.length > 0 && <div style={{ padding: "18px 22px", textAlign: "right" }}>
+                <button onClick={function() {
+                  // Log the routing allocations
+                  payRoutings.forEach(function(r) {
+                    auditLog("Payment Routed", allocPay.paymentId + ": " + money(r.amount, allocPay.currency) + " allocated to " + r.supplierName + " via " + r.programName, { paymentId: allocPay.paymentId, amount: r.amount, currency: allocPay.currency, supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, date: allocPay.date });
+                  });
+                  setActiveRouting(0);
+                  setPayAllocPhase("allocate");
+                  // Pre-set the filters for the first routing
+                  var first = payRoutings[0];
+                  setAllocProgFilter(first.programId);
+                  setAllocSupFilter(first.supplierName);
+                  setAllocs([]);
+                }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Next: Apply to Invoices {"\u2192"}</button>
+              </div>}
+            </div>;
+          }
+
+          // PHASE 2: Apply each routing to invoices or pass through
+          if (phase === "allocate" && activeRouting !== null && payRoutings[activeRouting]) {
+            var routing = payRoutings[activeRouting];
+            var allocPayForRouting = Object.assign({}, allocPay, { _routingAmount: routing.amount, _routingSupplierId: routing.supplierId, _routingSupplierName: routing.supplierName, _routingProgramId: routing.programId, _routingProgramName: routing.programName });
+
+            // Filter invoices for this supplier + program
+            var routingInvoices = viewData.invoices.filter(function(inv) {
+              if (inv.supplierId !== routing.supplierId && getParentEntityId(inv.supplierId) !== routing.supplierId && inv.supplierName !== routing.supplierName && getParentSupplierName(inv.supplierName) !== routing.supplierName) return false;
+              if (inv.fundingProgram && inv.fundingProgram !== routing.programId) return false;
+              if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return false;
+              return true;
+            });
+
+            var allocTotal = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+            var routingRemaining = r2(routing.amount - allocTotal);
+
+            return <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
+              <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>Step 2: Apply to Invoices ({activeRouting + 1}/{payRoutings.length})</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{routing.supplierName} via {routing.programName} — {money(routing.amount, allocPay.currency)}</div>
                 </div>
-                {remitPopup.supplier && (function() {
-                  var bankInfo = getSupplierBankDetails(remitPopup.supplier, remitPopup.programId);
-                  return bankInfo.bankName ? <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-secondary)" }}>
-                    <span style={{ color: "var(--muted)" }}>Bank: </span>{bankInfo.bankName}
-                    {bankInfo.bankDetails ? <span style={{ marginLeft: 8, color: "var(--muted)" }}>{bankInfo.bankDetails}</span> : null}
-                    {bankInfo.bankVerified ? <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: "#05966914", color: "#059669" }}>{"\u2713"} Verified</span> : <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: "#EF444414", color: "#EF4444" }}>Unverified</span>}
-                  </div> : <div style={{ marginTop: 8, fontSize: 11, color: "#D97706" }}>No bank details on file</div>;
-                })()}
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div><div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: routingRemaining > 0.01 ? "#F59E0B" : "#10B981" }}>{money(routingRemaining, allocPay.currency)}</div></div>
+                  {allocs.length > 0 && <button onClick={function() { setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                  <button onClick={function() { setPayAllocPhase("route"); setActiveRouting(null); setAllocs([]); setPayRoutings([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                </div>
               </div>
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button disabled={!remitPopup.supplier || !remitPopup.programId} onClick={function() {
-                if (allocs.length > 0) confirmAllocation();
-                remitToSupplier(remitPopup.paymentId, remitPopup.supplier, remitPopup.amount, remitPopup.currency, remitPopup.programId);
-              }} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: remitPopup.supplier && remitPopup.programId ? "#059669" : "var(--border)", color: remitPopup.supplier && remitPopup.programId ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: remitPopup.supplier && remitPopup.programId ? "pointer" : "default" }}>{allocs.length > 0 ? "Allocate & Remit" : "Remit to Supplier"}</button>
-              <button onClick={function() { setRemitPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-            </div>
-          </div>
-        </div>}
+
+              {/* Invoice list for this routing */}
+              <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Select invoices for {routing.supplierName}</div>
+                <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Invoice", "Buyer", "Amount", "Outstanding", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).map(function(inv) {
+                      var existing = allocs.find(function(a) { return a.invoiceId === inv.id; });
+                      var currentAmt = existing ? existing.amount : 0;
+                      return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: currentAmt > 0 ? "#0EA5E908" : "transparent" }}>
+                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(inv.totalOutstanding, inv.currency)}</td>
+                        <td style={{ padding: "6px 8px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
+                          var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding, routingRemaining + currentAmt));
+                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val }); return n; });
+                        }} step="0.01" placeholder="0.00" style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                  {routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices with outstanding balance for this supplier/program</div>}
+                </div>
+              </div>
+
+              {/* Confirm / Pass-through buttons */}
+              <div style={{ padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {allocs.length > 0 ? allocs.length + " invoice(s): " + money(allocTotal, allocPay.currency) + " allocated" : "No invoices selected"}
+                  {routingRemaining > 0.01 && allocs.length > 0 ? " — " + money(routingRemaining, allocPay.currency) + " will be passed through to supplier" : ""}
+                  {routingRemaining > 0.01 && allocs.length === 0 ? "Full amount will be passed through to supplier" : ""}
+                </div>
+                <button onClick={function() {
+                  // Confirm this routing's allocation
+                  var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routing.programId; });
+                  var now = new Date();
+                  var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+                  // Apply invoice allocations
+                  if (allocs.length > 0 && pay) {
+                    var activeAllocs = allocs.filter(function(a) { return a.amount > 0; });
+                    activeAllocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date }); });
+
+                    // Credit Program available balance for payments to funded invoices
+                    if (prog) {
+                      var creditTotal = activeAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                      if (!prog.fundFlows) prog.fundFlows = [];
+                      var flowId = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
+                      prog.fundFlows.push({ flowId: flowId, type: "add", amount: r2(creditTotal), date: allocPay.date, serviceProvider: "Payment " + allocPay.paymentId, reason: "Payment allocated to " + activeAllocs.length + " invoice(s) for " + routing.supplierName, status: "completed" });
+                      auditLog("Program Funds Added", prog.name + ": " + money(r2(creditTotal), allocPay.currency) + " credited — payment " + allocPay.paymentId + " allocated to " + activeAllocs.length + " invoice(s) for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "add", amount: r2(creditTotal), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowId, invoiceCount: activeAllocs.length });
+                    }
+
+                    auditLog("Payment Allocated", allocPay.paymentId + ": " + money(allocTotal, allocPay.currency) + " applied to " + activeAllocs.length + " invoice(s) for " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, amount: allocTotal, currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, programId: routing.programId, programName: routing.programName, allocations: activeAllocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }) });
+                  }
+
+                  // Pass-through remainder to supplier
+                  if (routingRemaining > 0.01) {
+                    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                    var bankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
+                    SUPPLIER_PAYMENT_QUEUE.push({
+                      id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
+                      supplierName: routing.supplierName, supplierId: routing.supplierId,
+                      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+                      amount: r2(routingRemaining), currency: allocPay.currency, status: "Pending",
+                      programId: routing.programId, programName: routing.programName,
+                      createdAt: now.toISOString(), createdDisplay: nowDisp,
+                      sourcePaymentId: allocPay.paymentId
+                    });
+
+                    // Program: awaiting disbursal
+                    if (prog) {
+                      if (!prog.fundFlows) prog.fundFlows = [];
+                      var flowIdIn = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
+                      prog.fundFlows.push({ flowId: flowIdIn, type: "add", amount: r2(routingRemaining), date: allocPay.date, serviceProvider: "Payment " + allocPay.paymentId, reason: "Pass-through received for " + routing.supplierName, status: "completed" });
+                      var flowIdOut = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
+                      prog.fundFlows.push({ flowId: flowIdOut, type: "disburse", amount: r2(routingRemaining), date: allocPay.date, serviceProvider: routing.supplierName, reason: "Pass-through to " + routing.supplierName + " (" + spqId + ")", status: "pending" });
+
+                      auditLog("Program Funds Added", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pass-through credit from " + allocPay.paymentId + " for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "add", amount: r2(routingRemaining), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowIdIn, passThrough: true });
+                      auditLog("Awaiting Disbursal", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pending disbursal to " + routing.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "disburse", amount: r2(routingRemaining), currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, spqId: spqId, flowId: flowIdOut, passThrough: true });
+                    }
+
+                    auditLog("Remittance Queued", spqId + ": " + money(r2(routingRemaining), allocPay.currency) + " queued for remittance to " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(routingRemaining), currency: allocPay.currency, spqId: spqId, programId: routing.programId, programName: routing.programName });
+                  }
+
+                  // Move to next routing or finish
+                  var nextIdx = activeRouting + 1;
+                  if (nextIdx < payRoutings.length) {
+                    setActiveRouting(nextIdx);
+                    setAllocs([]);
+                    setAllocProgFilter(payRoutings[nextIdx].programId);
+                    setAllocSupFilter(payRoutings[nextIdx].supplierName);
+                  } else {
+                    // All done
+                    auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
+                    setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
+                    setDataVer(function(v) { return v + 1; });
+                  }
+                }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{allocs.length > 0 && routingRemaining > 0.01 ? "Apply & Pass Through" : allocs.length > 0 ? "Confirm Allocation" : "Pass Through to Supplier"}</button>
+              </div>
+            </div>;
+          }
+
+          return null;
+        })()}
 
         {/* ========== CREDIT NOTES VIEW ========== */}
         {isCN && (function() {
