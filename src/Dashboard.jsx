@@ -1158,7 +1158,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (approvedAmt > 0 && approvedAmt < effectiveAmt) effectiveAmt = approvedAmt;
     if (amtPostDil < effectiveAmt) effectiveAmt = amtPostDil;
 
-    if (rawInv.fundingStatus === "pending") fs = "pending";
+    if (rawInv.fundingStatus === "historic") fs = "historic";
+    else if (rawInv.fundingStatus === "pending") fs = "pending";
     else if (rawInv.fundingStatus === "approved" && !terminalInvStatus) fs = "approved";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
     else if (rawInv.fundingStatus === "write_off" && debtBal < 0.005) fs = "fully_repaid";
@@ -1250,9 +1251,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
 }
 
 var IST = { "Received": { bg: "#8C9AB514", color: "#94A3B8", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5714", color: "#10B981", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3014", color: "#F59E0B", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5720", color: "#059669", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728014", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B18", color: "#EF4444", border: "#DC262625", icon: "\u2715" }, "Disputed": { bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B20", color: "#DC2626", border: "#DC262630", icon: "\u2716" } };
-var FST = { pending: { label: "Pending", bg: "#C08B3014", color: "#D97706", border: "#C08B3030" }, approved: { label: "Approved", bg: "#567EBB14", color: "#38BDF8", border: "#567EBB30" }, funded: { label: "Funded", bg: "#2B4C7E14", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5720", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B20", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B14", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728020", color: "#6B7280", border: "#6B728040" } };
+var FST = { pending: { label: "Pending", bg: "#C08B3014", color: "#D97706", border: "#C08B3030" }, approved: { label: "Approved", bg: "#567EBB14", color: "#38BDF8", border: "#567EBB30" }, funded: { label: "Funded", bg: "#2B4C7E14", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5720", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA718", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B20", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B14", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728020", color: "#6B7280", border: "#6B728040" }, historic: { label: "Historic", bg: "#64748B14", color: "#94A3B8", border: "#64748B30" } };
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
-var FUND_STATUSES = ["pending", "approved", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off"];
+var FUND_STATUSES = ["pending", "approved", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
 
 function Badge(p) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
@@ -10948,7 +10949,14 @@ export default function FactoringDashboard() {
                     if (disputedDate) { statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" }); invStatus = "Disputed"; }
                     if (settledDate) { statusHist.push({ status: "Settled", date: settledDate, note: "Via CSV import" }); invStatus = "Settled"; }
 
-                    var csvNotes = ["Created via CSV import"];
+                    // Determine if this is a historic invoice (not eligible for funding)
+                    var isHistoric = false;
+                    if (cancelledDate || declinedDate || disputedDate || settledDate) isHistoric = true;
+                    if (dueDate && dueDate < nowStr) isHistoric = true;
+                    if (amountPaid !== null && amount > 0 && amountPaid >= amount - 0.01) isHistoric = true;
+                    var csvFundingStatus = isHistoric ? "historic" : "pending";
+
+                    var csvNotes = ["Created via CSV import" + (isHistoric ? " (Historic)" : "")];
                     if (amountPaid !== null) csvNotes.push("Amount Paid to Date: " + money(amountPaid, currency) + " (Payments to Invoice: " + money(amount - amountPaid, currency) + ")");
                     INVOICES_DB.push({
                       id: newId, supplierName: sup.name, supplierId: sup.id, buyerName: buy.name, buyerId: buy.id,
@@ -10957,7 +10965,7 @@ export default function FactoringDashboard() {
                       advanceRate: 0, annualRate: 0, penaltyRate: 0,
                       invoiceDate: invoiceDate, dueDate: dueDate, fundedDate: null,
                       createdDate: nowStr, approvedDate: approvalDate, fullyRepaidDate: settledDate,
-                      invoiceStatus: invStatus, fundingStatus: "pending",
+                      invoiceStatus: invStatus, fundingStatus: csvFundingStatus,
                       fundingProgram: null, partialApprovedAmount: approvedAmount || 0,
                       invoiceReference: ref, purchaseOrder: po || null,
                       invoiceStatusHistory: statusHist,
