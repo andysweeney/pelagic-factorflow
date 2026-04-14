@@ -1649,6 +1649,9 @@ export default function FactoringDashboard() {
         d = d.filter(function(x) { return getParentEntityId(x.supplierId) === selectedSupplier || getParentSupplierName(x.supplierName) === getEntityDisplayName(selectedSupplier); });
       }
     }
+    if (isB && selectedBuyer) {
+      d = d.filter(function(x) { return x.buyerId === selectedBuyer || x.buyerName === selectedBuyer; });
+    }
     if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
@@ -1657,7 +1660,7 @@ export default function FactoringDashboard() {
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
     return sorted;
-  }, [viewData, isf, fsf, bf, q, sf, sd, isS, selectedSupplier, supCurrency]);
+  }, [viewData, isf, fsf, bf, q, sf, sd, isS, isB, selectedSupplier, selectedBuyer, supCurrency]);
 
   var paged = filtered.slice(pg * PS, (pg + 1) * PS);
   var tp = Math.ceil(filtered.length / PS) || 1;
@@ -2093,7 +2096,7 @@ export default function FactoringDashboard() {
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
       createdDisplay: useDisplay,
-      executedAt: now.toISOString(),
+      executedAt: viewDate !== REF_DATE ? viewDate + "T12:00:00.000Z" : now.toISOString(),
       executedDisplay: useDisplay
     });
     auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
