@@ -4034,7 +4034,7 @@ export default function FactoringDashboard() {
         {/* Supplier Sub-tabs */}
         {isS && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", statement: "Statement" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Pass-through Payments", funding: "Funding Payments", statement: "Statement" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
@@ -5181,6 +5181,13 @@ export default function FactoringDashboard() {
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           var allSupHbps = HOLDBACK_PAYMENTS_DB.filter(function(hbp) { return supInvIds[hbp.sourceInvoiceId]; });
+          // Also include remittance SPQ entries for this supplier
+          var allSupRemittances = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) {
+            if (spq.type !== "remittance") return false;
+            var selBrId = parseEntityId(selectedSupplier).branchId;
+            if (selBrId) return spq.supplierId === selectedSupplier;
+            return getParentEntityId(spq.supplierId) === selectedSupplier || spq.supplierName === getEntityDisplayName(selectedSupplier);
+          });
           var supHbps = allSupHbps.slice();
           if (shSearch) supHbps = supHbps.filter(function(hbp) { var s = shSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
           if (shDateFilter) supHbps = supHbps.filter(function(hbp) { return hbp.date === shDateFilter; });
@@ -5195,10 +5202,10 @@ export default function FactoringDashboard() {
 
           return <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Holdback Payments" value={String(allSupHbps.length)} accent="#0EA5E9" icon={"\u25c6"} />
-              <StatCard label="Total Disbursed" value={money(totalDisbursed, displayCcy)} accent="#059669" icon={"\u25b2"} />
-              <StatCard label="Supplier Returns" value={money(totalSupReturn, displayCcy)} accent="#0F172A" icon={"\u21b5"} />
-              <StatCard label="Invoice Allocations" value={money(totalInvAlloc, displayCcy)} accent="#D97706" icon={"\u2192"} />
+              <StatCard label="Holdback Returns" value={String(allSupHbps.length)} accent="#8B5CF6" icon={"\u25c6"} />
+              <StatCard label="Holdback Total" value={money(totalSupReturn, displayCcy)} accent="#059669" icon={"\u21b5"} />
+              <StatCard label="Remittances" value={String(allSupRemittances.length)} accent="#0EA5E9" icon={"\u2192"} />
+              <StatCard label="Remittance Total" value={money(r2(allSupRemittances.reduce(function(s, r) { return s + r.amount; }, 0)), displayCcy)} accent="#059669" icon={"\u25b2"} />
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
               <input type="text" value={shSearch} onChange={function(e) { setShSearch(e.target.value); }} placeholder="Search HBPs..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
@@ -5207,7 +5214,7 @@ export default function FactoringDashboard() {
               <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{supHbps.length} of {allSupHbps.length}</span>
             </div>
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-              {supHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No holdback payments match filters.</div>}
+              {supHbps.length === 0 && allSupRemittances.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No pass-through payments for this supplier.</div>}
               {supHbps.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Allocations", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
@@ -5232,6 +5239,30 @@ export default function FactoringDashboard() {
                     </tbody>;
                   })}
                 </table>
+              </div>}
+
+              {/* Remittance Payments */}
+              {allSupRemittances.length > 0 && <div style={{ marginTop: 18 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "var(--accent)" }}>Remittance Payments ({allSupRemittances.length})</div>
+                <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["SPQ ID", "Date", "Source Payment", "Amount", "CCY", "Program", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{allSupRemittances.sort(function(a, b) { return (a.createdAt || "") > (b.createdAt || "") ? -1 : 1; }).map(function(spq) {
+                        var statusColor = spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : spq.status === "Cancelled" ? "var(--muted)" : "#D97706";
+                        return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{spq.id}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.executedDisplay || spq.createdDisplay || ""}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{spq.sourcePaymentId || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#059669" }}>{money(spq.amount, spq.currency)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{spq.currency}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10, fontWeight: 700, color: statusColor }}>{spq.status}</span></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                </div>
               </div>}
             </div>
           </div>;
