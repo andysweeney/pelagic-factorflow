@@ -3248,6 +3248,14 @@ export default function FactoringDashboard() {
                                   var supPayments = [];
                                   if (inv.fundingStatus !== "pending" && inv.fundedDate) supPayments.push({ type: "Cash Advance", id: inv.id, date: inv.fundedDate, amount: inv.capitalDue, currency: inv.currency, description: "Capital advanced on funding" });
                                   HOLDBACK_PAYMENTS_DB.forEach(function(hbp) { if (hbp.sourceInvoiceId !== inv.id) return; hbp.allocations.forEach(function(a) { if (a.type === "disbursement") supPayments.push({ type: "Holdback Return", id: hbp.hbPaymentId, date: hbp.date, amount: a.amount, currency: hbp.currency, description: "Holdback returned to supplier" }); else if (a.type === "invoice") supPayments.push({ type: "Holdback to Invoice", id: hbp.hbPaymentId, date: hbp.date, amount: a.amount, currency: hbp.currency, description: "Applied to " + a.targetId }); }); });
+                                  // Also check SPQ for holdback entries not yet in HOLDBACK_PAYMENTS_DB (pending execution)
+                                  var hbpIds = {};
+                                  supPayments.forEach(function(sp) { if (sp.type === "Holdback Return") hbpIds[sp.id] = true; });
+                                  SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                                    if (spq.type !== "holdback" || spq.sourceInvoiceId !== inv.id) return;
+                                    if (hbpIds[spq.hbPaymentId]) return;
+                                    supPayments.push({ type: "Holdback Return", id: spq.hbPaymentId || spq.id, date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, description: spq.status === "Completed" ? "Holdback returned to supplier" : "Holdback return (" + spq.status + ")" });
+                                  });
                                   if (supPayments.length === 0) return null;
                                   return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                     React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spAccent, marginBottom: 12 } }, "Payments to Supplier (" + supPayments.length + ")"),
