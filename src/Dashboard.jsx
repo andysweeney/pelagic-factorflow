@@ -2053,7 +2053,13 @@ export default function FactoringDashboard() {
     var progInvIdSet = {};
     progInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
     SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-      if (spq.status === "Pending" && spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+      if (spq.status !== "Pending") return;
+      // Holdback returns linked to program invoices
+      if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+        pendingDisbursalsAmt += spq.amount || 0;
+      }
+      // Pass-through remittances allocated to this program
+      else if (spq.type === "remittance" && spq.programId === programId) {
         pendingDisbursalsAmt += spq.amount || 0;
       }
     });
@@ -2542,13 +2548,14 @@ export default function FactoringDashboard() {
         }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) {
-          if (!spInvIds[h.sourceInvoiceId]) return false;
-          // Only show if the associated SPQ entry has been executed (Completed)
+          // Match by invoice ID or by supplier on the SPQ entry
           var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.hbPaymentId === h.hbPaymentId; });
           if (!spq || spq.status !== "Completed") return false;
-          // Skip if this HBP was part of a bundle (already counted in spFundingPays via the bundle record)
+          // Match if invoice is in scope OR if SPQ supplier matches
+          var invoiceMatch = spInvIds[h.sourceInvoiceId];
+          var supplierMatch = spq && (spMatchesScope(spq.supplierId) || spMatchesScopeByName(spq.supplierName));
+          if (!invoiceMatch && !supplierMatch) return false;
           if (spq.isBundle) return false;
-          // Only show if there's an actual disbursement to the supplier
           var supReturn = 0;
           (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
           if (supReturn < 0.01) return false;
@@ -5902,7 +5909,10 @@ export default function FactoringDashboard() {
               var progInvIdSet = {};
               allProgInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
               SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-                if (spq.status === "Pending" && spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+                if (spq.status !== "Pending") return;
+                if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+                  pendingDisbursals += spq.amount || 0;
+                } else if (spq.type === "remittance" && spq.programId === selectedProgram) {
                   pendingDisbursals += spq.amount || 0;
                 }
               });
