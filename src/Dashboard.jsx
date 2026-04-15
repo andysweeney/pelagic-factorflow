@@ -2552,8 +2552,15 @@ export default function FactoringDashboard() {
         spInvs.forEach(function(inv) { spInvIds[inv.id] = true; });
 
         var spFundingPays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
-          return q.type === "funding" && (spInvIds[q.invoiceId] || (q.invoiceIds && q.invoiceIds.some(function(iid) { return spInvIds[iid]; })));
-        }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.invoiceId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
+          if (q.type !== "funding") return false;
+          if (!(spInvIds[q.invoiceId] || (q.invoiceIds && q.invoiceIds.some(function(iid) { return spInvIds[iid]; })))) return false;
+          // If this is an individual entry, check if a bundle exists that covers it
+          if (!q.isBundle && q.invoiceId) {
+            var coveredByBundle = SUPPLIER_PAYMENT_QUEUE.some(function(b) { return b.isBundle && b.invoiceIds && b.invoiceIds.indexOf(q.invoiceId) >= 0; });
+            if (coveredByBundle) return false;
+          }
+          return true;
+        }).map(function(q) { return { id: q.id, type: "Funding", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.isBundle ? q.invoiceIds.join(", ") : (q.invoiceId || ""), program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
         var spRemittancePays = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
           return q.type === "remittance" && (spMatchesScope(q.supplierId) || spMatchesScopeByName(q.supplierName));
@@ -3491,7 +3498,7 @@ export default function FactoringDashboard() {
               if (spTypeFilter !== "all") filteredPTP = filteredPTP.filter(function(ep) { return ep.pay.currency === spTypeFilter; });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
-                filteredPTP = filteredPTP.filter(function(ep) { return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }) || ep.pay.reference.toLowerCase().indexOf(s) > -1; });
+                filteredPTP = filteredPTP.filter(function(ep) { return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }) || (ep.pay.reference || "").toLowerCase().indexOf(s) > -1; });
               }
               var ptpCcys = [];
               var seenCcys = {};
