@@ -2304,6 +2304,18 @@ export default function FactoringDashboard() {
     item.status = "Completed";
     item.executedAt = now.toISOString();
     item.executedDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+    // For remittance payments, record the completed outflow in the program's fundFlows
+    if (item.type === "remittance" && item.programId) {
+      var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === item.programId; });
+      if (prog) {
+        if (!prog.fundFlows) prog.fundFlows = [];
+        var flowId = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
+        prog.fundFlows.push({ flowId: flowId, type: "outflow", amount: item.amount, date: now.toISOString().split("T")[0], serviceProvider: item.supplierName, reason: "Remittance executed to " + item.supplierName + " (" + spqId + ")", status: "completed" });
+        auditLog("Program Funds Disbursed", prog.name + ": " + money(item.amount, item.currency) + " disbursed to " + item.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "outflow", amount: item.amount, currency: item.currency, supplierId: item.supplierId, supplierName: item.supplierName, spqId: spqId, flowId: flowId });
+      }
+    }
+
     auditLog("Supplier Payment Executed", spqId + " executed: " + money(item.amount, item.currency) + " to " + item.supplierName + " — " + (item.bankName ? item.bankName + " " + item.bankDetails : "No bank on file"), { queueId: spqId, hbPaymentId: item.hbPaymentId, sourceInvoiceId: item.sourceInvoiceId, supplierName: item.supplierName, supplierId: item.supplierId, bankName: item.bankName, bankDetails: item.bankDetails, bankVerified: item.bankVerified || false, amount: item.amount, currency: item.currency });
     setDataVer(function(v) { return v + 1; });
   }
@@ -3254,7 +3266,7 @@ export default function FactoringDashboard() {
                                   SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
                                     if (spq.type !== "holdback" || spq.sourceInvoiceId !== inv.id) return;
                                     if (hbpIds[spq.hbPaymentId]) return;
-                                    supPayments.push({ type: "Holdback Return", id: spq.hbPaymentId || spq.id, date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, description: spq.status === "Completed" ? "Holdback returned to supplier" : "Holdback return (" + spq.status + ")" });
+                                    supPayments.push({ type: "Holdback Return", id: spq.hbPaymentId || spq.id, date: spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : viewDate, amount: spq.amount, currency: spq.currency, description: spq.status === "Completed" ? "Holdback returned to supplier" : "Holdback return (" + spq.status + ")" });
                                   });
                                   if (supPayments.length === 0) return null;
                                   return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
