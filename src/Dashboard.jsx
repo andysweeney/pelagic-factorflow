@@ -1444,7 +1444,7 @@ export default function FactoringDashboard() {
     if (document.getElementById("ff-tooltip-styles")) return;
     var s = document.createElement("style");
     s.id = "ff-tooltip-styles";
-    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1A2744}";
+    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:50%;left:-12px;transform:translateY(-50%);border:6px solid transparent;border-right-color:#1A2744}";
     document.head.appendChild(s);
   }, []);
 
@@ -3674,7 +3674,8 @@ export default function FactoringDashboard() {
                   React.createElement("select", { value: spTypeFilter, onChange: function(e) { setSpTypeFilter(e.target.value); }, style: filterSel },
                     React.createElement("option", { value: "all" }, "All Types"),
                     React.createElement("option", { value: "Funding" }, "Funding"),
-                    React.createElement("option", { value: "Holdback Return" }, "Holdback Return")
+                    React.createElement("option", { value: "Holdback Return" }, "Holdback Return"),
+                  React.createElement("option", { value: "Remittance" }, "Remittance")
                   ),
                   (spSearch || spTypeFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpTypeFilter("all"); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredPTY.length + " of " + spAllPaymentsToYou.length)
