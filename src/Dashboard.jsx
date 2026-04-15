@@ -2585,11 +2585,26 @@ export default function FactoringDashboard() {
 
         var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).concat(spRemittancePays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
 
-        // Payments to Pelagic — incoming allocations
+        // Payments to Pelagic — incoming allocations AND pass-throughs
         var spAllPaysToPelagic = [];
+        var ptpPayIds = {};
         PAYMENTS_DB.forEach(function(p) {
           var matchAllocs = p.allocations.filter(function(a) { return spInvIds[a.invoiceId]; });
-          if (matchAllocs.length > 0) spAllPaysToPelagic.push({ pay: p, allocs: matchAllocs });
+          if (matchAllocs.length > 0) {
+            spAllPaysToPelagic.push({ pay: p, allocs: matchAllocs });
+            ptpPayIds[p.paymentId] = true;
+          }
+        });
+        // Also include payments that generated remittances to this supplier (pass-throughs)
+        SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+          if (spq.type !== "remittance" || !spq.sourcePaymentId) return;
+          if (ptpPayIds[spq.sourcePaymentId]) return;
+          if (!spMatchesScope(spq.supplierId) && !spMatchesScopeByName(spq.supplierName)) return;
+          var sourcePay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+          if (sourcePay) {
+            spAllPaysToPelagic.push({ pay: sourcePay, allocs: [{ invoiceId: "Pass-through", amount: spq.amount }], isPassThrough: true, spqId: spq.id, spqStatus: spq.status });
+            ptpPayIds[sourcePay.paymentId] = true;
+          }
         });
         spAllPaysToPelagic.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
 
@@ -5228,7 +5243,19 @@ export default function FactoringDashboard() {
           var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
-          var allSupFunding = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.type === "funding" && (supInvIds[spq.invoiceId] || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return supInvIds[iid]; }))); });
+          var allSupFunding = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) {
+            // Funding payments linked to this supplier's invoices
+            if (spq.type === "funding" && (supInvIds[spq.invoiceId] || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return supInvIds[iid]; })))) return true;
+            // Remittance payments (pass-throughs) to this supplier
+            if (spq.type === "remittance") {
+              var selBrId = parseEntityId(selectedSupplier).branchId;
+              if (selBrId) { if (spq.supplierId === selectedSupplier) return true; }
+              else { if (getParentEntityId(spq.supplierId) === selectedSupplier || spq.supplierName === getEntityDisplayName(selectedSupplier)) return true; }
+            }
+            // Holdback returns to this supplier
+            if (spq.type === "holdback" && supInvIds[spq.sourceInvoiceId]) return true;
+            return false;
+          });
           var sfSearch = saSearch, sfDateFilter = saDateFilter;
           var supFunding = allSupFunding.slice();
           if (sfSearch) supFunding = supFunding.filter(function(fp) { var s = sfSearch.toLowerCase(); return fp.id.toLowerCase().indexOf(s) > -1 || (fp.invoiceId || "").toLowerCase().indexOf(s) > -1; });
