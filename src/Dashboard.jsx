@@ -2547,24 +2547,28 @@ export default function FactoringDashboard() {
           return q.type === "remittance" && (spMatchesScope(q.supplierId) || spMatchesScopeByName(q.supplierName));
         }).map(function(q) { return { id: q.id, type: "Remittance", date: q.executedDisplay || q.createdDisplay || "", amount: q.amount, currency: q.currency, status: q.status, reference: q.sourcePaymentId || "", program: q.programName || "", sortDate: q.executedAt || q.createdAt || "" }; });
 
-        var spHoldbackPays = HOLDBACK_PAYMENTS_DB.filter(function(h) {
-          // Match by invoice ID or by supplier on the SPQ entry
+        var spHoldbackPays = [];
+        // Method 1: From HOLDBACK_PAYMENTS_DB with completed SPQ
+        HOLDBACK_PAYMENTS_DB.forEach(function(h) {
           var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.hbPaymentId === h.hbPaymentId; });
-          if (!spq || spq.status !== "Completed") return false;
-          // Match if invoice is in scope OR if SPQ supplier matches
+          if (!spq || spq.status !== "Completed") return;
           var invoiceMatch = spInvIds[h.sourceInvoiceId];
           var supplierMatch = spq && (spMatchesScope(spq.supplierId) || spMatchesScopeByName(spq.supplierName));
-          if (!invoiceMatch && !supplierMatch) return false;
-          if (spq.isBundle) return false;
+          if (!invoiceMatch && !supplierMatch) return;
+          if (spq.isBundle) return;
           var supReturn = 0;
           (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
-          if (supReturn < 0.01) return false;
-          return true;
-        }).map(function(h) {
-          var supReturn = 0;
-          (h.allocations || []).forEach(function(a) { if (a.type === "disbursement") supReturn += a.amount; });
-          var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.hbPaymentId === h.hbPaymentId; });
-          return { id: h.hbPaymentId, type: "Holdback Return", date: spq ? (spq.executedDisplay || fmt(h.date)) : fmt(h.date), amount: supReturn, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: spq ? (spq.programName || "") : "", sortDate: spq ? (spq.executedAt || h.date) : h.date };
+          if (supReturn < 0.01) return;
+          spHoldbackPays.push({ id: h.hbPaymentId, type: "Holdback Return", date: spq.executedDisplay || fmt(h.date), amount: supReturn, currency: h.currency, status: "Completed", reference: h.sourceInvoiceId, program: spq.programName || "", sortDate: spq.executedAt || h.date });
+        });
+        // Method 2: From SPQ directly for holdback entries not yet in HOLDBACK_PAYMENTS_DB match
+        var hbPayIds = {};
+        spHoldbackPays.forEach(function(p) { hbPayIds[p.id] = true; });
+        SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+          if (spq.type !== "holdback") return;
+          if (hbPayIds[spq.hbPaymentId]) return; // already included
+          if (!spMatchesScope(spq.supplierId) && !spMatchesScopeByName(spq.supplierName)) return;
+          spHoldbackPays.push({ id: spq.hbPaymentId || spq.id, type: "Holdback Return", date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, status: spq.status, reference: spq.sourceInvoiceId || "", program: spq.programName || "", sortDate: spq.executedAt || spq.createdAt || "" });
         });
 
         var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).concat(spRemittancePays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
@@ -8563,10 +8567,11 @@ export default function FactoringDashboard() {
                         SUPPLIER_PAYMENT_QUEUE.push({
                           id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
                           supplierName: updatedInv.supplierName, supplierId: updatedInv.supplierId || "",
-                          bankName: hbBankInfo.bankName, bankDetails: hbBankInfo.bankDetails,
+                          bankName: hbBankInfo.bankName, bankDetails: hbBankInfo.bankDetails, bankVerified: hbBankInfo.bankVerified,
                           amount: hbAmt, currency: updatedInv.currency, status: "Pending",
                           programId: updatedInv.fundingProgram || null, programName: routing.programName,
-                          createdAt: now.toISOString(), createdDisplay: nowDisp
+                          createdAt: now.toISOString(), createdDisplay: nowDisp,
+                          executedAt: null, executedDisplay: null
                         });
                         auditLog("Holdback Return Queued", hbId + ": " + money(hbAmt, updatedInv.currency) + " holdback from " + updatedInv.id + " queued for return to " + updatedInv.supplierName + " (" + hbSpqId + ")", { hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, supplierName: updatedInv.supplierName, amount: hbAmt, currency: updatedInv.currency, spqId: hbSpqId, programId: updatedInv.fundingProgram, autoGenerated: true });
                       }
