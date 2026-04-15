@@ -7363,7 +7363,7 @@ export default function FactoringDashboard() {
                 entries.push({ date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", ref: ff.reason || ff.description || "Capital injection", counterparty: ff.serviceProvider || ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency });
               } else if (ff.type === "outflow" || ff.type === "disbursal") {
                 // Skip outflows that correspond to SPQ remittances (they're shown in section 5)
-                if (ff.reason && ff.reason.indexOf("Pass-through") >= 0) return;
+                if (ff.reason && (ff.reason.indexOf("Pass-through") >= 0 || ff.reason.indexOf("Remittance executed") >= 0)) return;
                 entries.push({ date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", ref: ff.reason || ff.description || "Capital withdrawal", counterparty: ff.serviceProvider || ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency });
               }
             });
