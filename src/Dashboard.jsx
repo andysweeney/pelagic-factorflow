@@ -3542,7 +3542,7 @@ export default function FactoringDashboard() {
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(ep.pay.amount, ep.pay.currency)),
                           React.createElement("td", { style: Object.assign({}, portalTd, { color: spMuted }) }, ep.pay.currency),
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spGreen, fontWeight: 600 }) }, money(r2(totalAlloc), ep.pay.currency)),
-                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 11, color: spMuted }) }, ep.allocs.length + " invoice" + (ep.allocs.length !== 1 ? "s" : "")),
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 11, color: spMuted }) }, ep.isPassThrough ? "Pass-through" : ep.allocs.length + " invoice" + (ep.allocs.length !== 1 ? "s" : "")),
                           React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
                             React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpPTP ? "\u25B2" : "\u25BC")
                           )
@@ -3560,10 +3560,11 @@ export default function FactoringDashboard() {
                                   )
                                 ),
                                 React.createElement("tbody", null,
-                                  ep.allocs.filter(function(a) { return a.invoiceId !== "Pass-through"; }).map(function(a, ai) {
+                                  ep.allocs.map(function(a, ai) {
+                                    var isPassThrough = a.invoiceId === "Pass-through";
                                     return React.createElement("tr", { key: "inv-" + ai, style: { borderBottom: "1px solid " + spBorder + "60" } },
-                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontWeight: 600, color: spAccent } }, "Invoice"),
-                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spAccent, fontWeight: 600 } }, a.invoiceId),
+                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontWeight: 600, color: isPassThrough ? "#059669" : spAccent } }, isPassThrough ? "Payment Received" : "Applied to Invoice"),
+                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: isPassThrough ? "#059669" : spAccent, fontWeight: 600 } }, isPassThrough ? ep.pay.paymentId : a.invoiceId),
                                       React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spGreen, fontWeight: 600 } }, money(a.amount, ep.pay.currency)),
                                       React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, color: spMuted } }, fmt(a.allocDate || ep.pay.date))
                                     );
