@@ -8505,10 +8505,13 @@ export default function FactoringDashboard() {
                         <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(inv.totalOutstanding, inv.currency)}</td>
-                        <td style={{ padding: "6px 8px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
+                        <td style={{ padding: "6px 8px", display: "flex", gap: 4, alignItems: "center" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
                           var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding, routingRemaining + currentAmt));
                           setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val }); return n; });
-                        }} step="0.01" placeholder="0.00" style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
+                        }} step="0.01" placeholder="0.00" style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /><button onClick={function() {
+                          var maxVal = r2(Math.min(inv.totalOutstanding, routingRemaining + currentAmt));
+                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal }); return n; });
+                        }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #10B98140", background: "#10B98110", color: "#10B981", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
                       </tr>;
                     })}</tbody>
                   </table>
@@ -8534,14 +8537,8 @@ export default function FactoringDashboard() {
                     var activeAllocs = allocs.filter(function(a) { return a.amount > 0; });
                     activeAllocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date }); });
 
-                    // Credit Program available balance for payments to funded invoices
-                    if (prog) {
-                      var creditTotal = activeAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
-                      if (!prog.fundFlows) prog.fundFlows = [];
-                      var flowId = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
-                      prog.fundFlows.push({ flowId: flowId, type: "inflow", amount: r2(creditTotal), date: allocPay.date, serviceProvider: "Payment " + allocPay.paymentId, reason: "Payment allocated to " + activeAllocs.length + " invoice(s) for " + routing.supplierName });
-                      auditLog("Program Funds Added", prog.name + ": " + money(r2(creditTotal), allocPay.currency) + " credited — payment " + allocPay.paymentId + " allocated to " + activeAllocs.length + " invoice(s) for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "add", amount: r2(creditTotal), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowId, invoiceCount: activeAllocs.length });
-                    }
+                    // Note: Program balance is credited automatically via the buyer payment allocation
+                    // showing in the bank statement — no separate fund flow entry needed
 
                     auditLog("Payment Allocated", allocPay.paymentId + ": " + money(allocTotal, allocPay.currency) + " applied to " + activeAllocs.length + " invoice(s) for " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, amount: allocTotal, currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, programId: routing.programId, programName: routing.programName, allocations: activeAllocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }) });
                   }
