@@ -1439,6 +1439,15 @@ export default function FactoringDashboard() {
     };
   }, [session]);
 
+  // Inject tooltip CSS once
+  useEffect(function() {
+    if (document.getElementById("ff-tooltip-styles")) return;
+    var s = document.createElement("style");
+    s.id = "ff-tooltip-styles";
+    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1A2744}";
+    document.head.appendChild(s);
+  }, []);
+
   // Set favicon
   useEffect(function() {
     var link = document.querySelector("link[rel*='icon']") || document.createElement("link");
@@ -2391,13 +2400,6 @@ export default function FactoringDashboard() {
         var spMono = "'JetBrains Mono', monospace";
         var spBg = "#0B1120";
 
-        // Tooltip styles injected once
-        if (!document.getElementById("ff-tooltip-styles")) {
-          var tooltipStyle = document.createElement("style");
-          tooltipStyle.id = "ff-tooltip-styles";
-          tooltipStyle.textContent = ".ff-tip{position:relative;cursor:pointer}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:\'\';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1A2744}";
-          document.head.appendChild(tooltipStyle);
-        }
         var spCard = "#131C2E";
         var spBorder = "#1C2A42";
         var spText = "#E2E8F0";
