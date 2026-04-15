@@ -7268,9 +7268,11 @@ export default function FactoringDashboard() {
             // 1. Fund inflows/disbursals from program fundFlows
             (prog.fundFlows || []).forEach(function(ff) {
               if (ff.type === "inflow") {
-                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", ref: ff.description || "Capital injection", counterparty: ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency });
+                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", ref: ff.reason || ff.description || "Capital injection", counterparty: ff.serviceProvider || ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency });
               } else if (ff.type === "outflow" || ff.type === "disbursal") {
-                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", ref: ff.description || "Capital withdrawal", counterparty: ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency });
+                // Skip outflows that correspond to SPQ remittances (they're shown in section 5)
+                if (ff.reason && ff.reason.indexOf("Pass-through") >= 0) return;
+                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", ref: ff.reason || ff.description || "Capital withdrawal", counterparty: ff.serviceProvider || ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency });
               }
             });
 
