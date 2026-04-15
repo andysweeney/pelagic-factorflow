@@ -2390,6 +2390,14 @@ export default function FactoringDashboard() {
         var spFont = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         var spMono = "'JetBrains Mono', monospace";
         var spBg = "#0B1120";
+
+        // Tooltip styles injected once
+        if (!document.getElementById("ff-tooltip-styles")) {
+          var tooltipStyle = document.createElement("style");
+          tooltipStyle.id = "ff-tooltip-styles";
+          tooltipStyle.textContent = ".ff-tip{position:relative;cursor:pointer}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:50%;transform:translateX(-50%);bottom:calc(100% + 8px);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:\'\';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1A2744}";
+          document.head.appendChild(tooltipStyle);
+        }
         var spCard = "#131C2E";
         var spBorder = "#1C2A42";
         var spText = "#E2E8F0";
@@ -2655,7 +2663,7 @@ export default function FactoringDashboard() {
           { k: "program", l: "Payments to You", icon: React.createElement(ArrowDownRight, { size: 17 }) },
           { k: "manage", l: "Your Information", icon: React.createElement(Users, { size: 17 }) },
           { k: "creditnotes", l: "Your History", icon: React.createElement(Clock, { size: 17 }) },
-          { k: "statement", l: "Statement", icon: React.createElement(FileText, { size: 17 }) }
+          { k: "statement", l: "Funding Balance", icon: React.createElement(FileText, { size: 17 }) }
         ];
 
         var portalTh = { textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont };
@@ -2686,7 +2694,7 @@ export default function FactoringDashboard() {
             /* Top bar with date picker */
             React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
-                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Statement" }[spPortalTab] || ""),
+                React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
                 spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
                   spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
                 ) : null
@@ -2980,7 +2988,7 @@ export default function FactoringDashboard() {
                   var activities = [];
                   // Payments to supplier (funding + holdback)
                   spAllPaymentsToYou.forEach(function(p) {
-                    activities.push({ date: p.sortDate, display: p.date, type: p.type === "Funding" ? "Funded" : "Holdback Return", direction: "to_supplier", amount: p.amount, currency: p.currency, ref: p.reference, status: p.status });
+                    activities.push({ date: p.sortDate, display: p.date, type: "Paid to Supplier", direction: "to_supplier", amount: p.amount, currency: p.currency, ref: p.type + ": " + (p.reference || p.id), status: p.status });
                   });
                   // Payments from buyer allocated to supplier's invoices
                   spAllPaysToPelagic.forEach(function(ep) {
@@ -3265,7 +3273,36 @@ export default function FactoringDashboard() {
                                     React.createElement("tbody", null,
                                       inv.payments.map(function(p, pi) {
                                         return React.createElement("tr", { key: pi, style: { borderBottom: "1px solid " + spBorder + "60" } },
-                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAccent } }, p.paymentId),
+                                          React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spAccent } },
+                                          React.createElement("span", { className: "ff-tip" },
+                                            p.paymentId,
+                                            React.createElement("div", { className: "ff-tipbox" },
+                                              (function() {
+                                                var srcPay = PAYMENTS_DB.find(function(pp) { return pp.paymentId === p.paymentId; });
+                                                if (!srcPay) return null;
+                                                var tipAllocs = srcPay.allocations.map(function(a) { return { label: a.invoiceId, amount: a.amount }; });
+                                                var tipRemits = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === p.paymentId && spq.type === "remittance"; }).map(function(spq) { return { label: "Pass-through \u2192 " + spq.supplierName, amount: spq.amount }; });
+                                                var tipAll = tipAllocs.concat(tipRemits);
+                                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, "Payment Breakdown \u2014 " + p.paymentId),
+                                                  React.createElement("div", { style: { padding: "6px 14px 10px" } },
+                                                    tipAll.map(function(t, ti) {
+                                                      var isRemit = t.label.indexOf("Pass-through") === 0;
+                                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipAll.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                                        React.createElement("span", { style: { fontSize: 11, color: isRemit ? "#8B5CF6" : "#0EA5E9", fontFamily: "'JetBrains Mono', monospace" } }, t.label),
+                                                        React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, srcPay.currency))
+                                                      );
+                                                    }),
+                                                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
+                                                      React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Total"),
+                                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(srcPay.amount, srcPay.currency))
+                                                    )
+                                                  )
+                                                );
+                                              })()
+                                            )
+                                          )
+                                        ),
                                           React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spText } }, fmt(p.date)),
                                           React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spGreen } }, money(p.amount, inv.currency)),
                                           React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spRed } }, p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"),
@@ -3564,7 +3601,34 @@ export default function FactoringDashboard() {
                                     var isPassThrough = a.invoiceId === "Pass-through";
                                     return React.createElement("tr", { key: "inv-" + ai, style: { borderBottom: "1px solid " + spBorder + "60" } },
                                       React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontWeight: 600, color: isPassThrough ? "#059669" : spAccent } }, isPassThrough ? "Payment Received" : "Applied to Invoice"),
-                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: isPassThrough ? "#059669" : spAccent, fontWeight: 600 } }, isPassThrough ? ep.pay.paymentId : a.invoiceId),
+                                      React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: isPassThrough ? "#059669" : spAccent, fontWeight: 600 } },
+                                      isPassThrough ? ep.pay.paymentId :
+                                      React.createElement("span", { className: "ff-tip" },
+                                        a.invoiceId,
+                                        React.createElement("div", { className: "ff-tipbox" },
+                                          (function() {
+                                            var tipInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }) || INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                                            if (!tipInv) return null;
+                                            var daysToMat = tipInv.dueDate ? daysBetween(viewDate, tipInv.dueDate) : 0;
+                                            return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                              React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, a.invoiceId),
+                                              React.createElement("div", { style: { padding: "10px 14px" } },
+                                                [{ l: "Invoice Date", v: fmt(tipInv.invoiceDate), c: "#E2E8F0" },
+                                                 { l: "Invoice Amount", v: money(tipInv.amount, tipInv.currency), c: "#0EA5E9" },
+                                                 { l: "Maturity Date", v: fmt(tipInv.dueDate), c: daysToMat < 0 ? "#EF4444" : "#10B981" },
+                                                 { l: "Days to Maturity", v: daysToMat >= 0 ? daysToMat + " days" : Math.abs(daysToMat) + " days overdue", c: daysToMat < 0 ? "#EF4444" : "#10B981" },
+                                                 { l: "Buyer", v: tipInv.buyerName, c: "#E2E8F0" }].map(function(r, ri) {
+                                                  return React.createElement("div", { key: ri, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: ri < 4 ? "1px solid #2A3A5C50" : "none" } },
+                                                    React.createElement("span", { style: { fontSize: 10, color: "#64748B", fontWeight: 600 } }, r.l),
+                                                    React.createElement("span", { style: { fontSize: 11, color: r.c, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, r.v)
+                                                  );
+                                                })
+                                              )
+                                            );
+                                          })()
+                                        )
+                                      )
+                                    ),
                                       React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, fontFamily: spMono, color: spGreen, fontWeight: 600 } }, money(a.amount, ep.pay.currency)),
                                       React.createElement("td", { style: { padding: "8px 10px", fontSize: 12, color: spMuted } }, fmt(a.allocDate || ep.pay.date))
                                     );
@@ -3636,7 +3700,47 @@ export default function FactoringDashboard() {
                         var typeColor = p.type === "Funding" ? "#3B82F6" : "#8B5CF6";
                         var typeBg = p.type === "Funding" ? "#3B82F614" : "#8B5CF614";
                         return React.createElement("tr", { key: p.id },
-                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600, fontSize: 11 }) }, p.id),
+                          React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600, fontSize: 11 }) },
+                          React.createElement("span", { className: "ff-tip" },
+                            p.id,
+                            React.createElement("div", { className: "ff-tipbox" },
+                              (function() {
+                                // Find the source payment for this PTY entry
+                                var spqEntry = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.id === p.id || q.hbPaymentId === p.id; });
+                                var srcPayId = spqEntry ? spqEntry.sourcePaymentId : null;
+                                var srcPay = srcPayId ? PAYMENTS_DB.find(function(pp) { return pp.paymentId === srcPayId; }) : null;
+                                var tipLines = [];
+                                if (srcPay) {
+                                  srcPay.allocations.forEach(function(a) { tipLines.push({ label: a.invoiceId, amount: a.amount, color: "#0EA5E9" }); });
+                                  SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.sourcePaymentId === srcPayId && q.type === "remittance"; }).forEach(function(q) { tipLines.push({ label: "Pass-through \u2192 " + q.supplierName, amount: q.amount, color: "#8B5CF6" }); });
+                                }
+                                if (spqEntry && p.type === "Funding") {
+                                  var invIds = spqEntry.invoiceIds || (spqEntry.invoiceId ? [spqEntry.invoiceId] : []);
+                                  invIds.forEach(function(iid) { var inv = INVOICES_DB.find(function(x) { return x.id === iid; }); tipLines.push({ label: iid + (inv ? " (" + inv.buyerName + ")" : ""), amount: inv ? inv.capitalDue : spqEntry.amount, color: "#0EA5E9" }); });
+                                }
+                                if (spqEntry && p.type === "Holdback Return") {
+                                  tipLines.push({ label: "Holdback from " + (spqEntry.sourceInvoiceId || "\u2014"), amount: spqEntry.amount, color: "#D97706" });
+                                }
+                                if (tipLines.length === 0) return null;
+                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, p.type + " \u2014 " + p.id),
+                                  React.createElement("div", { style: { padding: "6px 14px 10px" } },
+                                    tipLines.map(function(t, ti) {
+                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipLines.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                        React.createElement("span", { style: { fontSize: 11, color: t.color, fontFamily: "'JetBrains Mono', monospace" } }, t.label),
+                                        React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, p.currency))
+                                      );
+                                    }),
+                                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
+                                      React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Amount"),
+                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(p.amount, p.currency))
+                                    )
+                                  )
+                                );
+                              })()
+                            )
+                          )
+                        ),
                           React.createElement("td", { style: portalTd },
                             React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: typeBg, color: typeColor, border: "1px solid " + typeColor + "30", fontFamily: spMono } }, p.type)
                           ),
@@ -4052,7 +4156,7 @@ export default function FactoringDashboard() {
         {/* Supplier Sub-tabs */}
         {isS && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Pass-through Payments", funding: "Funding Payments", statement: "Statement" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Pass-through Payments", funding: "Funding Payments", statement: "Funding Balance" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
@@ -5186,7 +5290,7 @@ export default function FactoringDashboard() {
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
                         <td style={Object.assign({}, samc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{ep.pay.currency}</td>
-                        <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></td>
+                        <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> (function() { var remCount = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === ep.pay.paymentId && spq.type === "remittance"; }).length; var hbCount = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === ep.pay.paymentId && spq.type === "holdback"; }).length; var parts = []; if (ep.allocs.length > 0) parts.push(ep.allocs.length + " inv"); if (remCount > 0) parts.push(remCount + " pass-through"); if (hbCount > 0) parts.push(hbCount + " holdback"); return <span style={{ fontSize: 10, color: "var(--muted)" }}>({parts.join(", ") || "no allocations"})</span>; })()</td>
                         <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setSaExp(isExpSA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpSA ? "var(--accent)" : "var(--card-hover)", color: isExpSA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpSA ? "\u25b4" : "\u25be"}</button></td>
                       </tr>
                       {isExpSA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "#F8FAFC" }}>
@@ -8367,10 +8471,29 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{inv ? money(inv.amount, inv.currency) : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? fmt(inv.dueDate) : "\u2014"}</td>
                           </tr>;
+                        })}
+                        {SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === pay.paymentId && (spq.type === "remittance" || spq.type === "holdback"); }).map(function(spq, ri) {
+                          return <tr key={"rem-" + ri} style={{ borderBottom: "1px solid var(--border)", background: "#8B5CF608" }}>
+                            <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
+                            <td style={{ padding: "6px 10px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td>
+                          </tr>;
                         })}</tbody>
                       </table>
                     </div>}
-                    {pay.allocations.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 12 }}>No allocations yet</div>}
+                    {pay.allocations.length === 0 && (function() {
+                      var payRemits = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === pay.paymentId && spq.type === "remittance"; });
+                      if (payRemits.length > 0) {
+                        return <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Pass-through Remittances</div>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["SPQ ID", "Supplier", "Amount", "Program", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                          <tbody>{payRemits.map(function(spq) { return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)" }}>{spq.supplierName}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td><td style={{ padding: "5px 8px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td></tr>; })}</tbody></table>
+                        </div>;
+                      }
+                      return <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 12 }}>No allocations yet</div>;
+                    })()}
                     {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "#F1F5F9" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { var extra = ""; if (e.context && e.context.allocations) { extra = " (" + e.context.allocations.map(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); return a.invoiceId + (inv ? " / " + inv.supplierName : ""); }).join(", ") + ")"; } else if (e.context && e.context.invoiceId) { var inv = INVOICES_DB.find(function(x) { return x.id === e.context.invoiceId; }); if (inv) extra = " (" + e.context.invoiceId + " / " + inv.supplierName + ")"; } return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}{extra && <span style={{ color: "var(--muted)", fontSize: 9 }}>{extra}</span>}</td></tr>; })}</tbody></table></div></div>; })()}
                     <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {pay.notes && pay.notes.length > 0 ? "(" + pay.notes.length + ")" : ""}</div>{pay.notes && pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "#fff", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={expPay === pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "#fff", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
                   </td></tr>}
@@ -8621,22 +8744,29 @@ export default function FactoringDashboard() {
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Select invoices for {routing.supplierName}</div>
                 <div style={{ maxHeight: 300, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Invoice", "Buyer", "Amount", "Outstanding", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).map(function(inv) {
+                    <thead><tr>{["Invoice", "Buyer", "Due Date", "Penalty O/S", "Interest O/S", "Capital O/S", "Total O/S", "Allocate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 6px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).sort(function(a, b) { return (a.dueDate || "") < (b.dueDate || "") ? -1 : 1; }).map(function(inv) {
                       var existing = allocs.find(function(a) { return a.invoiceId === inv.id; });
                       var currentAmt = existing ? existing.amount : 0;
+                      var penOS = inv.penaltyInterest || 0;
+                      var intOS = inv.interestOutstanding || 0;
+                      var capOS = inv.capitalOutstanding || 0;
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: currentAmt > 0 ? "#0EA5E908" : "transparent" }}>
-                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                        <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
-                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
-                        <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(inv.totalOutstanding, inv.currency)}</td>
-                        <td style={{ padding: "6px 8px", display: "flex", gap: 4, alignItems: "center" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: penOS > 0 ? "#EF4444" : "var(--muted)" }}>{penOS > 0 ? money(penOS, inv.currency) : "\u2014"}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: intOS > 0 ? "#D97706" : "var(--muted)" }}>{intOS > 0 ? money(intOS, inv.currency) : "\u2014"}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(capOS, inv.currency)}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{money(inv.totalOutstanding, inv.currency)}</td>
+                        <td style={{ padding: "6px 6px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
                           var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding, routingRemaining + currentAmt));
                           setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val }); return n; });
-                        }} step="0.01" placeholder="0.00" style={{ width: 100, padding: "4px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /><button onClick={function() {
+                        }} step="0.01" placeholder="0.00" style={{ width: 90, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
+                        <td style={{ padding: "6px 6px", display: "flex", gap: 3 }}><button onClick={function() {
                           var maxVal = r2(Math.min(inv.totalOutstanding, routingRemaining + currentAmt));
                           setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal }); return n; });
-                        }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #10B98140", background: "#10B98110", color: "#10B981", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
+                        }} style={{ padding: "2px 5px", borderRadius: 3, border: "1px solid #10B98140", background: "#10B98110", color: "#10B981", fontSize: 8, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
                       </tr>;
                     })}</tbody>
                   </table>
