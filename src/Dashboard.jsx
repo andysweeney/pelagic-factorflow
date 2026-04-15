@@ -7580,9 +7580,11 @@ export default function FactoringDashboard() {
             var totalCredits = entries.reduce(function(s, e) { return s + e.credit; }, 0);
             var totalDebits = entries.reduce(function(s, e) { return s + e.debit; }, 0);
             var closingBal = entries.length > 0 ? entries[entries.length - 1].balance : 0;
+            var calcAvail = getProgramAvailableBalance(selectedProgram);
+            var bsDelta = r2(closingBal - calcAvail);
 
             return <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 10 }}>
                 <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Total Credits</div>
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalCredits), prog.currency)}</div>
@@ -7592,12 +7594,22 @@ export default function FactoringDashboard() {
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalDebits), prog.currency)}</div>
                 </div>
                 <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Net Position</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Transactions</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{entries.length}</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 18 }}>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Statement Balance</div>
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: closingBal >= 0 ? "#059669" : "#DC2626" }}>{money(r2(closingBal), prog.currency)}</div>
                 </div>
                 <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Transactions</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{entries.length}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Available Balance</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: calcAvail >= 0 ? "#059669" : "#DC2626" }}>{money(r2(calcAvail), prog.currency)}</div>
+                </div>
+                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid " + (Math.abs(bsDelta) < 0.02 ? "#10B98140" : "#EF444440"), padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444", marginBottom: 4 }}>{Math.abs(bsDelta) < 0.02 ? "Reconciled \u2713" : "Delta"}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444" }}>{Math.abs(bsDelta) < 0.02 ? "\u2014" : money(bsDelta, prog.currency)}</div>
                 </div>
               </div>
 
