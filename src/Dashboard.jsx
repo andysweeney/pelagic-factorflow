@@ -7519,15 +7519,17 @@ export default function FactoringDashboard() {
             });
 
             // 3. Capital advances (funding execution) — debits
-            SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-              if (spq.status === "Cancelled") return;
-              if (spq.type === "funding" && spq.status === "Completed") {
-                var matchesProgram = spq.programId === selectedProgram || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return progInvIds[iid]; })) || (spq.invoiceId && progInvIds[spq.invoiceId]);
-                if (matchesProgram) {
-                  var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdDisplay || "";
-                  entries.push({ date: execDate, sortDate: spq.executedAt || execDate + "T12:00:00", type: "Capital Advance", ref: spq.id + (spq.invoiceId ? " / " + spq.invoiceId : spq.invoiceIds && spq.invoiceIds.length > 0 ? " / " + spq.invoiceIds.join(", ") : ""), counterparty: spq.supplierName, credit: 0, debit: spq.amount, currency: spq.currency });
-                }
-              }
+            // Use individual invoice capitalDue to match fundedBalance calculation
+            var capitalAdvanceSeen = {};
+            allProgInvs.forEach(function(inv) {
+              if (!inv.fundedDate || inv.fundingStatus === "pending" || inv.fundingStatus === "approved") return;
+              if (capitalAdvanceSeen[inv.id]) return;
+              capitalAdvanceSeen[inv.id] = true;
+              // Find the CPQ entry for this invoice
+              var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.status === "Completed" && q.type === "funding" && (q.invoiceId === inv.id || (q.invoiceIds && q.invoiceIds.indexOf(inv.id) >= 0)); });
+              var execDate = inv.fundedDate;
+              var ref = (spq ? spq.id : "CPQ") + " / " + inv.id;
+              entries.push({ date: execDate, sortDate: execDate + "T06:00:00", type: "Capital Advance", ref: ref, counterparty: inv.supplierName, credit: 0, debit: inv.capitalDue, currency: inv.currency });
             });
 
             // 4. Holdback returns / holdback-to-invoice — debits
