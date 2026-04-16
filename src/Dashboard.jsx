@@ -2089,7 +2089,7 @@ export default function FactoringDashboard() {
     if (!raw || raw.fundingStatus !== "pending") return;
     if (!programId) return;
     raw.fundingStatus = "approved";
-    raw.approvedDate = viewDate;
+    raw.approvedDate = fundPopupFields.paymentDate || viewDate;
     raw.fundingProgram = programId;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     var progName = prog ? prog.name : programId;
@@ -2101,7 +2101,7 @@ export default function FactoringDashboard() {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "approved") return;
     raw.fundingStatus = "funded";
-    raw.fundedDate = viewDate;
+    raw.fundedDate = raw.intendedPaymentDate || viewDate;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
@@ -10936,7 +10936,7 @@ export default function FactoringDashboard() {
                     if (defaultCap > maxCap) defaultCap = maxCap;
                   }
                   setFundPopup({ inv: inv, prog: prog });
-                  setFundPopupFields({ capitalDue: String(Math.min(defaultCap, maxCap)), annualRate: String((supRate.annualRate * 100).toFixed(1)), maxCap: maxCap, minRate: prog.minInterestRate, creditLimitApplied: creditLimitForProg });
+                  setFundPopupFields({ capitalDue: String(Math.min(defaultCap, maxCap)), annualRate: String((supRate.annualRate * 100).toFixed(1)), maxCap: maxCap, minRate: prog.minInterestRate, creditLimitApplied: creditLimitForProg, paymentDate: viewDate });
                 }
 
                 function confirmFundPopup() {
@@ -10957,13 +10957,14 @@ export default function FactoringDashboard() {
                   raw.annualRate = rate;
                   raw.penaltyRate = rate * 1.5;
                   var dailyRate = rate / 360;
-                  var fundingDate = viewDate; // funding happens on the current as-of date
+                  var fundingDate = fundPopupFields.paymentDate || viewDate;
                   var term = daysBetween(fundingDate, raw.dueDate);
-                  if (term < 1) term = 1; // minimum 1 day
+                  if (term < 1) term = 1;
                   raw.daysToMaturity = term;
                   raw.interestCharged = r2(cap * dailyRate * term);
                   raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                   raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
+                  raw.intendedPaymentDate = fundingDate;
                   fundInvoice(inv.id, prog.id);
                   setFundPopup(null); setFundPopupFields({});
                 }
@@ -11041,9 +11042,10 @@ export default function FactoringDashboard() {
                           <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
                           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.inv.amount, fundPopup.inv.currency)}</div>
                         </div>
-                        <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Term</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{Math.max(1, daysBetween(viewDate, fundPopup.inv.dueDate))}d</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Payment Date</label>
+                          <input type="date" value={fundPopupFields.paymentDate || viewDate} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { paymentDate: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+                          <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>Term: {Math.max(1, daysBetween(fundPopupFields.paymentDate || viewDate, fundPopup.inv.dueDate))}d to maturity</div>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Capital Amount (max {money(fundPopupFields.maxCap, fundPopup.inv.currency)})</label>
@@ -11058,7 +11060,7 @@ export default function FactoringDashboard() {
                         var pc = r2(parseFloat(fundPopupFields.capitalDue) || 0);
                         var pr = (parseFloat(fundPopupFields.annualRate) || 0) / 100;
                         var ph = r2(fundPopup.inv.amount - pc);
-                        var pt = daysBetween(viewDate, fundPopup.inv.dueDate);
+                        var pt = daysBetween(fundPopupFields.paymentDate || viewDate, fundPopup.inv.dueDate);
                         if (pt < 1) pt = 1;
                         var pi = r2(pc * (pr / 360) * pt);
                         return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#2B4C7E08", border: "1px solid #2B4C7E20", marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
