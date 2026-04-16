@@ -10957,7 +10957,10 @@ export default function FactoringDashboard() {
                   raw.annualRate = rate;
                   raw.penaltyRate = rate * 1.5;
                   var dailyRate = rate / 360;
-                  var term = raw.daysToMaturity || daysBetween(raw.invoiceDate, raw.dueDate);
+                  var fundingDate = viewDate; // funding happens on the current as-of date
+                  var term = daysBetween(fundingDate, raw.dueDate);
+                  if (term < 1) term = 1; // minimum 1 day
+                  raw.daysToMaturity = term;
                   raw.interestCharged = r2(cap * dailyRate * term);
                   raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                   raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
@@ -11040,7 +11043,7 @@ export default function FactoringDashboard() {
                         </div>
                         <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
                           <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Term</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{fundPopup.inv.daysToMaturity || daysBetween(fundPopup.inv.invoiceDate, fundPopup.inv.dueDate)}d</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{Math.max(1, daysBetween(viewDate, fundPopup.inv.dueDate))}d</div>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Capital Amount (max {money(fundPopupFields.maxCap, fundPopup.inv.currency)})</label>
@@ -11055,7 +11058,8 @@ export default function FactoringDashboard() {
                         var pc = r2(parseFloat(fundPopupFields.capitalDue) || 0);
                         var pr = (parseFloat(fundPopupFields.annualRate) || 0) / 100;
                         var ph = r2(fundPopup.inv.amount - pc);
-                        var pt = fundPopup.inv.daysToMaturity || daysBetween(fundPopup.inv.invoiceDate, fundPopup.inv.dueDate);
+                        var pt = daysBetween(viewDate, fundPopup.inv.dueDate);
+                        if (pt < 1) pt = 1;
                         var pi = r2(pc * (pr / 360) * pt);
                         return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#2B4C7E08", border: "1px solid #2B4C7E20", marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
                           <div><span style={{ color: "var(--muted)" }}>Capital: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{money(pc, fundPopup.inv.currency)}</span></div>
