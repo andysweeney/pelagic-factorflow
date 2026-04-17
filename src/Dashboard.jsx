@@ -599,6 +599,8 @@ async function loadPersistedData() {
 }
 
 var _realtimeUpdate = false; // Flag to prevent save loops when realtime triggers a reload
+var _isSaving = false; // Flag to suppress realtime reloads during batch saves
+var _lastSaveTime = 0; // Timestamp of last save to prevent save loops
 
 async function reloadInvoices() {
   try {
@@ -792,6 +794,7 @@ async function reloadCreditNotes() {
 }
 
 async function savePersistedData() {
+  _lastSaveTime = Date.now();
   try {
     // Save suppliers
     var supRows = SUPPLIERS_DB.map(function(s) {
@@ -1013,7 +1016,7 @@ async function savePersistedData() {
         if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
       }
     }
-  } catch (e) { console.error("Supabase save error:", e); }
+  } catch (e) { console.error("Supabase save error:", e); } finally { _isSaving = false; }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1419,6 +1422,8 @@ export default function FactoringDashboard() {
     if (storageLoading) return;
     if (userProfile && userProfile.role === "supplier") return;
     if (_realtimeUpdate) { _realtimeUpdate = false; return; }
+    // Suppress saves triggered by realtime reloads within 5s of last save
+    if (Date.now() - _lastSaveTime < 5000) return;
     if (dataVer > 0) savePersistedData();
   }, [dataVer, storageLoading]);
 
@@ -1429,8 +1434,10 @@ export default function FactoringDashboard() {
     // Debounce realtime reloads — wait 500ms after the last event before reloading
     var timers = {};
     function debouncedReload(key, reloadFn) {
+      if (_isSaving) return; // Skip reloads during batch saves
       if (timers[key]) clearTimeout(timers[key]);
       timers[key] = setTimeout(function() {
+        if (_isSaving) return;
         reloadFn().then(function() {
           _realtimeUpdate = true;
           setDataVer(function(v) { return v + 1; });
