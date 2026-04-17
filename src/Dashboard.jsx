@@ -351,6 +351,20 @@ var ENTITY_ALIASES_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
+async function fetchAllRows(table) {
+  var all = [];
+  var pageSize = 1000;
+  var from = 0;
+  while (true) {
+    var res = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    if (!res.data || res.data.length === 0) break;
+    all = all.concat(res.data);
+    if (res.data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
 async function loadPersistedData() {
   try {
     // Load suppliers
@@ -438,11 +452,11 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load invoices
-    var invRes = await supabase.from("invoices").select("*");
-    if (invRes.data && invRes.data.length > 0) {
+    // Load invoices (paginated to handle >1000 rows)
+    var invData = await fetchAllRows("invoices");
+    if (invData.length > 0) {
       INVOICES_DB.length = 0;
-      invRes.data.forEach(function(row) {
+      invData.forEach(function(row) {
         INVOICES_DB.push({
           id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
           amount: parseFloat(row.amount) || 0, currency: row.currency,
@@ -463,7 +477,7 @@ async function loadPersistedData() {
       });
     }
     // Load payments with allocations
-    var payRes = await supabase.from("payments").select("*");
+    var payData = await fetchAllRows("payments");
     if (payRes.data && payRes.data.length > 0) {
       PAYMENTS_DB.length = 0;
       for (var pi = 0; pi < payRes.data.length; pi++) {
@@ -585,10 +599,10 @@ var _realtimeUpdate = false; // Flag to prevent save loops when realtime trigger
 
 async function reloadInvoices() {
   try {
-    var invRes = await supabase.from("invoices").select("*");
-    if (invRes.data) {
+    var invData = await fetchAllRows("invoices");
+    if (invData) {
       INVOICES_DB.length = 0;
-      invRes.data.forEach(function(row) {
+      invData.forEach(function(row) {
         INVOICES_DB.push({
           id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
           amount: parseFloat(row.amount) || 0, currency: row.currency,
@@ -662,9 +676,9 @@ async function reloadSPQ() {
 async function reloadAuditLog() {
   try {
     var auditRes = await supabase.from("audit_log").select("*").order("timestamp", { ascending: true });
-    if (auditRes.data) {
+    if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
-      auditRes.data.forEach(function(row) {
+      auditData.forEach(function(row) {
         AUDIT_LOG.push({
           timestamp: row.timestamp, displayTime: row.display_time,
           action: row.action, details: row.details, context: row.context || {}
@@ -2481,7 +2495,15 @@ export default function FactoringDashboard() {
         // Filter invoices by selected program
         var spInvs = spAllInvs;
         if (activeProgId) {
-          spInvs = spAllInvs.filter(function(inv) { return inv.fundingProgram === activeProgId || inv.fundingStatus === "pending"; });
+          spInvs = spAllInvs.filter(function(inv) {
+            // Always show: pending (awaiting funding), historic (CSV imports), fully_repaid
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return true;
+            // Show funded/approved/fully_repaid invoices on this program
+            if (inv.fundingProgram === activeProgId) return true;
+            // Show invoices with no program assigned (shouldn't normally happen but safety net)
+            if (!inv.fundingProgram && inv.fundingStatus !== "pending") return true;
+            return false;
+          });
         }
         console.log("[SP Debug] activeProgId:", activeProgId, "spInvs count after program filter:", spInvs.length);
         if (spAllInvs.length > 0 && spInvs.length === 0) {
