@@ -2093,7 +2093,7 @@ export default function FactoringDashboard() {
     raw.fundingProgram = programId;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     var progName = prog ? prog.name : programId;
-    auditLog("Invoice Approved", invId + " approved for funding via " + progName + ": " + money(raw.amount, raw.currency) + " — capital " + money(raw.capitalDue, raw.currency) + " to " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: programId, fundingProgramName: progName });
+    auditLog("Invoice Approved", invId + " approved for funding via " + progName + ": " + money(raw.amount, raw.currency) + " — " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: programId, fundingProgramName: progName });
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -2494,7 +2494,7 @@ export default function FactoringDashboard() {
         spInvs.forEach(function(inv) {
           spTotalInvoiced += inv.amount || 0;
           if (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") {
-            spCapAdvanced += inv.capitalDue || 0;
+            if (inv.fundedDate) spCapAdvanced += inv.capitalDue || 0;
             spCapOS += inv.capitalOutstanding || 0;
             spIntOS += inv.interestOutstanding || 0;
             spPenOS += inv.penaltyInterest || 0;
@@ -3117,7 +3117,7 @@ export default function FactoringDashboard() {
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
                             React.createElement("td", { style: portalTd }, inv.buyerName),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
-                            React.createElement("td", { style: portalTdMono }, money(inv.capitalDue || 0, inv.currency)),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: inv.fundedDate ? spText : spMuted }) }, inv.fundedDate ? money(inv.capitalDue || 0, inv.currency) : inv.fundingStatus === "approved" ? "Pending" : "\u2014"),
                             React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText, fontSize: 12 }) }, fmt(inv.dueDate)),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: fundingOS > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(fundingOS, inv.currency)),
                             React.createElement("td", { style: portalTd },
@@ -3315,6 +3315,11 @@ export default function FactoringDashboard() {
                                       })
                                     )
                                   )
+                                ) : null,
+                                /* Approved but not yet funded message */
+                                inv.fundingStatus === "approved" && !inv.fundedDate ? React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid #F59E0B40", padding: "18px 20px", marginTop: 16 } },
+                                  React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#F59E0B", marginBottom: 8 } }, "Funding Approved"),
+                                  React.createElement("div", { style: { fontSize: 12, color: spText, lineHeight: 1.6 } }, "This invoice has been approved for funding. Final terms including advance amount, interest rate, and payment date will be confirmed upon execution. You will be notified once the advance has been made.")
                                 ) : null,
                                 /* Payments to Supplier */
                                 (function() {
