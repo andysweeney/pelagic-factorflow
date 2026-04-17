@@ -478,10 +478,10 @@ async function loadPersistedData() {
     }
     // Load payments with allocations
     var payData = await fetchAllRows("payments");
-    if (payRes.data && payRes.data.length > 0) {
+    if (payData.length > 0) {
       PAYMENTS_DB.length = 0;
-      for (var pi = 0; pi < payRes.data.length; pi++) {
-        var prow = payRes.data[pi];
+      for (var pi = 0; pi < payData.length; pi++) {
+        var prow = payData[pi];
         var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
         var allocs = (allocRes.data || []).map(function(a) {
           return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
@@ -546,10 +546,10 @@ async function loadPersistedData() {
       });
     }
     // Load audit log
-    var auditRes = await supabase.from("audit_log").select("*").order("timestamp", { ascending: true });
-    if (auditRes.data && auditRes.data.length > 0) {
+    var auditData = await fetchAllRows("audit_log");
+    if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
-      auditRes.data.forEach(function(row) {
+      auditData.forEach(function(row) {
         AUDIT_LOG.push({
           timestamp: row.timestamp, displayTime: row.display_time,
           action: row.action, details: row.details, context: row.context || {}
@@ -675,7 +675,7 @@ async function reloadSPQ() {
 
 async function reloadAuditLog() {
   try {
-    var auditRes = await supabase.from("audit_log").select("*").order("timestamp", { ascending: true });
+    var auditData = await fetchAllRows("audit_log");
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
@@ -12311,4 +12311,3 @@ export default function FactoringDashboard() {
     </div>
   );
 }
-        
