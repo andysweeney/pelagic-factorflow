@@ -12311,3 +12311,4 @@ export default function FactoringDashboard() {
     </div>
   );
 }
+        
