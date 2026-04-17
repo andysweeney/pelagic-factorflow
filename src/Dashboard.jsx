@@ -891,11 +891,13 @@ async function savePersistedData() {
       };
     });
     if (invRows.length > 0) {
-      // Batch upsert in groups of 100 to avoid Supabase payload limits
-      for (var ib = 0; ib < invRows.length; ib += 100) {
-        var batch = invRows.slice(ib, ib + 100);
+      // Batch upsert in groups of 50 to avoid Supabase payload limits
+      for (var ib = 0; ib < invRows.length; ib += 50) {
+        var batch = invRows.slice(ib, ib + 50);
         var bRes = await supabase.from("invoices").upsert(batch, { onConflict: "id" });
         if (bRes.error) console.error("[Save] Invoice batch error at " + ib + ":", bRes.error.message);
+        // Small delay between batches to avoid connection flooding
+        if (ib + 50 < invRows.length) await new Promise(function(r) { setTimeout(r, 50); });
       }
     }
 
