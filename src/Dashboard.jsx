@@ -357,11 +357,13 @@ async function fetchAllRows(table) {
   var from = 0;
   while (true) {
     var res = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    if (res.error) { console.error("[fetchAllRows] Error loading " + table + ":", res.error.message); break; }
     if (!res.data || res.data.length === 0) break;
     all = all.concat(res.data);
     if (res.data.length < pageSize) break;
     from += pageSize;
   }
+  console.log("[fetchAllRows] " + table + ": " + all.length + " rows loaded");
   return all;
 }
 
@@ -454,6 +456,7 @@ async function loadPersistedData() {
     }
     // Load invoices (paginated to handle >1000 rows)
     var invData = await fetchAllRows("invoices");
+    console.log("[Load] Invoices fetched:", invData.length);
     if (invData.length > 0) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
@@ -887,7 +890,14 @@ async function savePersistedData() {
         notes: inv.notes || []
       };
     });
-    if (invRows.length > 0) await supabase.from("invoices").upsert(invRows, { onConflict: "id" });
+    if (invRows.length > 0) {
+      // Batch upsert in groups of 100 to avoid Supabase payload limits
+      for (var ib = 0; ib < invRows.length; ib += 100) {
+        var batch = invRows.slice(ib, ib + 100);
+        var bRes = await supabase.from("invoices").upsert(batch, { onConflict: "id" });
+        if (bRes.error) console.error("[Save] Invoice batch error at " + ib + ":", bRes.error.message);
+      }
+    }
 
     // Save payments — delete and re-insert allocations
     var payRows = PAYMENTS_DB.map(function(p) {
@@ -988,8 +998,13 @@ async function savePersistedData() {
         };
       });
       if (newAuditRows.length > 0) {
-        var auditResult = await supabase.from("audit_log").insert(newAuditRows);
-        if (!auditResult.error) _lastSavedAuditIndex = AUDIT_LOG.length;
+        var auditOk = true;
+        for (var ab = 0; ab < newAuditRows.length; ab += 500) {
+          var aBatch = newAuditRows.slice(ab, ab + 500);
+          var auditResult = await supabase.from("audit_log").insert(aBatch);
+          if (auditResult.error) { console.error("[Save] Audit batch error at " + ab + ":", auditResult.error.message); auditOk = false; }
+        }
+        if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
       }
     }
   } catch (e) { console.error("Supabase save error:", e); }
