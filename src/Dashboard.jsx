@@ -895,8 +895,12 @@ async function savePersistedData() {
       for (var ib = 0; ib < invRows.length; ib += 50) {
         var batch = invRows.slice(ib, ib + 50);
         var bRes = await supabase.from("invoices").upsert(batch, { onConflict: "id" });
-        if (bRes.error) console.error("[Save] Invoice batch error at " + ib + ":", bRes.error.message);
-        // Small delay between batches to avoid connection flooding
+        if (bRes.error) {
+          console.warn("[Save] Invoice batch retry at " + ib + " after: " + bRes.error.message);
+          await new Promise(function(r) { setTimeout(r, 200); });
+          var bRes2 = await supabase.from("invoices").upsert(batch, { onConflict: "id" });
+          if (bRes2.error) console.error("[Save] Invoice batch FAILED at " + ib + ":", bRes2.error.message);
+        }
         if (ib + 50 < invRows.length) await new Promise(function(r) { setTimeout(r, 50); });
       }
     }
