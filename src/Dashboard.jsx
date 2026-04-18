@@ -449,6 +449,106 @@ async function saveFundingProgram(progId) {
   _isSaving = false;
 }
 
+async function savePayment(paymentId) {
+  var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === paymentId; });
+  if (!pay) return;
+  _isSaving = true;
+  try {
+    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", notes: pay.notes || [] };
+    await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
+    // Save allocations
+    await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
+    if (pay.allocations.length > 0) {
+      var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
+      await supabase.from("payment_allocations").insert(allocRows);
+    }
+  } catch (e) { console.error("[SavePayment] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveSupplier(supId) {
+  var s = SUPPLIERS_DB.find(function(x) { return x.id === supId; });
+  if (!s) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
+      jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
+      onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+      street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
+      country: s.country || "United Kingdom", zip: s.zip || null,
+      primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
+      secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
+      contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
+      contact4_name: s.contact4Name || null, contact4_email: s.contact4Email || null, contact4_phone: s.contact4Phone || null, contact4_signatory: s.contact4Signatory || false,
+      contact5_name: s.contact5Name || null, contact5_email: s.contact5Email || null, contact5_phone: s.contact5Phone || null, contact5_signatory: s.contact5Signatory || false,
+      bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
+      account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
+      credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {},
+      program_bank_accounts: s.programBankAccounts || {},
+      rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
+    };
+    await supabase.from("suppliers").upsert([row], { onConflict: "id" });
+  } catch (e) { console.error("[SaveSupplier] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveBuyer(buyId) {
+  var b = BUYERS_DB.find(function(x) { return x.id === buyId; });
+  if (!b) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
+      jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
+      onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+      street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
+      country: b.country || "United Kingdom", zip: b.zip || null,
+      primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
+      secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
+      contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
+      contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
+      contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
+      paused: b.paused || false
+    };
+    await supabase.from("buyers").upsert([row], { onConflict: "id" });
+  } catch (e) { console.error("[SaveBuyer] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveCreditNote(cnId) {
+  var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
+  if (!cn) return;
+  _isSaving = true;
+  try {
+    var row = {
+      credit_note_id: cn.creditNoteId, amount: cn.amount, date: cn.date, currency: cn.currency,
+      reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: cn.supplierId || "",
+      buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
+      allocations: cn.allocations || [], notes: cn.notes || []
+    };
+    await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
+  } catch (e) { console.error("[SaveCN] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveHoldbackPayment(hbpId) {
+  var hbp = HOLDBACK_PAYMENTS_DB.find(function(h) { return h.hbPaymentId === hbpId; });
+  if (!hbp) return;
+  _isSaving = true;
+  try {
+    var row = { hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId, amount: hbp.amount, date: hbp.date, currency: hbp.currency };
+    await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
+    // Save allocations
+    await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
+    if (hbp.allocations && hbp.allocations.length > 0) {
+      var aRows = hbp.allocations.map(function(a) { return { hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount }; });
+      await supabase.from("holdback_payment_allocations").insert(aRows);
+    }
+  } catch (e) { console.error("[SaveHBP] Error:", e); }
+  _isSaving = false;
+}
+
 function mapInvoiceRow(row) {
   return {
     id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
@@ -1196,13 +1296,19 @@ function _auditLog(action, details, context, dateOverride) {
   // If a dateOverride is provided (e.g. the As Of Date), use it for display and record it
   var useDate = dateOverride ? new Date(dateOverride + "T12:00:00") : now;
   if (dateOverride) ctx.asOfDate = dateOverride;
-  AUDIT_LOG.push({
+  var entry = {
     timestamp: now.toISOString(),
     displayTime: useDate.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + (dateOverride ? " (as of)" : ""),
     action: action,
     details: details,
     context: ctx
-  });
+  };
+  AUDIT_LOG.push(entry);
+  // Save directly to Supabase
+  supabase.from("audit_log").insert([{
+    timestamp: entry.timestamp, display_time: entry.displayTime,
+    action: entry.action, details: entry.details, context: entry.context
+  }]);
 }
 
 function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
@@ -2091,7 +2197,7 @@ export default function FactoringDashboard() {
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
     setTimeout(function() { setSuccessMsg(null); }, 12000);
   }
-  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; setDataVer(function(v) { return v + 1; }); } }
+  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); } }
   function createPayment() {
     if (!newPayAmt || parseFloat(newPayAmt) <= 0) return;
     var payAmt = r2(parseFloat(newPayAmt));
@@ -2099,6 +2205,7 @@ export default function FactoringDashboard() {
     PAYMENTS_DB.forEach(function(p) { var m = p.paymentId.match(/PAY-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxNum) maxNum = n; } });
     var payId = "PAY-" + String(maxNum + 1).padStart(7, "0");
     PAYMENTS_DB.push({ paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [] });
+    savePayment(newPayId);
     auditLog("Payment Created", payId + " created: " + money(payAmt, newPayCcy) + " on " + newPayDate + (newPayRef.trim() ? " (Ref: " + newPayRef.trim() + ")" : ""), { paymentId: payId, amount: payAmt, currency: newPayCcy, date: newPayDate, reference: newPayRef.trim() });
     setShowNewPay(false); setNewPayId(""); setNewPayAmt(""); setNewPayDate(REF_DATE); setNewPayCcy("GBP"); setNewPayRef("");
     setDataVer(function(v) { return v + 1; });
@@ -2122,6 +2229,7 @@ export default function FactoringDashboard() {
       sourcePaymentId: paymentId
     });
     // Balance reduction is now handled by getPayRemaining/getPayStatus checking SUPPLIER_PAYMENT_QUEUE directly
+    saveSPQEntry(spqId);
     auditLog("Remittance Queued", spqId + ": " + money(r2(amount), currency) + " queued for remittance to " + displayName + " (" + (prog ? prog.name : "") + ")", { paymentId: paymentId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(amount), currency: currency, spqId: spqId, programId: programId || "", programName: prog ? prog.name : "", bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setRemitPopup(null);
     setDataVer(function(v) { return v + 1; });
@@ -2441,7 +2549,8 @@ export default function FactoringDashboard() {
     if (!raw.notes) raw.notes = [];
     var now = new Date();
     raw.notes.push({ timestamp: now.toISOString(), display: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }), text: text.trim() });
-    auditLog("Invoice Note Added", invId + ": " + text.trim(), { invoiceId: invId, note: text.trim() });
+    saveInvoice(noteInv.id);
+          auditLog("Invoice Note Added", invId + ": " + text.trim(), { invoiceId: invId, note: text.trim() });
     setNoteText("");
     setDataVer(function(v) { return v + 1; });
   }
@@ -2453,6 +2562,7 @@ export default function FactoringDashboard() {
     raw.invoiceStatus = newStatus;
     if (!raw.invoiceStatusHistory) raw.invoiceStatusHistory = [];
     raw.invoiceStatusHistory.push({ status: newStatus, date: viewDate });
+    saveInvoice(raw.id);
     auditLog("Invoice Status Changed", invId + " status: " + oldStatus + " \u2192 " + newStatus, { invoiceId: invId, oldStatus: oldStatus, newStatus: newStatus });
     setDataVer(function(v) { return v + 1; });
   }
@@ -2477,6 +2587,7 @@ export default function FactoringDashboard() {
     });
     var oldStatus = raw.fundingStatus;
     raw.fundingStatus = "write_off";
+    saveInvoice(writeOffInv.id);
     auditLog("Invoice Write-Off", writeOffInv.id + " written off: Penalty " + money(penWo, raw.currency) + ", Interest " + money(intWo, raw.currency) + ", Capital " + money(capWo, raw.currency) + ", Holdback " + money(hbWo, raw.currency) + " (Total: " + money(totalWo, raw.currency) + ")", { invoiceId: writeOffInv.id, oldStatus: oldStatus, newStatus: "write_off", penaltyWriteOff: penWo, interestWriteOff: intWo, capitalWriteOff: capWo, holdbackWriteOff: hbWo, totalWriteOff: totalWo, currency: raw.currency });
     setWriteOffInv(null); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback("");
     setDataVer(function(v) { return v + 1; });
@@ -2497,6 +2608,7 @@ export default function FactoringDashboard() {
       if (a.type === "disbursement") logParts.push(money(a.amount, hbp.currency) + " supplier return reversed");
       else logParts.push(money(a.amount, hbp.currency) + " to " + a.targetId + " reversed");
     });
+    saveHoldbackPayment(hbpId);
     auditLog("Holdback Payment Cancelled", hbpId + " cancelled from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (" + money(hbp.amount, hbp.currency) + " restored to holdback available)", { hbPaymentId: hbpId, sourceInvoiceId: hbp.sourceInvoiceId, amount: hbp.amount, currency: hbp.currency, allocations: hbp.allocations, removedQueueEntries: spqToRemove.length });
     setDataVer(function(v) { return v + 1; });
   }
@@ -2534,6 +2646,7 @@ export default function FactoringDashboard() {
     }
     // Remove the queue entry
     SUPPLIER_PAYMENT_QUEUE.splice(spqIdx, 1);
+    saveSPQEntry(spqId);
     auditLog("Supplier Payment Cancelled", spqId + " cancelled: " + money(spq.amount, spq.currency) + " to " + spq.supplierName + " — restored to holdback available on " + spq.sourceInvoiceId, { queueId: spqId, hbPaymentId: spq.hbPaymentId, sourceInvoiceId: spq.sourceInvoiceId, supplierName: spq.supplierName, amount: spq.amount, currency: spq.currency });
     setDataVer(function(v) { return v + 1; });
   }
@@ -5164,7 +5277,8 @@ export default function FactoringDashboard() {
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                   supplier.rates.push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
-                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
+                  saveSupplier(selectedSupplier);
+                    auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
                   setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
                 }
@@ -8195,6 +8309,7 @@ export default function FactoringDashboard() {
                                   var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === dis.programId; });
                                   if (!fp || !fp.fundFlows) return;
                                   fp.fundFlows.splice(dis.flowIndex, 1);
+                                  saveFundingProgram(dis.programId);
                                   auditLog("Disbursal Cancelled", dis.flowId + " cancelled: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
                                   setDataVer(function(v) { return v + 1; });
                               }} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
@@ -9115,6 +9230,8 @@ export default function FactoringDashboard() {
                           createdAt: now.toISOString(), createdDisplay: nowDisp,
                           executedAt: null, executedDisplay: null
                         });
+                        saveHoldbackPayment(hbId);
+                        saveSPQEntry(hbSpqId);
                         auditLog("Holdback Return Queued", hbId + ": " + money(hbAmt, updatedInv.currency) + " holdback from " + updatedInv.id + " queued for return to " + updatedInv.supplierName + " (" + hbSpqId + ")", { hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, supplierName: updatedInv.supplierName, amount: hbAmt, currency: updatedInv.currency, spqId: hbSpqId, programId: updatedInv.fundingProgram, autoGenerated: true });
                       }
                     });
@@ -9211,6 +9328,7 @@ export default function FactoringDashboard() {
               reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supParentNameCN, buyerId: cnf.buyer, buyerName: buyDisplay, allocations: [],
               createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
             });
+            saveCreditNote(cnId);
             auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + supDisplay + " / " + buyDisplay, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay });
             setCnf({ amount: "", currency: cnf.currency, date: cnf.date, reference: "", supplier: cnf.supplier, buyer: cnf.buyer });
             setDataVer(function(v) { return v + 1; });
@@ -9234,7 +9352,8 @@ export default function FactoringDashboard() {
                 totalAlloc += a.amount;
               }
             });
-            auditLog("Credit Note Allocated", cn.creditNoteId + ": " + money(totalAlloc, cn.currency) + " allocated to " + cn.allocations.length + " invoice(s)", { creditNoteId: cn.creditNoteId, amount: totalAlloc, currency: cn.currency, allocations: cn.allocations.slice() });
+            saveCreditNote(allocCN.creditNoteId);
+    auditLog("Credit Note Allocated", cn.creditNoteId + ": " + money(totalAlloc, cn.currency) + " allocated to " + cn.allocations.length + " invoice(s)", { creditNoteId: cn.creditNoteId, amount: totalAlloc, currency: cn.currency, allocations: cn.allocations.slice() });
             setAllocCN(null); setAllocs([]);
             setDataVer(function(v) { return v + 1; });
           }
@@ -9325,7 +9444,8 @@ export default function FactoringDashboard() {
                                     var removedAmt = a.amount;
                                     var removedInvId = a.invoiceId;
                                     cn.allocations.splice(ai, 1);
-                                    auditLog("Credit Note Unallocated", cn.creditNoteId + ": " + money(removedAmt, cn.currency) + " unallocated from " + removedInvId, { creditNoteId: cn.creditNoteId, invoiceId: removedInvId, amount: removedAmt, currency: cn.currency });
+                                    saveCreditNote(cn.creditNoteId);
+    auditLog("Credit Note Unallocated", cn.creditNoteId + ": " + money(removedAmt, cn.currency) + " unallocated from " + removedInvId, { creditNoteId: cn.creditNoteId, invoiceId: removedInvId, amount: removedAmt, currency: cn.currency });
                                     setDataVer(function(v) { return v + 1; });
                                   }} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Unallocate</button></td>
                                 </tr>;
@@ -10133,7 +10253,8 @@ export default function FactoringDashboard() {
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
                     } else {
                       detEntity.branches.push(ebData);
-                      auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
+                      saveSupplier(selectedSupplier);
+                    auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
                     }
                     setManagePopup(null);
                     setDataVer(function(v) { return v + 1; });
@@ -10142,7 +10263,8 @@ export default function FactoringDashboard() {
                     if (!detEntity || !detEntity.branches) return;
                     var removed = detEntity.branches[idx];
                     detEntity.branches.splice(idx, 1);
-                    auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
+                    saveSupplier(selectedSupplier);
+                        auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
                     setDataVer(function(v) { return v + 1; });
                   }
                   function bfld(label, key, type) {
@@ -10879,7 +11001,8 @@ export default function FactoringDashboard() {
                   prog.id = "FP-" + String(FUNDING_PROGRAMS_DB.length + 1).padStart(4, "0");
                   prog.createdDate = new Date().toISOString().split("T")[0];
                   FUNDING_PROGRAMS_DB.push(prog);
-                  auditLog("Program Created", prog.name + " created: " + money(prog.maxSize, prog.currency) + " max size", { programId: prog.id, programName: prog.name, currency: prog.currency, maxSize: prog.maxSize });
+                  saveFundingProgram(newProg.id);
+                      auditLog("Program Created", prog.name + " created: " + money(prog.maxSize, prog.currency) + " max size", { programId: prog.id, programName: prog.name, currency: prog.currency, maxSize: prog.maxSize });
                 }
                 setShowNewProgram(false); setEditProg(null); setProgFields({});
                 setDataVer(function(v) { return v + 1; });
@@ -11143,6 +11266,7 @@ export default function FactoringDashboard() {
                   fullyRepaidDate: null, invoiceStatus: "Received", invoiceStatusHistory: hist,
                   fundingStatus: "pending", partialApprovedAmount: 0
                 });
+                saveInvoice(newId);
                 auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + supDisplayName + " / " + buyDisplayName + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplierId: nf.supplier, supplier: supDisplayName, buyerId: nf.buyer, buyer: buyDisplayName, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
                 setNewInvFields({ supplier: nf.supplier, buyer: nf.buyer, amount: "", currency: nf.currency, invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
                 setDataVer(function(v) { return v + 1; });
