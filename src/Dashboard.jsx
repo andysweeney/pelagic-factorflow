@@ -406,17 +406,20 @@ async function saveSPQEntry(spqId) {
   _isSaving = true;
   try {
     var row = {
-      id: item.id, type: item.type, invoice_id: item.invoiceId, invoice_ids: item.invoiceIds || [],
-      supplier_name: item.supplierName, supplier_id: item.supplierId || "",
-      bank_name: item.bankName, bank_details: item.bankDetails, bank_verified: item.bankVerified,
-      amount: item.amount, currency: item.currency, status: item.status,
-      program_id: item.programId, program_name: item.programName,
-      created_at: item.createdAt, created_display: item.createdDisplay,
-      executed_at: item.executedAt, executed_display: item.executedDisplay,
-      source_payment_id: item.sourcePaymentId, source_invoice_id: item.sourceInvoiceId,
-      hb_payment_id: item.hbPaymentId, is_bundle: item.isBundle || false,
-      holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount,
-      deductions: item.deductions || [], deduction_total: item.deductionTotal || 0
+      id: item.id, type: item.type, invoice_id: item.invoiceId || null, invoice_ids: item.invoiceIds || [],
+      supplier_name: item.supplierName, supplier_id: item.supplierId || null,
+      bank_name: item.bankName || null, bank_details: item.bankDetails || null,
+      amount: item.amount, currency: item.currency, status: item.status || "Pending",
+      program_id: item.programId || null, program_name: item.programName || null,
+      created_at: item.createdAt || null, created_display: item.createdDisplay || null,
+      executed_at: item.executedAt || null, executed_display: item.executedDisplay || null,
+      source_payment_id: item.sourcePaymentId || null, source_invoice_id: item.sourceInvoiceId || null,
+      hb_payment_id: item.hbPaymentId || null, is_bundle: item.isBundle || false,
+      holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount || null,
+      deductions: item.deductions || [], deduction_total: item.deductionTotal || 0,
+      notes: item.notes || [],
+      cancelled_at: item.cancelledAt || null, cancelled_display: item.cancelledDisplay || null,
+      failed_at: item.failedAt || null, failed_display: item.failedDisplay || null
     };
     var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
     if (result.error) console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details);
@@ -4736,6 +4739,7 @@ export default function FactoringDashboard() {
                                         return <div>
                                           <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                          <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
@@ -7485,6 +7489,7 @@ export default function FactoringDashboard() {
                                         return <div>
                                           <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                          <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
