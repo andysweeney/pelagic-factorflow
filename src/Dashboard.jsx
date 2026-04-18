@@ -351,12 +351,15 @@ var ENTITY_ALIASES_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
-async function fetchAllRows(table) {
+async function fetchAllRows(table, filter) {
+  // filter: optional { column: "col_name", value: "val" }
   var all = [];
   var pageSize = 1000;
   var from = 0;
   while (true) {
-    var res = await supabase.from(table).select("*").range(from, from + pageSize - 1);
+    var query = supabase.from(table).select("*");
+    if (filter) query = query.eq(filter.column, filter.value);
+    var res = await query.range(from, from + pageSize - 1);
     if (res.error) { console.error("[fetchAllRows] Error loading " + table + ":", res.error.message); break; }
     if (!res.data || res.data.length === 0) break;
     all = all.concat(res.data);
@@ -601,6 +604,68 @@ async function loadPersistedData() {
 var _realtimeUpdate = false; // Flag to prevent save loops when realtime triggers a reload
 var _isSaving = false; // Flag to suppress realtime reloads during batch saves
 var _lastSaveTime = 0; // Timestamp of last save to prevent save loops
+
+async function reloadForSupplier(supplierId) {
+  var parentId = parseEntityId(supplierId).supplierId || supplierId;
+  var supplierName = "";
+  SUPPLIERS_DB.forEach(function(s) { if (s.id === parentId) supplierName = s.name; });
+  if (!supplierName) return;
+  
+  // Load only this supplier's invoices
+  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName });
+  // Also load by supplier_id for branch matching
+  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId });
+  // Merge and deduplicate
+  var seen = {};
+  INVOICES_DB.length = 0;
+  invData.concat(invDataById).forEach(function(row) {
+    if (seen[row.id]) return;
+    seen[row.id] = true;
+    INVOICES_DB.push({
+      id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+      amount: parseFloat(row.amount) || 0, currency: row.currency,
+      capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+      interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+      daysToMaturity: row.days_to_maturity || 0,
+      advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
+      invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+      createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+      invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+      fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+      invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+      invoiceStatusHistory: row.invoice_status_history || [],
+      adjustments: row.adjustments || [],
+      doNotFund: row.do_not_fund || false,
+      notes: row.notes || [],
+      csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
+      intendedPaymentDate: row.intended_payment_date || null
+    });
+  });
+  console.log("[Supplier Load] " + supplierName + ": " + INVOICES_DB.length + " invoices loaded");
+  
+  // Load payments that have allocations to this supplier's invoices
+  // For now load all payments (they're usually fewer) and filter client-side
+  var payData = await fetchAllRows("payments");
+  PAYMENTS_DB.length = 0;
+  for (var pi = 0; pi < payData.length; pi++) {
+    var prow = payData[pi];
+    var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
+    var allocs = (allocRes.data || []).map(function(a) {
+      return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+    });
+    // Only include if at least one allocation is to this supplier's invoices
+    var hasSupplierAlloc = allocs.some(function(a) { return seen[a.invoiceId]; });
+    // Also include if there's an SPQ remittance to this supplier
+    if (hasSupplierAlloc || allocs.length === 0) {
+      PAYMENTS_DB.push({
+        paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
+        date: prow.date, currency: prow.currency, reference: prow.reference || "",
+        allocations: allocs, notes: prow.notes || []
+      });
+    }
+  }
+  console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
+}
 
 async function reloadInvoices() {
   try {
@@ -1331,8 +1396,18 @@ export default function FactoringDashboard() {
         // If data is already loaded, bump dataVer to re-render with new profile context
         if (_dataLoaded) setDataVer(function(v) { return v + 1; });
         // If supplier user and suppliers not loaded yet, force a reload
-        if (result.data.role === "supplier" && SUPPLIERS_DB.length === 0) {
-          loadPersistedData().then(function() { setDataVer(function(v) { return v + 1; }); });
+        if (result.data.role === "supplier") {
+          if (SUPPLIERS_DB.length === 0) {
+            loadPersistedData().then(function() {
+              reloadForSupplier(result.data.supplier_id).then(function() {
+                setDataVer(function(v) { return v + 1; });
+              });
+            });
+          } else {
+            reloadForSupplier(result.data.supplier_id).then(function() {
+              setDataVer(function(v) { return v + 1; });
+            });
+          }
         }
       }
     });
