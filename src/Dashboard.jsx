@@ -11408,9 +11408,10 @@ export default function FactoringDashboard() {
               }
 
               // --- PROCESSING ---
-              function processCsvImport() {
+              async function processCsvImport() {
                 if (!csvImportData || csvImportData.length === 0) return;
                 setCsvImportProcessing(true);
+                _isSaving = true; // Suppress realtime reloads during import
                 var created = 0, updated = 0, queued = 0, skipped = 0, errors = [];
                 var reviewItems = [];
                 var now = new Date();
@@ -11600,6 +11601,37 @@ export default function FactoringDashboard() {
                 } else {
                   setCsvReviewQueue(function(prev) { return prev.concat(reviewItems); });
                 }
+
+                // Write new/updated invoices directly to Supabase in batches
+                var invToSave = INVOICES_DB.map(function(inv) {
+                  return {
+                    id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
+                    amount: inv.amount, currency: inv.currency,
+                    capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
+                    interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
+                    days_to_maturity: inv.daysToMaturity || 0,
+                    advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
+                    invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
+                    created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+                    invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
+                    funding_program: inv.fundingProgram || null,
+                    partial_approved_amount: inv.partialApprovedAmount || 0,
+                    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+                    invoice_status_history: inv.invoiceStatusHistory || [],
+                    adjustments: inv.adjustments || [],
+                    do_not_fund: inv.doNotFund || false,
+                    notes: inv.notes || []
+                  };
+                });
+                console.log("[CSV Import] Saving " + invToSave.length + " invoices to Supabase...");
+                var saveErrors = 0;
+                for (var sb = 0; sb < invToSave.length; sb += 50) {
+                  var sBatch = invToSave.slice(sb, sb + 50);
+                  var sRes = await supabase.from("invoices").upsert(sBatch, { onConflict: "id" });
+                  if (sRes.error) { console.error("[CSV Import] Batch error at " + sb + ":", sRes.error.message); saveErrors++; }
+                }
+                console.log("[CSV Import] Save complete. Errors: " + saveErrors);
+                _isSaving = false;
 
                 setCsvImportResult({
                   created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errors: errors,
