@@ -1815,9 +1815,11 @@ export default function FactoringDashboard() {
 
     var channel = supabase.channel("realtime-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function(payload) {
+        if (_isSaving) return; // Skip during CSV batch save
         if (applyRowChange(payload, INVOICES_DB, "id", mapInvoiceRow)) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function(payload) {
+        console.log("[RT SPQ]", payload.eventType, payload.new ? payload.new.id : "no-new", "supplier:", payload.new ? payload.new.supplier_name : "?", "_isSaving:", _isSaving);
         if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
           return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
             supplierName: row.supplier_name, supplierId: row.supplier_id || "",
@@ -1833,12 +1835,15 @@ export default function FactoringDashboard() {
         })) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function(payload) {
+        console.log("[RT Audit]", payload.eventType, payload.new ? payload.new.action : "no-action", "_isSaving:", _isSaving);
         if (payload.eventType === "INSERT" && payload.new && !_isSaving) {
           var row = payload.new;
           var exists = AUDIT_LOG.some(function(a) { return a.timestamp === row.timestamp && a.action === row.action; });
           if (!exists) {
             AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: row.context || {} });
             scheduleRender();
+          } else {
+            console.log("[RT Audit] Skipped duplicate:", row.action, row.timestamp);
           }
         }
       })
