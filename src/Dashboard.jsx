@@ -370,6 +370,107 @@ async function fetchAllRows(table, filter) {
   return all;
 }
 
+
+
+async function saveInvoice(invId) {
+  var inv = INVOICES_DB.find(function(x) { return x.id === invId; });
+  if (!inv) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
+      amount: inv.amount, currency: inv.currency,
+      capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
+      interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
+      days_to_maturity: inv.daysToMaturity || 0,
+      advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
+      invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
+      created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+      invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
+      funding_program: inv.fundingProgram || null,
+      partial_approved_amount: inv.partialApprovedAmount || 0,
+      invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+      invoice_status_history: inv.invoiceStatusHistory || [],
+      adjustments: inv.adjustments || [],
+      do_not_fund: inv.doNotFund || false,
+      notes: inv.notes || []
+    };
+    await supabase.from("invoices").upsert([row], { onConflict: "id" });
+  } catch (e) { console.error("[SaveInvoice] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveSPQEntry(spqId) {
+  var item = SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === spqId; });
+  if (!item) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: item.id, type: item.type, invoice_id: item.invoiceId, invoice_ids: item.invoiceIds || [],
+      supplier_name: item.supplierName, supplier_id: item.supplierId || "",
+      bank_name: item.bankName, bank_details: item.bankDetails, bank_verified: item.bankVerified,
+      amount: item.amount, currency: item.currency, status: item.status,
+      program_id: item.programId, program_name: item.programName,
+      created_at: item.createdAt, created_display: item.createdDisplay,
+      executed_at: item.executedAt, executed_display: item.executedDisplay,
+      source_payment_id: item.sourcePaymentId, source_invoice_id: item.sourceInvoiceId,
+      hb_payment_id: item.hbPaymentId, is_bundle: item.isBundle || false,
+      holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount,
+      deductions: item.deductions || [], deduction_total: item.deductionTotal || 0
+    };
+    await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
+  } catch (e) { console.error("[SaveSPQ] Error:", e); }
+  _isSaving = false;
+}
+
+async function saveFundingProgram(progId) {
+  var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
+  if (!fp) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: fp.id, name: fp.name, currency: fp.currency,
+      max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
+      max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
+      max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
+      min_invoice_size: fp.minInvoiceSize || 0,
+      threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
+      threshold_recovery: fp.thresholdRecovery || 30,
+      threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
+      max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
+      max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
+      eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
+      eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
+      created_date: fp.createdDate || null,
+      fund_flows: fp.fundFlows || []
+    };
+    await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
+  } catch (e) { console.error("[SaveProgram] Error:", e); }
+  _isSaving = false;
+}
+
+function mapInvoiceRow(row) {
+  return {
+    id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+    amount: parseFloat(row.amount) || 0, currency: row.currency,
+    capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+    interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+    daysToMaturity: row.days_to_maturity || 0,
+    advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
+    invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+    createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+    fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+    invoiceStatusHistory: row.invoice_status_history || [],
+    adjustments: row.adjustments || [],
+    doNotFund: row.do_not_fund || false,
+    notes: row.notes || [],
+    csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
+    intendedPaymentDate: row.intended_payment_date || null
+  };
+}
+
 async function loadPersistedData() {
   try {
     // Load suppliers
@@ -1502,56 +1603,104 @@ export default function FactoringDashboard() {
     if (dataVer > 0) savePersistedData();
   }, [dataVer, storageLoading]);
 
-  // Supabase Realtime subscriptions for live updates
+  // Supabase Realtime subscriptions — apply individual row changes, never reload full tables
   useEffect(function() {
     if (!session) return;
 
-    // Debounce realtime reloads — wait 500ms after the last event before reloading
-    var timers = {};
-    function debouncedReload(key, reloadFn) {
-      if (_isSaving) return;
-      if (timers[key]) clearTimeout(timers[key]);
-      timers[key] = setTimeout(function() {
-        if (_isSaving) return;
-        reloadFn().then(function() {
-          _realtimeUpdate++;
-          setDataVer(function(v) { return v + 1; });
-        });
-      }, 2000);
+    // Apply a single row change to an in-memory array
+    function applyRowChange(payload, db, idField, mapper) {
+      if (_isSaving) return false;
+      var eventType = payload.eventType;
+      var newRow = payload.new;
+      var oldRow = payload.old;
+
+      if (eventType === "INSERT" && newRow) {
+        var exists = db.some(function(item) { return item[idField] === newRow.id; });
+        if (!exists) {
+          db.push(mapper(newRow));
+          return true;
+        }
+      } else if (eventType === "UPDATE" && newRow) {
+        var idx = db.findIndex(function(item) { return item[idField] === newRow.id; });
+        if (idx >= 0) {
+          db[idx] = mapper(newRow);
+          return true;
+        } else {
+          db.push(mapper(newRow));
+          return true;
+        }
+      } else if (eventType === "DELETE" && oldRow) {
+        var delIdx = db.findIndex(function(item) { return item[idField] === oldRow.id; });
+        if (delIdx >= 0) {
+          db.splice(delIdx, 1);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Debounce re-render — collect multiple changes then re-render once
+    var renderTimer = null;
+    function scheduleRender() {
+      if (renderTimer) clearTimeout(renderTimer);
+      renderTimer = setTimeout(function() {
+        _realtimeUpdate++;
+        setDataVer(function(v) { return v + 1; });
+      }, 500);
     }
 
     var channel = supabase.channel("realtime-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function() {
-        debouncedReload("invoices", reloadInvoices);
+      .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function(payload) {
+        if (applyRowChange(payload, INVOICES_DB, "id", mapInvoiceRow)) scheduleRender();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, function() {
-        debouncedReload("payments", reloadPayments);
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function(payload) {
+        if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
+          return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+            supplierName: row.supplier_name, supplierId: row.supplier_id || "",
+            bankName: row.bank_name, bankDetails: row.bank_details, bankVerified: row.bank_verified,
+            amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
+            programId: row.program_id, programName: row.program_name,
+            createdAt: row.created_at, createdDisplay: row.created_display,
+            executedAt: row.executed_at, executedDisplay: row.executed_display,
+            sourcePaymentId: row.source_payment_id, sourceInvoiceId: row.source_invoice_id,
+            hbPaymentId: row.hb_payment_id, isBundle: row.is_bundle || false,
+            holdbackIds: row.holdback_ids || [], grossAmount: row.gross_amount,
+            deductions: row.deductions || [], deductionTotal: row.deduction_total || 0 };
+        })) scheduleRender();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "payment_allocations" }, function() {
-        debouncedReload("payments", reloadPayments);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function() {
-        debouncedReload("spq", reloadSPQ);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function() {
-        debouncedReload("audit", reloadAuditLog);
+      .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function(payload) {
+        if (payload.eventType === "INSERT" && payload.new && !_isSaving) {
+          var row = payload.new;
+          var exists = AUDIT_LOG.some(function(a) { return a.timestamp === row.timestamp && a.action === row.action; });
+          if (!exists) {
+            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: row.context || {} });
+            scheduleRender();
+          }
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, function() {
-        debouncedReload("suppliers", reloadSuppliers);
+        reloadSuppliers().then(scheduleRender);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "buyers" }, function() {
-        debouncedReload("buyers", reloadBuyers);
+        reloadBuyers().then(scheduleRender);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "funding_programs" }, function() {
-        debouncedReload("programs", reloadFundingPrograms);
+        reloadFundingPrograms().then(scheduleRender);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "payments" }, function() {
+        // Payments have allocations in a separate table — need full reload for these
+        if (!_isSaving) reloadPayments().then(scheduleRender);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "payment_allocations" }, function() {
+        if (!_isSaving) reloadPayments().then(scheduleRender);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_notes" }, function() {
-        debouncedReload("creditnotes", reloadCreditNotes);
+        if (!_isSaving) reloadCreditNotes().then(scheduleRender);
       })
       .subscribe();
 
     return function() {
-      Object.keys(timers).forEach(function(k) { clearTimeout(timers[k]); });
+      if (renderTimer) clearTimeout(renderTimer);
       supabase.removeChannel(channel);
     };
   }, [session]);
@@ -2212,6 +2361,7 @@ export default function FactoringDashboard() {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     var progName = prog ? prog.name : programId;
     auditLog("Invoice Approved", invId + " approved for funding via " + progName + ": " + money(raw.amount, raw.currency) + " — " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: programId, fundingProgramName: progName });
+    saveInvoice(invId);
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -2238,6 +2388,9 @@ export default function FactoringDashboard() {
       executedAt: now.toISOString(),
       executedDisplay: useDisplay
     });
+    saveInvoice(invId);
+    if (prog) saveFundingProgram(prog.id);
+    saveSPQEntry(cpId);
     auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setDataVer(function(v) { return v + 1; });
   }
@@ -2259,6 +2412,7 @@ export default function FactoringDashboard() {
         SUPPLIER_PAYMENT_QUEUE.splice(qi, 1);
       }
     }
+    saveInvoice(invId);
     auditLog("Invoice Approval Cancelled", invId + " rejected for funding" + (progName ? " from " + progName : "") + ", returned to funding queue" + (removed.length > 0 ? " (removed queue: " + removed.join(", ") + ")" : ""), { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, previousProgram: oldProg, previousProgramName: progName, removedQueueEntries: removed });
     setDataVer(function(v) { return v + 1; });
   }
@@ -2443,6 +2597,8 @@ export default function FactoringDashboard() {
       }
     }
 
+    saveSPQEntry(spqId);
+    if (item.type === "remittance" && item.programId) saveFundingProgram(item.programId);
     auditLog("Supplier Payment Executed", spqId + " executed: " + money(item.amount, item.currency) + " to " + item.supplierName + " — " + (item.bankName ? item.bankName + " " + item.bankDetails : "No bank on file"), { queueId: spqId, hbPaymentId: item.hbPaymentId, sourceInvoiceId: item.sourceInvoiceId, supplierName: item.supplierName, supplierId: item.supplierId, bankName: item.bankName, bankDetails: item.bankDetails, bankVerified: item.bankVerified || false, amount: item.amount, currency: item.currency });
     setDataVer(function(v) { return v + 1; });
   }
