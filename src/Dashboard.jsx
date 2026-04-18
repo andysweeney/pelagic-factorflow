@@ -1016,7 +1016,7 @@ async function savePersistedData() {
         if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
       }
     }
-  } catch (e) { console.error("Supabase save error:", e); } finally { setTimeout(function() { _isSaving = false; }, 3000); }
+  } catch (e) { console.error("Supabase save error:", e); } finally { _lastSaveTime = Date.now(); setTimeout(function() { _isSaving = false; }, 5000); }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1423,7 +1423,7 @@ export default function FactoringDashboard() {
     if (userProfile && userProfile.role === "supplier") return;
     if (_realtimeUpdate) { _realtimeUpdate = false; return; }
     // Suppress saves triggered by realtime reloads within 5s of last save
-    if (Date.now() - _lastSaveTime < 5000) return;
+    if (Date.now() - _lastSaveTime < 10000) return;
     if (dataVer > 0) savePersistedData();
   }, [dataVer, storageLoading]);
 
@@ -1434,7 +1434,7 @@ export default function FactoringDashboard() {
     // Debounce realtime reloads — wait 500ms after the last event before reloading
     var timers = {};
     function debouncedReload(key, reloadFn) {
-      if (_isSaving) return; // Skip reloads during batch saves
+      if (_isSaving) return;
       if (timers[key]) clearTimeout(timers[key]);
       timers[key] = setTimeout(function() {
         if (_isSaving) return;
@@ -1442,7 +1442,7 @@ export default function FactoringDashboard() {
           _realtimeUpdate = true;
           setDataVer(function(v) { return v + 1; });
         });
-      }, 500);
+      }, 2000);
     }
 
     var channel = supabase.channel("realtime-updates")
