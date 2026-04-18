@@ -1016,7 +1016,7 @@ async function savePersistedData() {
         if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
       }
     }
-  } catch (e) { console.error("Supabase save error:", e); } finally { _isSaving = false; }
+  } catch (e) { console.error("Supabase save error:", e); } finally { setTimeout(function() { _isSaving = false; }, 3000); }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1639,6 +1639,7 @@ export default function FactoringDashboard() {
   var csvImp2 = useState({}), csvImportMapping = csvImp2[0], setCsvImportMapping = csvImp2[1];
   var csvImp3 = useState(null), csvImportResult = csvImp3[0], setCsvImportResult = csvImp3[1];
   var csvImp4 = useState(false), csvImportProcessing = csvImp4[0], setCsvImportProcessing = csvImp4[1];
+  var csvImp6 = useState(""), csvImportProgress = csvImp6[0], setCsvImportProgress = csvImp6[1];
   var csvImp5 = useState([]), csvImportCols = csvImp5[0], setCsvImportCols = csvImp5[1];
   var csvRev1 = useState([]), csvReviewQueue = csvRev1[0], setCsvReviewQueue = csvRev1[1];
   var csvRes1 = useState(null), csvResolution = csvRes1[0], setCsvResolution = csvRes1[1]; // { suppliers: {csvName: entityId}, buyers: {csvName: entityId}, unresolved: [...] }
@@ -11411,6 +11412,7 @@ export default function FactoringDashboard() {
               async function processCsvImport() {
                 if (!csvImportData || csvImportData.length === 0) return;
                 setCsvImportProcessing(true);
+                setCsvImportProgress("Processing rows...");
                 _isSaving = true; // Suppress realtime reloads during import
                 var created = 0, updated = 0, queued = 0, skipped = 0, errors = [];
                 var reviewItems = [];
@@ -11624,13 +11626,17 @@ export default function FactoringDashboard() {
                   };
                 });
                 console.log("[CSV Import] Saving " + invToSave.length + " invoices to Supabase...");
+                setCsvImportProgress("Saving to database... 0/" + invToSave.length);
                 var saveErrors = 0;
                 for (var sb = 0; sb < invToSave.length; sb += 50) {
                   var sBatch = invToSave.slice(sb, sb + 50);
+                  setCsvImportProgress("Saving to database... " + Math.min(sb + 50, invToSave.length) + "/" + invToSave.length);
                   var sRes = await supabase.from("invoices").upsert(sBatch, { onConflict: "id" });
                   if (sRes.error) { console.error("[CSV Import] Batch error at " + sb + ":", sRes.error.message); saveErrors++; }
+                  await new Promise(function(r) { setTimeout(r, 50); });
                 }
                 console.log("[CSV Import] Save complete. Errors: " + saveErrors);
+                setCsvImportProgress("");
                 _isSaving = false;
 
                 setCsvImportResult({
@@ -11648,6 +11654,17 @@ export default function FactoringDashboard() {
               var step = csvImportStep;
 
               return <div>
+                {/* Processing overlay */}
+                {csvImportProcessing && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(11,17,32,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, padding: "48px 56px", textAlign: "center", border: "1px solid var(--accent)", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", maxWidth: 420 }}>
+                    <div style={{ width: 48, height: 48, border: "4px solid var(--border)", borderTop: "4px solid var(--accent)", borderRadius: "50%", margin: "0 auto 20px", animation: "spin 1s linear infinite" }}></div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Processing CSV Import</div>
+                    <div style={{ fontSize: 13, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", marginBottom: 16 }}>{csvImportProgress || "Preparing..."}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>Please do not close this window or navigate away.</div>
+                  </div>
+                  <style>{"@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }"}</style>
+                </div>}
+
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px", marginBottom: 20 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>CSV Invoice Import</div>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>Upload invoices, map columns, resolve entity names, then process.</div>
