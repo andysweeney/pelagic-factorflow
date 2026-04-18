@@ -402,7 +402,7 @@ async function saveInvoice(invId) {
 
 async function saveSPQEntry(spqId) {
   var item = SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === spqId; });
-  if (!item) return;
+  if (!item) { console.error("[SaveSPQ] Item not found:", spqId); return; }
   _isSaving = true;
   try {
     var row = {
@@ -418,7 +418,9 @@ async function saveSPQEntry(spqId) {
       holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount,
       deductions: item.deductions || [], deduction_total: item.deductionTotal || 0
     };
-    await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
+    var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
+    if (result.error) console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details);
+    else console.log("[SaveSPQ] OK:", spqId, "supplier:", item.supplierName);
   } catch (e) { console.error("[SaveSPQ] Error:", e); }
   _isSaving = false;
 }
@@ -1371,7 +1373,9 @@ function _auditLog(action, details, context, dateOverride) {
   supabase.from("audit_log").insert([{
     timestamp: entry.timestamp, display_time: entry.displayTime,
     action: entry.action, details: entry.details, context: entry.context
-  }]);
+  }]).then(function(result) {
+    if (result.error) console.error("[AuditSave] Error:", result.error.message, result.error.details);
+  });
 }
 
 function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
