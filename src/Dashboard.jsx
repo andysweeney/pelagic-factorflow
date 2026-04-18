@@ -601,7 +601,7 @@ async function loadPersistedData() {
   return false;
 }
 
-var _realtimeUpdate = false; // Flag to prevent save loops when realtime triggers a reload
+var _realtimeUpdate = 0; // Counter to prevent save loops when realtime triggers a reload
 var _isSaving = false; // Flag to suppress realtime reloads during batch saves
 var _lastSaveTime = 0; // Timestamp of last save to prevent save loops
 
@@ -1081,7 +1081,7 @@ async function savePersistedData() {
         if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
       }
     }
-  } catch (e) { console.error("Supabase save error:", e); } finally { _lastSaveTime = Date.now(); setTimeout(function() { _isSaving = false; }, 5000); }
+  } catch (e) { console.error("Supabase save error:", e); } finally { _lastSaveTime = Date.now(); setTimeout(function() { _isSaving = false; }, 15000); }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1496,7 +1496,7 @@ export default function FactoringDashboard() {
   useEffect(function() {
     if (storageLoading) return;
     if (userProfile && userProfile.role === "supplier") return;
-    if (_realtimeUpdate) { _realtimeUpdate = false; return; }
+    if (_realtimeUpdate > 0) { _realtimeUpdate--; return; }
     // Suppress saves triggered by realtime reloads within 5s of last save
     if (Date.now() - _lastSaveTime < 10000) return;
     if (dataVer > 0) savePersistedData();
@@ -1514,7 +1514,7 @@ export default function FactoringDashboard() {
       timers[key] = setTimeout(function() {
         if (_isSaving) return;
         reloadFn().then(function() {
-          _realtimeUpdate = true;
+          _realtimeUpdate++;
           setDataVer(function(v) { return v + 1; });
         });
       }, 2000);
