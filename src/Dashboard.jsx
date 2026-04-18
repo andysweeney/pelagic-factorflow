@@ -423,7 +423,6 @@ async function saveSPQEntry(spqId) {
     };
     var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
     if (result.error) console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details);
-    else console.log("[SaveSPQ] OK:", spqId, "supplier:", item.supplierName);
   } catch (e) { console.error("[SaveSPQ] Error:", e); }
   _isSaving = false;
 }
@@ -896,7 +895,9 @@ async function reloadForSupplier(supplierId) {
       notes: row.notes || [],
       createdAt: row.created_at, createdDisplay: row.created_display,
       executedAt: row.executed_at, executedDisplay: row.executed_display,
-      sourcePaymentId: row.source_payment_id || null
+      sourcePaymentId: row.source_payment_id || null,
+      cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
+      failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
     });
   });
   console.log("[Supplier Load] " + supplierName + ": " + SUPPLIER_PAYMENT_QUEUE.length + " SPQ entries loaded");
@@ -1823,34 +1824,81 @@ export default function FactoringDashboard() {
     var channel = supabase.channel("realtime-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function(payload) {
         if (_isSaving) return; // Skip during CSV batch save
+        // If running as a supplier, drop invoice events that are not relevant to this supplier.
+        // Prevents supplier portal from re-rendering for every invoice during admin CSV imports.
+        if (_supplierFilter) {
+          var sf = _supplierFilter;
+          var row = payload.new || payload.old;
+          if (row) {
+            var matchesSup = row.supplier_name === sf.supplierName ||
+              (row.supplier_id && (row.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(row.supplier_id).supplierId === sf.parentId)));
+            if (!matchesSup) return;
+            // Keep supplier invoice-id set in sync so later audit-log realtime
+            // relevance checks find invoices that arrived after the initial load
+            if (sf.invIds) {
+              if (payload.eventType === "DELETE" && row.id) delete sf.invIds[row.id];
+              else if (row.id) sf.invIds[row.id] = true;
+            }
+          }
+        }
         if (applyRowChange(payload, INVOICES_DB, "id", mapInvoiceRow)) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "supplier_payment_queue" }, function(payload) {
-        console.log("[RT SPQ]", payload.eventType, payload.new ? payload.new.id : "no-new", "supplier:", payload.new ? payload.new.supplier_name : "?", "_isSaving:", _isSaving);
+        // Supplier-portal guard: only process SPQ rows belonging to this supplier
+        if (_supplierFilter) {
+          var sf = _supplierFilter;
+          var spqRow = payload.new || payload.old;
+          if (spqRow) {
+            var matches = spqRow.supplier_name === sf.supplierName ||
+              (spqRow.supplier_id && (spqRow.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(spqRow.supplier_id).supplierId === sf.parentId)));
+            if (!matches) return;
+          }
+        }
         if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
           return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
             supplierName: row.supplier_name, supplierId: row.supplier_id || "",
-            bankName: row.bank_name, bankDetails: row.bank_details, bankVerified: row.bank_verified,
+            bankName: row.bank_name, bankDetails: row.bank_details,
             amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
             programId: row.program_id, programName: row.program_name,
+            hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
+            isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+            grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
+            deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
+            notes: row.notes || [],
             createdAt: row.created_at, createdDisplay: row.created_display,
             executedAt: row.executed_at, executedDisplay: row.executed_display,
-            sourcePaymentId: row.source_payment_id, sourceInvoiceId: row.source_invoice_id,
-            hbPaymentId: row.hb_payment_id, isBundle: row.is_bundle || false,
-            holdbackIds: row.holdback_ids || [], grossAmount: row.gross_amount,
-            deductions: row.deductions || [], deductionTotal: row.deduction_total || 0 };
+            sourcePaymentId: row.source_payment_id || null,
+            cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
+            failedAt: row.failed_at || null, failedDisplay: row.failed_display || null };
         })) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function(payload) {
-        console.log("[RT Audit]", payload.eventType, payload.new ? payload.new.action : "no-action", "_isSaving:", _isSaving);
         if (payload.eventType === "INSERT" && payload.new && !_isSaving) {
           var row = payload.new;
-          var exists = AUDIT_LOG.some(function(a) { return a.timestamp === row.timestamp && a.action === row.action; });
+          var ctx = row.context || {};
+          // If running as a supplier, only accept entries relevant to that supplier
+          if (_supplierFilter) {
+            var sf = _supplierFilter;
+            var relevant = ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName ||
+              (ctx.supplierId && (ctx.supplierId === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(ctx.supplierId).supplierId === sf.parentId))) ||
+              (ctx.invoiceId && sf.invIds && sf.invIds[ctx.invoiceId]);
+            if (!relevant) return;
+          }
+          // Time-tolerant dedupe: Supabase timestamptz returns strings with microsecond
+          // precision and a "+00:00" offset, while in-memory entries use millisecond
+          // toISOString() with a "Z" suffix, so string === comparison fails and the
+          // entry gets added twice. Normalise to epoch ms (and tolerate 1ms skew from
+          // precision truncation) and also match on action+details as a secondary key.
+          var rowMs = Date.parse(row.timestamp);
+          var exists = AUDIT_LOG.some(function(a) {
+            if (a.action !== row.action) return false;
+            if (a.details !== row.details) return false;
+            var aMs = Date.parse(a.timestamp);
+            return Math.abs(aMs - rowMs) < 2;
+          });
           if (!exists) {
-            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: row.context || {} });
+            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
             scheduleRender();
-          } else {
-            console.log("[RT Audit] Skipped duplicate:", row.action, row.timestamp);
           }
         }
       })
@@ -2905,14 +2953,6 @@ export default function FactoringDashboard() {
         var spAllInvs = viewData.invoices.filter(function(inv) {
           return inv.supplierId ? spMatchesScope(inv.supplierId) : spMatchesScopeByName(inv.supplierName);
         });
-        // Debug: trace invoice matching
-        console.log("[SP Debug] spRawId:", spRawId, "spParentId:", spParentId, "spIsBranchUser:", spIsBranchUser, "spSupName:", spSupName);
-        console.log("[SP Debug] viewData.invoices count:", viewData.invoices.length, "spAllInvs count:", spAllInvs.length);
-        if (viewData.invoices.length > 0 && spAllInvs.length === 0) {
-          viewData.invoices.slice(0, 3).forEach(function(inv) {
-            console.log("[SP Debug] Invoice", inv.id, "supplierId:", inv.supplierId, "supplierName:", inv.supplierName, "fundingStatus:", inv.fundingStatus, "matchScope:", inv.supplierId ? spMatchesScope(inv.supplierId) : "N/A", "matchName:", spMatchesScopeByName(inv.supplierName));
-          });
-        }
         var spPrograms = [];
         var seenProgs = {};
         spAllInvs.forEach(function(inv) {
@@ -2955,10 +2995,6 @@ export default function FactoringDashboard() {
             if (!inv.fundingProgram && inv.fundingStatus !== "pending") return true;
             return false;
           });
-        }
-        console.log("[SP Debug] activeProgId:", activeProgId, "spInvs count after program filter:", spInvs.length);
-        if (spAllInvs.length > 0 && spInvs.length === 0) {
-          spAllInvs.slice(0, 3).forEach(function(inv) { console.log("[SP Debug] Filtered out:", inv.id, "fundingProgram:", inv.fundingProgram, "fundingStatus:", inv.fundingStatus); });
         }
         var spDisplayCcy = activeProg ? activeProg.currency : "GBP";
 
