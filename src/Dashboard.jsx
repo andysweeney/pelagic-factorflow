@@ -803,14 +803,18 @@ async function loadPersistedData() {
 }
 
 var _realtimeUpdate = 0; // Counter to prevent save loops when realtime triggers a reload
-var _isSaving = false; // Flag to suppress realtime reloads during batch saves
+var _isSaving = false;
+var _supplierLoaded = false;
+var _supplierFilter = null; // { supplierName, supplierId, parentId, invIds } // Prevent repeated supplier reloads // Flag to suppress realtime reloads during batch saves
 var _lastSaveTime = 0; // Timestamp of last save to prevent save loops
 
 async function reloadForSupplier(supplierId) {
+  if (_supplierLoaded) return;
+  _supplierLoaded = true;
   var parentId = parseEntityId(supplierId).supplierId || supplierId;
   var supplierName = "";
   SUPPLIERS_DB.forEach(function(s) { if (s.id === parentId) supplierName = s.name; });
-  if (!supplierName) return;
+  if (!supplierName) { _supplierLoaded = false; return; }
   
   // Load only this supplier's invoices
   var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName });
@@ -842,6 +846,9 @@ async function reloadForSupplier(supplierId) {
       intendedPaymentDate: row.intended_payment_date || null
     });
   });
+  var invIdSet = {};
+  INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
+  _supplierFilter = { supplierName: supplierName, supplierId: supplierId, parentId: parentId, invIds: invIdSet };
   console.log("[Supplier Load] " + supplierName + ": " + INVOICES_DB.length + " invoices loaded");
   
   // Load payments that have allocations to this supplier's invoices
@@ -890,8 +897,6 @@ async function reloadForSupplier(supplierId) {
   console.log("[Supplier Load] " + supplierName + ": " + SUPPLIER_PAYMENT_QUEUE.length + " SPQ entries loaded");
 
   // Load holdback payments for this supplier's invoices
-  var invIdSet = {};
-  INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
   var hbpData = await fetchAllRows("holdback_payments");
   HOLDBACK_PAYMENTS_DB.length = 0;
   for (var hi = 0; hi < hbpData.length; hi++) {
