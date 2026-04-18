@@ -1593,15 +1593,10 @@ export default function FactoringDashboard() {
     });
   }, []);
 
-  // Save data whenever dataVer changes (skip initial load, supplier users, and realtime-triggered reloads)
-  useEffect(function() {
-    if (storageLoading) return;
-    if (userProfile && userProfile.role === "supplier") return;
-    if (_realtimeUpdate > 0) { _realtimeUpdate--; return; }
-    // Suppress saves triggered by realtime reloads within 5s of last save
-    if (Date.now() - _lastSaveTime < 10000) return;
-    if (dataVer > 0) savePersistedData();
-  }, [dataVer, storageLoading]);
+  // dataVer changes trigger re-render only, NOT automatic saves
+  // Individual operations (fund, execute, etc.) use targeted saves (saveInvoice, saveSPQEntry, etc.)
+  // Bulk operations (CSV import) call savePersistedData directly
+  // This useEffect is kept only for re-render dependency tracking
 
   // Supabase Realtime subscriptions — apply individual row changes, never reload full tables
   useEffect(function() {
@@ -2309,6 +2304,7 @@ export default function FactoringDashboard() {
     }
 
     if (statusChanges.length > 0) changes.push("Status: " + statusChanges.join(", "));
+    saveInvoice(editInv);
     auditLog("Invoice Edited", editInv + " edited: " + (changes.length > 0 ? changes.join("; ") : "no field changes"), { invoiceId: editInv, changes: changes });
     setEditInv(null); setEditFields({});
     setDataVer(function(v) { return v + 1; });
@@ -2571,6 +2567,7 @@ export default function FactoringDashboard() {
       executedAt: null, executedDisplay: null
     });
     HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, amount: supAmt, date: viewDate, currency: hbDisburseInv.currency, allocations: allocations });
+    saveSPQEntry(spqId);
     auditLog("Holdback Disbursed", hbId + " from " + hbDisburseInv.id + " (" + hbDisburseInv.supplierName + "): " + money(supAmt, hbDisburseInv.currency) + " returned to supplier — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id, supplierName: hbDisburseInv.supplierName, amount: supAmt, currency: hbDisburseInv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setHbSuccessMsg({ hbId: hbId, sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: [], currency: hbDisburseInv.currency, total: supAmt });
     setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt("");
@@ -4629,7 +4626,7 @@ export default function FactoringDashboard() {
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: adjInv === inv.id && adjType === "credit" ? "#2E8B5720" : "transparent", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "debit" ? null : inv.id); setAdjType("debit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C08B30", background: adjInv === inv.id && adjType === "debit" ? "#C08B3020" : "transparent", color: "#D97706", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Debit Adjustment</button>
-                                    {inv.fundingStatus === "pending" && <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginLeft: 8 }}><input type="checkbox" checked={inv.doNotFund || false} onChange={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = !raw.doNotFund; auditLog(raw.doNotFund ? "Do Not Fund Set" : "Do Not Fund Cleared", inv.id + (raw.doNotFund ? " marked Do Not Fund" : " returned to funding queue"), { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ width: 14, height: 14, accentColor: "#6B7280" }} /><span style={{ fontSize: 11, fontWeight: 600, color: inv.doNotFund ? "#6B7280" : "var(--muted)" }}>Do Not Fund</span></label>}
+                                    {inv.fundingStatus === "pending" && <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginLeft: 8 }}><input type="checkbox" checked={inv.doNotFund || false} onChange={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = !raw.doNotFund; saveInvoice(raw.id); auditLog(raw.doNotFund ? "Do Not Fund Set" : "Do Not Fund Cleared", inv.id + (raw.doNotFund ? " marked Do Not Fund" : " returned to funding queue"), { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ width: 14, height: 14, accentColor: "#6B7280" }} /><span style={{ fontSize: 11, fontWeight: 600, color: inv.doNotFund ? "#6B7280" : "var(--muted)" }}>Do Not Fund</span></label>}
                                   </div>
                                   {/* Adjustment Panel */}
                                   {adjInv === inv.id && <div style={{ background: "#fff", borderRadius: 10, border: "1px solid " + (adjType === "credit" ? "#059669" : "#D97706"), padding: "14px 18px", marginBottom: 14 }}>
@@ -9164,6 +9161,27 @@ export default function FactoringDashboard() {
                     setAllocSupFilter(payRoutings[nextIdx].supplierName);
                   } else {
                     // All done
+                    // Save all modified records
+                    if (pay) {
+                      _isSaving = true;
+                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", notes: pay.notes || [] };
+                      supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function() {
+                        // Save allocations
+                        supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function() {
+                          if (pay.allocations.length > 0) {
+                            var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
+                            supabase.from("payment_allocations").insert(allocRows);
+                          }
+                        });
+                        _isSaving = false;
+                      });
+                    }
+                    // Save any SPQ entries created during this allocation
+                    SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                      if (spq.sourcePaymentId === allocPay.paymentId) saveSPQEntry(spq.id);
+                    });
+                    // Save program fund flows
+                    payRoutings.forEach(function(r) { saveFundingProgram(r.programId); });
                     auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
                     setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
                     setDataVer(function(v) { return v + 1; });
