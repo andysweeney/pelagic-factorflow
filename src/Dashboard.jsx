@@ -4490,6 +4490,18 @@ export default function FactoringDashboard() {
                   if (k) auditPTYIds[k] = true;
                 }
               });
+              // Build set of SPQ ids that currently exist, and invoice ids covered by a bundle.
+              // When a bundle is created, individual CPQ rows are deleted but their "Invoice Funded"
+              // audit entries remain. In Your History we want to show ONE bundle row, not the
+              // individual audit rows — the individuals still appear in the per-invoice Audit Log.
+              var spqExistingIds = {};
+              var bundledInvIds = {};
+              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
+                spqExistingIds[q.id] = true;
+                if (q.isBundle && q.invoiceIds) {
+                  q.invoiceIds.forEach(function(iid) { bundledInvIds[iid] = true; });
+                }
+              });
               spAllPaymentsToYou.forEach(function(p) {
                 if (auditPTYIds[p.id]) return;
                 var actionName = p.type === "Funding" ? "Invoice Funded" : p.type === "Holdback Return" ? "Holdback Disbursed" : "Payment Remitted";
@@ -4502,8 +4514,19 @@ export default function FactoringDashboard() {
                   _synthetic: true
                 });
               });
+              // Filter out individual audit entries that have been superseded by a bundle.
+              // Criteria: the event references a completedPaymentId that no longer exists in SPQ
+              // AND the invoice it funded is now part of a bundle.
+              var displayAuditLog = spAuditLog.filter(function(e) {
+                if (e.action === "Invoice Funded" && e.context) {
+                  var cpid = e.context.completedPaymentId;
+                  var iid = e.context.invoiceId;
+                  if (cpid && !spqExistingIds[cpid] && iid && bundledInvIds[iid]) return false;
+                }
+                return true;
+              });
               // Merge audit log with payment events, sorted newest first
-              var mergedHist = spAuditLog.concat(payAllocEvents);
+              var mergedHist = displayAuditLog.concat(payAllocEvents);
               mergedHist.sort(function(a, b) { return (a.timestamp || "") > (b.timestamp || "") ? -1 : 1; });
               // Collect unique actions
               var histActions = [];
