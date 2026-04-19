@@ -935,6 +935,25 @@ async function reloadForSupplier(supplierId) {
     }
   });
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
+
+  // --- DIAGNOSTIC (temporary) --- remove once the Funded/FullyRepaid issue is resolved
+  try {
+    var diagRaw = await supabase.from("payments").select("*");
+    var diagAllocs = await supabase.from("payment_allocations").select("*");
+    var diagHbp = await supabase.from("holdback_payments").select("*");
+    console.log("[SP Diag] RAW payments visible to supplier:", (diagRaw.data || []).length, "err:", diagRaw.error || "none");
+    console.log("[SP Diag] RAW payment_allocations visible to supplier:", (diagAllocs.data || []).length, "err:", diagAllocs.error || "none");
+    console.log("[SP Diag] RAW holdback_payments visible to supplier:", (diagHbp.data || []).length, "err:", diagHbp.error || "none");
+    console.log("[SP Diag] After load: PAYMENTS_DB=" + PAYMENTS_DB.length + " HOLDBACK_PAYMENTS_DB=" + HOLDBACK_PAYMENTS_DB.length);
+    // For each invoice, sum allocations applied to it from the raw allocations table
+    var allocByInv = {};
+    (diagAllocs.data || []).forEach(function(a) { allocByInv[a.invoice_id] = (allocByInv[a.invoice_id] || 0) + (parseFloat(a.amount) || 0); });
+    INVOICES_DB.forEach(function(inv) {
+      if ((allocByInv[inv.id] || 0) > 0 || inv.fundingStatus !== "funded") {
+        console.log("[SP Diag] " + inv.id + ": raw_status=" + inv.fundingStatus + " amount=" + inv.amount + " capDue=" + inv.capitalDue + " allocatedFromRaw=" + (allocByInv[inv.id] || 0).toFixed(2));
+      }
+    });
+  } catch (diagErr) { console.error("[SP Diag] Error:", diagErr); }
 }
 
 async function reloadInvoices() {
