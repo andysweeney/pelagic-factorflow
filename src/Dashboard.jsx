@@ -3178,6 +3178,7 @@ export default function FactoringDashboard() {
         spHoldbackPays.forEach(function(p) { hbPayIds[p.id] = true; });
         SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
           if (spq.type !== "holdback") return;
+          if (spq.isBundle) return; // Bundles are handled by Method 3
           if (hbPayIds[spq.hbPaymentId]) return; // already included
           if (!spMatchesScope(spq.supplierId) && !spMatchesScopeByName(spq.supplierName)) return;
           spHoldbackPays.push({ id: spq.hbPaymentId || spq.id, type: "Holdback Return", date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, status: spq.status, reference: spq.sourceInvoiceId || "", program: spq.programName || "", sortDate: spq.executedAt || spq.createdAt || "" });
@@ -8438,14 +8439,24 @@ export default function FactoringDashboard() {
                     outboundRows.push({ rowType: item.type === "remittance" ? "passthrough" : "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
                   });
                   var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-                  // Lock to supplier+program from first selection
-                  var feqLockSup = null, feqLockProg = null;
+                  // Lock to supplier+program from first selection.
+                  // Also lock to pass-through-ness: pass-throughs (incoming funds being forwarded)
+                  // and funding/holdback outflows are different fund-flow semantics and can't be
+                  // bundled into a single wire; the user must execute them in separate batches.
+                  var feqLockSup = null, feqLockProg = null, feqLockPassthrough = null;
                   outboundRows.forEach(function(row) {
-                    if (feqSelected[row.rowId] && !feqLockSup) { feqLockSup = getParentSupplierName(row.supplierName); feqLockProg = row.programId; }
+                    if (feqSelected[row.rowId] && feqLockSup === null) {
+                      feqLockSup = getParentSupplierName(row.supplierName);
+                      feqLockProg = row.programId;
+                      feqLockPassthrough = row.rowType === "passthrough";
+                    }
                   });
                   var feqEligible = outboundRows.filter(function(row) {
-                    if (!feqLockSup) return true;
-                    return getParentSupplierName(row.supplierName) === feqLockSup && row.programId === feqLockProg;
+                    if (feqLockSup === null) return true;
+                    if (getParentSupplierName(row.supplierName) !== feqLockSup) return false;
+                    if (row.programId !== feqLockProg) return false;
+                    if ((row.rowType === "passthrough") !== feqLockPassthrough) return false;
+                    return true;
                   });
                   var feqSelCount = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).length;
                   var feqSelTotal = feqEligible.filter(function(row) { return feqSelected[row.rowId]; }).reduce(function(s, row) { return s + row.amount; }, 0);
@@ -8459,12 +8470,12 @@ export default function FactoringDashboard() {
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{outboundRows.length} awaiting execution</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        {feqLockSup && <span style={{ fontSize: 10, color: "#38BDF8", fontWeight: 600 }}>Bundling: {feqLockSup} / {feqLockProgName}</span>}
+                        {feqLockSup !== null && <span style={{ fontSize: 10, color: feqLockPassthrough ? "#8B5CF6" : "#38BDF8", fontWeight: 600 }}>{feqLockPassthrough ? "Pass-through" : "Bundling"}: {feqLockSup} / {feqLockProgName}</span>}
                         {feqSelCount > 0 && <button onClick={function() { setFeqSelected({}); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
                         {feqSelCount > 0 && <button onClick={function() {
                           var selRows = outboundRows.filter(function(r) { return feqSelected[r.rowId]; });
                           var fundingItems = selRows.filter(function(r) { return r.rowType === "funding"; }).map(function(r) { return r.inv; });
-                          var holdbackItems = selRows.filter(function(r) { return r.rowType === "holdback"; }).map(function(r) { return r.spqItem; });
+                          var holdbackItems = selRows.filter(function(r) { return r.rowType === "holdback" || r.rowType === "passthrough"; }).map(function(r) { return r.spqItem; });
                           setBatchDeductions([]);
                           setBatchConfirm({ type: "outbound", fundingItems: fundingItems, holdbackItems: holdbackItems, items: selRows, totalAmount: r2(feqSelTotal), currency: selRows[0] ? selRows[0].currency : "GBP" });
                         }} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 10px #2E8B5730" }}>Execute Selected ({feqSelCount}) {"\u2014"} {money(r2(feqSelTotal), outboundRows[0] ? outboundRows[0].currency : "GBP")}</button>}
@@ -8487,12 +8498,12 @@ export default function FactoringDashboard() {
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
+                          <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup !== null) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; var lockPass = firstRow.rowType === "passthrough"; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg && (row.rowType === "passthrough") === lockPass) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
                           {["Type", "ID", "Date", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
                         </tr></thead>
                         <tbody>{oqPageRows.map(function(row) {
                           var isSel = !!feqSelected[row.rowId];
-                          var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
+                          var isLocked = feqLockSup !== null && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg || (row.rowType === "passthrough") !== feqLockPassthrough);
                           var typeColor = row.rowType === "funding" ? "#0EA5E9" : row.rowType === "passthrough" ? "#8B5CF6" : "#D97706";
                           var typeLabel = row.rowType === "funding" ? "Funding" : row.rowType === "passthrough" ? "Pass-through" : "Holdback";
                           return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
@@ -8815,6 +8826,8 @@ export default function FactoringDashboard() {
                               executeFunding(inv.id);
                               fundingInvIds.push(inv.id);
                             });
+                            // Is this batch entirely pass-throughs? Used by deduction allocation and bundle-skip logic below.
+                            var pureBatchPassthrough = batchConfirm.items.length > 0 && batchConfirm.items.every(function(r) { return r.rowType === "passthrough"; });
                             // Apply deductions to holdback HBP allocations — split disbursement into invoice allocations + reduced supplier return
                             if (deductTotal > 0 && (batchConfirm.holdbackItems || []).length > 0) {
                               var deductRemainingForHbp = deductTotal;
@@ -8852,12 +8865,65 @@ export default function FactoringDashboard() {
                                 auditLog("Holdback Disbursed", hbp.hbPaymentId + " from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (Total: " + money(hbpOrigAmt, hbp.currency) + ")", { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, supplierName: spq.supplierName, amount: hbpOrigAmt, supplierReturn: netSupplierAmt, invoiceAllocations: invAllocDetails.map(function(a) { return { invoiceId: a.targetId, amount: a.amount }; }), currency: hbp.currency });
                               });
                             }
+                            // Apply deductions to pass-through SPQ rows — add payment_allocations to
+                            // the source payments (crediting the deducted invoices from the original
+                            // incoming payment) and shrink each pass-through's SPQ amount so the wire
+                            // reflects the reduced supplier payout.
+                            var passthroughItems = (batchConfirm.holdbackItems || []).filter(function(spq) { return spq.type === "remittance"; });
+                            if (deductTotal > 0 && passthroughItems.length > 0) {
+                              // Total gross amount across pass-throughs only (for proportional allocation)
+                              var ptTotalGross = passthroughItems.reduce(function(s, spq) { return s + spq.amount; }, 0);
+                              // How much of the batch's deductTotal should come out of pass-throughs?
+                              // If batch is pure pass-through: all of it. If mixed (locked out today, but robust):
+                              // what's left after holdback items absorbed their share.
+                              // Simpler: pure-pass-through batches absorb the full deductTotal here.
+                              // Mixed pass-through+holdback batches are currently blocked by feqLockPassthrough.
+                              var deductForPassthroughs = pureBatchPassthrough ? deductTotal : 0;
+                              if (deductForPassthroughs > 0 && ptTotalGross > 0.001) {
+                                var deductRemainingPT = deductForPassthroughs;
+                                passthroughItems.forEach(function(spq, ptIdx) {
+                                  if (deductRemainingPT <= 0.001) return;
+                                  // Proportional split; last row absorbs any rounding remainder
+                                  var isLast = ptIdx === passthroughItems.length - 1;
+                                  var share = isLast ? deductRemainingPT : r2(deductForPassthroughs * (spq.amount / ptTotalGross));
+                                  share = r2(Math.min(share, spq.amount, deductRemainingPT));
+                                  if (share <= 0.001) return;
+                                  deductRemainingPT = r2(deductRemainingPT - share);
+                                  // Add payment_allocations on the source payment for each deducted invoice,
+                                  // proportional to each invoice's share of the total deductions.
+                                  var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+                                  if (srcPay) {
+                                    if (!srcPay.allocations) srcPay.allocations = [];
+                                    var invShareUsed = 0;
+                                    batchDeductions.forEach(function(d, dIdx) {
+                                      if (invShareUsed >= share - 0.001) return;
+                                      var isLastD = dIdx === batchDeductions.length - 1;
+                                      var invShare = isLastD ? r2(share - invShareUsed) : r2(share * (d.amount / deductTotal));
+                                      invShare = r2(Math.min(invShare, share - invShareUsed));
+                                      if (invShare <= 0.001) return;
+                                      srcPay.allocations.push({ invoiceId: d.invoiceId, amount: invShare, allocDate: now.toISOString().split("T")[0] });
+                                      invShareUsed = r2(invShareUsed + invShare);
+                                    });
+                                    savePayment(srcPay.paymentId);
+                                  }
+                                  // Shrink the SPQ amount by the deduction share
+                                  spq.amount = r2(spq.amount - share);
+                                  auditLog("Pass-through Deduction", spq.id + ": " + money(share, spq.currency) + " deducted from pass-through to " + spq.supplierName, { spqId: spq.id, sourcePaymentId: spq.sourcePaymentId, deductAmount: share, reducedWireAmount: spq.amount, currency: spq.currency, supplierName: spq.supplierName, supplierId: spq.supplierId });
+                                });
+                              }
+                            }
                             // Execute holdback items
                             (batchConfirm.holdbackItems || []).forEach(function(spq) {
                               executeQueuedPayment(spq.id);
                             });
-                            // If bundle (>1 item), create consolidated completion record and remove individuals
-                            if (batchConfirm.items.length > 1) {
+                            // If bundle (>1 item), create consolidated completion record and remove individuals.
+                            // EXCEPTION: pure pass-through batches stay as individual rows — bundling them
+                            // would collapse supplier-visible detail (per-source-payment linkage) for no
+                            // admin-side gain, since each individual is already Completed after the loop above.
+                            if (batchConfirm.items.length > 1 && !pureBatchPassthrough) {
+                              // Match SPQ rows belonging to this batch for cleanup.
+                              // Only funding + holdback rows are bundled; pass-through rows always stay individual
+                              // so the supplier portal can display per-source-payment detail correctly.
                               var individualIds = [];
                               SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
                                 if (q.status === "Completed" && q.executedDisplay === nowDisp) {
@@ -8874,9 +8940,13 @@ export default function FactoringDashboard() {
                               var bundleId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                               var firstRow = batchConfirm.items[0];
                               var allInvIds = fundingInvIds.slice();
-                              var allHbpIds = (batchConfirm.holdbackItems || []).map(function(h) { return h.id; });
+                              // Only actual holdback items go into the bundle; pass-throughs remain individual rows.
+                              var allHbpIds = (batchConfirm.holdbackItems || []).filter(function(h) { return h.type !== "remittance"; }).map(function(h) { return h.id; });
+                              // Bundle semantic type: funding if any funding rows are present, else holdback
+                              var hasFunding = (batchConfirm.fundingItems || []).length > 0;
+                              var bundleType = hasFunding ? "funding" : "holdback";
                               SUPPLIER_PAYMENT_QUEUE.push({
-                                id: bundleId, type: "funding", isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
+                                id: bundleId, type: bundleType, isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
                                 supplierName: firstRow.supplierName, supplierId: "",
                                 bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
                                 amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
