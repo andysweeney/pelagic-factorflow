@@ -348,6 +348,14 @@ var FUNDING_PROGRAMS_DB = [];
 var ENTITY_NOTES_DB = [];
 var CSV_REVIEW_QUEUE_DB = [];
 var ENTITY_ALIASES_DB = [];
+// Expose for diagnostics (safe — inspection only)
+if (typeof window !== "undefined") {
+  window.__FF = window.__FF || {};
+  window.__FF.PAYMENTS_DB = function() { return PAYMENTS_DB; };
+  window.__FF.INVOICES_DB = function() { return INVOICES_DB; };
+  window.__FF.HOLDBACK_PAYMENTS_DB = function() { return HOLDBACK_PAYMENTS_DB; };
+  window.__FF.SUPPLIER_PAYMENT_QUEUE = function() { return SUPPLIER_PAYMENT_QUEUE; };
+}
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
