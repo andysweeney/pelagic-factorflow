@@ -875,32 +875,12 @@ async function reloadForSupplier(supplierId) {
   _supplierFilter = { supplierName: supplierName, supplierId: supplierId, parentId: parentId, invIds: invIdSet };
   console.log("[Supplier Load] " + supplierName + ": " + INVOICES_DB.length + " invoices loaded");
   
-  // Load payments that have allocations to this supplier's invoices
-  // For now load all payments (they're usually fewer) and filter client-side
-  var payData = await fetchAllRows("payments");
-  PAYMENTS_DB.length = 0;
-  for (var pi = 0; pi < payData.length; pi++) {
-    var prow = payData[pi];
-    var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
-    var allocs = (allocRes.data || []).map(function(a) {
-      return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
-    });
-    // Only include if at least one allocation is to this supplier's invoices
-    var hasSupplierAlloc = allocs.some(function(a) { return seen[a.invoiceId]; });
-    // Also include if there's an SPQ remittance to this supplier
-    if (hasSupplierAlloc || allocs.length === 0) {
-      PAYMENTS_DB.push({
-        paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
-        date: prow.date, currency: prow.currency, reference: prow.reference || "",
-        allocations: allocs, notes: prow.notes || []
-      });
-    }
-  }
-  console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
-
-  // Load SPQ entries for this supplier
+  // Load SPQ entries for this supplier FIRST so we can use them to decide
+  // which payments to load (pass-through source payments might not have any
+  // allocation to this supplier's invoices but are still relevant).
   var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName });
   SUPPLIER_PAYMENT_QUEUE.length = 0;
+  var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
     SUPPLIER_PAYMENT_QUEUE.push({
       id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
@@ -919,8 +899,33 @@ async function reloadForSupplier(supplierId) {
       cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
       failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
     });
+    if (row.type === "remittance" && row.source_payment_id) passThroughSourcePayIds[row.source_payment_id] = true;
   });
   console.log("[Supplier Load] " + supplierName + ": " + SUPPLIER_PAYMENT_QUEUE.length + " SPQ entries loaded");
+
+  // Load payments that have allocations to this supplier's invoices
+  // OR are the source of a pass-through remittance to this supplier.
+  // For now load all payments (they're usually fewer) and filter client-side.
+  var payData = await fetchAllRows("payments");
+  PAYMENTS_DB.length = 0;
+  for (var pi = 0; pi < payData.length; pi++) {
+    var prow = payData[pi];
+    var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
+    var allocs = (allocRes.data || []).map(function(a) {
+      return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+    });
+    // Include if: at least one allocation is to this supplier's invoices, OR the payment has no allocations yet, OR it's a source of a pass-through to this supplier
+    var hasSupplierAlloc = allocs.some(function(a) { return seen[a.invoiceId]; });
+    var isPassThroughSource = !!passThroughSourcePayIds[prow.payment_id];
+    if (hasSupplierAlloc || allocs.length === 0 || isPassThroughSource) {
+      PAYMENTS_DB.push({
+        paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
+        date: prow.date, currency: prow.currency, reference: prow.reference || "",
+        allocations: allocs, notes: prow.notes || []
+      });
+    }
+  }
+  console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
 
   // Load holdback payments for this supplier's invoices
   var hbpData = await fetchAllRows("holdback_payments");
@@ -4657,9 +4662,10 @@ export default function FactoringDashboard() {
                 var qidForLookup = ctx.spqId || ctx.queueId || "";
                 var isPassThrough = ctx.passThrough === true || (qidForLookup && passThroughSpqIds[qidForLookup]);
                 if (isPassThrough) {
+                  // Drop "Remittance Queued" entirely — "Overpayment Refund Pending" covers the same event
+                  if (e.action === "Remittance Queued") return;
                   var relabelled = Object.assign({}, e, { context: ctx });
                   if (e.action === "Awaiting Disbursal") relabelled.action = "Overpayment Refund Pending";
-                  else if (e.action === "Remittance Queued") relabelled.action = "Overpayment Refund Queued";
                   else if (e.action === "Supplier Payment Executed") relabelled.action = "Overpayment Refund Paid";
                   displayAuditLog.push(relabelled);
                   return;
@@ -7480,6 +7486,8 @@ export default function FactoringDashboard() {
                   progInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
                   var progLogs = AUDIT_LOG.filter(function(e) {
                     if (!e.context) return false;
+                    // Skip Remittance Queued — already covered by the Outbound Queue / Completed tables
+                    if (e.action === "Remittance Queued") return false;
                     // Direct program references
                     if (e.context.programId === prog.id || e.context.programName === prog.name) return true;
                     if (e.context.fundingProgram === prog.id || e.context.fundingProgramName === prog.name) return true;
@@ -8115,6 +8123,17 @@ export default function FactoringDashboard() {
             var progInvIds = {};
             allProgInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
             var allProgFunding = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.type === "funding" && (progInvIds[spq.invoiceId] || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return progInvIds[iid]; }))); });
+            // Hide individual funding rows that are superseded by a bundle covering the same invoice.
+            // This is belt-and-braces: if the bundle cleanup missed a row (e.g. from historical data
+            // or interrupted batch execution), the user doesn't see duplicate entries here.
+            allProgFunding = allProgFunding.filter(function(fp) {
+              if (fp.isBundle) return true;
+              if (!fp.invoiceId) return true;
+              var coveredByBundle = SUPPLIER_PAYMENT_QUEUE.some(function(b) {
+                return b.isBundle && b.type === "funding" && b.invoiceIds && b.invoiceIds.indexOf(fp.invoiceId) >= 0;
+              });
+              return !coveredByBundle;
+            });
             allProgFunding.sort(function(a, b) { return (a.createdAt || "") > (b.createdAt || "") ? -1 : 1; });
             var totalFunding = allProgFunding.reduce(function(s, fp) { return s + fp.amount; }, 0);
             var completedFunding = allProgFunding.filter(function(fp) { return fp.status === "Completed"; });
@@ -8820,12 +8839,19 @@ export default function FactoringDashboard() {
                             });
 
                             var netAmount = r2(batchConfirm.totalAmount - deductTotal);
-                            // Execute funding items
+                            // Execute funding items. Snapshot SPQ ids before and after so we
+                            // can identify precisely which CPQ-XXXX rows executeFunding created;
+                            // relying on string-matching executedDisplay is fragile because
+                            // executeFunding generates its own timestamp independently.
+                            var spqIdsBeforeFunding = {};
+                            SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { spqIdsBeforeFunding[q.id] = true; });
                             var fundingInvIds = [];
                             (batchConfirm.fundingItems || []).forEach(function(inv) {
                               executeFunding(inv.id);
                               fundingInvIds.push(inv.id);
                             });
+                            var createdFundingSpqIds = [];
+                            SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (!spqIdsBeforeFunding[q.id]) createdFundingSpqIds.push(q.id); });
                             // Is this batch entirely pass-throughs? Used by deduction allocation and bundle-skip logic below.
                             var pureBatchPassthrough = batchConfirm.items.length > 0 && batchConfirm.items.every(function(r) { return r.rowType === "passthrough"; });
                             // Apply deductions to holdback HBP allocations — split disbursement into invoice allocations + reduced supplier return
@@ -8921,15 +8947,12 @@ export default function FactoringDashboard() {
                             // would collapse supplier-visible detail (per-source-payment linkage) for no
                             // admin-side gain, since each individual is already Completed after the loop above.
                             if (batchConfirm.items.length > 1 && !pureBatchPassthrough) {
-                              // Match SPQ rows belonging to this batch for cleanup.
+                              // Match SPQ rows belonging to this batch for cleanup by ID.
                               // Only funding + holdback rows are bundled; pass-through rows always stay individual
                               // so the supplier portal can display per-source-payment detail correctly.
-                              var individualIds = [];
-                              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
-                                if (q.status === "Completed" && q.executedDisplay === nowDisp) {
-                                  if (q.type === "funding" && fundingInvIds.indexOf(q.invoiceId) >= 0) individualIds.push(q.id);
-                                  if (q.type === "holdback" && batchConfirm.holdbackItems.some(function(h) { return h.id === q.id; })) individualIds.push(q.id);
-                                }
+                              var individualIds = createdFundingSpqIds.slice();
+                              (batchConfirm.holdbackItems || []).forEach(function(h) {
+                                if (h.type === "holdback") individualIds.push(h.id);
                               });
                               individualIds.forEach(function(rid) {
                                 var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; });
