@@ -4529,25 +4529,54 @@ export default function FactoringDashboard() {
                   _synthetic: true
                 });
               });
-              // Filter out individual audit entries that have been superseded by a bundle.
-              // Criteria: the event references an SPQ id (completedPaymentId / queueId / hbPaymentId)
-              // that no longer exists in SPQ AND the referenced invoice/holdback is covered by a bundle.
-              var displayAuditLog = spAuditLog.filter(function(e) {
+              // Build a lookup of SPQ ids that are pass-through remittances (from buyer overpayments).
+              // Used to relabel generic "Supplier Payment Executed" / "Remittance Queued" audit entries.
+              var passThroughSpqIds = {};
+              SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
+                if (q.type === "remittance" && q.sourcePaymentId) passThroughSpqIds[q.id] = true;
+              });
+
+              // Filter + relabel audit entries for supplier-friendly display.
+              // - Drop program-ledger events ("Program Funds Added"/"Program Funds Disbursed"):
+              //   these describe the funding program's accounting, not anything the supplier
+              //   needs to see. The same real-world event is already covered by "Remittance
+              //   Queued" and "Supplier Payment Executed".
+              // - Drop individual entries superseded by a bundle (same logic as before).
+              // - Relabel overpayment-refund events so they read as supplier-facing.
+              var displayAuditLog = [];
+              spAuditLog.forEach(function(e) {
                 var ctx = e.context || {};
+                // Drop program-ledger noise entirely
+                if (e.action === "Program Funds Added" || e.action === "Program Funds Disbursed") return;
+                // Bundle supersession (unchanged)
                 if (e.action === "Invoice Funded") {
                   var cpid = ctx.completedPaymentId;
                   var iid = ctx.invoiceId;
-                  if (cpid && !spqExistingIds[cpid] && iid && bundledInvIds[iid]) return false;
+                  if (cpid && !spqExistingIds[cpid] && iid && bundledInvIds[iid]) return;
                 }
                 if (e.action === "Supplier Payment Executed") {
                   var qid = ctx.queueId;
-                  if (qid && !spqExistingIds[qid] && bundledSpqIds[qid]) return false;
+                  if (qid && !spqExistingIds[qid] && bundledSpqIds[qid]) return;
                 }
                 if (e.action === "Holdback Disbursed") {
                   var hbid = ctx.hbPaymentId;
-                  if (hbid && bundledHbpIds[hbid]) return false;
+                  if (hbid && bundledHbpIds[hbid]) return;
                 }
-                return true;
+                // Relabel overpayment-refund flow. These actions all describe the same
+                // money-leaving-program-going-to-supplier event, but in program-ledger terms.
+                // For the supplier, present them as "Overpayment Refund ..." so it's obvious
+                // what happened.
+                var qidForLookup = ctx.spqId || ctx.queueId || "";
+                var isPassThrough = ctx.passThrough === true || (qidForLookup && passThroughSpqIds[qidForLookup]);
+                if (isPassThrough) {
+                  var relabelled = Object.assign({}, e, { context: ctx });
+                  if (e.action === "Awaiting Disbursal") relabelled.action = "Overpayment Refund Pending";
+                  else if (e.action === "Remittance Queued") relabelled.action = "Overpayment Refund Queued";
+                  else if (e.action === "Supplier Payment Executed") relabelled.action = "Overpayment Refund Paid";
+                  displayAuditLog.push(relabelled);
+                  return;
+                }
+                displayAuditLog.push(e);
               });
               // Merge audit log with payment events, sorted newest first
               var mergedHist = displayAuditLog.concat(payAllocEvents);
