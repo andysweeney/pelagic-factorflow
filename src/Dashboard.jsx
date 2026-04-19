@@ -1725,6 +1725,7 @@ export default function FactoringDashboard() {
   var spqS = useState(""), spSearch = spqS[0], setSpSearch = spqS[1];
   var spfS = useState("all"), spFsFilter = spfS[0], setSpFsFilter = spfS[1];
   var spbS = useState("all"), spBuyerFilter = spbS[0], setSpBuyerFilter = spbS[1];
+  var spuS = useState(false), spUnallocOnly = spuS[0], setSpUnallocOnly = spuS[1];
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
   var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
   var sppgS = useState(0), spPage = sppgS[0], setSpPage = sppgS[1];
@@ -1838,8 +1839,13 @@ export default function FactoringDashboard() {
   // This useEffect is kept only for re-render dependency tracking
 
   // Supabase Realtime subscriptions — apply individual row changes, never reload full tables
+  // Dependency is the user id (stable string), NOT the session object. Supabase's
+  // onAuthStateChange fires with a fresh session object on every token refresh/etc.,
+  // which would otherwise remount the channel in a phx_join→phx_leave loop and drop
+  // all live updates before they can arrive.
+  var _rtUserId = session && session.user ? session.user.id : null;
   useEffect(function() {
-    if (!session) return;
+    if (!_rtUserId) return;
 
     // Apply a single row change to an in-memory array
     function applyRowChange(payload, db, idField, mapper) {
@@ -1995,7 +2001,7 @@ export default function FactoringDashboard() {
       if (renderTimer) clearTimeout(renderTimer);
       supabase.removeChannel(channel);
     };
-  }, [session]);
+  }, [_rtUserId]);
 
   // Inject tooltip CSS once
   useEffect(function() {
@@ -3270,7 +3276,7 @@ export default function FactoringDashboard() {
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
             React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
@@ -3619,6 +3625,7 @@ export default function FactoringDashboard() {
             /* INVOICES TAB */
             spPortalTab === "supplier" && (function() {
               var filteredSpInvs = spInvs;
+              if (spUnallocOnly) filteredSpInvs = filteredSpInvs.filter(function(inv) { return !inv.fundingProgram; });
               if (spFsFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.fundingStatus === spFsFilter; });
               if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.buyerName === spBuyerFilter; });
               if (spSearch) {
@@ -3665,27 +3672,32 @@ export default function FactoringDashboard() {
                     React.createElement("option", { value: "all" }, "All Buyers"),
                     spBuyers.map(function(b) { return React.createElement("option", { key: b, value: b }, b); })
                   ),
-                  (spSearch || spFsFilter !== "all" || spBuyerFilter !== "all") ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpPage(0); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
+                  React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 6, border: "1px solid " + (spUnallocOnly ? spAccent : spBorder), background: spUnallocOnly ? spAccent + "15" : spCard, color: spUnallocOnly ? spAccent : spMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: spFont, userSelect: "none" } },
+                    React.createElement("input", { type: "checkbox", checked: spUnallocOnly, onChange: function(e) { setSpUnallocOnly(e.target.checked); setSpPage(0); }, style: { margin: 0, cursor: "pointer" } }),
+                    "Unallocated only"
+                  ),
+                  (spSearch || spFsFilter !== "all" || spBuyerFilter !== "all" || spUnallocOnly) ? React.createElement("button", { onClick: function() { setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpPage(0); }, style: { padding: "5px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 10, fontWeight: 600, cursor: "pointer" } }, "Clear") : null,
                   React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spMono } }, filteredSpInvs.length + " of " + spInvs.length)
                 )
               ),
               React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
-                filteredSpInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, spSearch || spFsFilter !== "all" || spBuyerFilter !== "all" ? "No invoices match your filters." : "No invoices yet.") :
+                filteredSpInvs.length === 0 ? React.createElement("div", { style: { padding: "32px", textAlign: "center", color: spMuted, fontSize: 13 } }, spSearch || spFsFilter !== "all" || spBuyerFilter !== "all" || spUnallocOnly ? "No invoices match your filters." : "No invoices yet.") :
                 React.createElement("div", { style: { overflowX: "auto" } },
                   React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }, className: "sp-table" },
                     React.createElement("colgroup", null,
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "15%" } }),
+                      React.createElement("col", { style: { width: "11%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
+                      React.createElement("col", { style: { width: "9%" } }),
+                      React.createElement("col", { style: { width: "12%" } }),
                       React.createElement("col", { style: { width: "13%" } }),
-                      React.createElement("col", { style: { width: "16%" } }),
-                      React.createElement("col", { style: { width: "13%" } }),
-                      React.createElement("col", { style: { width: "13%" } }),
-                      React.createElement("col", { style: { width: "10%" } }),
-                      React.createElement("col", { style: { width: "14%" } }),
-                      React.createElement("col", { style: { width: "14%" } }),
                       React.createElement("col", { style: { width: "4%" } })
                     ),
                     React.createElement("thead", null,
                       React.createElement("tr", null,
-                        ["Invoice Number", "Buyer", "Invoice Amount", "Advance Provided", "Due Date", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
+                        ["Invoice Number", "Buyer", "Funding Program", "Invoice Amount", "Advance Provided", "Due Date", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
                       )
@@ -3704,6 +3716,13 @@ export default function FactoringDashboard() {
                           React.createElement("tr", { style: { cursor: "pointer", borderBottom: isExpanded ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isExpanded ? null : "sp-" + inv.id); } },
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
                             React.createElement("td", { style: portalTd }, inv.buyerName),
+                            (function() {
+                              var fpRow = inv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; }) : null;
+                              var fpName = fpRow ? fpRow.name : "Unallocated";
+                              var fpColor = fpRow ? spText : spMuted;
+                              var fpStyle = fpRow ? { fontStyle: "normal", fontWeight: 500 } : { fontStyle: "italic", fontWeight: 400 };
+                              return React.createElement("td", { style: Object.assign({}, portalTd, { color: fpColor, fontSize: 12 }, fpStyle) }, fpName);
+                            })(),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: inv.fundedDate ? spText : spMuted }) }, inv.fundedDate ? money(inv.capitalDue || 0, inv.currency) : inv.fundingStatus === "approved" ? "Pending" : "\u2014"),
                             React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText, fontSize: 12 }) }, fmt(inv.dueDate)),
@@ -3716,7 +3735,7 @@ export default function FactoringDashboard() {
                             )
                           ),
                           isExpanded ? React.createElement("tr", null,
-                            React.createElement("td", { colSpan: 8, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
@@ -8416,7 +8435,7 @@ export default function FactoringDashboard() {
                       bankName = fallbackBank.bankName;
                       bankDetails = fallbackBank.bankDetails;
                     }
-                    outboundRows.push({ rowType: "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
+                    outboundRows.push({ rowType: item.type === "remittance" ? "passthrough" : "holdback", rowId: "h-" + item.id, spqItem: item, supplierId: item.supplierId, supplierName: item.supplierName, programId: prog ? prog.id : (item.programId || ""), programName: prog ? prog.name : (item.programName || "\u2014"), amount: item.amount, currency: item.currency, bankName: bankName, bankDetails: bankDetails, date: item.createdDisplay, detail: (item.hbPaymentId || "") + " / " + (item.sourceInvoiceId || ""), cancelFn: function() { setConfirmCancelHbp(item.id); } });
                   });
                   var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
                   // Lock to supplier+program from first selection
@@ -8474,8 +8493,8 @@ export default function FactoringDashboard() {
                         <tbody>{oqPageRows.map(function(row) {
                           var isSel = !!feqSelected[row.rowId];
                           var isLocked = feqLockSup && (getParentSupplierName(row.supplierName) !== feqLockSup || row.programId !== feqLockProg);
-                          var typeColor = row.rowType === "funding" ? "#0EA5E9" : "#D97706";
-                          var typeLabel = row.rowType === "funding" ? "Funding" : "Holdback";
+                          var typeColor = row.rowType === "funding" ? "#0EA5E9" : row.rowType === "passthrough" ? "#8B5CF6" : "#D97706";
+                          var typeLabel = row.rowType === "funding" ? "Funding" : row.rowType === "passthrough" ? "Pass-through" : "Holdback";
                           return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
                             <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[row.rowId]) delete n[row.rowId]; else n[row.rowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
                             <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
@@ -8490,7 +8509,7 @@ export default function FactoringDashboard() {
                             <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{row.bankDetails || "\u2014"}</td>
                             <td style={{ padding: "8px 8px" }}>
                               {!isLocked && <button onClick={row.cancelFn} style={{ padding: "6px 12px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>}
-                              {!isLocked && row.rowType === "holdback" && confirmCancelHbp === row.spqItem.id && <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                              {!isLocked && (row.rowType === "holdback" || row.rowType === "passthrough") && confirmCancelHbp === row.spqItem.id && <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
                                 <button onClick={function() { cancelQueuedPayment(row.spqItem.id); setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Confirm</button>
                                 <button onClick={function() { setConfirmCancelHbp(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button>
                               </div>}
@@ -9003,8 +9022,8 @@ export default function FactoringDashboard() {
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead><tr>{["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                   {ocPageItems.map(function(item) {
-                    var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : "#D97706";
-                    var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Remittance" : (item.type || "Other");
+                    var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : item.type === "remittance" ? "#8B5CF6" : "#D97706";
+                    var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Pass-through" : (item.type || "Other");
                     var isOcExp = exp === "oc-" + item.id;
                     var invoiceRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"));
                     return (
@@ -9053,8 +9072,8 @@ export default function FactoringDashboard() {
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{failedPayments.map(function(item) {
-                        var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : item.type === "remittance" ? "Remittance" : "Holdback";
-                        var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : item.type === "remittance" ? "#D97706" : "#059669";
+                        var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : item.type === "remittance" ? "Pass-through" : "Holdback";
+                        var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : item.type === "remittance" ? "#8B5CF6" : "#059669";
                         var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
                         return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)", background: "#C0392B06" }}>
                           <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{item.id}</td>
