@@ -4576,12 +4576,19 @@ export default function FactoringDashboard() {
                 // Skip if this payment already has an audit log entry
                 if (auditPaymentIds[ep.pay.paymentId]) return;
                 var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
-                var invList = ep.allocs.map(function(a) { return a.invoiceId; }).join(", ");
+                var isPassThrough = ep.isPassThrough === true;
+                var details;
+                if (isPassThrough) {
+                  details = ep.pay.paymentId + " received " + money(totalAlloc, ep.pay.currency) + " as pass-through" + (ep.pay.reference ? " (Ref: " + ep.pay.reference + ")" : "");
+                } else {
+                  var invList = ep.allocs.map(function(a) { return a.invoiceId; }).join(", ");
+                  details = ep.pay.paymentId + " allocated " + money(totalAlloc, ep.pay.currency) + " to " + ep.allocs.length + " invoice(s): " + invList + (ep.pay.reference ? " (Ref: " + ep.pay.reference + ")" : "");
+                }
                 payAllocEvents.push({
                   timestamp: ep.pay.date + "T12:00:00.000Z",
                   displayTime: fmt(ep.pay.date),
-                  action: "Payment Allocated",
-                  details: ep.pay.paymentId + " allocated " + money(totalAlloc, ep.pay.currency) + " to " + ep.allocs.length + " invoice(s): " + invList + (ep.pay.reference ? " (Ref: " + ep.pay.reference + ")" : ""),
+                  action: isPassThrough ? "Payment Received (Pass-through)" : "Payment Allocated",
+                  details: details,
                   context: { paymentId: ep.pay.paymentId, amount: ep.pay.amount, currency: ep.pay.currency, allocations: ep.allocs },
                   _synthetic: true
                 });
