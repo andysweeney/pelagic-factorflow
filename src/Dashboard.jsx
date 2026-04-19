@@ -3108,6 +3108,17 @@ export default function FactoringDashboard() {
           if (!spMatchesScope(spq.supplierId) && !spMatchesScopeByName(spq.supplierName)) return;
           spHoldbackPays.push({ id: spq.hbPaymentId || spq.id, type: "Holdback Return", date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, status: spq.status, reference: spq.sourceInvoiceId || "", program: spq.programName || "", sortDate: spq.executedAt || spq.createdAt || "" });
         });
+        // Method 3: Bundles that contain holdback IDs but no funding invoice IDs — these
+        // are created as type:"funding" (bundle is stored as funding) but represent only
+        // holdback returns. They won't be caught by spFundingPays (no invoiceIds match)
+        // nor Method 1/2 above (they're not type:"holdback"), so we surface them here.
+        SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+          if (!spq.isBundle) return;
+          if (spq.invoiceIds && spq.invoiceIds.length > 0) return; // mixed bundle — caught by spFundingPays
+          if (!spq.holdbackIds || spq.holdbackIds.length === 0) return;
+          if (!spMatchesScope(spq.supplierId) && !spMatchesScopeByName(spq.supplierName)) return;
+          spHoldbackPays.push({ id: spq.id, type: "Holdback Return", date: spq.executedDisplay || spq.createdDisplay || "", amount: spq.amount, currency: spq.currency, status: spq.status, reference: spq.holdbackIds.join(", "), program: spq.programName || "", sortDate: spq.executedAt || spq.createdAt || "" });
+        });
 
         var spAllPaymentsToYou = spFundingPays.concat(spHoldbackPays).concat(spRemittancePays).sort(function(a, b) { return a.sortDate > b.sortDate ? -1 : 1; });
 
@@ -4490,16 +4501,20 @@ export default function FactoringDashboard() {
                   if (k) auditPTYIds[k] = true;
                 }
               });
-              // Build set of SPQ ids that currently exist, and invoice ids covered by a bundle.
-              // When a bundle is created, individual CPQ rows are deleted but their "Invoice Funded"
-              // audit entries remain. In Your History we want to show ONE bundle row, not the
-              // individual audit rows — the individuals still appear in the per-invoice Audit Log.
+              // Build set of SPQ ids that currently exist, and invoice/holdback ids covered by a bundle.
+              // When a bundle is created, individual CPQ rows are deleted but their audit entries
+              // remain (Invoice Funded, Holdback Disbursed, Supplier Payment Executed). In Your
+              // History we want to show ONE bundle row, not the individual audit rows — the
+              // individuals still appear in the per-invoice Audit Log for drill-down.
               var spqExistingIds = {};
               var bundledInvIds = {};
+              var bundledHbpIds = {};
+              var bundledSpqIds = {};
               SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
                 spqExistingIds[q.id] = true;
-                if (q.isBundle && q.invoiceIds) {
-                  q.invoiceIds.forEach(function(iid) { bundledInvIds[iid] = true; });
+                if (q.isBundle) {
+                  (q.invoiceIds || []).forEach(function(iid) { bundledInvIds[iid] = true; });
+                  (q.holdbackIds || []).forEach(function(hid) { bundledHbpIds[hid] = true; bundledSpqIds[hid] = true; });
                 }
               });
               spAllPaymentsToYou.forEach(function(p) {
@@ -4515,13 +4530,22 @@ export default function FactoringDashboard() {
                 });
               });
               // Filter out individual audit entries that have been superseded by a bundle.
-              // Criteria: the event references a completedPaymentId that no longer exists in SPQ
-              // AND the invoice it funded is now part of a bundle.
+              // Criteria: the event references an SPQ id (completedPaymentId / queueId / hbPaymentId)
+              // that no longer exists in SPQ AND the referenced invoice/holdback is covered by a bundle.
               var displayAuditLog = spAuditLog.filter(function(e) {
-                if (e.action === "Invoice Funded" && e.context) {
-                  var cpid = e.context.completedPaymentId;
-                  var iid = e.context.invoiceId;
+                var ctx = e.context || {};
+                if (e.action === "Invoice Funded") {
+                  var cpid = ctx.completedPaymentId;
+                  var iid = ctx.invoiceId;
                   if (cpid && !spqExistingIds[cpid] && iid && bundledInvIds[iid]) return false;
+                }
+                if (e.action === "Supplier Payment Executed") {
+                  var qid = ctx.queueId;
+                  if (qid && !spqExistingIds[qid] && bundledSpqIds[qid]) return false;
+                }
+                if (e.action === "Holdback Disbursed") {
+                  var hbid = ctx.hbPaymentId;
+                  if (hbid && bundledHbpIds[hbid]) return false;
                 }
                 return true;
               });
@@ -8722,7 +8746,7 @@ export default function FactoringDashboard() {
                               SUPPLIER_PAYMENT_QUEUE.forEach(function(q) {
                                 if (q.status === "Completed" && q.executedDisplay === nowDisp) {
                                   if (q.type === "funding" && fundingInvIds.indexOf(q.invoiceId) >= 0) individualIds.push(q.id);
-                                  if (!q.type && batchConfirm.holdbackItems.some(function(h) { return h.id === q.id; })) individualIds.push(q.id);
+                                  if (q.type === "holdback" && batchConfirm.holdbackItems.some(function(h) { return h.id === q.id; })) individualIds.push(q.id);
                                 }
                               });
                               individualIds.forEach(function(rid) {
