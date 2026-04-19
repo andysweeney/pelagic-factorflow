@@ -351,6 +351,23 @@ var ENTITY_ALIASES_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
+// Collision-safe ID generator. Scans the given array for the max numeric suffix
+// following the given prefix, then returns prefix + (max+1) padded.
+// Safer than count-based generation which collides after deletions.
+function nextId(prefix, arr, idField, pad) {
+  pad = pad || 7;
+  idField = idField || "id";
+  var max = 0;
+  var re = new RegExp("^" + prefix.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") + "(\\d+)$");
+  for (var i = 0; i < arr.length; i++) {
+    var v = arr[i] ? arr[i][idField] : null;
+    if (!v) continue;
+    var m = String(v).match(re);
+    if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+  }
+  return prefix + String(max + 1).padStart(pad, "0");
+}
+
 async function fetchAllRows(table, filter) {
   // filter: optional { column: "col_name", value: "val" }
   var all = [];
@@ -995,6 +1012,34 @@ async function reloadPayments() {
     } catch (e) { console.error("Realtime reload payments error:", e); }
   })();
   try { await _reloadPaymentsInFlight; } finally { _reloadPaymentsInFlight = null; }
+}
+
+var _reloadHoldbackPaymentsInFlight = null;
+async function reloadHoldbackPayments() {
+  if (_reloadHoldbackPaymentsInFlight) return _reloadHoldbackPaymentsInFlight;
+  _reloadHoldbackPaymentsInFlight = (async function() {
+    try {
+      var hbRes = await supabase.from("holdback_payments").select("*");
+      if (hbRes.data) {
+        var newList = [];
+        for (var hi = 0; hi < hbRes.data.length; hi++) {
+          var hrow = hbRes.data[hi];
+          var hbAllocRes = await supabase.from("holdback_payment_allocations").select("*").eq("hb_payment_id", hrow.hb_payment_id);
+          var hbAllocs = (hbAllocRes.data || []).map(function(a) {
+            return { targetId: a.target_id, amount: parseFloat(a.amount) || 0, type: a.type };
+          });
+          newList.push({
+            hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
+            amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs
+          });
+        }
+        // Swap atomically after all data is gathered
+        HOLDBACK_PAYMENTS_DB.length = 0;
+        newList.forEach(function(h) { HOLDBACK_PAYMENTS_DB.push(h); });
+      }
+    } catch (e) { console.error("Realtime reload holdback payments error:", e); }
+  })();
+  try { await _reloadHoldbackPaymentsInFlight; } finally { _reloadHoldbackPaymentsInFlight = null; }
 }
 
 async function reloadSPQ() {
@@ -1935,6 +1980,12 @@ export default function FactoringDashboard() {
       .on("postgres_changes", { event: "*", schema: "public", table: "payment_allocations" }, function() {
         if (!_isSaving) reloadPayments().then(scheduleRender);
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "holdback_payments" }, function() {
+        if (!_isSaving) reloadHoldbackPayments().then(scheduleRender);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "holdback_payment_allocations" }, function() {
+        if (!_isSaving) reloadHoldbackPayments().then(scheduleRender);
+      })
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_notes" }, function() {
         if (!_isSaving) reloadCreditNotes().then(scheduleRender);
       })
@@ -2319,7 +2370,7 @@ export default function FactoringDashboard() {
       var supplierEntityId = rawInv.supplierId || "";
       var displayName = getEntityDisplayName(supplierEntityId) || rawInv.supplierName || supplierEntityId;
       var bankInfo = getSupplierBankDetails(supplierEntityId, rawInv.fundingProgram);
-      var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+      var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       var now = new Date();
       SUPPLIER_PAYMENT_QUEUE.push({
         id: spqId, type: "remittance", invoiceId: a.invoiceId, invoiceIds: [a.invoiceId],
@@ -2357,7 +2408,7 @@ export default function FactoringDashboard() {
     var displayName = getEntityDisplayName(supplierEntityId) || supplierEntityId;
     var bankInfo = getSupplierBankDetails(supplierEntityId, programId);
     var prog = programId ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; }) : null;
-    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     var now = new Date();
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
@@ -2412,7 +2463,7 @@ export default function FactoringDashboard() {
       // getPayRemaining excludes Failed entries automatically — no allocation cleanup needed
       auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
     } else {
-      var newPendId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+      var newPendId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
       saveSPQEntry(item.id);
     auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
@@ -2624,7 +2675,7 @@ export default function FactoringDashboard() {
     var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
     var now = new Date();
     var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    var cpId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    var cpId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
       supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
@@ -2813,7 +2864,7 @@ export default function FactoringDashboard() {
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
     var supplier = getParentSupplier(hbDisburseInv.supplierName);
     var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierId || hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
-    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
       supplierName: hbDisburseInv.supplierName, supplierId: hbDisburseInv.supplierId || (supplier ? supplier.id : ""),
@@ -8801,7 +8852,7 @@ export default function FactoringDashboard() {
                                 // Delete from Supabase
                                 supabase.from("supplier_payment_queue").delete().eq("id", rid);
                               });
-                              var bundleId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                              var bundleId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                               var firstRow = batchConfirm.items[0];
                               var allInvIds = fundingInvIds.slice();
                               var allHbpIds = (batchConfirm.holdbackItems || []).map(function(h) { return h.id; });
@@ -8835,7 +8886,7 @@ export default function FactoringDashboard() {
                                 auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
                               }
                             });
-                            var disId = "CPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                            var disId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                             var firstDis = batchConfirm.items[0];
                             SUPPLIER_PAYMENT_QUEUE.push({
                               id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
@@ -9440,7 +9491,7 @@ export default function FactoringDashboard() {
                         var hbId = "HBP-" + String(maxHbpNum + 1).padStart(7, "0");
                         var hbAmt = r2(updatedInv.holdbackAvailable);
                         var hbBankInfo = getSupplierBankDetails(updatedInv.supplierId || updatedInv.supplierName, updatedInv.fundingProgram);
-                        var hbSpqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                        var hbSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                         HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, amount: hbAmt, date: viewDate, currency: updatedInv.currency, allocations: [{ type: "disbursement", targetId: null, amount: hbAmt }] });
                         SUPPLIER_PAYMENT_QUEUE.push({
                           id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
@@ -9465,7 +9516,7 @@ export default function FactoringDashboard() {
 
                   // Pass-through remainder to supplier
                   if (routingRemaining > 0.01) {
-                    var spqId = "SPQ-" + String(SUPPLIER_PAYMENT_QUEUE.length + 1).padStart(7, "0");
+                    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                     var bankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
                     SUPPLIER_PAYMENT_QUEUE.push({
                       id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
@@ -11488,7 +11539,7 @@ export default function FactoringDashboard() {
 
               function createInvoice() {
                 if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
-                var newId = "INV-" + String(INVOICES_DB.length + 2001).padStart(7, "0");
+                var newId = nextId("INV-", INVOICES_DB, "id");
                 var hist = [{ status: "Received", date: nf.invoiceDate }];
                 var supRate = getSupplierRate(nf.supplier);
                 var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
