@@ -458,13 +458,16 @@ async function savePayment(paymentId) {
   if (!pay) return;
   _isSaving = true;
   try {
-    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", notes: pay.notes || [] };
-    await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
+    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "" };
+    var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
+    if (upRes.error) console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row);
     // Save allocations
-    await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
+    var delRes = await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
+    if (delRes.error) console.error("[SavePayment] allocations delete error:", delRes.error);
     if (pay.allocations.length > 0) {
       var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
-      await supabase.from("payment_allocations").insert(allocRows);
+      var insRes = await supabase.from("payment_allocations").insert(allocRows);
+      if (insRes.error) console.error("[SavePayment] allocations insert error:", insRes.error, "rows:", allocRows);
     }
   } catch (e) { console.error("[SavePayment] Error:", e); }
   _isSaving = false;
@@ -935,25 +938,6 @@ async function reloadForSupplier(supplierId) {
     }
   });
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
-
-  // --- DIAGNOSTIC (temporary) --- remove once the Funded/FullyRepaid issue is resolved
-  try {
-    var diagRaw = await supabase.from("payments").select("*");
-    var diagAllocs = await supabase.from("payment_allocations").select("*");
-    var diagHbp = await supabase.from("holdback_payments").select("*");
-    console.log("[SP Diag] RAW payments visible to supplier:", (diagRaw.data || []).length, "err:", diagRaw.error || "none");
-    console.log("[SP Diag] RAW payment_allocations visible to supplier:", (diagAllocs.data || []).length, "err:", diagAllocs.error || "none");
-    console.log("[SP Diag] RAW holdback_payments visible to supplier:", (diagHbp.data || []).length, "err:", diagHbp.error || "none");
-    console.log("[SP Diag] After load: PAYMENTS_DB=" + PAYMENTS_DB.length + " HOLDBACK_PAYMENTS_DB=" + HOLDBACK_PAYMENTS_DB.length);
-    // For each invoice, sum allocations applied to it from the raw allocations table
-    var allocByInv = {};
-    (diagAllocs.data || []).forEach(function(a) { allocByInv[a.invoice_id] = (allocByInv[a.invoice_id] || 0) + (parseFloat(a.amount) || 0); });
-    INVOICES_DB.forEach(function(inv) {
-      if ((allocByInv[inv.id] || 0) > 0 || inv.fundingStatus !== "funded") {
-        console.log("[SP Diag] " + inv.id + ": raw_status=" + inv.fundingStatus + " amount=" + inv.amount + " capDue=" + inv.capitalDue + " allocatedFromRaw=" + (allocByInv[inv.id] || 0).toFixed(2));
-      }
-    });
-  } catch (diagErr) { console.error("[SP Diag] Error:", diagErr); }
 }
 
 async function reloadInvoices() {
@@ -1270,7 +1254,8 @@ async function savePersistedData() {
       };
     });
     if (payRows.length > 0) {
-      await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
+      var payUpRes = await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
+      if (payUpRes.error) console.error("[Save] payments upsert error:", payUpRes.error, "first row:", payRows[0]);
       var payAllocRows = [];
       PAYMENTS_DB.forEach(function(p) {
         p.allocations.forEach(function(a) {
@@ -1280,8 +1265,12 @@ async function savePersistedData() {
         });
       });
       var payIds = PAYMENTS_DB.map(function(p) { return p.paymentId; });
-      await supabase.from("payment_allocations").delete().in("payment_id", payIds);
-      if (payAllocRows.length > 0) await supabase.from("payment_allocations").insert(payAllocRows);
+      var payDelRes = await supabase.from("payment_allocations").delete().in("payment_id", payIds);
+      if (payDelRes.error) console.error("[Save] allocations delete error:", payDelRes.error);
+      if (payAllocRows.length > 0) {
+        var payInsRes = await supabase.from("payment_allocations").insert(payAllocRows);
+        if (payInsRes.error) console.error("[Save] allocations insert error:", payInsRes.error, "first row:", payAllocRows[0]);
+      }
     }
 
     // Save holdback payments — delete and re-insert allocations
@@ -9504,13 +9493,17 @@ export default function FactoringDashboard() {
                     // Save all modified records
                     if (pay) {
                       _isSaving = true;
-                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", notes: pay.notes || [] };
-                      supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function() {
+                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "" };
+                      supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
+                        if (upRes && upRes.error) console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow);
                         // Save allocations
-                        supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function() {
+                        supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function(delRes) {
+                          if (delRes && delRes.error) console.error("[Inline SavePayment] allocations delete error:", delRes.error);
                           if (pay.allocations.length > 0) {
                             var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
-                            supabase.from("payment_allocations").insert(allocRows);
+                            supabase.from("payment_allocations").insert(allocRows).then(function(insRes) {
+                              if (insRes && insRes.error) console.error("[Inline SavePayment] allocations insert error:", insRes.error, "rows:", allocRows);
+                            });
                           }
                         });
                         _isSaving = false;
