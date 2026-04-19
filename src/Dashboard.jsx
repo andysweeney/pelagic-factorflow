@@ -348,14 +348,6 @@ var FUNDING_PROGRAMS_DB = [];
 var ENTITY_NOTES_DB = [];
 var CSV_REVIEW_QUEUE_DB = [];
 var ENTITY_ALIASES_DB = [];
-// Expose for diagnostics (safe — inspection only)
-if (typeof window !== "undefined") {
-  window.__FF = window.__FF || {};
-  window.__FF.PAYMENTS_DB = function() { return PAYMENTS_DB; };
-  window.__FF.INVOICES_DB = function() { return INVOICES_DB; };
-  window.__FF.HOLDBACK_PAYMENTS_DB = function() { return HOLDBACK_PAYMENTS_DB; };
-  window.__FF.SUPPLIER_PAYMENT_QUEUE = function() { return SUPPLIER_PAYMENT_QUEUE; };
-}
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -976,24 +968,33 @@ async function reloadInvoices() {
   } catch (e) { console.error("Realtime reload invoices error:", e); }
 }
 
+var _reloadPaymentsInFlight = null;
 async function reloadPayments() {
-  try {
-    var payRes = await supabase.from("payments").select("*");
-    if (payRes.data) {
-      PAYMENTS_DB.length = 0;
-      for (var pi = 0; pi < payRes.data.length; pi++) {
-        var prow = payRes.data[pi];
-        var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
-        var allocs = (allocRes.data || []).map(function(a) {
-          return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
-        });
-        PAYMENTS_DB.push({
-          paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
-          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
-        });
+  // If already running, return the in-flight promise to coalesce concurrent calls
+  if (_reloadPaymentsInFlight) return _reloadPaymentsInFlight;
+  _reloadPaymentsInFlight = (async function() {
+    try {
+      var payRes = await supabase.from("payments").select("*");
+      if (payRes.data) {
+        var newList = [];
+        for (var pi = 0; pi < payRes.data.length; pi++) {
+          var prow = payRes.data[pi];
+          var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
+          var allocs = (allocRes.data || []).map(function(a) {
+            return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+          });
+          newList.push({
+            paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
+            date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
+          });
+        }
+        // Swap atomically after all data is gathered
+        PAYMENTS_DB.length = 0;
+        newList.forEach(function(p) { PAYMENTS_DB.push(p); });
       }
-    }
-  } catch (e) { console.error("Realtime reload payments error:", e); }
+    } catch (e) { console.error("Realtime reload payments error:", e); }
+  })();
+  try { await _reloadPaymentsInFlight; } finally { _reloadPaymentsInFlight = null; }
 }
 
 async function reloadSPQ() {
