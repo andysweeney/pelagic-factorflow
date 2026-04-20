@@ -4648,15 +4648,16 @@ export default function FactoringDashboard() {
                 var ctx = e.context || {};
                 // Drop program-ledger noise entirely
                 if (e.action === "Program Funds Added" || e.action === "Program Funds Disbursed") return;
-                // Bundle supersession (unchanged)
+                // Bundle supersession: hide per-invoice funded/remitted events when a bundle covers them.
+                // Defensive: also suppress even if the individual CPQ still exists in DB (e.g. cleanup race),
+                // so the supplier's timeline stays consistent with the Payments to You table.
                 if (e.action === "Invoice Funded") {
-                  var cpid = ctx.completedPaymentId;
                   var iid = ctx.invoiceId;
-                  if (cpid && !spqExistingIds[cpid] && iid && bundledInvIds[iid]) return;
+                  if (iid && bundledInvIds[iid]) return;
                 }
                 if (e.action === "Supplier Payment Executed") {
                   var qid = ctx.queueId;
-                  if (qid && !spqExistingIds[qid] && bundledSpqIds[qid]) return;
+                  if (qid && bundledSpqIds[qid]) return;
                 }
                 if (e.action === "Holdback Disbursed") {
                   var hbid = ctx.hbPaymentId;
@@ -8961,13 +8962,20 @@ export default function FactoringDashboard() {
                               (batchConfirm.holdbackItems || []).forEach(function(h) {
                                 if (h.type === "holdback") individualIds.push(h.id);
                               });
+                              // IMPORTANT: compute the bundle id BEFORE splicing the individuals out of
+                              // SUPPLIER_PAYMENT_QUEUE. Otherwise nextId() sees the just-freed ids and
+                              // can hand back an id that collides with one we're simultaneously DELETE-ing
+                              // from Supabase, producing a race where the bundle upsert loses to the delete
+                              // (or vice versa, leaving stale individual rows in the DB).
+                              var bundleId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                               individualIds.forEach(function(rid) {
                                 var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; });
                                 if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1);
                                 // Delete from Supabase
-                                supabase.from("supplier_payment_queue").delete().eq("id", rid);
+                                supabase.from("supplier_payment_queue").delete().eq("id", rid).then(function(res) {
+                                  if (res.error) console.error("[BundleCleanup] delete failed for " + rid + ":", res.error.message);
+                                });
                               });
-                              var bundleId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                               var firstRow = batchConfirm.items[0];
                               var allInvIds = fundingInvIds.slice();
                               // Only actual holdback items go into the bundle; pass-throughs remain individual rows.
@@ -9099,6 +9107,16 @@ export default function FactoringDashboard() {
           {/* === OUTBOUND COMPLETED TAB === */}
           {payTab === "outbound_completed" && (function() {
               var allCompleted = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Completed"; }).slice().reverse();
+              // Hide individual funding rows when a bundle covers the same invoice.
+              // Mirrors the supplier-portal and program-funding-payments dedup pattern.
+              allCompleted = allCompleted.filter(function(fp) {
+                if (fp.isBundle) return true;
+                if (fp.type !== "funding" || !fp.invoiceId) return true;
+                var coveredByBundle = SUPPLIER_PAYMENT_QUEUE.some(function(b) {
+                  return b.isBundle && b.type === "funding" && b.invoiceIds && b.invoiceIds.indexOf(fp.invoiceId) >= 0;
+                });
+                return !coveredByBundle;
+              });
               var cpPopup = managePopup && managePopup.type === "completedPayment" ? managePopup : null;
               var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
