@@ -2643,10 +2643,9 @@ export default function FactoringDashboard() {
       if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
         pendingDisbursalsAmt += spq.amount || 0;
       }
-      // Pass-through remittances allocated to this program
-      else if (spq.type === "remittance" && spq.programId === programId) {
-        pendingDisbursalsAmt += spq.amount || 0;
-      }
+      // Pass-throughs are net-zero for program balance (money in from payment routing,
+      // money out via SPQ execution). They never belong in pendingDisbursals — doing so
+      // would incorrectly deduct from available balance while the SPQ is Pending.
     });
     var buyerReceipts = 0, totalHoldbackDisbursed = 0;
     progInvs.forEach(function(inv) {
@@ -2904,16 +2903,11 @@ export default function FactoringDashboard() {
     item.executedAt = now.toISOString();
     item.executedDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
-    // For remittance payments, record the completed outflow in the program's fundFlows
-    if (item.type === "remittance" && item.programId) {
-      var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === item.programId; });
-      if (prog) {
-        if (!prog.fundFlows) prog.fundFlows = [];
-        var flowId = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
-        prog.fundFlows.push({ flowId: flowId, type: "outflow", amount: item.amount, date: now.toISOString().split("T")[0], serviceProvider: item.supplierName, reason: "Remittance executed to " + item.supplierName + " (" + spqId + ")", status: "completed" });
-        auditLog("Program Funds Disbursed", prog.name + ": " + money(item.amount, item.currency) + " disbursed to " + item.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "outflow", amount: item.amount, currency: item.currency, supplierId: item.supplierId, supplierName: item.supplierName, spqId: spqId, flowId: flowId });
-      }
-    }
+    // For remittance (pass-through) payments:
+    // Pass-throughs are derivable from PAYMENTS_DB + SPQ at render time;
+    // no fund_flows entry is written. The pass-through's movement through
+    // the program is fully captured by: source payment routing (inbound) +
+    // SPQ status (pending vs completed vs cancelled).
 
     saveSPQEntry(spqId);
     if (item.type === "remittance" && item.programId) saveFundingProgram(item.programId);
@@ -4642,12 +4636,10 @@ export default function FactoringDashboard() {
               //   needs to see. The same real-world event is already covered by "Remittance
               //   Queued" and "Supplier Payment Executed".
               // - Drop individual entries superseded by a bundle (same logic as before).
-              // - Relabel overpayment-refund events so they read as supplier-facing.
+              // - Relabel pass-through events so they read as supplier-facing overpayment refunds.
               var displayAuditLog = [];
               spAuditLog.forEach(function(e) {
                 var ctx = e.context || {};
-                // Drop program-ledger noise entirely
-                if (e.action === "Program Funds Added" || e.action === "Program Funds Disbursed") return;
                 // Bundle supersession: hide per-invoice funded/remitted events when a bundle covers them.
                 // Defensive: also suppress even if the individual CPQ still exists in DB (e.g. cleanup race),
                 // so the supplier's timeline stays consistent with the Payments to You table.
@@ -4663,17 +4655,13 @@ export default function FactoringDashboard() {
                   var hbid = ctx.hbPaymentId;
                   if (hbid && bundledHbpIds[hbid]) return;
                 }
-                // Relabel overpayment-refund flow. These actions all describe the same
-                // money-leaving-program-going-to-supplier event, but in program-ledger terms.
-                // For the supplier, present them as "Overpayment Refund ..." so it's obvious
-                // what happened.
+                // Relabel pass-through SPQ lifecycle events so they read as "Overpayment Refund ..."
+                // for the supplier. Remittance Queued -> Pending, Supplier Payment Executed -> Paid.
                 var qidForLookup = ctx.spqId || ctx.queueId || "";
                 var isPassThrough = ctx.passThrough === true || (qidForLookup && passThroughSpqIds[qidForLookup]);
                 if (isPassThrough) {
-                  // Drop "Remittance Queued" entirely — "Overpayment Refund Pending" covers the same event
-                  if (e.action === "Remittance Queued") return;
                   var relabelled = Object.assign({}, e, { context: ctx });
-                  if (e.action === "Awaiting Disbursal") relabelled.action = "Overpayment Refund Pending";
+                  if (e.action === "Remittance Queued") relabelled.action = "Overpayment Refund Pending";
                   else if (e.action === "Supplier Payment Executed") relabelled.action = "Overpayment Refund Paid";
                   displayAuditLog.push(relabelled);
                   return;
@@ -6828,9 +6816,9 @@ export default function FactoringDashboard() {
                 if (spq.status !== "Pending") return;
                 if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
                   pendingDisbursals += spq.amount || 0;
-                } else if (spq.type === "remittance" && spq.programId === selectedProgram) {
-                  pendingDisbursals += spq.amount || 0;
                 }
+                // Pass-throughs are net-zero for program balance and are not counted as
+                // pending disbursals (see getProgramAvailableBalance for explanation).
               });
               // Sum buyer payments received against program invoices — full amount including holdback
               var buyerReceipts = 0, holdbackReceived = 0, totalHoldbackDisbursed = 0;
@@ -9519,10 +9507,6 @@ export default function FactoringDashboard() {
               {/* Proceed button */}
               {remaining < 0.01 && payRoutings.length > 0 && <div style={{ padding: "18px 22px", textAlign: "right" }}>
                 <button onClick={function() {
-                  // Log the routing allocations
-                  payRoutings.forEach(function(r) {
-                    auditLog("Payment Routed", allocPay.paymentId + ": " + money(r.amount, allocPay.currency) + " allocated to " + r.supplierName + " via " + r.programName, { paymentId: allocPay.paymentId, amount: r.amount, currency: allocPay.currency, supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, date: allocPay.date });
-                  });
                   setActiveRouting(0);
                   setPayAllocPhase("allocate");
                   // Pre-set the filters for the first routing
@@ -9665,15 +9649,9 @@ export default function FactoringDashboard() {
                       sourcePaymentId: allocPay.paymentId
                     });
 
-                    // Program: credit the inflow, debit tracked via SPQ entry
-                    if (prog) {
-                      if (!prog.fundFlows) prog.fundFlows = [];
-                      var flowIdIn = "FF-" + String(prog.fundFlows.length + 1).padStart(5, "0");
-                      prog.fundFlows.push({ flowId: flowIdIn, type: "inflow", amount: r2(routingRemaining), date: allocPay.date, serviceProvider: "Payment " + allocPay.paymentId, reason: "Pass-through received for " + routing.supplierName });
-
-                      auditLog("Program Funds Added", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pass-through credit from " + allocPay.paymentId + " for " + routing.supplierName, { programId: prog.id, programName: prog.name, type: "inflow", amount: r2(routingRemaining), currency: allocPay.currency, paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, flowId: flowIdIn, passThrough: true });
-                      auditLog("Awaiting Disbursal", prog.name + ": " + money(r2(routingRemaining), allocPay.currency) + " pending disbursal to " + routing.supplierName + " (" + spqId + ")", { programId: prog.id, programName: prog.name, type: "disburse", amount: r2(routingRemaining), currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, spqId: spqId, passThrough: true });
-                    }
+                    // Pass-throughs are derivable from PAYMENTS_DB + SPQ at render time;
+                    // no fund_flows entry needed. (The pass-through inflow + matched outflow
+                    // net to zero over the SPQ lifecycle, so they never affect program balance.)
 
                     auditLog("Remittance Queued", spqId + ": " + money(r2(routingRemaining), allocPay.currency) + " queued for remittance to " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(routingRemaining), currency: allocPay.currency, spqId: spqId, programId: routing.programId, programName: routing.programName });
                   }
