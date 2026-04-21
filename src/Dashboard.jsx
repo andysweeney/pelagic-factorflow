@@ -8251,6 +8251,26 @@ export default function FactoringDashboard() {
               }
             });
 
+            // 6. Pass-through source payment inflows — credits
+            // Pair with Section 5 remittance debits so pure pass-throughs net to zero.
+            // Since Phase 1 removed fund_flows inflow writes for pass-throughs, this is the
+            // credit side of the pass-through that would otherwise be missing from the ledger.
+            var passThroughSourcesSeen = {};
+            SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+              if (spq.type !== "remittance") return;
+              if (spq.status === "Cancelled" || spq.status === "Failed") return;
+              if (spq.programId !== selectedProgram) return;
+              if (!spq.sourcePaymentId) return;
+              // Group by (sourcePaymentId, amount) so multiple SPQs from one payment each get a matching credit line
+              var key = spq.sourcePaymentId + ":" + spq.id;
+              if (passThroughSourcesSeen[key]) return;
+              passThroughSourcesSeen[key] = true;
+              var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+              var inflowDate = pay ? pay.date : (spq.createdAt ? spq.createdAt.split("T")[0] : "");
+              var ref = spq.sourcePaymentId + " \u2192 " + spq.supplierName;
+              entries.push({ date: inflowDate, sortDate: inflowDate + "T11:59:00", type: "Pass-through Received", ref: ref, counterparty: pay && pay.reference ? pay.reference : "Buyer", credit: spq.amount, debit: 0, currency: spq.currency });
+            });
+
             // Sort chronologically
             entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
 
