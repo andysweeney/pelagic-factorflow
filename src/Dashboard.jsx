@@ -540,6 +540,26 @@ async function saveBuyer(buyId) {
   _isSaving = false;
 }
 
+async function saveServiceProvider(spId) {
+  var sp = SERVICE_PROVIDERS_DB.find(function(x) { return x.id === spId; });
+  if (!sp) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
+      jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
+      role: sp.role || null, notes: sp.notes || null,
+      street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
+      country: sp.country || "United Kingdom", zip: sp.zip || null,
+      primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
+      secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
+    };
+    var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
+    if (res && res.error) console.error("[SaveServiceProvider] Error:", res.error, "row:", row);
+  } catch (e) { console.error("[SaveServiceProvider] Error:", e); }
+  _isSaving = false;
+}
+
 async function saveCreditNote(cnId) {
   var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
   if (!cn) return;
@@ -10135,7 +10155,9 @@ export default function FactoringDashboard() {
               });
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
               saveBuyer(b.id);
-              if (entObj.id.startsWith("SUP")) saveSupplier(entObj.id); else saveBuyer(entObj.id);
+              if (entObj.id.startsWith("SUP")) saveSupplier(entObj.id);
+              else if (entObj.id.startsWith("SP-")) saveServiceProvider(entObj.id);
+              else saveBuyer(entObj.id);
     auditLog("CH Auto-Update", "Updated " + entObj.id + " (" + entObj.name + ") from Companies House. " + directors.length + " officers imported.", { entityId: entObj.id, companyNumber: num, officerCount: directors.length });
               setDataVer(function(v) { return v + 1; });
             }).catch(function() { /* silent fail — entity was already saved with the number */ });
@@ -10234,7 +10256,8 @@ export default function FactoringDashboard() {
               var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, f);
               db.push(newEnt);
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
-              if (manageTab === "suppliers" || manageTab === "service_providers") saveSupplier(newId);
+              if (manageTab === "suppliers") saveSupplier(newId);
+              else if (manageTab === "service_providers") saveServiceProvider(newId);
               else if (manageTab === "buyers") saveBuyer(newId);
               auditLog("Entity Created", entityLabel + " " + newId + " (" + f.name + ") created", { entityType: entityLabel, entityId: newId, name: f.name, fields: Object.assign({}, f) });
               // If new entity has a company number but no directors yet (manual creation), auto-fetch
@@ -10466,7 +10489,7 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
-                  {detEntity && <button onClick={function() { detEntity.paused = !detEntity.paused; if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id); auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
+                  {detEntity && <button onClick={function() { detEntity.paused = !detEntity.paused; if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id); auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
                 </div>
 
                 {/* Detail Sub-Tabs */}
@@ -10552,7 +10575,7 @@ export default function FactoringDashboard() {
                         })}
                       </div> : <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>; })()}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers" || manageTab === "service_providers") saveSupplier(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
+                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
                     auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
                         <button onClick={function() { if (!noteText.trim() || !detEntity) return; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
                       </div>
@@ -10571,8 +10594,8 @@ export default function FactoringDashboard() {
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ fontSize: 9, color: "var(--muted)" }}>{fl.uploadedAt}</span>
-                              <button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); if (manageTab === "suppliers" || manageTab === "service_providers") saveSupplier(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                              <button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
+                    if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id);
                     auditLog("File Removed", "File \"" + fl.fileName + "\" removed from " + det.id, { entityId: det.id, fileName: fl.fileName }); setDataVer(function(v) { return v + 1; }); } }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
                             </div>
                           </div>;
@@ -10603,8 +10626,8 @@ export default function FactoringDashboard() {
                             if (!detEntity.entityFiles) detEntity.entityFiles = [];
                             var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
                             detEntity.entityFiles.push({ fileName: file.name, label: labelInput ? labelInput.value : "", notes: notesInput ? notesInput.value : "", dataUrl: e.target.result, uploadedAt: nd, size: file.size });
-                            if (manageTab === "suppliers" || manageTab === "service_providers") saveSupplier(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(det.id); else if (manageTab === "buyers") saveBuyer(det.id);
+                            if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
+                    if (manageTab === "suppliers") saveSupplier(det.id); else if (manageTab === "service_providers") saveServiceProvider(det.id); else if (manageTab === "buyers") saveBuyer(det.id);
                       auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, fileName: file.name, label: labelInput ? labelInput.value : "" });
                             if (fileInput) fileInput.value = "";
                             if (labelInput) labelInput.value = "";
@@ -11327,7 +11350,7 @@ export default function FactoringDashboard() {
                   ent.entitySource = "manual";
                   if (ent.directors) ent.directors = ent.directors.map(function(d) { return Object.assign({}, d, { source: "manual" }); });
                   saveBuyer(editingBuyer.id);
-                          if (manageTab === "suppliers") saveSupplier(manageEdit); else if (manageTab === "buyers") saveBuyer(manageEdit);
+                          if (manageTab === "suppliers") saveSupplier(manageEdit); else if (manageTab === "service_providers") saveServiceProvider(manageEdit); else if (manageTab === "buyers") saveBuyer(manageEdit);
                     auditLog("CH Disconnected", entityLabel + " " + manageEdit + " (" + f.name + ") disconnected from Companies House API. Data retained as manual.", { entityType: entityLabel, entityId: manageEdit, name: f.name });
                   setDataVer(function(v) { return v + 1; });
                 }
@@ -11388,7 +11411,7 @@ export default function FactoringDashboard() {
                     });
                     if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
                     saveBuyer(editingBuyer.id);
-                            if (manageTab === "suppliers") saveSupplier(manageEdit); else if (manageTab === "buyers") saveBuyer(manageEdit);
+                            if (manageTab === "suppliers") saveSupplier(manageEdit); else if (manageTab === "service_providers") saveServiceProvider(manageEdit); else if (manageTab === "buyers") saveBuyer(manageEdit);
                     auditLog("CH Connected", entityLabel + " " + manageEdit + " (" + data.company_name + ") connected to Companies House API. All company details and " + directors.length + " directors imported. " + oldDirCount + " previous director records replaced.", { entityType: entityLabel, entityId: manageEdit, name: data.company_name, companyNumber: num, officerCount: directors.length, previousDirectorCount: oldDirCount });
                     setDataVer(function(v) { return v + 1; });
                   }
