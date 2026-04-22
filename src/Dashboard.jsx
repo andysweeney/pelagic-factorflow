@@ -3120,10 +3120,13 @@ export default function FactoringDashboard() {
           </div>;
         })}
       </div>
-      <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }"}</style>
-      {authLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
-        <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
-        <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading...</div>
+      <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
+      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+        <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
+        <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
+          <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "40%", background: "linear-gradient(90deg, transparent 0%, #0EA5E9 50%, transparent 100%)", animation: "ffShimmer 1.6s ease-in-out infinite" }} />
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "#64748B", letterSpacing: "0.14em", textTransform: "uppercase", animation: "ffCaption 2s ease-in-out infinite" }}>{authLoading ? "Authenticating" : "Loading Portfolio"}</div>
       </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A", flexDirection: "column" }}>
         <div style={{ width: 380, padding: "40px 36px", background: "#1E293B", borderRadius: 16, border: "1px solid #334155", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
@@ -3143,10 +3146,6 @@ export default function FactoringDashboard() {
           <button onClick={handleLogin} disabled={loggingIn || !loginEmail || !loginPassword} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: loggingIn ? "#0E7490" : "#0EA5E9", color: "#FFF", fontSize: 14, fontWeight: 700, cursor: loggingIn ? "not-allowed" : "pointer", opacity: (!loginEmail || !loginPassword) ? 0.5 : 1, transition: "all 0.15s" }}>{loggingIn ? "Signing in..." : "Sign In"}</button>
         </div>
         <div style={{ marginTop: 24, fontSize: 11, color: "#475569" }}>Pelagic Solutions Ltd</div>
-      </div> : storageLoading || !userProfile ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
-        <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
-        <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading FactorFlow...</div>
-        <div style={{ width: 120, height: 2, background: "#1E293B", borderRadius: 1, overflow: "hidden" }}><div style={{ width: "40%", height: "100%", background: "#0EA5E9", borderRadius: 1, animation: "pulse 1.5s infinite" }} /></div>
       </div> : userProfile && userProfile.role === "supplier" ? (function() {
         /* ====================================================================
            SUPPLIER PORTAL
