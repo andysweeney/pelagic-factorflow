@@ -475,7 +475,7 @@ async function savePayment(paymentId) {
   if (!pay) return;
   _isSaving = true;
   try {
-    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "" };
+    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
     var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
     if (upRes.error) console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row);
     // Save allocations
@@ -739,7 +739,8 @@ async function loadPersistedData() {
         });
         PAYMENTS_DB.push({
           paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
-          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
+          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
+          direction: prow.direction || "inbound"
         });
       }
     }
@@ -941,7 +942,8 @@ async function reloadForSupplier(supplierId) {
       PAYMENTS_DB.push({
         paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
         date: prow.date, currency: prow.currency, reference: prow.reference || "",
-        allocations: allocs, notes: prow.notes || []
+        allocations: allocs, notes: prow.notes || [],
+        direction: prow.direction || "inbound"
       });
     }
   }
@@ -1027,7 +1029,8 @@ async function reloadPayments() {
           });
           newList.push({
             paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
-            date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs
+            date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
+            direction: prow.direction || "inbound"
           });
         }
         // Swap atomically after all data is gathered
@@ -1329,7 +1332,8 @@ async function savePersistedData() {
     var payRows = PAYMENTS_DB.map(function(p) {
       return {
         payment_id: p.paymentId, amount: p.amount, date: p.date,
-        currency: p.currency, reference: p.reference || ""
+        currency: p.currency, reference: p.reference || "",
+        direction: p.direction || "inbound"
       };
     });
     if (payRows.length > 0) {
@@ -2450,7 +2454,7 @@ export default function FactoringDashboard() {
     var maxNum = 0;
     PAYMENTS_DB.forEach(function(p) { var m = p.paymentId.match(/PAY-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxNum) maxNum = n; } });
     var payId = "PAY-" + String(maxNum + 1).padStart(7, "0");
-    PAYMENTS_DB.push({ paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [] });
+    PAYMENTS_DB.push({ paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [], direction: "inbound" });
     savePayment(newPayId);
     auditLog("Payment Created", payId + " created: " + money(payAmt, newPayCcy) + " on " + newPayDate + (newPayRef.trim() ? " (Ref: " + newPayRef.trim() + ")" : ""), { paymentId: payId, amount: payAmt, currency: newPayCcy, date: newPayDate, reference: newPayRef.trim() });
     setShowNewPay(false); setNewPayId(""); setNewPayAmt(""); setNewPayDate(REF_DATE); setNewPayCcy("GBP"); setNewPayRef("");
@@ -9671,7 +9675,7 @@ export default function FactoringDashboard() {
                     // All routings were Service Provider — save payment + close
                     if (allocPay) {
                       _isSaving = true;
-                      var payRow = { payment_id: allocPay.paymentId, amount: allocPay.amount, date: allocPay.date, currency: allocPay.currency, reference: allocPay.reference || "" };
+                      var payRow = { payment_id: allocPay.paymentId, amount: allocPay.amount, date: allocPay.date, currency: allocPay.currency, reference: allocPay.reference || "", direction: allocPay.direction || "inbound" };
                       supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
                         if (upRes && upRes.error) console.error("[SP-only Route] payments upsert error:", upRes.error);
                         _isSaving = false;
@@ -9840,7 +9844,7 @@ export default function FactoringDashboard() {
                     // Save all modified records
                     if (pay) {
                       _isSaving = true;
-                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "" };
+                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
                       supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
                         if (upRes && upRes.error) console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow);
                         // Save allocations
