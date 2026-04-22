@@ -2273,8 +2273,29 @@ export default function FactoringDashboard() {
   var tp = Math.ceil(filtered.length / PS) || 1;
   var st = viewData.stats;
   function doSort(f) { if (sf === f) setSd(function(d) { return d === "asc" ? "desc" : "asc"; }); else { setSf(f); setSd("desc"); } setPg(0); }
-  function getPayStatus(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); if (al < 0.01) return "unallocated"; if (al >= pay.amount - 0.01) return "allocated"; return "partial"; }
-  function getPayRemaining(pay) { var al = 0; pay.allocations.forEach(function(a) { al += a.amount; }); SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; }); return r2(Math.max(0, pay.amount - al)); }
+  function getPayStatus(pay) {
+    var al = 0;
+    pay.allocations.forEach(function(a) { al += a.amount; });
+    SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; });
+    // Service Provider routings land as fund_flows inflows tagged with the source payment id.
+    FUNDING_PROGRAMS_DB.forEach(function(fp) {
+      if (!fp.fundFlows) return;
+      fp.fundFlows.forEach(function(ff) { if (ff.type === "inflow" && ff.sourcePaymentId === pay.paymentId) al += ff.amount || 0; });
+    });
+    if (al < 0.01) return "unallocated";
+    if (al >= pay.amount - 0.01) return "allocated";
+    return "partial";
+  }
+  function getPayRemaining(pay) {
+    var al = 0;
+    pay.allocations.forEach(function(a) { al += a.amount; });
+    SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (q.type === "remittance" && q.sourcePaymentId === pay.paymentId && q.status !== "Cancelled" && q.status !== "Failed") al += q.amount; });
+    FUNDING_PROGRAMS_DB.forEach(function(fp) {
+      if (!fp.fundFlows) return;
+      fp.fundFlows.forEach(function(ff) { if (ff.type === "inflow" && ff.sourcePaymentId === pay.paymentId) al += ff.amount || 0; });
+    });
+    return r2(Math.max(0, pay.amount - al));
+  }
   var cf1 = useState(null), confirmData = cf1[0], setConfirmData = cf1[1];
   function buildInvoiceStatement(inv) {
     if (!inv.fundedDate) return [];
