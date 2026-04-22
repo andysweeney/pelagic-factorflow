@@ -412,14 +412,15 @@ async function saveInvoice(invId) {
       do_not_fund: inv.doNotFund || false,
       notes: inv.notes || []
     };
-    await supabase.from("invoices").upsert([row], { onConflict: "id" });
-  } catch (e) { console.error("[SaveInvoice] Error:", e); }
+    var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
+    if (upRes && upRes.error) { console.error("[SaveInvoice] Supabase error:", upRes.error); toast.error("Invoice save failed", upRes.error.message || "Database rejected the invoice record."); }
+  } catch (e) { console.error("[SaveInvoice] Error:", e); toast.error("Invoice save error", e.message || String(e)); }
   _isSaving = false;
 }
 
 async function saveSPQEntry(spqId) {
   var item = SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === spqId; });
-  if (!item) { console.error("[SaveSPQ] Item not found:", spqId); return; }
+  if (!item) { console.error("[SaveSPQ] Item not found:", spqId); toast.error("Payment queue save failed", "Item " + spqId + " not found locally."); return; }
   _isSaving = true;
   try {
     var row = {
@@ -439,8 +440,8 @@ async function saveSPQEntry(spqId) {
       failed_at: item.failedAt || null, failed_display: item.failedDisplay || null
     };
     var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
-    if (result.error) console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details);
-  } catch (e) { console.error("[SaveSPQ] Error:", e); }
+    if (result.error) { console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue save failed", result.error.message || "Database rejected the queue entry."); }
+  } catch (e) { console.error("[SaveSPQ] Error:", e); toast.error("Payment queue save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -465,8 +466,9 @@ async function saveFundingProgram(progId) {
       created_date: fp.createdDate || null,
       fund_flows: fp.fundFlows || []
     };
-    await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
-  } catch (e) { console.error("[SaveProgram] Error:", e); }
+    var progRes = await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
+    if (progRes && progRes.error) { console.error("[SaveProgram] Supabase error:", progRes.error); toast.error("Funding program save failed", progRes.error.message || "Database rejected the program record."); }
+  } catch (e) { console.error("[SaveProgram] Error:", e); toast.error("Funding program save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -477,16 +479,16 @@ async function savePayment(paymentId) {
   try {
     var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
     var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
-    if (upRes.error) console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row);
+    if (upRes.error) { console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row); toast.error("Payment save failed", upRes.error.message || "Database rejected the payment record."); }
     // Save allocations
     var delRes = await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
-    if (delRes.error) console.error("[SavePayment] allocations delete error:", delRes.error);
+    if (delRes.error) { console.error("[SavePayment] allocations delete error:", delRes.error); toast.error("Payment allocations save failed", delRes.error.message || "Could not clear existing allocations."); }
     if (pay.allocations.length > 0) {
       var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
       var insRes = await supabase.from("payment_allocations").insert(allocRows);
-      if (insRes.error) console.error("[SavePayment] allocations insert error:", insRes.error, "rows:", allocRows);
+      if (insRes.error) { console.error("[SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocation insert failed", insRes.error.message || "Could not write allocations."); }
     }
-  } catch (e) { console.error("[SavePayment] Error:", e); }
+  } catch (e) { console.error("[SavePayment] Error:", e); toast.error("Payment save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -512,8 +514,9 @@ async function saveSupplier(supId) {
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
     };
-    await supabase.from("suppliers").upsert([row], { onConflict: "id" });
-  } catch (e) { console.error("[SaveSupplier] Error:", e); }
+    var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
+    if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
+  } catch (e) { console.error("[SaveSupplier] Error:", e); toast.error("Supplier save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -535,8 +538,9 @@ async function saveBuyer(buyId) {
       contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
       paused: b.paused || false
     };
-    await supabase.from("buyers").upsert([row], { onConflict: "id" });
-  } catch (e) { console.error("[SaveBuyer] Error:", e); }
+    var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
+    if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
+  } catch (e) { console.error("[SaveBuyer] Error:", e); toast.error("Buyer save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -555,8 +559,8 @@ async function saveServiceProvider(spId) {
       secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
     };
     var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
-    if (res && res.error) console.error("[SaveServiceProvider] Error:", res.error, "row:", row);
-  } catch (e) { console.error("[SaveServiceProvider] Error:", e); }
+    if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
+  } catch (e) { console.error("[SaveServiceProvider] Error:", e); toast.error("Service provider save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -571,8 +575,9 @@ async function saveCreditNote(cnId) {
       buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
       allocations: cn.allocations || [], notes: cn.notes || []
     };
-    await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
-  } catch (e) { console.error("[SaveCN] Error:", e); }
+    var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
+    if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
+  } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -582,14 +587,17 @@ async function saveHoldbackPayment(hbpId) {
   _isSaving = true;
   try {
     var row = { hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId, amount: hbp.amount, date: hbp.date, currency: hbp.currency };
-    await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
+    var hbRes = await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
+    if (hbRes && hbRes.error) { console.error("[SaveHBP] upsert error:", hbRes.error); toast.error("Holdback payment save failed", hbRes.error.message || "Database error."); }
     // Save allocations
-    await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
+    var hbDelRes = await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
+    if (hbDelRes && hbDelRes.error) { console.error("[SaveHBP] allocations delete error:", hbDelRes.error); toast.error("Holdback allocation clear failed", hbDelRes.error.message || "Could not clear prior allocations."); }
     if (hbp.allocations && hbp.allocations.length > 0) {
       var aRows = hbp.allocations.map(function(a) { return { hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount }; });
-      await supabase.from("holdback_payment_allocations").insert(aRows);
+      var hbInsRes = await supabase.from("holdback_payment_allocations").insert(aRows);
+      if (hbInsRes && hbInsRes.error) { console.error("[SaveHBP] allocations insert error:", hbInsRes.error); toast.error("Holdback allocation write failed", hbInsRes.error.message || "Could not insert allocations."); }
     }
-  } catch (e) { console.error("[SaveHBP] Error:", e); }
+  } catch (e) { console.error("[SaveHBP] Error:", e); toast.error("Holdback payment save error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -852,6 +860,63 @@ var _isSaving = false;
 var _supplierLoaded = false;
 var _supplierFilter = null; // { supplierName, supplierId, parentId, invIds } // Prevent repeated supplier reloads // Flag to suppress realtime reloads during batch saves
 var _lastSaveTime = 0; // Timestamp of last save to prevent save loops
+
+// -----------------------------------------------------------------------------
+// Toast system
+// -----------------------------------------------------------------------------
+// Module-level queue + subscriber pattern so module-level async save functions
+// can surface errors/successes without plumbing a callback through every caller.
+var TOAST_QUEUE = [];
+var _toastSubscribers = [];
+var _toastCounter = 0;
+function _emitToasts() {
+  var snapshot = TOAST_QUEUE.slice();
+  _toastSubscribers.forEach(function(fn) { try { fn(snapshot); } catch (e) { /* ignore subscriber errors */ } });
+}
+function pushToast(type, message, detail) {
+  _toastCounter++;
+  var t = {
+    id: "toast-" + Date.now() + "-" + _toastCounter,
+    type: type || "info", // "error" | "success" | "info" | "warning"
+    message: message || "",
+    detail: detail || "",
+    createdAt: Date.now(),
+    // error toasts stay longer so users can read them
+    autoDismissMs: (type === "error") ? 8000 : (type === "warning" ? 6000 : 3000)
+  };
+  TOAST_QUEUE.push(t);
+  // cap at 6 on screen — drop oldest
+  while (TOAST_QUEUE.length > 6) TOAST_QUEUE.shift();
+  _emitToasts();
+  return t.id;
+}
+function dismissToast(id) {
+  var i = -1;
+  for (var k = 0; k < TOAST_QUEUE.length; k++) { if (TOAST_QUEUE[k].id === id) { i = k; break; } }
+  if (i >= 0) {
+    TOAST_QUEUE.splice(i, 1);
+    _emitToasts();
+  }
+}
+// Shorthand helpers used throughout the code
+var toast = {
+  error:   function(msg, detail) { return pushToast("error",   msg, detail); },
+  success: function(msg, detail) { return pushToast("success", msg, detail); },
+  info:    function(msg, detail) { return pushToast("info",    msg, detail); },
+  warning: function(msg, detail) { return pushToast("warning", msg, detail); }
+};
+// Helper: inspect a Supabase response ({data, error}) and toast on error.
+// Returns true if there was an error (so callers can `if (supabaseErrorToast(res, "context")) return;`).
+function supabaseErrorToast(res, context) {
+  if (res && res.error) {
+    var msg = context ? (context + " failed") : "Database operation failed";
+    var detail = res.error.message || res.error.details || res.error.hint || (typeof res.error === "string" ? res.error : "Check console for details.");
+    toast.error(msg, detail);
+    return true;
+  }
+  return false;
+}
+
 
 async function reloadForSupplier(supplierId) {
   if (_supplierLoaded) return;
@@ -1322,7 +1387,7 @@ async function savePersistedData() {
           console.warn("[Save] Invoice batch retry at " + ib + " after: " + bRes.error.message);
           await new Promise(function(r) { setTimeout(r, 200); });
           var bRes2 = await supabase.from("invoices").upsert(batch, { onConflict: "id" });
-          if (bRes2.error) console.error("[Save] Invoice batch FAILED at " + ib + ":", bRes2.error.message);
+          if (bRes2.error) { console.error("[Save] Invoice batch FAILED at " + ib + ":", bRes2.error.message); toast.error("Invoice batch save failed", "Batch starting at row " + ib + ": " + (bRes2.error.message || "Database error")); }
         }
         if (ib + 50 < invRows.length) await new Promise(function(r) { setTimeout(r, 50); });
       }
@@ -1338,7 +1403,7 @@ async function savePersistedData() {
     });
     if (payRows.length > 0) {
       var payUpRes = await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
-      if (payUpRes.error) console.error("[Save] payments upsert error:", payUpRes.error, "first row:", payRows[0]);
+      if (payUpRes.error) { console.error("[Save] payments upsert error:", payUpRes.error, "first row:", payRows[0]); toast.error("Payments batch save failed", payUpRes.error.message || "Database error."); }
       var payAllocRows = [];
       PAYMENTS_DB.forEach(function(p) {
         p.allocations.forEach(function(a) {
@@ -1349,10 +1414,10 @@ async function savePersistedData() {
       });
       var payIds = PAYMENTS_DB.map(function(p) { return p.paymentId; });
       var payDelRes = await supabase.from("payment_allocations").delete().in("payment_id", payIds);
-      if (payDelRes.error) console.error("[Save] allocations delete error:", payDelRes.error);
+      if (payDelRes.error) { console.error("[Save] allocations delete error:", payDelRes.error); toast.error("Allocations clear failed", payDelRes.error.message || "Could not clear prior allocations."); }
       if (payAllocRows.length > 0) {
         var payInsRes = await supabase.from("payment_allocations").insert(payAllocRows);
-        if (payInsRes.error) console.error("[Save] allocations insert error:", payInsRes.error, "first row:", payAllocRows[0]);
+        if (payInsRes.error) { console.error("[Save] allocations insert error:", payInsRes.error, "first row:", payAllocRows[0]); toast.error("Allocations write failed", payInsRes.error.message || "Could not insert allocations."); }
       }
     }
 
@@ -1434,15 +1499,17 @@ async function savePersistedData() {
       });
       if (newAuditRows.length > 0) {
         var auditOk = true;
+        var firstAuditErr = null;
         for (var ab = 0; ab < newAuditRows.length; ab += 500) {
           var aBatch = newAuditRows.slice(ab, ab + 500);
           var auditResult = await supabase.from("audit_log").insert(aBatch);
-          if (auditResult.error) { console.error("[Save] Audit batch error at " + ab + ":", auditResult.error.message); auditOk = false; }
+          if (auditResult.error) { console.error("[Save] Audit batch error at " + ab + ":", auditResult.error.message); auditOk = false; if (!firstAuditErr) firstAuditErr = auditResult.error.message; }
         }
         if (auditOk) _lastSavedAuditIndex = AUDIT_LOG.length;
+        else if (firstAuditErr) toast.warning("Audit log partially saved", firstAuditErr);
       }
     }
-  } catch (e) { console.error("Supabase save error:", e); } finally { _lastSaveTime = Date.now(); setTimeout(function() { _isSaving = false; }, 15000); }
+  } catch (e) { console.error("Supabase save error:", e); toast.error("Bulk save error", e.message || String(e)); } finally { _lastSaveTime = Date.now(); setTimeout(function() { _isSaving = false; }, 15000); }
 }
 function _auditLog(action, details, context, dateOverride) {
   var now = new Date();
@@ -1758,6 +1825,27 @@ export default function FactoringDashboard() {
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
   var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
   var sppgS = useState(0), spPage = sppgS[0], setSpPage = sppgS[1];
+
+  // Toast subscriber — pulls from module-level TOAST_QUEUE so any save function can push
+  var toastS = useState([]), toasts = toastS[0], setToasts = toastS[1];
+  React.useEffect(function() {
+    _toastSubscribers.push(setToasts);
+    // initial sync
+    setToasts(TOAST_QUEUE.slice());
+    return function() {
+      _toastSubscribers = _toastSubscribers.filter(function(fn) { return fn !== setToasts; });
+    };
+  }, []);
+  // Auto-dismiss timers — each toast self-expires after its autoDismissMs
+  React.useEffect(function() {
+    if (toasts.length === 0) return;
+    var timers = toasts.map(function(t) {
+      var remaining = t.autoDismissMs - (Date.now() - t.createdAt);
+      if (remaining <= 0) { dismissToast(t.id); return null; }
+      return setTimeout(function() { dismissToast(t.id); }, remaining);
+    });
+    return function() { timers.forEach(function(tm) { if (tm) clearTimeout(tm); }); };
+  }, [toasts]);
 
   function loadUserProfile(userId) {
     supabase.from("user_profiles").select("*").eq("id", userId).single().then(function(result) {
@@ -2537,6 +2625,7 @@ export default function FactoringDashboard() {
     item.failedAt = now.toISOString();
     item.failedDisplay = nowDisp;
     saveSPQEntry(item.id);
+    toast.warning("Payment marked failed", money(item.amount, item.currency) + " to " + item.supplierName + " \u2014 requires follow-up");
     setManagePopup(null);
     setDataVer(function(v) { return v + 1; });
   }
@@ -2974,6 +3063,7 @@ export default function FactoringDashboard() {
     saveSPQEntry(spqId);
     if (item.type === "remittance" && item.programId) saveFundingProgram(item.programId);
     auditLog("Supplier Payment Executed", spqId + " executed: " + money(item.amount, item.currency) + " to " + item.supplierName + " — " + (item.bankName ? item.bankName + " " + item.bankDetails : "No bank on file"), { queueId: spqId, hbPaymentId: item.hbPaymentId, sourceInvoiceId: item.sourceInvoiceId, supplierName: item.supplierName, supplierId: item.supplierId, bankName: item.bankName, bankDetails: item.bankDetails, bankVerified: item.bankVerified || false, amount: item.amount, currency: item.currency });
+    toast.success("Payment executed", money(item.amount, item.currency) + " to " + item.supplierName);
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -3013,6 +3103,24 @@ export default function FactoringDashboard() {
   return (
     <div style={rootStyle}>
       <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      {/* Toast container — fixed bottom-right overlay, stacks upward */}
+      <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 9999, display: "flex", flexDirection: "column-reverse", gap: 8, pointerEvents: "none", maxWidth: 420 }}>
+        {toasts.map(function(t) {
+          var palette = t.type === "error" ? { border: "#DC2626", bg: "#FEE2E2", text: "#991B1B", accent: "#DC2626", icon: "\u2716" }
+                      : t.type === "warning" ? { border: "#D97706", bg: "#FEF3C7", text: "#92400E", accent: "#D97706", icon: "\u26A0" }
+                      : t.type === "success" ? { border: "#059669", bg: "#D1FAE5", text: "#065F46", accent: "#059669", icon: "\u2713" }
+                      : { border: "#2563EB", bg: "#DBEAFE", text: "#1E40AF", accent: "#2563EB", icon: "\u2139" };
+          return <div key={t.id} style={{ pointerEvents: "auto", background: palette.bg, border: "1px solid " + palette.border + "60", borderLeft: "4px solid " + palette.accent, borderRadius: 8, padding: "10px 14px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", display: "flex", gap: 10, alignItems: "flex-start", animation: "toastIn 0.2s ease-out", minWidth: 260 }}>
+            <div style={{ color: palette.accent, fontSize: 16, fontWeight: 700, flexShrink: 0, lineHeight: 1.2 }}>{palette.icon}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: palette.text, marginBottom: t.detail ? 2 : 0, wordBreak: "break-word" }}>{t.message}</div>
+              {t.detail && <div style={{ fontSize: 11, color: palette.text, opacity: 0.85, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-word" }}>{t.detail}</div>}
+            </div>
+            <button onClick={function() { dismissToast(t.id); }} style={{ background: "transparent", border: "none", color: palette.text, opacity: 0.6, cursor: "pointer", fontSize: 14, padding: "0 2px", lineHeight: 1, flexShrink: 0 }} title="Dismiss">{"\u2715"}</button>
+          </div>;
+        })}
+      </div>
+      <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }"}</style>
       {authLoading ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 20, background: "#0F172A" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 52, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
         <div style={{ fontSize: 13, fontWeight: 500, color: "#64748B", letterSpacing: "0.05em" }}>Loading...</div>
@@ -3114,21 +3222,34 @@ export default function FactoringDashboard() {
             }
           }
         });
+        // Split invoices into program-assigned vs unassigned. Unassigned = pending (awaiting
+        // program assignment), historic without a program, or orphan invoices (no fundingProgram).
+        // These used to be shown on every program tab which caused visible duplication — now they
+        // live under a dedicated synthetic 'Unassigned' tab.
+        var spUnassignedInvs = spAllInvs.filter(function(inv) {
+          if (inv.fundingStatus === "pending") return true;
+          if (!inv.fundingProgram) return true; // historic without program / orphan
+          return false;
+        });
+        // Append the synthetic 'Unassigned' program entry at the end when there's anything to show
+        if (spUnassignedInvs.length > 0) {
+          spPrograms = spPrograms.concat([{ id: "_unassigned", name: "Unassigned", currency: spUnassignedInvs[0].currency || "GBP", _synthetic: true }]);
+        }
+
         // Auto-select first program if none selected
         var activeProgId = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
         var activeProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === activeProgId; });
+        var isUnassignedTab = activeProgId === "_unassigned";
 
         // Filter invoices by selected program
         var spInvs = spAllInvs;
-        if (activeProgId) {
+        if (isUnassignedTab) {
+          spInvs = spUnassignedInvs;
+        } else if (activeProgId) {
           spInvs = spAllInvs.filter(function(inv) {
-            // Always show: pending (awaiting funding), historic (CSV imports), fully_repaid
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return true;
-            // Show funded/approved/fully_repaid invoices on this program
-            if (inv.fundingProgram === activeProgId) return true;
-            // Show invoices with no program assigned (shouldn't normally happen but safety net)
-            if (!inv.fundingProgram && inv.fundingStatus !== "pending") return true;
-            return false;
+            // Only show invoices actually assigned to this program.
+            // Pending / unassigned invoices live in the '_unassigned' tab.
+            return inv.fundingProgram === activeProgId;
           });
         }
         var spDisplayCcy = activeProg ? activeProg.currency : "GBP";
@@ -3368,7 +3489,7 @@ export default function FactoringDashboard() {
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
                 React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
                 spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
-                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp.name + " (" + fp.currency + ")"); })
+                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp._synthetic ? fp.name : fp.name + " (" + fp.currency + ")"); })
                 ) : null
               ),
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
@@ -3538,7 +3659,10 @@ export default function FactoringDashboard() {
                   var byStatus = {};
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
-                    return (inv.supplierId ? spMatchesScope(inv.supplierId) : spMatchesScopeByName(inv.supplierName)) && (!activeProgId || inv.fundingProgram === activeProgId || inv.fundingStatus === "pending");
+                    if (inv.supplierId ? !spMatchesScope(inv.supplierId) : !spMatchesScopeByName(inv.supplierName)) return false;
+                    if (!activeProgId) return true; // all-programs view
+                    if (isUnassignedTab) return inv.fundingStatus === "pending" || !inv.fundingProgram;
+                    return inv.fundingProgram === activeProgId;
                   }).forEach(function(inv) {
                     var fs = inv.fundingStatus;
                     if (byStatus[fs] !== undefined) byStatus[fs] += inv.capitalOutstanding || 0;
@@ -8530,9 +8654,17 @@ export default function FactoringDashboard() {
                   });
                   var aqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
                   // Lock to supplier+program from first selection.
-                  // Also lock to pass-through-ness: pass-throughs (incoming funds being forwarded)
-                  // and funding/holdback outflows are different fund-flow semantics and can't be
-                  // bundled into a single wire; the user must execute them in separate batches.
+                  // The pass-through-ness lock is NOT about different fund-flow semantics
+                  // (both types produce SPQ rows executed via the same path). It's protecting
+                  // the deduction-distribution logic downstream:
+                  //   - Line ~9037: HBP allocation rebuild assumes the deduction applies
+                  //     entirely against holdback items in the batch.
+                  //   - Line ~9086: `deductForPassthroughs = pureBatchPassthrough ? deductTotal : 0`
+                  //     short-circuits pass-through deduction unless the batch is 100% passthrough.
+                  // To safely unlock mixed pass-through+funding+holdback batches, both paths need
+                  // to consume a pro-rata share of the deductions instead of one absorbing all.
+                  // See session transcript 2026-04-22 for full analysis. For now the lock stays
+                  // and admins execute pass-through + funding/holdback as separate batches.
                   var feqLockSup = null, feqLockProg = null, feqLockPassthrough = null;
                   outboundRows.forEach(function(row) {
                     if (feqSelected[row.rowId] && feqLockSup === null) {
@@ -9830,6 +9962,7 @@ export default function FactoringDashboard() {
                       paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency,
                       routingCount: payRoutings.length, direction: "outbound"
                     });
+                    toast.success("Outgoing payment queued", allocPay.paymentId + " — " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s). Execute from the queue.");
                     setAllocPay(null); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
                     setDataVer(function(v) { return v + 1; });
                     return;
@@ -9875,11 +10008,12 @@ export default function FactoringDashboard() {
                       _isSaving = true;
                       var payRow = { payment_id: allocPay.paymentId, amount: allocPay.amount, date: allocPay.date, currency: allocPay.currency, reference: allocPay.reference || "", direction: allocPay.direction || "inbound" };
                       supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
-                        if (upRes && upRes.error) console.error("[SP-only Route] payments upsert error:", upRes.error);
+                        if (upRes && upRes.error) { console.error("[SP-only Route] payments upsert error:", upRes.error); toast.error("Payment save failed", upRes.error.message || "Routing succeeded locally but DB save failed."); }
                         _isSaving = false;
                       });
                     }
                     auditLog("Payment Fully Processed", allocPay.paymentId + " fully routed: " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " service provider routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routingCount: payRoutings.length });
+                    toast.success("Payment allocated", allocPay.paymentId + " \u2014 " + money(allocPay.amount, allocPay.currency) + " to " + payRoutings.length + " service provider(s).");
                     setAllocPay(null); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
                     setDataVer(function(v) { return v + 1; });
                   }
@@ -10045,14 +10179,14 @@ export default function FactoringDashboard() {
                       _isSaving = true;
                       var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
                       supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
-                        if (upRes && upRes.error) console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow);
+                        if (upRes && upRes.error) { console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow); toast.error("Payment save failed", upRes.error.message || "Routing succeeded locally but DB save failed."); }
                         // Save allocations
                         supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function(delRes) {
-                          if (delRes && delRes.error) console.error("[Inline SavePayment] allocations delete error:", delRes.error);
+                          if (delRes && delRes.error) { console.error("[Inline SavePayment] allocations delete error:", delRes.error); toast.error("Allocations clear failed", delRes.error.message || "Could not clear prior allocations."); }
                           if (pay.allocations.length > 0) {
                             var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
                             supabase.from("payment_allocations").insert(allocRows).then(function(insRes) {
-                              if (insRes && insRes.error) console.error("[Inline SavePayment] allocations insert error:", insRes.error, "rows:", allocRows);
+                              if (insRes && insRes.error) { console.error("[Inline SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocations write failed", insRes.error.message || "Could not insert allocations."); }
                             });
                           }
                         });
@@ -10066,6 +10200,7 @@ export default function FactoringDashboard() {
                     // Save program fund flows
                     payRoutings.forEach(function(r) { saveFundingProgram(r.programId); });
                     auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
+                    toast.success("Payment allocated", allocPay.paymentId + " \u2014 " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s).");
                     setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
                     setDataVer(function(v) { return v + 1; });
                   }
@@ -10484,6 +10619,7 @@ export default function FactoringDashboard() {
               else if (manageTab === "service_providers") saveServiceProvider(newId);
               else if (manageTab === "buyers") saveBuyer(newId);
               auditLog("Entity Created", entityLabel + " " + newId + " (" + f.name + ") created", { entityType: entityLabel, entityId: newId, name: f.name, fields: Object.assign({}, f) });
+              toast.success(entityLabel + " created", newId + " \u2014 " + f.name);
               // If new entity has a company number but no directors yet (manual creation), auto-fetch
               var coNum = (f.companyNumber || "").trim();
               if (coNum && (!f.directors || f.directors.length === 0)) {
