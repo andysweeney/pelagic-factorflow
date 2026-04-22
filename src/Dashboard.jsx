@@ -2057,6 +2057,7 @@ export default function FactoringDashboard() {
   var npa = useState(""), newPayAmt = npa[0], setNewPayAmt = npa[1];
   var npd = useState(REF_DATE), newPayDate = npd[0], setNewPayDate = npd[1];
   var npc = useState("GBP"), newPayCcy = npc[0], setNewPayCcy = npc[1];
+  var npdir = useState("inbound"), newPayDirection = npdir[0], setNewPayDirection = npdir[1];
   var ep1 = useState(null), expPay = ep1[0], setExpPay = ep1[1];
   var ei1 = useState(null), editInv = ei1[0], setEditInv = ei1[1];
   var ef1 = useState({}), editFields = ef1[0], setEditFields = ef1[1];
@@ -2454,10 +2455,20 @@ export default function FactoringDashboard() {
     var maxNum = 0;
     PAYMENTS_DB.forEach(function(p) { var m = p.paymentId.match(/PAY-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxNum) maxNum = n; } });
     var payId = "PAY-" + String(maxNum + 1).padStart(7, "0");
-    PAYMENTS_DB.push({ paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [], direction: "inbound" });
-    savePayment(newPayId);
-    auditLog("Payment Created", payId + " created: " + money(payAmt, newPayCcy) + " on " + newPayDate + (newPayRef.trim() ? " (Ref: " + newPayRef.trim() + ")" : ""), { paymentId: payId, amount: payAmt, currency: newPayCcy, date: newPayDate, reference: newPayRef.trim() });
-    setShowNewPay(false); setNewPayId(""); setNewPayAmt(""); setNewPayDate(REF_DATE); setNewPayCcy("GBP"); setNewPayRef("");
+    var newPayObj = { paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [], direction: newPayDirection };
+    PAYMENTS_DB.push(newPayObj);
+    savePayment(payId);
+    auditLog("Payment Created", payId + " created (" + newPayDirection + "): " + money(payAmt, newPayCcy) + " on " + newPayDate + (newPayRef.trim() ? " (Ref: " + newPayRef.trim() + ")" : ""), { paymentId: payId, amount: payAmt, currency: newPayCcy, date: newPayDate, reference: newPayRef.trim(), direction: newPayDirection });
+    var wasOutbound = newPayDirection === "outbound";
+    setShowNewPay(false); setNewPayId(""); setNewPayAmt(""); setNewPayDate(REF_DATE); setNewPayCcy("GBP"); setNewPayRef(""); setNewPayDirection("inbound");
+    // For outgoing payments, jump straight into the routing wizard
+    if (wasOutbound) {
+      setAllocPay(newPayObj);
+      setAllocs([]); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter("");
+      setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
+      setRouteProgV(""); setRouteSupV(""); setRouteSpV(""); setRouteAmtV("");
+      setRouteCpType("supplier");
+    }
     setDataVer(function(v) { return v + 1; });
   }
 
@@ -9307,7 +9318,8 @@ export default function FactoringDashboard() {
             <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Incoming Payments Database</div>
-                <button onClick={function() { setShowNewPay(!showNewPay); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay ? "#DC262630" : "var(--accent)"), background: "transparent", color: showNewPay ? "#EF4444" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay ? "Cancel" : "+ New Payment"}</button>
+                <button onClick={function() { if (showNewPay && newPayDirection === "inbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("inbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "inbound" ? "#DC262630" : "var(--accent)"), background: "transparent", color: showNewPay && newPayDirection === "inbound" ? "#EF4444" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "inbound" ? "Cancel" : "+ New Payment"}</button>
+                <button onClick={function() { if (showNewPay && newPayDirection === "outbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("outbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "outbound" ? "#DC262630" : "#7C3AED"), background: "transparent", color: showNewPay && newPayDirection === "outbound" ? "#EF4444" : "#7C3AED", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "outbound" ? "Cancel" : "+ New Outgoing Payment"}</button>
               </div>
               <div style={{ display: "flex", gap: 6 }}>{["all", "unallocated", "partial", "allocated"].map(function(f) { return <button key={f} onClick={function() { setPayFilter(f); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: payFilter === f ? "var(--accent)" : "transparent", color: payFilter === f ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f}</button>; })}</div>
             </div>
@@ -9317,10 +9329,10 @@ export default function FactoringDashboard() {
               <input type="date" value={pdDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPdDateFilter(v); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
               {(pdSearch || pdCcyFilter || pdDateFilter) && <button onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
             </div>
-            {showNewPay && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+            {showNewPay && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: newPayDirection === "outbound" ? "#7C3AED08" : "transparent", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Reference</label>
-                <input type="text" value={newPayRef} onChange={function(e) { setNewPayRef(e.target.value); }} placeholder="Payment reference / notes" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: newPayDirection === "outbound" ? "#7C3AED" : "var(--muted)" }}>{newPayDirection === "outbound" ? "Outgoing Payment" : "Reference"}</label>
+                <input type="text" value={newPayRef} onChange={function(e) { setNewPayRef(e.target.value); }} placeholder={newPayDirection === "outbound" ? "Wire reference / memo" : "Payment reference / notes"} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Amount</label>
@@ -9334,11 +9346,11 @@ export default function FactoringDashboard() {
                 <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
                 <input type="date" value={newPayDate} onChange={function(e) { setNewPayDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none",  }} />
               </div>
-              <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? "var(--accent)" : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>Create Payment</button>
+              <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? (newPayDirection === "outbound" ? "#7C3AED" : "var(--accent)") : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>{newPayDirection === "outbound" ? "Create & Route Outgoing" : "Create Payment"}</button>
             </div>}
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
               {(function() {
-                var filteredIncoming = PAYMENTS_DB.filter(function(p) { var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+                var filteredIncoming = PAYMENTS_DB.filter(function(p) { if ((p.direction || "inbound") !== "inbound") return false; var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
                 var inPageSize = 20;
                 var inTotalPages = Math.max(1, Math.ceil(filteredIncoming.length / inPageSize));
                 var inCurPage = Math.min(inPage, inTotalPages - 1);
@@ -9630,16 +9642,97 @@ export default function FactoringDashboard() {
 
               {/* Proceed button */}
               {remaining < 0.01 && payRoutings.length > 0 && (function() {
+                var isOutbound = allocPay && allocPay.direction === "outbound";
                 var hasSupplierRoutings = payRoutings.some(function(r) { return r.counterpartyType !== "service_provider"; });
                 var hasSpRoutings = payRoutings.some(function(r) { return r.counterpartyType === "service_provider"; });
-                var nextLabel = hasSupplierRoutings ? "Next: Apply to Invoices \u2192" : "Execute Allocations";
-                return <div style={{ padding: "18px 22px", textAlign: "right" }}>
+                var nextLabel;
+                if (isOutbound) {
+                  nextLabel = "Queue Outgoing Payment";
+                } else {
+                  nextLabel = hasSupplierRoutings ? "Next: Apply to Invoices \u2192" : "Execute Allocations";
+                }
+                // Balance warning (outbound only): sum routings per program, compare to available balance
+                var balanceWarnings = [];
+                if (isOutbound) {
+                  var byProg = {};
+                  payRoutings.forEach(function(r) {
+                    if (!byProg[r.programId]) byProg[r.programId] = { name: r.programName, total: 0 };
+                    byProg[r.programId].total += r.amount;
+                  });
+                  Object.keys(byProg).forEach(function(pid) {
+                    var avail = getProgramAvailableBalance(pid);
+                    if (byProg[pid].total > avail + 0.01) {
+                      balanceWarnings.push(byProg[pid].name + ": " + money(r2(byProg[pid].total), allocPay.currency) + " needed, " + money(r2(avail), allocPay.currency) + " available (short by " + money(r2(byProg[pid].total - avail), allocPay.currency) + ")");
+                    }
+                  });
+                }
+                return <div style={{ padding: "18px 22px" }}>
+                {balanceWarnings.length > 0 && <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #D9770640", background: "#D9770608", marginBottom: 12, fontSize: 12, color: "#D97706" }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Insufficient program balance (will proceed anyway)</div>
+                  {balanceWarnings.map(function(w, wi) { return <div key={wi} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{w}</div>; })}
+                </div>}
+                <div style={{ textAlign: "right" }}>
                 <button onClick={function() {
-                  // Step 1: process all Service Provider routings immediately — write a
-                  // fund_flows inflow on the program per routing. No invoice allocation,
-                  // no SPQ.
                   var now = new Date();
                   var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+                  if (isOutbound) {
+                    // OUTBOUND FLOW: create Pending SPQ remittances (for supplier routings)
+                    // and Pending fund_flows outflows (for SP routings). No invoice allocation.
+                    payRoutings.forEach(function(r) {
+                      if (r.counterpartyType === "service_provider") {
+                        var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === r.programId; });
+                        if (!prog) return;
+                        if (!prog.fundFlows) prog.fundFlows = [];
+                        var flowId = "DIS-" + String(prog.fundFlows.filter(function(f) { return f.type === "outflow"; }).length + 1).padStart(5, "0");
+                        prog.fundFlows.push({
+                          flowId: flowId, type: "outflow", amount: r2(r.amount), date: allocPay.date,
+                          serviceProvider: r.serviceProviderName, serviceProviderId: r.serviceProviderId,
+                          reason: "Outgoing payment " + allocPay.paymentId + " to " + r.serviceProviderName + (allocPay.reference ? " \u2014 " + allocPay.reference : ""),
+                          sourcePaymentId: allocPay.paymentId,
+                          status: "Pending",
+                          programId: prog.id, programName: prog.name, currency: prog.currency,
+                          timestamp: now.toISOString(), display: nowDisp
+                        });
+                        saveFundingProgram(r.programId);
+                        auditLog("Payment Allocated", allocPay.paymentId + ": " + money(r.amount, allocPay.currency) + " queued outbound to " + r.serviceProviderName + " from " + r.programName + " (" + flowId + ", Pending)", {
+                          paymentId: allocPay.paymentId, amount: r.amount, currency: allocPay.currency,
+                          serviceProviderId: r.serviceProviderId, serviceProviderName: r.serviceProviderName,
+                          programId: r.programId, programName: r.programName, flowId: flowId, direction: "outbound"
+                        });
+                      } else {
+                        // Supplier routing: create Pending SPQ remittance (like pass-through but user-initiated)
+                        var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                        var bankInfo = getSupplierBankDetails(r.supplierId, r.programId);
+                        SUPPLIER_PAYMENT_QUEUE.push({
+                          id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
+                          supplierName: r.supplierName, supplierId: r.supplierId,
+                          bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+                          amount: r2(r.amount), currency: allocPay.currency, status: "Pending",
+                          programId: r.programId, programName: r.programName,
+                          createdAt: now.toISOString(), createdDisplay: nowDisp,
+                          sourcePaymentId: allocPay.paymentId
+                        });
+                        saveSPQEntry(spqId);
+                        auditLog("Remittance Queued", spqId + ": " + money(r.amount, allocPay.currency) + " queued outbound to " + r.supplierName + " via " + r.programName, {
+                          paymentId: allocPay.paymentId, supplierId: r.supplierId, supplierName: r.supplierName,
+                          amount: r.amount, currency: allocPay.currency, spqId: spqId,
+                          programId: r.programId, programName: r.programName, direction: "outbound"
+                        });
+                      }
+                    });
+                    auditLog("Payment Fully Processed", allocPay.paymentId + " routed outbound: " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s)", {
+                      paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency,
+                      routingCount: payRoutings.length, direction: "outbound"
+                    });
+                    setAllocPay(null); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
+                    setDataVer(function(v) { return v + 1; });
+                    return;
+                  }
+
+                  // INBOUND FLOW (unchanged from Phase 2)
+                  // Step 1: process all Service Provider routings immediately — write a
+                  // fund_flows inflow on the program per routing. No invoice allocation, no SPQ.
                   payRoutings.forEach(function(r) {
                     if (r.counterpartyType !== "service_provider") return;
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === r.programId; });
@@ -9685,7 +9778,8 @@ export default function FactoringDashboard() {
                     setAllocPay(null); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
                     setDataVer(function(v) { return v + 1; });
                   }
-                }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{nextLabel}</button>
+                }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: isOutbound ? "#7C3AED" : "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{nextLabel}</button>
+                </div>
               </div>;
               })()}
             </div>;
