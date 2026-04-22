@@ -625,8 +625,41 @@ function mapInvoiceRow(row) {
 
 async function loadPersistedData() {
   try {
-    // Load suppliers
-    var supRes = await supabase.from("suppliers").select("*");
+    // Fire all table fetches in parallel. Previously these ran sequentially,
+    // waiting for each to resolve before starting the next. With 15 tables and
+    // typical latency to Supabase (London), that sequential pattern was the
+    // single biggest contributor to load time.
+    //
+    // Tables that may not exist (csv_review_queue, entity_aliases) are wrapped
+    // so a missing-table error doesn't reject the whole Promise.all.
+    var safeFetch = function(p) { return p.catch(function(err) { return { data: null, error: err, _failed: true }; }); };
+
+    var results = await Promise.all([
+      supabase.from("suppliers").select("*"),                                                                    // 0
+      supabase.from("buyers").select("*"),                                                                       // 1
+      supabase.from("service_providers").select("*"),                                                            // 2
+      supabase.from("funding_programs").select("*"),                                                             // 3
+      fetchAllRows("invoices"),                                                                                  // 4
+      fetchAllRows("payments"),                                                                                  // 5
+      fetchAllRows("payment_allocations"),                                                                       // 6
+      supabase.from("holdback_payments").select("*"),                                                            // 7
+      supabase.from("holdback_payment_allocations").select("*"),                                                 // 8
+      supabase.from("supplier_payment_queue").select("*"),                                                       // 9
+      supabase.from("credit_notes").select("*"),                                                                 // 10
+      fetchAllRows("audit_log"),                                                                                 // 11
+      supabase.from("entity_notes").select("*").order("created_at", { ascending: true }),                        // 12
+      safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true })), // 13
+      safeFetch(supabase.from("entity_aliases").select("*"))                                                     // 14
+    ]);
+
+    var supRes = results[0], buyRes = results[1], spRes = results[2], fpRes = results[3];
+    var invData = results[4], payData = results[5], allAllocs = results[6];
+    var hbRes = results[7], hbAllocRes = results[8];
+    var spqRes = results[9], cnRes = results[10];
+    var auditData = results[11], enRes = results[12];
+    var rqRes = results[13], alRes = results[14];
+
+    // Process suppliers
     if (supRes.data && supRes.data.length > 0) {
       SUPPLIERS_DB.length = 0;
       supRes.data.forEach(function(row) {
@@ -652,8 +685,7 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load buyers
-    var buyRes = await supabase.from("buyers").select("*");
+    // Process buyers
     if (buyRes.data && buyRes.data.length > 0) {
       BUYERS_DB.length = 0;
       buyRes.data.forEach(function(row) {
@@ -672,8 +704,7 @@ async function loadPersistedData() {
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
     }
-    // Load service providers
-    var spRes = await supabase.from("service_providers").select("*");
+    // Process service providers
     if (spRes.data && spRes.data.length > 0) {
       SERVICE_PROVIDERS_DB.length = 0;
       spRes.data.forEach(function(row) {
@@ -687,8 +718,7 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load funding programs
-    var fpRes = await supabase.from("funding_programs").select("*");
+    // Process funding programs
     if (fpRes.data && fpRes.data.length > 0) {
       FUNDING_PROGRAMS_DB.length = 0;
       fpRes.data.forEach(function(row) {
@@ -710,8 +740,7 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load invoices (paginated to handle >1000 rows)
-    var invData = await fetchAllRows("invoices");
+    // Process invoices
     console.log("[Load] Invoices fetched:", invData.length);
     if (invData.length > 0) {
       INVOICES_DB.length = 0;
@@ -735,41 +764,42 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load payments with allocations
-    var payData = await fetchAllRows("payments");
+    // Process payments + group allocations in memory (no more N+1 per-payment queries)
     if (payData.length > 0) {
       PAYMENTS_DB.length = 0;
-      for (var pi = 0; pi < payData.length; pi++) {
-        var prow = payData[pi];
-        var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
-        var allocs = (allocRes.data || []).map(function(a) {
-          return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
-        });
+      var allocsByPayment = {};
+      allAllocs.forEach(function(a) {
+        var pid = a.payment_id;
+        if (!allocsByPayment[pid]) allocsByPayment[pid] = [];
+        allocsByPayment[pid].push({ invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date });
+      });
+      payData.forEach(function(prow) {
         PAYMENTS_DB.push({
           paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
-          date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
+          date: prow.date, currency: prow.currency, reference: prow.reference || "",
+          allocations: allocsByPayment[prow.payment_id] || [],
           direction: prow.direction || "inbound"
         });
-      }
+      });
     }
-    // Load holdback payments with allocations
-    var hbRes = await supabase.from("holdback_payments").select("*");
+    // Process holdback payments + group their allocations in memory
     if (hbRes.data && hbRes.data.length > 0) {
       HOLDBACK_PAYMENTS_DB.length = 0;
-      for (var hi = 0; hi < hbRes.data.length; hi++) {
-        var hrow = hbRes.data[hi];
-        var hbAllocRes = await supabase.from("holdback_payment_allocations").select("*").eq("hb_payment_id", hrow.hb_payment_id);
-        var hbAllocs = (hbAllocRes.data || []).map(function(a) {
-          return { targetId: a.target_id, amount: parseFloat(a.amount) || 0, type: a.type };
-        });
+      var hbAllocsByHbp = {};
+      ((hbAllocRes && hbAllocRes.data) || []).forEach(function(a) {
+        var hid = a.hb_payment_id;
+        if (!hbAllocsByHbp[hid]) hbAllocsByHbp[hid] = [];
+        hbAllocsByHbp[hid].push({ targetId: a.target_id, amount: parseFloat(a.amount) || 0, type: a.type });
+      });
+      hbRes.data.forEach(function(hrow) {
         HOLDBACK_PAYMENTS_DB.push({
           hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
-          amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs
+          amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency,
+          allocations: hbAllocsByHbp[hrow.hb_payment_id] || []
         });
-      }
+      });
     }
-    // Load supplier payment queue
-    var spqRes = await supabase.from("supplier_payment_queue").select("*");
+    // Process supplier payment queue
     if (spqRes.data && spqRes.data.length > 0) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
@@ -792,8 +822,7 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load credit notes
-    var cnRes = await supabase.from("credit_notes").select("*");
+    // Process credit notes
     if (cnRes.data && cnRes.data.length > 0) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
@@ -805,8 +834,7 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load audit log
-    var auditData = await fetchAllRows("audit_log");
+    // Process audit log
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
@@ -817,8 +845,7 @@ async function loadPersistedData() {
       });
     }
     _lastSavedAuditIndex = AUDIT_LOG.length;
-    // Load entity notes
-    var enRes = await supabase.from("entity_notes").select("*").order("created_at", { ascending: true });
+    // Process entity notes
     if (enRes.data && enRes.data.length > 0) {
       ENTITY_NOTES_DB.length = 0;
       enRes.data.forEach(function(row) {
@@ -830,25 +857,22 @@ async function loadPersistedData() {
         });
       });
     }
-    // Load CSV review queue (table may not exist yet)
-    try {
-      var rqRes = await supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true });
-      if (rqRes.data) {
-        CSV_REVIEW_QUEUE_DB = rqRes.data.map(function(row) {
-          return { dbId: row.id, invoiceId: row.invoice_id, reference: row.invoice_reference, field: row.field_name, label: row.field_label, oldValue: row.old_value, newValue: row.new_value, csvRow: row.csv_row, timestamp: row.created_at, status: row.status };
-        });
-      }
-    } catch (rqErr) { console.warn("csv_review_queue table not found — skipping. Run the CREATE TABLE SQL to enable this feature."); }
-
-    // Load entity aliases
-    try {
-      var alRes = await supabase.from("entity_aliases").select("*");
-      if (alRes.data) {
-        ENTITY_ALIASES_DB = alRes.data.map(function(row) {
-          return { id: row.id, aliasName: row.alias_name, entityType: row.entity_type, entityId: row.entity_id, entityName: row.entity_name };
-        });
-      }
-    } catch (alErr) { console.warn("entity_aliases table not found — skipping."); }
+    // Process CSV review queue (table may not exist yet — safeFetch ensures graceful failure)
+    if (rqRes && rqRes._failed) {
+      console.warn("csv_review_queue table not found — skipping. Run the CREATE TABLE SQL to enable this feature.");
+    } else if (rqRes && rqRes.data) {
+      CSV_REVIEW_QUEUE_DB = rqRes.data.map(function(row) {
+        return { dbId: row.id, invoiceId: row.invoice_id, reference: row.invoice_reference, field: row.field_name, label: row.field_label, oldValue: row.old_value, newValue: row.new_value, csvRow: row.csv_row, timestamp: row.created_at, status: row.status };
+      });
+    }
+    // Process entity aliases (table may not exist yet)
+    if (alRes && alRes._failed) {
+      console.warn("entity_aliases table not found — skipping.");
+    } else if (alRes && alRes.data) {
+      ENTITY_ALIASES_DB = alRes.data.map(function(row) {
+        return { id: row.id, aliasName: row.alias_name, entityType: row.entity_type, entityId: row.entity_id, entityName: row.entity_name };
+      });
+    }
 
     if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
   } catch (e) { console.error("Supabase load error:", e); }
