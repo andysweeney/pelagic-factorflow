@@ -2696,14 +2696,23 @@ export default function FactoringDashboard() {
     var progInvIdSet = {};
     progInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
     SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-      if (spq.status !== "Pending") return;
-      // Holdback returns linked to program invoices
-      if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+      // Holdback returns linked to program invoices (Pending only)
+      if (spq.status === "Pending" && spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
         pendingDisbursalsAmt += spq.amount || 0;
+        return;
       }
-      // Pass-throughs are net-zero for program balance (money in from payment routing,
-      // money out via SPQ execution). They never belong in pendingDisbursals — doing so
-      // would incorrectly deduct from available balance while the SPQ is Pending.
+      // Remittance SPQs: determine if this is an inbound pass-through (net-zero) or
+      // an outbound user-initiated remittance (real outflow).
+      if (spq.type === "remittance" && spq.programId === programId && spq.status !== "Cancelled" && spq.status !== "Failed") {
+        // Look up source payment direction to distinguish inbound pass-through from outbound
+        var srcPay = spq.sourcePaymentId ? PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; }) : null;
+        var isOutbound = srcPay && srcPay.direction === "outbound";
+        if (isOutbound) {
+          if (spq.status === "Pending") pendingDisbursalsAmt += spq.amount || 0;
+          else totalDisbursed += spq.amount || 0;
+        }
+        // Inbound pass-throughs: net-zero (inflow already captured via payment routing; no-op here)
+      }
     });
     var buyerReceipts = 0, totalHoldbackDisbursed = 0;
     progInvs.forEach(function(inv) {
@@ -6893,12 +6902,21 @@ export default function FactoringDashboard() {
               var progInvIdSet = {};
               allProgInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
               SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-                if (spq.status !== "Pending") return;
-                if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
+                // Holdback returns linked to program invoices (Pending only)
+                if (spq.status === "Pending" && spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) {
                   pendingDisbursals += spq.amount || 0;
+                  return;
                 }
-                // Pass-throughs are net-zero for program balance and are not counted as
-                // pending disbursals (see getProgramAvailableBalance for explanation).
+                // Outbound user-initiated remittances contribute to totalDisbursed (or pendingDisbursals if still Pending).
+                // Inbound pass-throughs remain net-zero (source payment's routing already logged the inflow).
+                if (spq.type === "remittance" && spq.programId === selectedProgram && spq.status !== "Cancelled" && spq.status !== "Failed") {
+                  var srcPay = spq.sourcePaymentId ? PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; }) : null;
+                  var isOutbound = srcPay && srcPay.direction === "outbound";
+                  if (isOutbound) {
+                    if (spq.status === "Pending") pendingDisbursals += spq.amount || 0;
+                    else totalDisbursed += spq.amount || 0;
+                  }
+                }
               });
               // Sum buyer payments received against program invoices — full amount including holdback
               var buyerReceipts = 0, holdbackReceived = 0, totalHoldbackDisbursed = 0;
@@ -8334,20 +8352,22 @@ export default function FactoringDashboard() {
             });
 
             // 6. Pass-through source payment inflows — credits
-            // Pair with Section 5 remittance debits so pure pass-throughs net to zero.
-            // Since Phase 1 removed fund_flows inflow writes for pass-throughs, this is the
-            // credit side of the pass-through that would otherwise be missing from the ledger.
+            // Pair with Section 5 remittance debits so INBOUND pass-throughs net to zero.
+            // IMPORTANT: only add this credit when the source payment is inbound. Outbound
+            // payments (user-initiated outgoing wires) are represented by their Section 5
+            // debit only — there is no matching credit because no money arrived.
             var passThroughSourcesSeen = {};
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
               if (spq.type !== "remittance") return;
               if (spq.status === "Cancelled" || spq.status === "Failed") return;
               if (spq.programId !== selectedProgram) return;
               if (!spq.sourcePaymentId) return;
-              // Group by (sourcePaymentId, amount) so multiple SPQs from one payment each get a matching credit line
+              var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+              // Skip outbound-sourced remittances — they have no paired credit
+              if (pay && pay.direction === "outbound") return;
               var key = spq.sourcePaymentId + ":" + spq.id;
               if (passThroughSourcesSeen[key]) return;
               passThroughSourcesSeen[key] = true;
-              var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
               var inflowDate = pay ? pay.date : (spq.createdAt ? spq.createdAt.split("T")[0] : "");
               var ref = spq.sourcePaymentId + " \u2192 " + spq.supplierName;
               entries.push({ date: inflowDate, sortDate: inflowDate + "T11:59:00", type: "Pass-through Received", ref: ref, counterparty: pay && pay.reference ? pay.reference : "Buyer", credit: spq.amount, debit: 0, currency: spq.currency });
