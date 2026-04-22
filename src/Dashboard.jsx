@@ -2073,15 +2073,10 @@ export default function FactoringDashboard() {
   var pt1 = useState("overview"), progTab = pt1[0], setProgTab = pt1[1];
   var pv1 = useState(""), selectedProgram = pv1[0], setSelectedProgram = pv1[1];
   var psf1 = useState(""), progSupFilter = psf1[0], setProgSupFilter = psf1[1];
-  var ff1 = useState(null), showFundFlow = ff1[0], setShowFundFlow = ff1[1];
-  var ffa1 = useState(""), ffAmount = ffa1[0], setFfAmount = ffa1[1];
-  var ffd1 = useState(""), ffDate = ffd1[0], setFfDate = ffd1[1];
-  var fff1 = useState(""), ffServiceProvider = fff1[0], setFfServiceProvider = fff1[1];
   var feqSel1 = useState({}), feqSelected = feqSel1[0], setFeqSelected = feqSel1[1]; // Funding Execution Queue selections
   var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Service Provider Payments to be Made selections
   var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
-  var ffr1 = useState(""), ffReason = ffr1[0], setFfReason = ffr1[1];
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].id : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
   var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
   var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
@@ -7505,54 +7500,6 @@ export default function FactoringDashboard() {
                   </div>;
                 })()}
 
-                {/* Fund Flow Buttons and Form */}
-                <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-                  <button onClick={function() { setShowFundFlow(showFundFlow === "add" ? null : "add"); setFfAmount(""); setFfDate(new Date().toISOString().split("T")[0]); setFfServiceProvider(""); setFfReason(""); }} style={{ padding: "8px 20px", borderRadius: 8, border: showFundFlow === "add" ? "1px solid #C0392B40" : "1px solid #2E8B57", background: showFundFlow === "add" ? "transparent" : "#2E8B5710", color: showFundFlow === "add" ? "#EF4444" : "#059669", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: "pointer" }}>{showFundFlow === "add" ? "Cancel" : "Add Funds"}</button>
-                  <button onClick={function() { setShowFundFlow(showFundFlow === "disburse" ? null : "disburse"); setFfAmount(""); setFfDate(new Date().toISOString().split("T")[0]); setFfServiceProvider(""); setFfReason(""); }} style={{ padding: "8px 20px", borderRadius: 8, border: showFundFlow === "disburse" ? "1px solid #C0392B40" : "1px solid #C08B30", background: showFundFlow === "disburse" ? "transparent" : "#C08B3010", color: showFundFlow === "disburse" ? "#EF4444" : "#D97706", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: "pointer" }}>{showFundFlow === "disburse" ? "Cancel" : "Disburse Funds"}</button>
-                </div>
-                {showFundFlow && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid " + (showFundFlow === "add" ? "#059669" : "#D97706"), padding: "18px 22px", marginBottom: 18 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: showFundFlow === "add" ? "#059669" : "#D97706", marginBottom: 14 }}>{showFundFlow === "add" ? "Add Funds to Program" : "Disburse Funds from Program"}</div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Amount ({prog.currency})</label>
-                      <input type="number" step="0.01" value={ffAmount} onChange={function(e) { setFfAmount(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 140 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Date Received</label>
-                      <input type="date" value={ffDate} onChange={function(e) { setFfDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Service Provider *</label>
-                      <select value={ffServiceProvider} onChange={function(e) { setFfServiceProvider(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select...</option>{SERVICE_PROVIDERS_DB.map(function(sp) { return <option key={sp.id} value={sp.id}>{sp.name}</option>; })}</select>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Reason</label>
-                      <input type="text" value={ffReason} onChange={function(e) { setFfReason(e.target.value); }} placeholder="Reason for transaction" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
-                    </div>
-                    <button onClick={function() {
-                      var amt = r2(parseFloat(ffAmount) || 0);
-                      if (amt <= 0 || !ffDate || !ffServiceProvider) return;
-                      var spRec = SERVICE_PROVIDERS_DB.find(function(x) { return x.id === ffServiceProvider; });
-                      if (!spRec) return; // must pick a real SP
-                      if (!prog.fundFlows) prog.fundFlows = [];
-                      var now = new Date();
-                      var flowEntry = { type: showFundFlow === "add" ? "inflow" : "outflow", amount: amt, date: ffDate, serviceProvider: spRec.name, serviceProviderId: spRec.id, reason: ffReason.trim(), timestamp: now.toISOString(), display: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) };
-                      if (showFundFlow === "disburse") {
-                        flowEntry.status = "Pending";
-                        flowEntry.flowId = "DIS-" + String(prog.fundFlows.filter(function(f) { return f.type === "outflow"; }).length + 1).padStart(5, "0");
-                        flowEntry.programId = prog.id;
-                        flowEntry.programName = prog.name;
-                        flowEntry.currency = prog.currency;
-                      }
-                      prog.fundFlows.push(flowEntry);
-                      saveFundingProgram(prog.id);
-                      auditLog(showFundFlow === "add" ? "Program Funds Added" : "Program Funds Disbursed", prog.name + ": " + money(amt, prog.currency) + " " + (showFundFlow === "add" ? "from" : "to") + " " + spRec.name + " on " + ffDate + (ffReason.trim() ? " \u2014 " + ffReason.trim() : "") + (showFundFlow === "disburse" ? " (Pending)" : ""), { programId: prog.id, programName: prog.name, type: showFundFlow, amount: amt, currency: prog.currency, serviceProvider: spRec.name, serviceProviderId: spRec.id, reason: ffReason.trim(), date: ffDate, flowId: flowEntry.flowId || null });
-                      setShowFundFlow(null); setFfAmount(""); setFfDate(""); setFfServiceProvider(""); setFfReason("");
-                      setDataVer(function(v) { return v + 1; });
-                    }} disabled={!(parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider)} style={{ padding: "8px 20px", borderRadius: 7, border: "none", background: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? (showFundFlow === "add" ? "#059669" : "#D97706") : "var(--border)", color: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: (parseFloat(ffAmount) > 0 && ffDate && ffServiceProvider) ? "pointer" : "default" }}>Confirm</button>
-                  </div>
-                </div>}
-
                 {/* Fund Flows History */}
                 {prog.fundFlows && prog.fundFlows.length > 0 && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                   <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
@@ -8546,7 +8493,7 @@ export default function FactoringDashboard() {
         {isP && !allocPay && <div>
           {/* Payment Sub-tabs */}
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
-            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOcSearch(""); setOcPage(0); setInPage(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
+            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outgoing_db", l: "Outgoing Payments" }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOcSearch(""); setOcPage(0); setInPage(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
           </div>
 
           {/* === OUTBOUND PENDING TAB === */}
@@ -9329,6 +9276,145 @@ export default function FactoringDashboard() {
 
 
 
+          {payTab === "outgoing_db" && (function() {
+            var outgoingPays = PAYMENTS_DB.filter(function(p) { return p.direction === "outbound"; });
+            // Apply filters (reuse inbound filter state for simplicity)
+            var filteredOutgoing = outgoingPays.filter(function(p) {
+              if (pdCcyFilter && p.currency !== pdCcyFilter) return false;
+              if (pdDateFilter && p.date !== pdDateFilter) return false;
+              if (pdSearch) {
+                var q = pdSearch.toLowerCase();
+                if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1) return false;
+              }
+              return true;
+            }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+
+            // Helper: compute execution status of an outbound payment by looking at its routings
+            function getOutboundStatus(pay) {
+              var linkedSPQs = SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.sourcePaymentId === pay.paymentId && q.type === "remittance"; });
+              var linkedFlows = [];
+              FUNDING_PROGRAMS_DB.forEach(function(fp) {
+                (fp.fundFlows || []).forEach(function(ff, ffi) {
+                  if (ff.type === "outflow" && ff.sourcePaymentId === pay.paymentId) linkedFlows.push(Object.assign({}, ff, { programId: fp.id, programName: fp.name, programCurrency: fp.currency, flowIndex: ffi }));
+                });
+              });
+              var total = linkedSPQs.length + linkedFlows.length;
+              if (total === 0) return { label: "Unrouted", color: "#EF4444", linkedSPQs: [], linkedFlows: [] };
+              var completed = linkedSPQs.filter(function(q) { return q.status === "Completed"; }).length + linkedFlows.filter(function(f) { return f.status !== "Pending"; }).length;
+              var cancelled = linkedSPQs.filter(function(q) { return q.status === "Cancelled" || q.status === "Failed"; }).length;
+              if (cancelled === total) return { label: "Cancelled", color: "var(--muted)", linkedSPQs: linkedSPQs, linkedFlows: linkedFlows };
+              if (completed === total) return { label: "Completed", color: "#059669", linkedSPQs: linkedSPQs, linkedFlows: linkedFlows };
+              if (completed === 0) return { label: "Pending", color: "#D97706", linkedSPQs: linkedSPQs, linkedFlows: linkedFlows };
+              return { label: "Partial", color: "#7C3AED", linkedSPQs: linkedSPQs, linkedFlows: linkedFlows };
+            }
+
+            var outPageSize = 20;
+            var outTotalPages = Math.max(1, Math.ceil(filteredOutgoing.length / outPageSize));
+            var outCurPage = Math.min(inPage, outTotalPages - 1);
+            var outPageItems = filteredOutgoing.slice(outCurPage * outPageSize, (outCurPage + 1) * outPageSize);
+            return <div style={{ marginTop: 0 }}>
+              <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+                <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Outgoing Payments Database</div>
+                    <button onClick={function() { if (showNewPay && newPayDirection === "outbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("outbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "outbound" ? "#DC262630" : "#7C3AED"), background: "transparent", color: showNewPay && newPayDirection === "outbound" ? "#EF4444" : "#7C3AED", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "outbound" ? "Cancel" : "+ New Outgoing Payment"}</button>
+                  </div>
+                </div>
+                <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input type="text" value={pdSearch} onChange={function(e) { setPdSearch(e.target.value); }} placeholder="Search outgoing payments..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 170 }} />
+                  <select value={pdCcyFilter} onChange={function(e) { setPdCcyFilter(e.target.value); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                  <input type="date" value={pdDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPdDateFilter(v); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                  {(pdSearch || pdCcyFilter || pdDateFilter) && <button onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                </div>
+                {/* Creation form (same as inbound, direction flag controls behavior) */}
+                {showNewPay && newPayDirection === "outbound" && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "#7C3AED08", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "#7C3AED" }}>Outgoing Payment</label>
+                    <input type="text" value={newPayRef} onChange={function(e) { setNewPayRef(e.target.value); }} placeholder="Wire reference / memo" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Amount</label>
+                    <input type="number" step="0.01" value={newPayAmt} onChange={function(e) { setNewPayAmt(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 130 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Currency</label>
+                    <select value={newPayCcy} onChange={function(e) { setNewPayCcy(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
+                    <input type="date" value={newPayDate} onChange={function(e) { setNewPayDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+                  </div>
+                  <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? "#7C3AED" : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>Create & Route Outgoing</button>
+                </div>}
+                <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                  {filteredOutgoing.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No outgoing payments yet. Click "+ New Outgoing Payment" to create one.</div>}
+                  {filteredOutgoing.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Payment ID", "Date", "Amount", "CCY", "Reference", "Status", "Routings", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{outPageItems.map(function(pay) {
+                      var st = getOutboundStatus(pay);
+                      var isExp = expPay === pay.paymentId;
+                      var totalRoutings = st.linkedSPQs.length + st.linkedFlows.length;
+                      return <React.Fragment key={pay.paymentId}>
+                        <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExp ? "#7C3AED08" : "transparent" }} onClick={function() { setExpPay(isExp ? null : pay.paymentId); }}>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED", fontWeight: 600 }}>{pay.paymentId}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted)" }}>{pay.currency}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{pay.reference || "\u2014"}</td>
+                          <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: st.color, letterSpacing: "0.04em" }}>{st.label}</span></td>
+                          <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--muted)" }}>{totalRoutings} {totalRoutings === 1 ? "routing" : "routings"}</td>
+                          <td style={{ padding: "8px 12px", textAlign: "center", color: "var(--muted)", fontSize: 11 }}>{isExp ? "\u25B2" : "\u25BC"}</td>
+                        </tr>
+                        {isExp && <tr><td colSpan={8} style={{ padding: "0 0 12px 0", borderBottom: "1px solid var(--border)", background: "#7C3AED04" }}>
+                          <div style={{ padding: "12px 22px" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Routings ({totalRoutings})</div>
+                            {totalRoutings === 0 && <div style={{ fontSize: 12, color: "#EF4444", fontStyle: "italic" }}>No routings found. This payment was created but never routed.</div>}
+                            {totalRoutings > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                              <thead><tr>{["Type", "Reference", "Counterparty", "Program", "Amount", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                              <tbody>
+                                {st.linkedSPQs.map(function(spq) {
+                                  var isTerm = spq.status === "Cancelled" || spq.status === "Failed";
+                                  var statusColor = spq.status === "Completed" ? "#059669" : spq.status === "Pending" ? "#D97706" : isTerm ? "#EF4444" : "var(--muted)";
+                                  return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)", opacity: isTerm ? 0.6 : 1 }}>
+                                    <td style={{ padding: "6px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)" }}>Supplier</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{spq.id}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", color: statusColor }}>{spq.status}</td>
+                                  </tr>;
+                                })}
+                                {st.linkedFlows.map(function(fl) {
+                                  var isPending = fl.status === "Pending";
+                                  var statusColor = isPending ? "#D97706" : "#059669";
+                                  return <tr key={fl.flowId} style={{ borderBottom: "1px solid var(--border)" }}>
+                                    <td style={{ padding: "6px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#7C3AED" }}>Service Provider</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED" }}>{fl.flowId}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{fl.serviceProvider}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{fl.programName}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(fl.amount, fl.programCurrency)}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", color: statusColor }}>{fl.status || "Completed"}</td>
+                                  </tr>;
+                                })}
+                              </tbody>
+                            </table>}
+                          </div>
+                        </td></tr>}
+                      </React.Fragment>;
+                    })}</tbody>
+                  </table>}
+                </div>
+                {outTotalPages > 1 && <div style={{ padding: "10px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {outCurPage + 1} of {outTotalPages} ({filteredOutgoing.length} payments)</span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={outCurPage === 0} onClick={function() { setInPage(outCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage === 0 ? "transparent" : "var(--card)", color: outCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
+                    <button disabled={outCurPage >= outTotalPages - 1} onClick={function() { setInPage(outCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage >= outTotalPages - 1 ? "transparent" : "var(--card)", color: outCurPage >= outTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage >= outTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  </div>
+                </div>}
+              </div>
+            </div>;
+          })()}
+
           {payTab === "incoming" && <div style={{ marginTop: 0 }}>
           {successMsg && <div style={{ marginBottom: 16, padding: "16px 22px", borderRadius: 12, background: "#2E8B5710", border: "1px solid #2E8B5740", display: "flex", gap: 16 }}>
             <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "#059669", marginBottom: 4 }}>Payment {successMsg.payId} allocated</div>{successMsg.lines.map(function(l) { return <div key={l.invoiceId} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.invoiceId}: {money(l.amount, successMsg.currency)}</div>; })}{successMsg.later.length > 0 && <div style={{ fontSize: 12, color: "#D97706", marginTop: 4 }}>Unallocated: {successMsg.later.map(function(u) { return u.pid; }).join(", ")}</div>}</div>
@@ -9339,7 +9425,6 @@ export default function FactoringDashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Incoming Payments Database</div>
                 <button onClick={function() { if (showNewPay && newPayDirection === "inbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("inbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "inbound" ? "#DC262630" : "var(--accent)"), background: "transparent", color: showNewPay && newPayDirection === "inbound" ? "#EF4444" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "inbound" ? "Cancel" : "+ New Payment"}</button>
-                <button onClick={function() { if (showNewPay && newPayDirection === "outbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("outbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "outbound" ? "#DC262630" : "#7C3AED"), background: "transparent", color: showNewPay && newPayDirection === "outbound" ? "#EF4444" : "#7C3AED", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "outbound" ? "Cancel" : "+ New Outgoing Payment"}</button>
               </div>
               <div style={{ display: "flex", gap: 6 }}>{["all", "unallocated", "partial", "allocated"].map(function(f) { return <button key={f} onClick={function() { setPayFilter(f); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: payFilter === f ? "var(--accent)" : "transparent", color: payFilter === f ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f}</button>; })}</div>
             </div>
