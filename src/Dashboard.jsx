@@ -8271,6 +8271,12 @@ export default function FactoringDashboard() {
               entries.push({ date: inflowDate, sortDate: inflowDate + "T11:59:00", type: "Pass-through Received", ref: ref, counterparty: pay && pay.reference ? pay.reference : "Buyer", credit: spq.amount, debit: 0, currency: spq.currency });
             });
 
+            // Option A: filter ledger entries to the user's as-of date so Statement Balance
+            // reconciles with Available Balance (which uses viewData, also filtered to viewDate).
+            // Entries dated after viewDate are excluded entirely; changing the date picker
+            // at the top of the page will reveal or hide entries.
+            entries = entries.filter(function(e) { return !e.date || e.date <= viewDate; });
+
             // Sort chronologically
             entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
 
