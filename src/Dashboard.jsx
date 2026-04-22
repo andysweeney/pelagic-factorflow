@@ -630,34 +630,50 @@ async function loadPersistedData() {
     // typical latency to Supabase (London), that sequential pattern was the
     // single biggest contributor to load time.
     //
-    // Tables that may not exist (csv_review_queue, entity_aliases) are wrapped
-    // so a missing-table error doesn't reject the whole Promise.all.
-    var safeFetch = function(p) { return p.catch(function(err) { return { data: null, error: err, _failed: true }; }); };
+    // Every fetch is wrapped in safeFetch so a single failure doesn't abort
+    // the whole load — partial data is better than nothing.
+    var safeFetch = function(p, label) {
+      return p.then(function(res) {
+        if (res && res.error) console.warn("[Load] " + label + " returned error:", res.error.message || res.error);
+        return res;
+      }).catch(function(err) {
+        console.warn("[Load] " + label + " threw:", err && err.message ? err.message : err);
+        return { data: null, error: err, _failed: true };
+      });
+    };
 
+    var t0 = Date.now();
     var results = await Promise.all([
-      supabase.from("suppliers").select("*"),                                                                    // 0
-      supabase.from("buyers").select("*"),                                                                       // 1
-      supabase.from("service_providers").select("*"),                                                            // 2
-      supabase.from("funding_programs").select("*"),                                                             // 3
-      fetchAllRows("invoices"),                                                                                  // 4
-      fetchAllRows("payments"),                                                                                  // 5
-      fetchAllRows("payment_allocations"),                                                                       // 6
-      supabase.from("holdback_payments").select("*"),                                                            // 7
-      supabase.from("holdback_payment_allocations").select("*"),                                                 // 8
-      supabase.from("supplier_payment_queue").select("*"),                                                       // 9
-      supabase.from("credit_notes").select("*"),                                                                 // 10
-      fetchAllRows("audit_log"),                                                                                 // 11
-      supabase.from("entity_notes").select("*").order("created_at", { ascending: true }),                        // 12
-      safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true })), // 13
-      safeFetch(supabase.from("entity_aliases").select("*"))                                                     // 14
+      safeFetch(supabase.from("suppliers").select("*"), "suppliers"),                                                                                             // 0
+      safeFetch(supabase.from("buyers").select("*"), "buyers"),                                                                                                    // 1
+      safeFetch(supabase.from("service_providers").select("*"), "service_providers"),                                                                              // 2
+      safeFetch(supabase.from("funding_programs").select("*"), "funding_programs"),                                                                                // 3
+      safeFetch(fetchAllRows("invoices").then(function(d) { return { data: d }; }), "invoices"),                                                                  // 4
+      safeFetch(fetchAllRows("payments").then(function(d) { return { data: d }; }), "payments"),                                                                  // 5
+      safeFetch(fetchAllRows("payment_allocations").then(function(d) { return { data: d }; }), "payment_allocations"),                                            // 6
+      safeFetch(supabase.from("holdback_payments").select("*"), "holdback_payments"),                                                                              // 7
+      safeFetch(supabase.from("holdback_payment_allocations").select("*"), "holdback_payment_allocations"),                                                        // 8
+      safeFetch(supabase.from("supplier_payment_queue").select("*"), "supplier_payment_queue"),                                                                    // 9
+      safeFetch(supabase.from("credit_notes").select("*"), "credit_notes"),                                                                                        // 10
+      safeFetch(fetchAllRows("audit_log").then(function(d) { return { data: d }; }), "audit_log"),                                                                // 11
+      safeFetch(supabase.from("entity_notes").select("*").order("created_at", { ascending: true }), "entity_notes"),                                               // 12
+      safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true }), "csv_review_queue"),               // 13
+      safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases")                                                                                     // 14
     ]);
+    console.log("[Load] Parallel fetches completed in " + (Date.now() - t0) + "ms");
 
     var supRes = results[0], buyRes = results[1], spRes = results[2], fpRes = results[3];
-    var invData = results[4], payData = results[5], allAllocs = results[6];
+    var invRes = results[4], payRes = results[5], allocRes = results[6];
     var hbRes = results[7], hbAllocRes = results[8];
     var spqRes = results[9], cnRes = results[10];
-    var auditData = results[11], enRes = results[12];
+    var auditRes = results[11], enRes = results[12];
     var rqRes = results[13], alRes = results[14];
+
+    // Normalise: the fetchAllRows-wrapped entries hold data arrays directly
+    var invData = (invRes && invRes.data) || [];
+    var payData = (payRes && payRes.data) || [];
+    var allAllocs = (allocRes && allocRes.data) || [];
+    var auditData = (auditRes && auditRes.data) || [];
 
     // Process suppliers
     if (supRes.data && supRes.data.length > 0) {
