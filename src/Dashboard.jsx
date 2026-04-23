@@ -2287,6 +2287,15 @@ export default function FactoringDashboard() {
   var sfdr1 = useState("desc"), sfDir = sfdr1[0], setSfDir = sfdr1[1];
   var sfp1 = useState(0), sfPage = sfp1[0], setSfPage = sfp1[1];
   var sfps1 = useState(25), sfPerPage = sfps1[0], setSfPerPage = sfps1[1];
+  // Buyer Invoices tab state
+  var bis1 = useState(""), biSearch = bis1[0], setBiSearch = bis1[1];
+  var biif1 = useState("all"), biIsf = biif1[0], setBiIsf = biif1[1];
+  var biff1 = useState("all"), biFsf = biff1[0], setBiFsf = biff1[1];
+  var bisup1 = useState("all"), biSupFilter = bisup1[0], setBiSupFilter = bisup1[1];
+  var bisr1 = useState("invoiceDate"), biSort = bisr1[0], setBiSort = bisr1[1];
+  var bidr1 = useState("desc"), biDir = bidr1[0], setBiDir = bidr1[1];
+  var bip1 = useState(0), biPage = bip1[0], setBiPage = bip1[1];
+  var bips1 = useState(25), biPerPage = bips1[0], setBiPerPage = bips1[1];
   var sb1 = useState(BUYERS_DB.length > 0 ? BUYERS_DB[0].id : ""), selectedBuyer = sb1[0], setSelectedBuyer = sb1[1];
   var mob1 = useState(false), sidebarOpen = mob1[0], setSidebarOpen = mob1[1];
   var bt1 = useState("overview"), buyTab = bt1[0], setBuyTab = bt1[1];
@@ -5186,7 +5195,7 @@ export default function FactoringDashboard() {
             {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setBuyTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: buyTab === t ? 600 : 400, background: buyTab === t ? "var(--accent)" : "transparent", color: buyTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
+            <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
             </select>
             <select value={buyCurrency} onChange={function(e) { setBuyCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
@@ -7947,24 +7956,106 @@ export default function FactoringDashboard() {
 
         {/* Buyer Invoices Tab */}
         {isB && buyTab === "invoices" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
+          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
           var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
-          buyInvs.sort(function(a, b) { return a.invoiceDate > b.invoiceDate ? -1 : 1; });
-          var mc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+
+          // Filter
+          var buyInvs = allBuyInvs.slice();
+          if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
+          if (biIsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === biIsf; });
+          if (biFsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.fundingStatus === biFsf; });
+          if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.supplierName === biSupFilter; });
+
+          // Sort
+          buyInvs.sort(function(a, b) {
+            var av = a[biSort], bv = b[biSort];
+            if (av === undefined) av = "";
+            if (bv === undefined) bv = "";
+            if (av === bv) return 0;
+            var cmp = av > bv ? 1 : -1;
+            return biDir === "asc" ? cmp : -cmp;
+          });
+
+          // Pagination
+          var biTotalPages = Math.max(1, Math.ceil(buyInvs.length / biPerPage));
+          var biCurPage = Math.min(biPage, biTotalPages - 1);
+          var biPageItems = buyInvs.slice(biCurPage * biPerPage, (biCurPage + 1) * biPerPage);
+          var biHasActive = !!biSearch || biIsf !== "all" || biFsf !== "all" || biSupFilter !== "all";
+
+          // Stat cards (filter-aware)
           var totalInv = buyInvs.reduce(function(s, inv) { return s + inv.amount; }, 0);
           var totalCapAdv = buyInvs.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") ? s + inv.capitalDue : s; }, 0);
+          var totalCapOS = buyInvs.reduce(function(s, inv) { return s + (inv.capitalOutstanding || 0); }, 0);
+          var overdueCount = buyInvs.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && (inv.balanceOwed || 0) > 0.01; }).length;
+          var disputedCount = buyInvs.filter(function(inv) { return inv.invoiceStatus === "Disputed"; }).length;
+
+          // Supplier list for filter dropdown (only suppliers with invoices for this buyer)
+          var supCounts = {};
+          allBuyInvs.forEach(function(inv) { if (inv.supplierName) supCounts[inv.supplierName] = (supCounts[inv.supplierName] || 0) + 1; });
+          var supChoices = Object.keys(supCounts).sort();
+          var supFilterDisabled = supChoices.length <= 1;
+
+          var mc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+          var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+          var tc = { padding: "8px 8px", fontSize: 12, whiteSpace: "nowrap" };
+          function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+          function doBiSort(f) { if (biSort === f) setBiDir(biDir === "asc" ? "desc" : "asc"); else { setBiSort(f); setBiDir("desc"); } setBiPage(0); }
+
+          // Supplier drill-in — jumps to Suppliers tab → Invoices, filtered by supplier
+          function drillToSupplier(supplierName) {
+            // Find supplier entity by name and set selectedSupplier
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) {
+              setView("supplier");
+              setSelectedSupplier(match.id);
+              setSupTab("invoices");
+              setPg(0);
+            }
+          }
+
+          // Column definitions with tooltips
+          var biCols = [
+            { key: "id", label: "Invoice", sortable: true, tooltip: null },
+            { key: "supplierName", label: "Supplier", sortable: true, tooltip: null },
+            { key: "amount", label: "Amount", sortable: true, tooltip: null },
+            { key: "capitalDue", label: "Advance", sortable: true, tooltip: "For pending invoices: capacity available. For funded: capital advanced." },
+            { key: "totalOutstanding", label: "Total Balance O/S", sortable: true, tooltip: null },
+            { key: "invoiceDate", label: "Inv Date", sortable: true, tooltip: null },
+            { key: "dueDate", label: "Due", sortable: true, tooltip: null },
+            { key: "invoiceStatus", label: "Inv Status", sortable: true, tooltip: null },
+            { key: "fundingStatus", label: "Fund Status", sortable: true, tooltip: "Derived from invoice lifecycle \u2014 not directly editable." },
+            { key: "annualRate", label: "Interest Rate p.a.", sortable: true, tooltip: "Annual interest rate captured when the invoice was funded." },
+            { key: "_x", label: "", sortable: false, tooltip: null }
+          ];
 
           return <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Invoices" value={String(buyInvs.length)} accent="#0EA5E9" icon={"\u25c8"} />
-              <StatCard label="Total Invoiced" value={money(r2(totalInv), displayCcy)} accent="#D97706" icon={"\u25a1"} />
-              <StatCard label="Cash Advanced" value={money(r2(totalCapAdv), displayCcy)} accent="#E2E8F0" icon={"\u25b2"} />
+            {/* Filter-aware stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Invoices" value={String(allBuyInvs.length)} sub={biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " shown" : (allBuyInvs.length === 0 ? "none" : (disputedCount > 0 ? disputedCount + " disputed" : "all"))} accent={allBuyInvs.length > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Invoiced" value={money(r2(totalInv), displayCcy)} sub={biHasActive ? "filtered" : "gross amount"} accent={totalInv > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Cash Advanced" value={money(r2(totalCapAdv), displayCcy)} sub="to date" accent={totalCapAdv > 0 ? "#10B981" : "#64748B"} />
+              <StatCard label="Capital O/S" value={money(r2(totalCapOS), displayCcy)} sub={overdueCount > 0 ? overdueCount + " overdue" : "all current"} accent={overdueCount > 0 ? "#F59E0B" : "#64748B"} />
             </div>
+
+            {/* Filter bar */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="text" placeholder="Search..." value={biSearch} onChange={function(e) { setBiSearch(e.target.value); setBiPage(0); }} style={activeStyle(!!biSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
+              <select value={biIsf} onChange={function(e) { setBiIsf(e.target.value); setBiPage(0); }} style={activeStyle(biIsf !== "all", fltSel)}><option value="all">All Inv Status</option>{INV_STATUSES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+              <select value={biFsf} onChange={function(e) { setBiFsf(e.target.value); setBiPage(0); }} style={activeStyle(biFsf !== "all", fltSel)}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
+              <select value={biSupFilter} disabled={supFilterDisabled} onChange={function(e) { setBiSupFilter(e.target.value); setBiPage(0); }} style={Object.assign({}, activeStyle(biSupFilter !== "all", fltSel), { opacity: supFilterDisabled ? 0.45 : 1, cursor: supFilterDisabled ? "not-allowed" : "pointer" })} title={supFilterDisabled ? "Only one supplier represented" : undefined}><option value="all">All Suppliers ({supChoices.length})</option>{supChoices.map(function(s) { return <option key={s} value={s}>{s + " (" + supCounts[s] + ")"}</option>; })}</select>
+              {biHasActive && <button onClick={function() { setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              <div style={{ marginLeft: "auto", fontSize: 11.5, color: biHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: biHasActive ? 600 : 400 }}>{biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " of " + allBuyInvs.length : buyInvs.length} invoices</div>
+            </div>
+
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-              <div style={{ overflowX: "auto" }}>
+              {buyInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{biHasActive ? "No invoices match filters." : "No invoices for this buyer."}</div>}
+              {buyInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
-                  <thead><tr>{["Invoice", "Supplier", "Amount", "Advance Amount", "Total Balance O/S", "Inv Date", "Due", "Inv Status", "Fund Status", "Interest Rate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{buyInvs.map(function(inv) {
+                  <thead><tr>{biCols.map(function(col) {
+                    var isSort = col.sortable && biSort === col.key;
+                    return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doBiSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (biDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                  })}</tr></thead>
+                  <tbody>{biPageItems.map(function(inv) {
                     var ist = IST[inv.invoiceStatus] || IST["Received"];
                     var fst = FST[inv.fundingStatus] || FST.funded;
                     var isBuyExp = exp === "buy-" + inv.id;
@@ -7973,7 +8064,7 @@ export default function FactoringDashboard() {
                     return <React.Fragment key={inv.id}>
                     <tr style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
                       <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
                       <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
@@ -7981,7 +8072,7 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400, whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                       <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
-                      <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>
+                      <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</td>
                       <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBuyExp ? "var(--accent)" : "var(--card-hover)", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBuyExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
                     {isBuyExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
@@ -7991,17 +8082,25 @@ export default function FactoringDashboard() {
                             var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
                             var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
                             var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 };
+                            var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 8, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
                             return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Invoice Information</div>
-                              <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
-                              <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
-                              <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
+                              <div style={Object.assign({}, sectionHeader, { marginTop: 0 })}>Parties</div>
                               <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                               <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                              <div style={sectionHeader}>References</div>
+                              <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
+                              {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Invoice Ref</span><span style={val}>{inv.buyerRef}</span></div>}
+                              {inv.supplierRef && <div style={row}><span style={lbl}>Supplier Invoice Ref</span><span style={val}>{inv.supplierRef}</span></div>}
+                              {inv.poNumber && <div style={row}><span style={lbl}>Purchase Order No.</span><span style={val}>{inv.poNumber}</span></div>}
+                              <div style={sectionHeader}>Amounts</div>
+                              <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
+                              <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
+                              <div style={sectionHeader}>Dates</div>
                               <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
                               <div style={row}><span style={lbl}>Due Date</span><span style={Object.assign({}, val, { color: dp ? "#EF4444" : "var(--text)" })}>{fmt(inv.dueDate)}</span></div>
                               <div style={row}><span style={lbl}>Term</span><span style={val}>{inv.daysToMaturity ? inv.daysToMaturity + " days" : "\u2014"}</span></div>
-                              <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</span></div>
+                              <div style={row}><span style={lbl}>Interest Rate p.a.</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</span></div>
                             </div>;
                           })()}
                           {(function() {
@@ -8033,7 +8132,26 @@ export default function FactoringDashboard() {
                     </React.Fragment>;
                   })}</tbody>
                 </table>
-              </div>
+              </div>}
+              {/* Pagination */}
+              {buyInvs.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(biCurPage * biPerPage + 1) + "-" + Math.min((biCurPage + 1) * biPerPage, buyInvs.length) + " of " + buyInvs.length}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                  <select value={biPerPage} onChange={function(e) { setBiPerPage(parseInt(e.target.value, 10)); setBiPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <button onClick={function() { setBiPage(0); }} disabled={biCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: biCurPage === 0 ? 0.3 : 1, cursor: biCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                  <button onClick={function() { setBiPage(Math.max(0, biCurPage - 1)); }} disabled={biCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: biCurPage === 0 ? 0.3 : 1, cursor: biCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                  <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={biTotalPages} value={biCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= biTotalPages) setBiPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {biTotalPages}</span>
+                  <button onClick={function() { setBiPage(Math.min(biTotalPages - 1, biCurPage + 1)); }} disabled={biCurPage >= biTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: biCurPage >= biTotalPages - 1 ? 0.3 : 1, cursor: biCurPage >= biTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                  <button onClick={function() { setBiPage(biTotalPages - 1); }} disabled={biCurPage >= biTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: biCurPage >= biTotalPages - 1 ? 0.3 : 1, cursor: biCurPage >= biTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                </div>
+              </div>}
             </div>
           </div>;
         })()}
