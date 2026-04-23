@@ -7639,39 +7639,101 @@ export default function FactoringDashboard() {
           var maxAge = Math.max.apply(null, ageBuckets.concat([1]));
 
           return <div>
+            {/* Action row: Disputed + Declined + Overdue */}
+            {(function() {
+              var disputedInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === "Disputed"; });
+              var declinedInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === "Declined" || inv.invoiceStatus === "Buyer Default"; });
+              var overdueInvs = buyInvs.filter(function(inv) { return inv.dueDate < viewDate && (inv.balanceOwed || 0) > 0.01 && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.invoiceStatus !== "Cancelled" && inv.invoiceStatus !== "Buyer Default"; });
+              var disputedSum = disputedInvs.reduce(function(s, inv) { return s + (inv.amount || 0); }, 0);
+              var declinedSum = declinedInvs.reduce(function(s, inv) { return s + (inv.amount || 0); }, 0);
+              var overdueSum = overdueInvs.reduce(function(s, inv) { return s + (inv.balanceOwed || 0); }, 0);
+              function drillInvoice(invoiceId) { setQ(invoiceId); setIsf("all"); setFsf("all"); setBf("all"); setPg(0); setBuyTab("invoices"); }
+              function drillStatus(status) { setQ(""); setIsf(status); setFsf("all"); setBf("all"); setPg(0); setBuyTab("invoices"); }
+              function miniTable(title, invs, sum, accent, emptyMsg, onViewAll) {
+                return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid " + (invs.length > 0 ? accent + "40" : "var(--border)"), overflow: "hidden" }}>
+                  <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: invs.length > 0 ? accent : "var(--muted)" }}></div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>{title}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: invs.length > 0 ? accent : "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{invs.length}</div>
+                    </div>
+                    {invs.length > 0 && <div style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: accent, fontWeight: 600 }}>{money(r2(sum), displayCcy)}</div>}
+                  </div>
+                  {invs.length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>{emptyMsg}</div>}
+                  {invs.length > 0 && <>
+                    <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <tbody>
+                          {invs.slice(0, 6).map(function(inv) {
+                            return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { drillInvoice(inv.id); }}>
+                              <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>{inv.id}</td>
+                              <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                              <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: accent, fontWeight: 600, whiteSpace: "nowrap", textAlign: "right" }}>{money(r2(inv.balanceOwed || inv.amount || 0), inv.currency)}</td>
+                            </tr>;
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {invs.length > 6 && <div onClick={onViewAll} style={{ padding: "8px 14px", borderTop: "1px solid var(--border)", fontSize: 10, color: "var(--muted)", fontWeight: 600, textAlign: "center", cursor: "pointer", letterSpacing: "0.04em", textTransform: "uppercase" }}>+ {invs.length - 6} more \u2014 view all</div>}
+                  </>}
+                </div>;
+              }
+              return <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 18 }}>
+                {miniTable("Disputed", disputedInvs, disputedSum, "#D97706", "None disputed", function() { drillStatus("Disputed"); })}
+                {miniTable("Declined / Default", declinedInvs, declinedSum, "#DC2626", "None declined", function() { drillStatus("Declined"); })}
+                {miniTable("Overdue", overdueInvs, overdueSum, "#EF4444", "None overdue", function() { drillInvoice(""); setIsf("all"); })}
+              </div>;
+            })()}
+
             {/* Top section: Left (Balance+Stats) + Right (Charts) */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 22 }}>
               {/* Left: Combined Balance & Stats panel */}
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "22px 26px", display: "flex", flexDirection: "column" }}>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)", fontWeight: 600 }}>Balance Owed</div>
+                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)", fontWeight: 600 }}>Balance Owed</div>
                   <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{money(r2(balanceOwed), displayCcy)}</div>
                 </div>
                 <div style={{ display: "flex", gap: 24, paddingBottom: 14, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 }}>Collateral Value</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 }}>Collateral Value</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(collateralValue), displayCcy)}</div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 }}>Collateral Cover</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: collateralCover >= 1 ? "#059669" : "#DC2626" }}>{collateralCover > 0 ? (collateralCover * 100).toFixed(1) + "%" : "\u2014"}</div>
+                  <div style={{ flex: 1.6 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Cover</div>
+                      {collateralCover > 0 && (function() {
+                        var status = collateralCover >= 1.2 ? "Well covered" : collateralCover >= 1.0 ? "Adequately covered" : collateralCover >= 0.8 ? "Undercovered" : "Significantly undercovered";
+                        var color = collateralCover >= 1.0 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626";
+                        return <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: color }}>{status}</span>;
+                      })()}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: collateralCover >= 1 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626" }}>{collateralCover > 0 ? (collateralCover * 100).toFixed(1) + "%" : "\u2014"}</div>
+                    </div>
+                    {/* Meter bar — 200% width scale, 100% marker */}
+                    <div style={{ position: "relative", height: 8, background: "var(--bg)", borderRadius: 4, overflow: "visible", border: "1px solid var(--border)" }}>
+                      <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.min(collateralCover / 2 * 100, 100) + "%", background: collateralCover >= 1.0 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626", borderRadius: 3, transition: "width 0.3s ease" }}></div>
+                      {/* 100% marker */}
+                      <div style={{ position: "absolute", left: "50%", top: -3, bottom: -3, width: 2, background: "var(--muted)", opacity: 0.5 }} title="100% cover"></div>
+                      <div style={{ position: "absolute", left: "50%", top: "-14px", transform: "translateX(-50%)", fontSize: 8, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>100%</div>
+                    </div>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px", flex: 1 }}>
                   <div style={{ borderLeft: "3px solid #2B4C7E", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Outstanding Invoices</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Outstanding Invoices</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{String(buyInvs.filter(function(inv) { return inv.balanceOwed > 0.01 && inv.fundingStatus !== "pending"; }).length)}</div>
                   </div>
                   <div style={{ borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
                   </div>
                   <div style={{ borderLeft: "3px solid #C08B30", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalIntOS), displayCcy)}</div>
                   </div>
                   <div style={{ borderLeft: "3px solid #C0392B", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
+                    <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
@@ -7701,12 +7763,12 @@ export default function FactoringDashboard() {
                   var bf30 = bfpDil(30), bf90 = bfpDil(90);
 
                   return <><div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Buyer Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Buyer Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bdRate > 10 ? "#DC2626" : bdRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bdRate > 0 ? bdRate.toFixed(1) + "%" : "0.0%"}</div>
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(bdN), displayCcy)}</span></div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bdD), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(bdN), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bdD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                       <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bd30.rate > 10 ? "#DC2626" : bd30.rate > 5 ? "#D97706" : "#059669" }}>{bd30.rate > 0 ? bd30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bd30.numerator, displayCcy)} / {money(bd30.denominator, displayCcy)}</div></div>
@@ -7714,12 +7776,12 @@ export default function FactoringDashboard() {
                     </div>
                   </div>
                   <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bfRate > 10 ? "#DC2626" : bfRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bfRate > 0 ? bfRate.toFixed(1) + "%" : "0.0%"}</div>
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(bfN), displayCcy)}</span></div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bfD), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(bfN), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bfD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                       <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bf30.rate > 10 ? "#DC2626" : bf30.rate > 5 ? "#D97706" : "#059669" }}>{bf30.rate > 0 ? bf30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bf30.numerator, displayCcy)} / {money(bf30.denominator, displayCcy)}</div></div>
@@ -7735,34 +7797,100 @@ export default function FactoringDashboard() {
               {/* Buyer Details - editable */}
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid var(--accent)", color: "var(--text)" }}>Buyer Details</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid var(--accent)", color: "var(--text)" }}>Buyer Details</div>
                   {buyer && <button onClick={function() { if (exp === "buyerEdit") { setExp(null); } else { setExp("buyerEdit"); setManageFields(Object.assign({}, buyer)); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: exp === "buyerEdit" ? "#C0392B10" : "transparent", color: exp === "buyerEdit" ? "#EF4444" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{exp === "buyerEdit" ? "Cancel" : "Edit"}</button>}
                 </div>
-                {buyer && exp !== "buyerEdit" && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 28px", fontSize: 13 }}>
-                  <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Name</div><div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{buyer.name}</div></div>
-                  <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Entity ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{buyer.id}</div></div>
-                  {buyer.companyNumber && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Company Number</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{buyer.companyNumber}</div></div>}
-                  {buyer.companyStatus && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Status</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.companyStatus}</div></div>}
-                  {buyer.incorporationDate && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Incorporated</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(buyer.incorporationDate)}</div></div>}
-                  {buyer.street1 && <div style={{ gridColumn: "1 / -1" }}><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Address</div><div style={{ fontSize: 13, color: "var(--text)" }}>{[buyer.street1, buyer.street2, buyer.city, buyer.state, buyer.zip, buyer.country].filter(Boolean).join(", ")}</div></div>}
-                  {buyer.primaryContact && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Contact</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryContact}</div></div>}
-                  {buyer.primaryEmail && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Email</div><div style={{ fontSize: 13, color: "var(--accent)" }}>{buyer.primaryEmail}</div></div>}
-                  {buyer.primaryPhone && <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Phone</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.primaryPhone}</div></div>}
-                  {buyer.directors && buyer.directors.filter(function(d) { return !d.resignedDate; }).length > 0 && <div style={{ gridColumn: "1 / -1", marginTop: 4, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Active Directors</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {buyer.directors.filter(function(d) { return !d.resignedDate; }).map(function(d, di) {
-                        return <span key={di} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}>{d.name} <span style={{ color: "var(--muted)", fontSize: 10 }}>({d.role})</span></span>;
-                      })}
+                {buyer && exp !== "buyerEdit" && (function() {
+                  var sectionHeader = { fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 10, paddingBottom: 4, borderBottom: "1px solid var(--border)" };
+                  var fieldLbl = { fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 };
+                  // Collect all populated contacts (primary + secondary + 3/4/5)
+                  var contactSlots = [
+                    { name: buyer.primaryContact, email: buyer.primaryEmail, phone: buyer.primaryPhone, signatory: buyer.primarySignatory, role: "Primary" },
+                    { name: buyer.secondaryContact, email: buyer.secondaryEmail, phone: buyer.secondaryPhone, signatory: buyer.secondarySignatory, role: "Secondary" },
+                    { name: buyer.contact3Name, email: buyer.contact3Email, phone: buyer.contact3Phone, signatory: buyer.contact3Signatory, role: "Contact 3" },
+                    { name: buyer.contact4Name, email: buyer.contact4Email, phone: buyer.contact4Phone, signatory: buyer.contact4Signatory, role: "Contact 4" },
+                    { name: buyer.contact5Name, email: buyer.contact5Email, phone: buyer.contact5Phone, signatory: buyer.contact5Signatory, role: "Contact 5" }
+                  ].filter(function(c) { return c.name || c.email || c.phone; });
+                  var activeDirectors = (buyer.directors || []).filter(function(d) { return !d.resignedDate; });
+
+                  return <div>
+                    {/* Name + Entity ID header block */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 28px", marginBottom: 20 }}>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <div style={fieldLbl}>Name</div>
+                        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{buyer.name}</div>
+                      </div>
+                      <div>
+                        <div style={fieldLbl}>Entity ID</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{buyer.id}</div>
+                      </div>
                     </div>
-                  </div>}
-                </div>}
+
+                    {/* IDENTITY section */}
+                    {(buyer.companyNumber || buyer.companyStatus || buyer.incorporationDate) && <>
+                      <div style={sectionHeader}>Identity</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 28px", marginBottom: 22 }}>
+                        {buyer.companyNumber && <div><div style={fieldLbl}>Company Number</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{buyer.companyNumber}</div></div>}
+                        {buyer.companyStatus && <div><div style={fieldLbl}>Status</div><div style={{ fontSize: 13, color: "var(--text)" }}>{buyer.companyStatus}</div></div>}
+                        {buyer.incorporationDate && <div><div style={fieldLbl}>Incorporated</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(buyer.incorporationDate)}</div></div>}
+                      </div>
+                    </>}
+
+                    {/* ADDRESS section */}
+                    {(buyer.street1 || buyer.city) && <>
+                      <div style={sectionHeader}>Address</div>
+                      <div style={{ marginBottom: 22 }}>
+                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{[buyer.street1, buyer.street2, buyer.city, buyer.state, buyer.zip, buyer.country].filter(Boolean).join(", ")}</div>
+                      </div>
+                    </>}
+
+                    {/* CONTACT section */}
+                    {contactSlots.length > 0 && <>
+                      <div style={sectionHeader}>Contacts</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px", marginBottom: 22 }}>
+                        {contactSlots.map(function(c, ci) {
+                          return <div key={ci} style={{ padding: "8px 12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 4 }}>
+                              <div style={{ fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>{c.role}</div>
+                              {c.signatory && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#2E8B5714", color: "#059669", border: "1px solid #2E8B5730", fontSize: 8.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }} title="Authorised Signatory">Signatory</span>}
+                            </div>
+                            {c.name && <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>{c.name}</div>}
+                            {c.email && <div style={{ fontSize: 11.5, color: "var(--accent)" }}>{c.email}</div>}
+                            {c.phone && <div style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>{c.phone}</div>}
+                          </div>;
+                        })}
+                      </div>
+                    </>}
+
+                    {/* DIRECTORS section */}
+                    {activeDirectors.length > 0 && <>
+                      <div style={sectionHeader}>Active Directors ({activeDirectors.length})</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {activeDirectors.map(function(d, di) {
+                          return <span key={di} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)" }}>{d.name} <span style={{ color: "var(--muted)", fontSize: 10 }}>({d.role})</span></span>;
+                        })}
+                      </div>
+                    </>}
+                  </div>;
+                })()}
                 {buyer && exp === "buyerEdit" && (function() {
                   var f = manageFields;
                   var inpS = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
                   var lblS = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 };
                   function bFld(label, key, type) { return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>{label}</label><input type={type || "text"} value={f[key] || ""} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={inpS} /></div>; }
+                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
                   return <div>
+                    {/* Floating edit-mode bar */}
+                    <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(14,165,233,0.15)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#fff", background: "var(--accent)", padding: "3px 8px", borderRadius: 4, letterSpacing: "0.06em" }}>Editing</span>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Editing <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{buyer.id}</span></span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={function() { setExp(null); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={saveBuyerEdit} disabled={!f.name} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save</button>
+                      </div>
+                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px", marginBottom: 12 }}>
                       <div style={{ gridColumn: "1 / -1" }}>{bFld("Company Name", "name")}</div>
                       {bFld("Company Number", "companyNumber")}
@@ -7794,10 +7922,6 @@ export default function FactoringDashboard() {
                       {bFld("Contact 5 Email", "contact5Email", "email")}
                       {bFld("Contact 5 Phone", "contact5Phone", "tel")}
                       <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}><input type="checkbox" checked={f.contact5Signatory || false} onChange={function() { setManageFields(function(p) { return Object.assign({}, p, { contact5Signatory: !p.contact5Signatory }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: f.contact5Signatory ? "#059669" : "var(--muted)" }}>Authorised Signatory</span></label>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={function() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }} disabled={!f.name} style={{ padding: "6px 16px", borderRadius: 6, border: "none", background: f.name ? "var(--accent)" : "var(--border)", color: f.name ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: f.name ? "pointer" : "default" }}>Save Changes</button>
-                      <button onClick={function() { setExp(null); }} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                     </div>
                   </div>;
                 })()}
