@@ -5678,7 +5678,7 @@ export default function FactoringDashboard() {
                   {/* Grid lines */}
                   {[0, 0.25, 0.5, 0.75, 1].map(function(f, i) {
                     var y = barH - f * (barH - 20);
-                    return <g key={i}><line x1={barPad} y1={y} x2={barW - 10} y2={y} stroke="#1C2A42" strokeWidth="0.5" strokeDasharray={i === 0 ? "0" : "3,3"} /><text x={barPad - 6} y={y + 3} textAnchor="end" fontSize="8" fill="#1C2A42" fontFamily="'JetBrains Mono', monospace">{money(r2(fvMax * f), displayCcy).replace(/\.00$/, "")}</text></g>;
+                    return <g key={i}><line x1={barPad} y1={y} x2={barW - 10} y2={y} stroke="#1C2A42" strokeWidth="0.5" strokeDasharray={i === 0 ? "0" : "3,3"} /><text x={barPad - 6} y={y + 3} textAnchor="end" fontSize="8" fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{money(r2(fvMax * f), displayCcy).replace(/\.00$/, "")}</text></g>;
                   })}
                   {/* Bars */}
                   {fvChartData.map(function(e, i) {
@@ -5687,7 +5687,7 @@ export default function FactoringDashboard() {
                     var y = barH - h;
                     return <g key={i}>
                       <rect x={x} y={y} width={barUnitW} height={h} rx={3} fill="#0EA5E9" opacity="0.85" />
-                      <text x={x + barUnitW / 2} y={barH + 14} textAnchor="middle" fontSize="8" fill="#1C2A42" fontFamily="'JetBrains Mono', monospace">{e[0].substring(5)}/{e[0].substring(2, 4)}</text>
+                      <text x={x + barUnitW / 2} y={barH + 14} textAnchor="middle" fontSize="8" fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{e[0].substring(5)}/{e[0].substring(2, 4)}</text>
                     </g>;
                   })}
                 </svg> : <div style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No data</div>}
