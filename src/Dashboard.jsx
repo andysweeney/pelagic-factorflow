@@ -2303,9 +2303,25 @@ export default function FactoringDashboard() {
   var bas1 = useState(""), baSearch = bas1[0], setBaSearch = bas1[1];
   var baf1 = useState(""), baDateFilter = baf1[0], setBaDateFilter = baf1[1];
   var bae1 = useState(null), baExp = bae1[0], setBaExp = bae1[1];
+  var basr1 = useState("date"), baSort = basr1[0], setBaSort = basr1[1];
+  var badr1 = useState("desc"), baDir = badr1[0], setBaDir = badr1[1];
+  var bap1 = useState(0), baPage = bap1[0], setBaPage = bap1[1];
+  var baps1 = useState(25), baPerPage = baps1[0], setBaPerPage = baps1[1];
   var bhs1 = useState(""), bhSearch = bhs1[0], setBhSearch = bhs1[1];
   var bhf1 = useState(""), bhDateFilter = bhf1[0], setBhDateFilter = bhf1[1];
   var bhe1 = useState(null), bhExp = bhe1[0], setBhExp = bhe1[1];
+  var bhsr1 = useState("date"), bhSort = bhsr1[0], setBhSort = bhsr1[1];
+  var bhdr1 = useState("desc"), bhDir = bhdr1[0], setBhDir = bhdr1[1];
+  var bhp1 = useState(0), bhPage = bhp1[0], setBhPage = bhp1[1];
+  var bhps1 = useState(25), bhPerPage = bhps1[0], setBhPerPage = bhps1[1];
+  // Buyer Funding tab state
+  var bfs1 = useState(""), bfSearch = bfs1[0], setBfSearch = bfs1[1];
+  var bfd1 = useState(""), bfDateFilter = bfd1[0], setBfDateFilter = bfd1[1];
+  var bfst1 = useState("all"), bfStatusFilter = bfst1[0], setBfStatusFilter = bfst1[1];
+  var bfsr1 = useState("created"), bfSort = bfsr1[0], setBfSort = bfsr1[1];
+  var bfdr1 = useState("desc"), bfDir = bfdr1[0], setBfDir = bfdr1[1];
+  var bfp1 = useState(0), bfPage = bfp1[0], setBfPage = bfp1[1];
+  var bfps1 = useState(25), bfPerPage = bfps1[0], setBfPerPage = bfps1[1];
   var ptb1 = useState("outbound_queue"), payTab = ptb1[0], setPayTab = ptb1[1];
   var locp1 = useState(""), landingChartProg = locp1[0], setLandingChartProg = locp1[1]; // "" = all programs
   var pfp1 = useState(null), pendingFocusPayId = pfp1[0], setPendingFocusPayId = pfp1[1]; // drill-in focus intent from landing
@@ -5195,7 +5211,7 @@ export default function FactoringDashboard() {
             {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setBuyTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: buyTab === t ? 600 : 400, background: buyTab === t ? "var(--accent)" : "transparent", color: buyTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
+            <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBaPage(0); setBaExp(null); setBaSearch(""); setBaDateFilter(""); setBhPage(0); setBhExp(null); setBhSearch(""); setBhDateFilter(""); setBfPage(0); setBfSearch(""); setBfStatusFilter("all"); setBfDateFilter(""); setFundPayExp(null); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
             </select>
             <select value={buyCurrency} onChange={function(e) { setBuyCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
@@ -8167,30 +8183,86 @@ export default function FactoringDashboard() {
             var matchAllocs = p.allocations.filter(function(a) { return buyInvIds[a.invoiceId]; });
             if (matchAllocs.length > 0) allBuyPays.push({ pay: p, allocs: matchAllocs });
           });
+
+          // Derived metrics
+          var totalAllocated = allBuyPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0);
+          var totalPayments = allBuyPays.reduce(function(s, ep) { return s + (ep.pay.amount || 0); }, 0);
+          // "Unallocated from buyer payments" — sum of (pay.amount - allocated_to_this_buyer)
+          var totalUnallocated = allBuyPays.reduce(function(s, ep) {
+            var allocSum = ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0);
+            return s + Math.max(0, (ep.pay.amount || 0) - allocSum);
+          }, 0);
+
+          // Filter + sort + paginate
           var buyPays = allBuyPays.slice();
           if (baSearch) buyPays = buyPays.filter(function(ep) { var s = baSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
           if (baDateFilter) buyPays = buyPays.filter(function(ep) { return ep.pay.date === baDateFilter; });
-          buyPays.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
+          buyPays.sort(function(a, b) {
+            var av, bv;
+            if (baSort === "date") { av = a.pay.date; bv = b.pay.date; }
+            else if (baSort === "paymentId") { av = a.pay.paymentId; bv = b.pay.paymentId; }
+            else if (baSort === "amount") { av = a.pay.amount; bv = b.pay.amount; }
+            else if (baSort === "allocated") { av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0); bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0); }
+            else { av = a.pay.date; bv = b.pay.date; }
+            if (av === bv) return 0;
+            var cmp = av > bv ? 1 : -1;
+            return baDir === "asc" ? cmp : -cmp;
+          });
+          var baTotalPages = Math.max(1, Math.ceil(buyPays.length / baPerPage));
+          var baCurPage = Math.min(baPage, baTotalPages - 1);
+          var baPageItems = buyPays.slice(baCurPage * baPerPage, (baCurPage + 1) * baPerPage);
+          var baHasActive = !!baSearch || !!baDateFilter;
+
           var bamc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
           var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+          function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+          function doBaSort(f) { if (baSort === f) setBaDir(baDir === "asc" ? "desc" : "asc"); else { setBaSort(f); setBaDir("desc"); } setBaPage(0); }
+
+          // Drill-in helpers
+          function drillToInvoice(invoiceId) {
+            setBiSearch(invoiceId); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0);
+            setBuyTab("invoices");
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+          }
+
+          var baCols = [
+            { key: "paymentId", label: "Payment ID", sortable: true },
+            { key: "date", label: "Date", sortable: true },
+            { key: "amount", label: "Amount", sortable: true },
+            { key: "ccy", label: "CCY", sortable: false },
+            { key: "allocated", label: "Allocations", sortable: true },
+            { key: "_x", label: "", sortable: false }
+          ];
 
           return <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Total Payments" value={String(allBuyPays.length)} accent="#0EA5E9" icon={"\u25c6"} />
-              <StatCard label="Total Allocated" value={money(allBuyPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0), displayCcy)} accent="#059669" icon={"\u2713"} />
+            {/* Filter-aware stat cards — 4 cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Payments from Buyer" value={String(allBuyPays.length)} sub={baHasActive && buyPays.length !== allBuyPays.length ? buyPays.length + " shown" : (allBuyPays.length === 0 ? "none" : "total")} accent={allBuyPays.length > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#64748B"} />
+              <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#64748B"} />
+              <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
             </div>
+
+            {/* Filter bar */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-              <input type="text" value={baSearch} onChange={function(e) { setBaSearch(e.target.value); }} placeholder="Search payments..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-              <input type="date" value={baDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setBaDateFilter(v); }} style={Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" })} />
-              {(baSearch || baDateFilter) && <button onClick={function() { setBaSearch(""); setBaDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-              <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{buyPays.length} of {allBuyPays.length}</span>
+              <input type="text" value={baSearch} onChange={function(e) { setBaSearch(e.target.value); setBaPage(0); }} placeholder="Search payments..." style={activeStyle(!!baSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 })} />
+              <input type="date" value={baDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setBaDateFilter(v); setBaPage(0); } }} style={activeStyle(!!baDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
+              {baHasActive && <button onClick={function() { setBaSearch(""); setBaDateFilter(""); setBaPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              <span style={{ marginLeft: "auto", fontSize: 11.5, color: baHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: baHasActive ? 600 : 400 }}>{baHasActive && buyPays.length !== allBuyPays.length ? buyPays.length + " of " + allBuyPays.length : buyPays.length} payment{buyPays.length === 1 ? "" : "s"}</span>
             </div>
+
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-              {buyPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No payments match filters.</div>}
+              {buyPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{baHasActive ? "No payments match filters." : "No payments from this buyer."}</div>}
               {buyPays.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Payment ID", "Date", "Amount", "CCY", "Allocations", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  {buyPays.map(function(ep) {
+                  <thead><tr>{baCols.map(function(col) {
+                    var isSort = col.sortable && baSort === col.key;
+                    return <th key={col.key} onClick={function() { if (col.sortable) doBaSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (baDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                  })}</tr></thead>
+                  {baPageItems.map(function(ep) {
                     var isExpBA = baExp === ep.pay.paymentId;
                     var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
                     return <tbody key={ep.pay.paymentId}>
@@ -8203,14 +8275,50 @@ export default function FactoringDashboard() {
                         <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setBaExp(isExpBA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpBA ? "var(--accent)" : "var(--card-hover)", color: isExpBA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBA ? "\u25b4" : "\u25be"}</button></td>
                       </tr>
                       {isExpBA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Allocations ({ep.allocs.length})</div>
-                        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}><thead><tr>{["Invoice", "Supplier", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) { var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); var effDate = a.allocDate || ep.pay.date; var isBackdated = a.allocDate && a.allocDate !== ep.pay.date; return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}</td><td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv ? aInv.supplierName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td></tr>; })}</tbody></table>
-                        {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
-                        <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>{ep.pay.notes && ep.pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{ep.pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={baExp === ep.pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
+                          var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
+                          var effDate = a.allocDate || ep.pay.date;
+                          var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
+                          return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.invoiceId}</span></td>
+                            <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{aInv.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
+                          </tr>;
+                        })}</tbody></table>
+                        {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>
+                          {ep.pay.notes && ep.pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{ep.pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="text" value={baExp === ep.pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                            <button onClick={function() { if (!noteText.trim()) return; if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                          </div>
+                        </div>
                       </td></tr>}
                     </tbody>;
                   })}
                 </table>
+              </div>}
+              {/* Pagination */}
+              {buyPays.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(baCurPage * baPerPage + 1) + "-" + Math.min((baCurPage + 1) * baPerPage, buyPays.length) + " of " + buyPays.length}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                  <select value={baPerPage} onChange={function(e) { setBaPerPage(parseInt(e.target.value, 10)); setBaPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <button onClick={function() { setBaPage(0); }} disabled={baCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: baCurPage === 0 ? 0.3 : 1, cursor: baCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                  <button onClick={function() { setBaPage(Math.max(0, baCurPage - 1)); }} disabled={baCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: baCurPage === 0 ? 0.3 : 1, cursor: baCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                  <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={baTotalPages} value={baCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= baTotalPages) setBaPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {baTotalPages}</span>
+                  <button onClick={function() { setBaPage(Math.min(baTotalPages - 1, baCurPage + 1)); }} disabled={baCurPage >= baTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: baCurPage >= baTotalPages - 1 ? 0.3 : 1, cursor: baCurPage >= baTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                  <button onClick={function() { setBaPage(baTotalPages - 1); }} disabled={baCurPage >= baTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: baCurPage >= baTotalPages - 1 ? 0.3 : 1, cursor: baCurPage >= baTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                </div>
               </div>}
             </div>
           </div>;
@@ -8223,55 +8331,145 @@ export default function FactoringDashboard() {
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
           var allBuyHbps = HOLDBACK_PAYMENTS_DB.filter(function(hbp) { return buyInvIds[hbp.sourceInvoiceId]; });
-          var buyHbps = allBuyHbps.slice();
-          if (bhSearch) buyHbps = buyHbps.filter(function(hbp) { var s = bhSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
-          if (bhDateFilter) buyHbps = buyHbps.filter(function(hbp) { return hbp.date === bhDateFilter; });
-          buyHbps.sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+
+          // Derived metrics
           var totalDisbursed = allBuyHbps.reduce(function(s, h) { return s + h.amount; }, 0);
           var totalSupReturn = 0, totalInvAlloc = 0;
           allBuyHbps.forEach(function(hbp) { hbp.allocations.forEach(function(a) { if (a.type === "disbursement") totalSupReturn += a.amount; else totalInvAlloc += a.amount; }); });
+
+          // Filter + sort + paginate
+          var buyHbps = allBuyHbps.slice();
+          if (bhSearch) buyHbps = buyHbps.filter(function(hbp) { var s = bhSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
+          if (bhDateFilter) buyHbps = buyHbps.filter(function(hbp) { return hbp.date === bhDateFilter; });
+          buyHbps.sort(function(a, b) {
+            var av, bv;
+            if (bhSort === "date") { av = a.date; bv = b.date; }
+            else if (bhSort === "hbPaymentId") { av = a.hbPaymentId; bv = b.hbPaymentId; }
+            else if (bhSort === "sourceInvoiceId") { av = a.sourceInvoiceId; bv = b.sourceInvoiceId; }
+            else if (bhSort === "amount") { av = a.amount; bv = b.amount; }
+            else { av = a.date; bv = b.date; }
+            if (av === bv) return 0;
+            var cmp = av > bv ? 1 : -1;
+            return bhDir === "asc" ? cmp : -cmp;
+          });
+          var bhTotalPages = Math.max(1, Math.ceil(buyHbps.length / bhPerPage));
+          var bhCurPage = Math.min(bhPage, bhTotalPages - 1);
+          var bhPageItems = buyHbps.slice(bhCurPage * bhPerPage, (bhCurPage + 1) * bhPerPage);
+          var bhHasActive = !!bhSearch || !!bhDateFilter;
+
           var bhmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
           var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+          function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+          function doBhSort(f) { if (bhSort === f) setBhDir(bhDir === "asc" ? "desc" : "asc"); else { setBhSort(f); setBhDir("desc"); } setBhPage(0); }
+
+          // Drill-ins
+          function drillToInvoice(invoiceId) {
+            setBiSearch(invoiceId); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0);
+            setBuyTab("invoices");
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+          }
+
+          var bhCols = [
+            { key: "hbPaymentId", label: "HBP ID", sortable: true },
+            { key: "date", label: "Date", sortable: true },
+            { key: "sourceInvoiceId", label: "Source Invoice", sortable: true },
+            { key: "amount", label: "Amount", sortable: true },
+            { key: "ccy", label: "CCY", sortable: false },
+            { key: "allocated", label: "Allocations", sortable: false },
+            { key: "_x", label: "", sortable: false }
+          ];
 
           return <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Holdback Payments" value={String(allBuyHbps.length)} accent="#0EA5E9" icon={"\u25c6"} />
-              <StatCard label="Total Disbursed" value={money(totalDisbursed, displayCcy)} accent="#059669" icon={"\u25b2"} />
-              <StatCard label="Supplier Returns" value={money(totalSupReturn, displayCcy)} accent="#E2E8F0" icon={"\u21b5"} />
-              <StatCard label="Invoice Allocations" value={money(totalInvAlloc, displayCcy)} accent="#D97706" icon={"\u2192"} />
+            {/* Filter-aware stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Holdback Payments" value={String(allBuyHbps.length)} sub={bhHasActive && buyHbps.length !== allBuyHbps.length ? buyHbps.length + " shown" : (allBuyHbps.length === 0 ? "none" : "from buyer's invoices")} accent={allBuyHbps.length > 0 ? "#8B5CF6" : "#64748B"} />
+              <StatCard label="Total Disbursed" value={money(r2(totalDisbursed), displayCcy)} sub="holdback amounts released" accent={totalDisbursed > 0 ? "#10B981" : "#64748B"} />
+              <StatCard label="Supplier Returns" value={money(r2(totalSupReturn), displayCcy)} sub={totalSupReturn > 0 ? "returned to supplier" : "none"} accent={totalSupReturn > 0 ? "#34D399" : "#64748B"} />
+              <StatCard label="Invoice Allocations" value={money(r2(totalInvAlloc), displayCcy)} sub={totalInvAlloc > 0 ? "re-applied to invoices" : "none"} accent={totalInvAlloc > 0 ? "#F59E0B" : "#64748B"} />
             </div>
+
+            {/* Filter bar */}
             <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-              <input type="text" value={bhSearch} onChange={function(e) { setBhSearch(e.target.value); }} placeholder="Search HBPs..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-              <input type="date" value={bhDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setBhDateFilter(v); }} style={Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" })} />
-              {(bhSearch || bhDateFilter) && <button onClick={function() { setBhSearch(""); setBhDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-              <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{buyHbps.length} of {allBuyHbps.length}</span>
+              <input type="text" value={bhSearch} onChange={function(e) { setBhSearch(e.target.value); setBhPage(0); }} placeholder="Search HBP ID or source invoice..." style={activeStyle(!!bhSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 240 })} />
+              <input type="date" value={bhDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setBhDateFilter(v); setBhPage(0); } }} style={activeStyle(!!bhDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
+              {bhHasActive && <button onClick={function() { setBhSearch(""); setBhDateFilter(""); setBhPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              <span style={{ marginLeft: "auto", fontSize: 11.5, color: bhHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: bhHasActive ? 600 : 400 }}>{bhHasActive && buyHbps.length !== allBuyHbps.length ? buyHbps.length + " of " + allBuyHbps.length : buyHbps.length} HBP{buyHbps.length === 1 ? "" : "s"}</span>
             </div>
+
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-              {buyHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No holdback payments match filters.</div>}
+              {buyHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{bhHasActive ? "No holdback payments match filters." : "No holdback payments for this buyer."}</div>}
               {buyHbps.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Allocations", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  {buyHbps.map(function(hbp) {
+                  <thead><tr>{bhCols.map(function(col) {
+                    var isSort = col.sortable && bhSort === col.key;
+                    return <th key={col.key} onClick={function() { if (col.sortable) doBhSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (bhDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                  })}</tr></thead>
+                  {bhPageItems.map(function(hbp) {
                     var isExpBH = bhExp === hbp.hbPaymentId;
+                    var supCount = hbp.allocations.filter(function(a) { return a.type === "disbursement"; }).length;
+                    var invCount = hbp.allocations.filter(function(a) { return a.type !== "disbursement"; }).length;
                     return <tbody key={hbp.hbPaymentId}>
                       <tr style={{ borderBottom: isExpBH ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBH ? "var(--card-hover)" : "transparent" }} onClick={function() { setBhExp(isExpBH ? null : hbp.hbPaymentId); }}>
-                        <td style={Object.assign({}, bhmc, { color: "#059669", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
+                        <td style={Object.assign({}, bhmc, { color: "#A78BFA", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
-                        <td style={Object.assign({}, bhmc, { color: "var(--accent)" })}>{hbp.sourceInvoiceId}</td>
+                        <td style={Object.assign({}, bhmc, {})} onClick={function(e) { e.stopPropagation(); drillToInvoice(hbp.sourceInvoiceId); }} title="Drill into invoice"><span style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{hbp.sourceInvoiceId}</span></td>
                         <td style={Object.assign({}, bhmc, { fontWeight: 600 })}>{money(hbp.amount, hbp.currency)}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{hbp.currency}</td>
-                        <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ fontSize: 10, color: "var(--muted)" }}>{hbp.allocations.length} allocation(s)</span></td>
+                        <td style={{ padding: "8px 8px", fontSize: 12 }}>
+                          {supCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#10B98120", color: "#34D399", border: "1px solid #10B98140", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{supCount} SUP</span>}
+                          {invCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{invCount} INV</span>}
+                          {supCount === 0 && invCount === 0 && <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>none</span>}
+                        </td>
                         <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setBhExp(isExpBH ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpBH ? "var(--accent)" : "var(--card-hover)", color: isExpBH ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBH ? "\u25b4" : "\u25be"}</button></td>
                       </tr>
                       {isExpBH && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Allocations ({hbp.allocations.length})</div>
-                        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) { return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: a.type === "disbursement" ? "#E2E8F0" : "#D97706" }}>{a.type === "disbursement" ? "Supplier Return" : "Invoice Alloc"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: a.type === "disbursement" ? "#E2E8F0" : "var(--accent)" }}>{a.type === "disbursement" ? "Supplier" : a.targetId}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td></tr>; })}</tbody></table>
-                        {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.hbPaymentId === hbp.hbPaymentId || e.context.sourceInvoiceId === hbp.sourceInvoiceId); }); if (hLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
-                        <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {hbp.notes && hbp.notes.length > 0 ? "(" + hbp.notes.length + ")" : ""}</div>{hbp.notes && hbp.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{hbp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={bhExp === hbp.hbPaymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({hbp.allocations.length})</div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) {
+                          var isSup = a.type === "disbursement";
+                          // Get supplier name for disbursement rows: look up via source invoice
+                          var srcInv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; });
+                          var supName = srcInv ? srcInv.supplierName : null;
+                          return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: isSup ? "#10B98120" : "#D9770620", color: isSup ? "#34D399" : "#F59E0B", border: "1px solid " + (isSup ? "#10B98140" : "#D9770640"), fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{isSup ? "Supplier Return" : "Invoice Alloc"}</span></td>
+                            <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{isSup ? (supName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(supName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + supName}>{supName}</span> : <span style={{ color: "var(--text-secondary)" }}>Supplier</span>) : <span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.targetId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.targetId}</span>}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td>
+                          </tr>;
+                        })}</tbody></table>
+                        {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.hbPaymentId === hbp.hbPaymentId || e.context.sourceInvoiceId === hbp.sourceInvoiceId); }); if (hLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {hbp.notes && hbp.notes.length > 0 ? "(" + hbp.notes.length + ")" : ""}</div>
+                          {hbp.notes && hbp.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{hbp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="text" value={bhExp === hbp.hbPaymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                            <button onClick={function() { if (!noteText.trim()) return; if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                          </div>
+                        </div>
                       </td></tr>}
                     </tbody>;
                   })}
                 </table>
+              </div>}
+              {/* Pagination */}
+              {buyHbps.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(bhCurPage * bhPerPage + 1) + "-" + Math.min((bhCurPage + 1) * bhPerPage, buyHbps.length) + " of " + buyHbps.length}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                  <select value={bhPerPage} onChange={function(e) { setBhPerPage(parseInt(e.target.value, 10)); setBhPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <button onClick={function() { setBhPage(0); }} disabled={bhCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: bhCurPage === 0 ? 0.3 : 1, cursor: bhCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                  <button onClick={function() { setBhPage(Math.max(0, bhCurPage - 1)); }} disabled={bhCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: bhCurPage === 0 ? 0.3 : 1, cursor: bhCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                  <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={bhTotalPages} value={bhCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= bhTotalPages) setBhPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {bhTotalPages}</span>
+                  <button onClick={function() { setBhPage(Math.min(bhTotalPages - 1, bhCurPage + 1)); }} disabled={bhCurPage >= bhTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: bhCurPage >= bhTotalPages - 1 ? 0.3 : 1, cursor: bhCurPage >= bhTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                  <button onClick={function() { setBhPage(bhTotalPages - 1); }} disabled={bhCurPage >= bhTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: bhCurPage >= bhTotalPages - 1 ? 0.3 : 1, cursor: bhCurPage >= bhTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                </div>
               </div>}
             </div>
           </div>;
@@ -8284,44 +8482,150 @@ export default function FactoringDashboard() {
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
           var allBuyFunding = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.type === "funding" && (buyInvIds[spq.invoiceId] || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return buyInvIds[iid]; }))); });
-          allBuyFunding.sort(function(a, b) { return (a.createdAt || "") > (b.createdAt || "") ? -1 : 1; });
+
+          // Filter
+          var buyFunding = allBuyFunding.slice();
+          if (bfSearch) buyFunding = buyFunding.filter(function(fp) { var s = bfSearch.toLowerCase(); return fp.id.toLowerCase().indexOf(s) > -1 || (fp.invoiceId || "").toLowerCase().indexOf(s) > -1 || (fp.invoiceIds && fp.invoiceIds.some(function(iid) { return iid.toLowerCase().indexOf(s) > -1; })) || (fp.supplierName || "").toLowerCase().indexOf(s) > -1 || (fp.programName || "").toLowerCase().indexOf(s) > -1; });
+          if (bfDateFilter) buyFunding = buyFunding.filter(function(fp) { return (fp.executedDisplay || "").indexOf(bfDateFilter) > -1 || (fp.createdDisplay || "").indexOf(bfDateFilter) > -1; });
+          if (bfStatusFilter !== "all") buyFunding = buyFunding.filter(function(fp) { return fp.status === bfStatusFilter; });
+
+          // Sort
+          buyFunding.sort(function(a, b) {
+            var av, bv;
+            if (bfSort === "created") { av = a.createdAt || ""; bv = b.createdAt || ""; }
+            else if (bfSort === "id") { av = a.id; bv = b.id; }
+            else if (bfSort === "amount") { av = a.amount; bv = b.amount; }
+            else if (bfSort === "status") { av = a.status; bv = b.status; }
+            else if (bfSort === "executed") { av = a.executedAt || a.createdAt || ""; bv = b.executedAt || b.createdAt || ""; }
+            else if (bfSort === "supplierName") { av = a.supplierName || ""; bv = b.supplierName || ""; }
+            else { av = a.createdAt || ""; bv = b.createdAt || ""; }
+            if (av === bv) return 0;
+            var cmp = av > bv ? 1 : -1;
+            return bfDir === "asc" ? cmp : -cmp;
+          });
+
+          // Pagination
+          var bfTotalPages = Math.max(1, Math.ceil(buyFunding.length / bfPerPage));
+          var bfCurPage = Math.min(bfPage, bfTotalPages - 1);
+          var bfPageItems = buyFunding.slice(bfCurPage * bfPerPage, (bfCurPage + 1) * bfPerPage);
+
+          // Stat totals
           var totalFunding = allBuyFunding.reduce(function(s, fp) { return s + fp.amount; }, 0);
-          var completedFunding = allBuyFunding.filter(function(fp) { return fp.status === "Completed"; });
-          var pendingFunding = allBuyFunding.filter(function(fp) { return fp.status === "Pending"; });
+          var completedCount = allBuyFunding.filter(function(fp) { return fp.status === "Completed"; }).length;
+          var pendingCount = allBuyFunding.filter(function(fp) { return fp.status === "Pending"; }).length;
+          var bfHasActive = !!bfSearch || !!bfDateFilter || bfStatusFilter !== "all";
+
           var bfmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+          var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+          function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+          function doBfSort(f) { if (bfSort === f) setBfDir(bfDir === "asc" ? "desc" : "asc"); else { setBfSort(f); setBfDir("desc"); } setBfPage(0); }
+
+          // Status Badge (same as Supplier Funding)
+          function bfStatusBadge(status) {
+            var cfg = {
+              "Completed": { bg: "#2E8B5714", color: "#059669", border: "#2E8B5730", icon: "\u2713" },
+              "Pending":   { bg: "#D9770620", color: "#F59E0B", border: "#D9770640", icon: "\u23f3" },
+              "Processing":{ bg: "#0EA5E920", color: "#38BDF8", border: "#0EA5E940", icon: "\u25b6" },
+              "Failed":    { bg: "#DC262615", color: "#EF4444", border: "#DC262640", icon: "!" },
+              "Cancelled": { bg: "#6B728020", color: "#94A3B8", border: "#6B728040", icon: "\u2717" }
+            }[status] || { bg: "#6B728020", color: "#94A3B8", border: "#6B728040", icon: null };
+            return <Badge label={status} bg={cfg.bg} color={cfg.color} border={cfg.border} icon={cfg.icon} />;
+          }
+
+          // Drill-ins
+          function drillToInvoice(invoiceId) {
+            setBiSearch(invoiceId); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0);
+            setBuyTab("invoices");
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+          }
+
+          // Render invoice reference with truncation + count
+          function renderInvoiceRef(fp) {
+            var ids = fp.invoiceIds || (fp.invoiceId ? [fp.invoiceId] : []);
+            if (ids.length === 0) return <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>;
+            if (ids.length === 1) return <span onClick={function(e) { e.stopPropagation(); drillToInvoice(ids[0]); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Drill into " + ids[0]}>{ids[0]}</span>;
+            return <span><span onClick={function(e) { e.stopPropagation(); drillToInvoice(ids[0]); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Drill into " + ids[0]}>{ids[0]}</span><span style={{ color: "var(--muted)", marginLeft: 4, fontSize: 10 }} title={"Bundle covering " + ids.length + " invoices: " + ids.join(", ")}>(+{ids.length - 1} more)</span></span>;
+          }
+
+          // Column defs (buyer side — includes Supplier col instead of Bank)
+          var bfCols = [
+            { key: "id", label: "Payment Ref", sortable: true, tooltip: "Unique reference for this supplier payment queue entry." },
+            { key: "invoice", label: "Invoice", sortable: false, tooltip: null },
+            { key: "supplierName", label: "Supplier", sortable: true, tooltip: "Supplier receiving the funding." },
+            { key: "amount", label: "Amount", sortable: true, tooltip: "Net amount paid to supplier (after deductions)." },
+            { key: "ccy", label: "CCY", sortable: false, tooltip: null },
+            { key: "program", label: "Program", sortable: false, tooltip: "Funding program the payment was drawn from." },
+            { key: "status", label: "Status", sortable: true, tooltip: null },
+            { key: "executed", label: "Executed", sortable: true, tooltip: "Date funds executed. Shows created date if still pending." },
+            { key: "_x", label: "", sortable: false, tooltip: null }
+          ];
 
           return <div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Funding Payments" value={String(allBuyFunding.length)} accent="#0EA5E9" icon={"\u25c6"} />
-              <StatCard label="Total Funded" value={money(r2(totalFunding), displayCcy)} accent="#059669" icon={"\u25b2"} />
-              <StatCard label="Completed" value={String(completedFunding.length)} accent="#059669" icon={"\u2713"} />
-              <StatCard label="Pending" value={String(pendingFunding.length)} accent="#D97706" icon={"\u23f3"} />
+            {/* Filter-aware stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Funding Payments" value={String(allBuyFunding.length)} sub={bfHasActive && buyFunding.length !== allBuyFunding.length ? buyFunding.length + " shown" : (allBuyFunding.length === 0 ? "none" : "to suppliers")} accent={allBuyFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Total Funded" value={money(r2(totalFunding), displayCcy)} sub={bfHasActive && buyFunding.length !== allBuyFunding.length ? money(r2(buyFunding.reduce(function(s, fp) { return s + fp.amount; }, 0)), displayCcy) + " shown" : "gross of deductions"} accent={totalFunding > 0 ? "#10B981" : "#64748B"} />
+              <StatCard label="Completed" value={String(completedCount)} sub={bfHasActive ? buyFunding.filter(function(fp) { return fp.status === "Completed"; }).length + " shown" : (completedCount > 0 ? "settled" : "\u2014")} accent={completedCount > 0 ? "#10B981" : "#64748B"} />
+              <StatCard label="Pending" value={String(pendingCount)} sub={bfHasActive ? buyFunding.filter(function(fp) { return fp.status === "Pending"; }).length + " shown" : (pendingCount > 0 ? "awaiting execution" : "none")} accent={pendingCount > 0 ? "#D97706" : "#64748B"} />
             </div>
+
+            {/* Filter bar */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+              <input type="text" value={bfSearch} onChange={function(e) { setBfSearch(e.target.value); setBfPage(0); }} placeholder="Search ref, invoice, supplier, program..." style={activeStyle(!!bfSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 260 })} />
+              <select value={bfStatusFilter} onChange={function(e) { setBfStatusFilter(e.target.value); setBfPage(0); }} style={activeStyle(bfStatusFilter !== "all", Object.assign({}, fltSel, {}))}>
+                <option value="all">All Statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Processing">Processing</option>
+                <option value="Completed">Completed</option>
+                <option value="Failed">Failed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+              <input type="date" value={bfDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setBfDateFilter(v); setBfPage(0); } }} style={activeStyle(!!bfDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
+              {bfHasActive && <button onClick={function() { setBfSearch(""); setBfDateFilter(""); setBfStatusFilter("all"); setBfPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              <span style={{ marginLeft: "auto", fontSize: 11.5, color: bfHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: bfHasActive ? 600 : 400 }}>{bfHasActive && buyFunding.length !== allBuyFunding.length ? buyFunding.length + " of " + allBuyFunding.length : buyFunding.length} payment{buyFunding.length === 1 ? "" : "s"}</span>
+            </div>
+
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-              {allBuyFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No funding payments for invoices from this buyer.</div>}
-              {allBuyFunding.length > 0 && <div style={{ overflowX: "auto" }}>
+              {buyFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{bfHasActive ? "No funding payments match filters." : "No funding payments for invoices from this buyer."}</div>}
+              {buyFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Program", "Status", "Executed", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                  {allBuyFunding.map(function(fp) {
+                  <thead><tr>{bfCols.map(function(col) {
+                    var isSort = col.sortable && bfSort === col.key;
+                    return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doBfSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (bfDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                  })}</tr></thead>
+                  {bfPageItems.map(function(fp) {
                     var sc = fp.status === "Completed" ? "#059669" : "#D97706";
                     var isBfExp = fundPayExp === "bf-" + fp.id;
+                    var hasDeductions = fp.deductionTotal > 0;
+                    var isBundle = (fp.invoiceIds && fp.invoiceIds.length > 1) || fp.isBundle;
+                    var whenDisplay = fp.executedDisplay || (fp.createdDisplay ? fp.createdDisplay : "\u2014");
+                    var whenIsFallback = !fp.executedDisplay && !!fp.createdDisplay;
                     return (
                       <tbody key={fp.id}>
                         <tr style={{ borderBottom: isBfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isBfExp ? null : "bf-" + fp.id); }}>
-                          <td style={Object.assign({}, bfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
-                          <td style={Object.assign({}, bfmc, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.supplierName}</td>
-                          <td style={Object.assign({}, bfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
+                          <td style={Object.assign({}, bfmc, { color: "var(--accent)", fontWeight: 600 })}>
+                            {fp.id}
+                            {isBundle && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", letterSpacing: "0.04em", textTransform: "uppercase" }} title={fp.invoiceIds ? "Bundle covering " + fp.invoiceIds.length + " invoices" : "Bundle payment"}>Bundle</span>}
+                          </td>
+                          <td style={bfmc}>{renderInvoiceRef(fp)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(fp.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + fp.supplierName}>{fp.supplierName}</span> : "\u2014"}</td>
+                          <td style={Object.assign({}, bfmc, { fontWeight: 600 })}>
+                            {money(fp.amount, fp.currency)}
+                            {hasDeductions && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262640", letterSpacing: "0.04em", textTransform: "uppercase" }} title={"Net of " + money(fp.deductionTotal, fp.currency) + " deductions"}>Net</span>}
+                          </td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.programName || "\u2014"}</td>
-                          <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}>{bfStatusBadge(fp.status)}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: whenIsFallback ? "var(--muted)" : "var(--text-secondary)", fontStyle: whenIsFallback ? "italic" : "normal" }} title={whenIsFallback ? "Not yet executed \u2014 showing created date" : undefined}>{whenDisplay}{whenIsFallback && <span style={{ marginLeft: 4, fontSize: 8, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>(created)</span>}</td>
                           <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isBfExp ? null : "bf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBfExp ? "var(--accent)" : "var(--card-hover)", color: isBfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBfExp ? "\u25b4" : "\u25be"}</button></td>
                         </tr>
                         {isBfExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                           <div style={{ padding: "16px 22px" }}>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                              {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Queue ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || "\u2014"}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
+                              {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Payment Ref</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>{isBundle ? "Invoices (" + ((fp.invoiceIds || []).length || 1) + ")" : "Invoice"}</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || "\u2014"}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
                               {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Execution Details</div><div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: sc, fontWeight: 600 })}>{fp.status}</span></div><div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div><div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>{fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}<div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div><div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div></div>; })()}
                             </div>
                             <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>{fp.notes && fp.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{fp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={fundPayExp === "bf-" + fp.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); saveSPQEntry(fp.id); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); saveSPQEntry(fp.id); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); saveSPQEntry(fp.id); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); saveSPQEntry(fp.id); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
@@ -8332,6 +8636,25 @@ export default function FactoringDashboard() {
                     );
                   })}
                 </table>
+              </div>}
+              {/* Pagination */}
+              {buyFunding.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(bfCurPage * bfPerPage + 1) + "-" + Math.min((bfCurPage + 1) * bfPerPage, buyFunding.length) + " of " + buyFunding.length}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                  <select value={bfPerPage} onChange={function(e) { setBfPerPage(parseInt(e.target.value, 10)); setBfPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <button onClick={function() { setBfPage(0); }} disabled={bfCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: bfCurPage === 0 ? 0.3 : 1, cursor: bfCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                  <button onClick={function() { setBfPage(Math.max(0, bfCurPage - 1)); }} disabled={bfCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: bfCurPage === 0 ? 0.3 : 1, cursor: bfCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                  <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={bfTotalPages} value={bfCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= bfTotalPages) setBfPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {bfTotalPages}</span>
+                  <button onClick={function() { setBfPage(Math.min(bfTotalPages - 1, bfCurPage + 1)); }} disabled={bfCurPage >= bfTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: bfCurPage >= bfTotalPages - 1 ? 0.3 : 1, cursor: bfCurPage >= bfTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                  <button onClick={function() { setBfPage(bfTotalPages - 1); }} disabled={bfCurPage >= bfTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: bfCurPage >= bfTotalPages - 1 ? 0.3 : 1, cursor: bfCurPage >= bfTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                </div>
               </div>}
             </div>
           </div>;
