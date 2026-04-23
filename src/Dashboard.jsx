@@ -2278,6 +2278,7 @@ export default function FactoringDashboard() {
   var bhe1 = useState(null), bhExp = bhe1[0], setBhExp = bhe1[1];
   var ptb1 = useState("outbound_queue"), payTab = ptb1[0], setPayTab = ptb1[1];
   var locp1 = useState(""), landingChartProg = locp1[0], setLandingChartProg = locp1[1]; // "" = all programs
+  var pfp1 = useState(null), pendingFocusPayId = pfp1[0], setPendingFocusPayId = pfp1[1]; // drill-in focus intent from landing
   var pds1 = useState(""), pdSearch = pds1[0], setPdSearch = pds1[1];
   var pdc1 = useState(""), pdCcyFilter = pdc1[0], setPdCcyFilter = pdc1[1];
   var pdd1 = useState(""), pdDateFilter = pdd1[0], setPdDateFilter = pdd1[1];
@@ -2326,6 +2327,63 @@ export default function FactoringDashboard() {
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
 
   var viewData = useMemo(function() { return processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB); }, [viewDate, dataVer]);
+
+  // Drill-in focus: when pendingFocusPayId is set and we're on the payments
+  // view + incoming/outgoing tab, compute which page the payment lives on,
+  // advance inPage to that page, then scrollIntoView on the row. Clears the
+  // pending id once done so this fires once per landing click.
+  useEffect(function() {
+    if (!pendingFocusPayId || view !== "payments") return;
+    if (payTab !== "incoming" && payTab !== "outgoing_db") return;
+    var pageSize = 20;
+    var list;
+    if (payTab === "incoming") {
+      list = PAYMENTS_DB.filter(function(p) {
+        if ((p.direction || "inbound") !== "inbound") return false;
+        var s = getPayStatus(p);
+        if (payFilter !== "all" && payFilter !== s) return false;
+        if (pdCcyFilter && p.currency !== pdCcyFilter) return false;
+        if (pdDateFilter && p.date !== pdDateFilter) return false;
+        if (pdSearch) {
+          var q = pdSearch.toLowerCase();
+          if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false;
+        }
+        return true;
+      }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+    } else {
+      list = PAYMENTS_DB.filter(function(p) {
+        if (p.direction !== "outbound") return false;
+        if (pdCcyFilter && p.currency !== pdCcyFilter) return false;
+        if (pdDateFilter && p.date !== pdDateFilter) return false;
+        if (pdSearch) {
+          var q2 = pdSearch.toLowerCase();
+          if (p.paymentId.toLowerCase().indexOf(q2) === -1 && (p.reference || "").toLowerCase().indexOf(q2) === -1) return false;
+        }
+        return true;
+      }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+    }
+    var idx = list.findIndex(function(p) { return p.paymentId === pendingFocusPayId; });
+    if (idx < 0) {
+      // Payment isn't in the current filtered set; clear the focus so we don't retry.
+      setPendingFocusPayId(null);
+      return;
+    }
+    var targetPage = Math.floor(idx / pageSize);
+    if (inPage !== targetPage) {
+      setInPage(targetPage);
+      // effect will re-run after page update; scroll happens on the final pass below
+      return;
+    }
+    // We're on the right page — scroll on next frame so React has committed the row
+    var raf = requestAnimationFrame(function() {
+      var el = document.querySelector('[data-payment-row="' + pendingFocusPayId + '"]');
+      if (el && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      setPendingFocusPayId(null);
+    });
+    return function() { cancelAnimationFrame(raf); };
+  }, [pendingFocusPayId, view, payTab, inPage, payFilter, pdSearch, pdCcyFilter, pdDateFilter, dataVer]);
 
   // Precompute supplier dilution rates for eligibility checks
   var supDilRates = useMemo(function() {
@@ -5281,7 +5339,7 @@ export default function FactoringDashboard() {
                       <tbody>
                         {unallocPayments.map(function(p) {
                           var rem = getPayRemaining(p);
-                          return <tr key={p.paymentId} onClick={function() { setView("payments"); setPayTab("incoming"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                          return <tr key={p.paymentId} onClick={function() { setPayFilter("all"); setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); setExpPay(p.paymentId); setPendingFocusPayId(p.paymentId); setView("payments"); setPayTab("incoming"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                             <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{p.paymentId}</td>
                             <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{fmt(p.date)}</td>
                             <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(rem), p.currency)}</td>
@@ -5313,7 +5371,7 @@ export default function FactoringDashboard() {
                       </tr></thead>
                       <tbody>
                         {pendingOutbound.map(function(p) {
-                          return <tr key={p.paymentId} onClick={function() { setView("payments"); setPayTab("outgoing_db"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                          return <tr key={p.paymentId} onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); setExpPay(p.paymentId); setPendingFocusPayId(p.paymentId); setView("payments"); setPayTab("outgoing_db"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                             <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{p.paymentId}</td>
                             <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{fmt(p.date)}</td>
                             <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(p.amount), p.currency)}</td>
@@ -5349,7 +5407,7 @@ export default function FactoringDashboard() {
                       </tr></thead>
                       <tbody>
                         {eligibleInvoices.map(function(inv) {
-                          return <tr key={inv.id} onClick={function() { setView("manage"); setManageTab("invoices"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                          return <tr key={inv.id} onClick={function() { toast.info("Pending Funding queue coming soon", "Approve & fund from the supplier's overview for now."); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                             <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{inv.id}</td>
                             <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>
                             <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(inv.maxAvailableCapital), inv.currency)}</td>
@@ -9950,7 +10008,7 @@ export default function FactoringDashboard() {
                       var isExp = expPay === pay.paymentId;
                       var totalRoutings = st.linkedSPQs.length + st.linkedFlows.length;
                       return <React.Fragment key={pay.paymentId}>
-                        <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExp ? "#7C3AED08" : "transparent" }} onClick={function() { setExpPay(isExp ? null : pay.paymentId); }}>
+                        <tr data-payment-row={pay.paymentId} style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExp ? "#7C3AED08" : "transparent" }} onClick={function() { setExpPay(isExp ? null : pay.paymentId); }}>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED", fontWeight: 600 }}>{pay.paymentId}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
@@ -10065,7 +10123,7 @@ export default function FactoringDashboard() {
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
                   var isPayExp = expPay === pay.paymentId;
                   return <tbody key={pay.paymentId}>
-                    <tr style={{ borderBottom: isPayExp ? "none" : "1px solid var(--border)", background: isPayExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setExpPay(isPayExp ? null : pay.paymentId); }}>
+                    <tr data-payment-row={pay.paymentId} style={{ borderBottom: isPayExp ? "none" : "1px solid var(--border)", background: isPayExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setExpPay(isPayExp ? null : pay.paymentId); }}>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{pay.paymentId}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
