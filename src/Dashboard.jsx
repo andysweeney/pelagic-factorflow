@@ -2252,12 +2252,39 @@ export default function FactoringDashboard() {
   var pif2 = useState(""), piBuyFilter = pif2[0], setPiBuyFilter = pif2[1];
   var pif3 = useState(""), piInvStFilter = pif3[0], setPiInvStFilter = pif3[1];
   var pif4 = useState(""), piFundStFilter = pif4[0], setPiFundStFilter = pif4[1];
+  var pisr1 = useState("invoiceDate"), piSort = pisr1[0], setPiSort = pisr1[1];
+  var pidr1 = useState("desc"), piDir = pidr1[0], setPiDir = pidr1[1];
+  var pip1 = useState(0), piPage = pip1[0], setPiPage = pip1[1];
+  var pips1 = useState(25), piPerPage = pips1[0], setPiPerPage = pips1[1];
   var pas1 = useState(""), paSearch = pas1[0], setPaSearch = pas1[1];
   var paf1 = useState(""), paSupFilter = paf1[0], setPaSupFilter = paf1[1];
   var paf2 = useState(""), paDateFilter = paf2[0], setPaDateFilter = paf2[1];
+  var pasr1 = useState("date"), paSort = pasr1[0], setPaSort = pasr1[1];
+  var padr1 = useState("desc"), paDir = padr1[0], setPaDir = padr1[1];
+  var pap1 = useState(0), paPage = pap1[0], setPaPage = pap1[1];
+  var paps1 = useState(25), paPerPage = paps1[0], setPaPerPage = paps1[1];
   var phs1 = useState(""), phSearch = phs1[0], setPhSearch = phs1[1];
   var phf1 = useState(""), phSupFilter = phf1[0], setPhSupFilter = phf1[1];
   var phf2 = useState(""), phDateFilter = phf2[0], setPhDateFilter = phf2[1];
+  var phsr1 = useState("date"), phSort = phsr1[0], setPhSort = phsr1[1];
+  var phdr1 = useState("desc"), phDir = phdr1[0], setPhDir = phdr1[1];
+  var php1 = useState(0), phPage = php1[0], setPhPage = php1[1];
+  var phps1 = useState(25), phPerPage = phps1[0], setPhPerPage = phps1[1];
+  var pfs1 = useState(""), pfSearch = pfs1[0], setPfSearch = pfs1[1];
+  var pff1 = useState(""), pfDateFilter = pff1[0], setPfDateFilter = pff1[1];
+  var pff2 = useState(""), pfStatusFilter = pff2[0], setPfStatusFilter = pff2[1];
+  var pfsr1 = useState("createdAt"), pfSort = pfsr1[0], setPfSort = pfsr1[1];
+  var pfdr1 = useState("desc"), pfDir = pfdr1[0], setPfDir = pfdr1[1];
+  var pfp1 = useState(0), pfPage = pfp1[0], setPfPage = pfp1[1];
+  var pfps1 = useState(25), pfPerPage = pfps1[0], setPfPerPage = pfps1[1];
+  var bss1 = useState(""), bsSearch = bss1[0], setBsSearch = bss1[1];
+  var bst1 = useState(""), bsTypeFilter = bst1[0], setBsTypeFilter = bst1[1];
+  var bsdr1 = useState(""), bsDirFilter = bsdr1[0], setBsDirFilter = bsdr1[1];
+  var bsdf1 = useState(""), bsDateFrom = bsdf1[0], setBsDateFrom = bsdf1[1];
+  var bsdt1 = useState(""), bsDateTo = bsdt1[0], setBsDateTo = bsdt1[1];
+  var bsp1 = useState(0), bsPage = bsp1[0], setBsPage = bsp1[1];
+  var bsps1 = useState(25), bsPerPage = bsps1[0], setBsPerPage = bsps1[1];
+  var bse1 = useState(null), bsExp = bse1[0], setBsExp = bse1[1];
   var pae1 = useState(null), paExp = pae1[0], setPaExp = pae1[1];
   var phe1 = useState(null), phExp = phe1[0], setPhExp = phe1[1];
   var sas1 = useState(""), saSearch = sas1[0], setSaSearch = sas1[1];
@@ -8667,7 +8694,7 @@ export default function FactoringDashboard() {
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
               {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (progTab === t ? "var(--accent)" : "var(--border)"), cursor: "pointer", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", boxShadow: progTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
             </div>
-            <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
+            <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); setPiPage(0); setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPaPage(0); setPaExp(null); setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPhPage(0); setPhExp(null); setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPfPage(0); setFundPayExp(null); setPfSearch(""); setPfDateFilter(""); setPfStatusFilter(""); setBsPage(0); setBsExp(null); setBsSearch(""); setBsTypeFilter(""); setBsDirFilter(""); setBsDateFrom(""); setBsDateTo(""); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
               <option value="">Select Program...</option>
               {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
             </select>
@@ -8815,51 +8842,126 @@ export default function FactoringDashboard() {
               var donutArcs = donutData.map(function(d) { var pct = donutTotal > 0 ? d.count / donutTotal : 0; var dashLen = pct * donutCirc; var arc = { dasharray: dashLen + " " + (donutCirc - dashLen), offset: -donutOffset, color: d.color, label: d.label, count: d.count, pct: Math.round(pct * 100) }; donutOffset += dashLen; return arc; });
 
               return <div>
+                {/* Action row: Pending Disbursals + Overdue Invoices */}
+                {(function() {
+                  // Pending disbursals: funding/holdback/remittance SPQ items for this program, Pending status
+                  var pendingSpq = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) {
+                    if (spq.status !== "Pending") return false;
+                    // Funding payments tied to program invoices
+                    if (spq.type === "funding" && (progInvIdSet[spq.invoiceId] || (spq.invoiceIds && spq.invoiceIds.some(function(iid) { return progInvIdSet[iid]; })))) return true;
+                    // Holdback returns linked to program invoices
+                    if (spq.sourceInvoiceId && progInvIdSet[spq.sourceInvoiceId]) return true;
+                    // Remittances with this program
+                    if (spq.type === "remittance" && spq.programId === selectedProgram) return true;
+                    return false;
+                  });
+                  var pendingSum = pendingSpq.reduce(function(s, x) { return s + (x.amount || 0); }, 0);
+                  // Overdue invoices
+                  var overdueInvs = progInvs.filter(function(inv) { return inv.dueDate < viewDate && (inv.balanceOwed || 0) > 0.01 && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.invoiceStatus !== "Cancelled" && inv.invoiceStatus !== "Buyer Default"; });
+                  var overdueSum = overdueInvs.reduce(function(s, inv) { return s + (inv.balanceOwed || 0); }, 0);
+                  function drillToInvoice(invoiceId) { setQ(invoiceId); setPg(0); setProgTab("invoices"); }
+                  function drillToInvoicesTab() { setQ(""); setPg(0); setProgTab("invoices"); }
+                  function drillToFundingTab() { setProgTab("funding"); setPg(0); }
+                  function miniTable(title, items, sum, accent, emptyMsg, rowRenderer, onViewAll) {
+                    return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid " + (items.length > 0 ? accent + "40" : "var(--border)"), overflow: "hidden" }}>
+                      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: items.length > 0 ? accent : "var(--muted)" }}></div>
+                          <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text)" }}>{title}</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: items.length > 0 ? accent : "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{items.length}</div>
+                        </div>
+                        {items.length > 0 && <div style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: accent, fontWeight: 600 }}>{money(r2(sum), displayCcy)}</div>}
+                      </div>
+                      {items.length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 11, fontStyle: "italic" }}>{emptyMsg}</div>}
+                      {items.length > 0 && <>
+                        <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <tbody>
+                              {items.slice(0, 6).map(rowRenderer)}
+                            </tbody>
+                          </table>
+                        </div>
+                        {items.length > 6 && <div onClick={onViewAll} style={{ padding: "8px 14px", borderTop: "1px solid var(--border)", fontSize: 10, color: "var(--muted)", fontWeight: 600, textAlign: "center", cursor: "pointer", letterSpacing: "0.04em", textTransform: "uppercase" }}>+ {items.length - 6} more \u2014 view all</div>}
+                      </>}
+                    </div>;
+                  }
+                  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 18 }}>
+                    {miniTable("Pending Disbursals", pendingSpq, pendingSum, "#7C3AED", "No pending disbursals", function(spq) {
+                      var typeLabel = spq.type === "funding" ? "Funding" : spq.type === "remittance" ? "Remittance" : "Holdback";
+                      return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { drillToFundingTab(); }}>
+                        <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>{spq.id}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}><span style={{ padding: "1px 6px", borderRadius: 3, background: "#7C3AED20", color: "#A78BFA", border: "1px solid #7C3AED40", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{typeLabel}</span></td>
+                        <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#A78BFA", fontWeight: 600, whiteSpace: "nowrap", textAlign: "right" }}>{money(r2(spq.amount || 0), spq.currency)}</td>
+                      </tr>;
+                    }, drillToFundingTab)}
+                    {miniTable("Overdue Invoices", overdueInvs, overdueSum, "#EF4444", "No overdue invoices", function(inv) {
+                      return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { drillToInvoice(inv.id); }}>
+                        <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>{inv.id}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                        <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#EF4444", fontWeight: 600, whiteSpace: "nowrap", textAlign: "right" }}>{money(r2(inv.balanceOwed || 0), inv.currency)}</td>
+                      </tr>;
+                    }, drillToInvoicesTab)}
+                  </div>;
+                })()}
+
                 {/* Top section: Left (Balance+Stats ~50%) + Right (2 Dilution cards ~50%) */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 22 }}>
                   {/* Left: Combined Balance & Stats panel */}
                   <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "22px 26px", display: "flex", flexDirection: "column" }}>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)", fontWeight: 600 }}>Balance Owed</div>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)", fontWeight: 600 }}>Balance Owed</div>
                       <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{money(r2(balanceOwed), displayCcy)}</div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px", paddingBottom: 14, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#059669" }}>Available Funds</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "#059669" }}>Available Funds</div>
                         <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: avail >= 0 ? "#059669" : "#DC2626" }}>{money(r2(avail), displayCcy)}</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706" }}>Awaiting Funding</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "#D97706" }}>Awaiting Funding</div>
                         <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: approvedCapital > 0 ? "#D97706" : "var(--muted)" }}>{approvedCapital > 0 ? money(r2(approvedCapital), displayCcy) : "\u2014"}</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#7C3AED" }}>Awaiting Disbursal</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "#7C3AED" }}>Awaiting Disbursal</div>
                         <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pendingDisbursals > 0 ? "#7C3AED" : "var(--muted)" }}>{pendingDisbursals > 0 ? money(r2(pendingDisbursals), displayCcy) : "\u2014"}</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Value</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Value</div>
                         <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(collateralValue), displayCcy)}</div>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Cover</div>
-                        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: collateralCover >= 1 ? "#059669" : "#DC2626" }}>{collateralCover > 0 ? (collateralCover * 100).toFixed(1) + "%" : "\u2014"}</div>
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                          <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Cover</div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                            {collateralCover > 0 && (function() {
+                              var status = collateralCover >= 1.2 ? "Well covered" : collateralCover >= 1.0 ? "Adequately covered" : collateralCover >= 0.8 ? "Undercovered" : "Significantly undercovered";
+                              var color = collateralCover >= 1.0 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626";
+                              return <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: color }}>{status}</span>;
+                            })()}
+                            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: collateralCover >= 1 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626" }}>{collateralCover > 0 ? (collateralCover * 100).toFixed(1) + "%" : "\u2014"}</div>
+                          </div>
+                        </div>
+                        <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, overflow: "visible", border: "1px solid var(--border)" }}>
+                          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.min(collateralCover / 2 * 100, 100) + "%", background: collateralCover >= 1.0 ? "#059669" : collateralCover >= 0.8 ? "#D97706" : "#DC2626", borderRadius: 2, transition: "width 0.3s ease" }}></div>
+                          <div style={{ position: "absolute", left: "50%", top: -2, bottom: -2, width: 2, background: "var(--muted)", opacity: 0.5 }} title="100% cover"></div>
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px", flex: 1 }}>
                       <div style={{ borderLeft: "3px solid #2B4C7E", paddingLeft: 12 }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Total Invoices</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Total Invoices</div>
                         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{String(progInvs.length)}</div>
                       </div>
                       <div style={{ borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
                         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
                       </div>
                       <div style={{ borderLeft: "3px solid #C08B30", paddingLeft: 12 }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
                         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalIntOS), displayCcy)}</div>
                       </div>
                       <div style={{ borderLeft: "3px solid #C0392B", paddingLeft: 12 }}>
-                        <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
                         <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                       </div>
                     </div>
@@ -8867,12 +8969,12 @@ export default function FactoringDashboard() {
                   {/* Right: 2 dilution cards */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                     <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Program Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Program Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                       <div style={{ fontSize: 24, fontWeight: 700, color: dilRate > 10 ? "#DC2626" : dilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilRate > 0 ? dilRate.toFixed(1) + "%" : "0.0%"}</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNum), displayCcy)}</span></div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDen), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNum), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                         <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pdil30.rate > 10 ? "#DC2626" : pdil30.rate > 5 ? "#D97706" : "#059669" }}>{pdil30.rate > 0 ? pdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(pdil30.numerator, displayCcy)} / {money(pdil30.denominator, displayCcy)}</div></div>
@@ -8880,12 +8982,12 @@ export default function FactoringDashboard() {
                       </div>
                     </div>
                     <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                       <div style={{ fontSize: 24, fontWeight: 700, color: fdilRate > 10 ? "#DC2626" : fdilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilRate > 0 ? fdilRate.toFixed(1) + "%" : "0.0%"}</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNum), displayCcy)}</span></div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDen), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNum), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                         <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fpdil30.rate > 10 ? "#DC2626" : fpdil30.rate > 5 ? "#D97706" : "#059669" }}>{fpdil30.rate > 0 ? fpdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fpdil30.numerator, displayCcy)} / {money(fpdil30.denominator, displayCcy)}</div></div>
@@ -8894,7 +8996,7 @@ export default function FactoringDashboard() {
                     </div>
                   </div>
                 </div>
-                {/* Capital Summary Table */}
+                {/* Capital Summary */}
                 {(function() {
                   var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved"; });
                   var totalInvValue = 0, totalCapAdv = 0, totalCapReturned = 0, totalCapOS = 0, totalCapLost = 0, totalCapAtRisk = 0;
@@ -8911,34 +9013,26 @@ export default function FactoringDashboard() {
                     if (inv.fundingStatus === "at_risk" || inv.fundingStatus === "recovery_mode") { totalCapAtRisk += inv.capitalOutstanding || 0; nAtRisk++; }
                   });
                   var advPct = totalInvValue > 0.01 ? (totalCapAdv / totalInvValue * 100).toFixed(1) : "0.0";
-                  var cmc = { padding: "6px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", verticalAlign: "top" };
-                  var cnt = { fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 };
-                  var hdr = { padding: "8px 16px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "2px solid var(--border)", textAlign: "right" };
+                  function tile(label, value, count, color, accent) {
+                    return <div style={{ padding: "14px 16px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)", borderLeft: "3px solid " + (accent || color) }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 6 }}>{label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color, lineHeight: 1.15 }}>{value}</div>
+                      {count !== null && <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>{count}</div>}
+                    </div>;
+                  }
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 22 }}>
                     <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Capital Summary</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Capital Summary</div>
                     </div>
-                    <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>
-                          <th style={Object.assign({}, hdr, { textAlign: "left" })}>Invoice Value Funded</th>
-                          <th style={hdr}>Capital Advanced</th>
-                          <th style={hdr}>Capital Returned</th>
-                          <th style={hdr}>Capital Outstanding</th>
-                          <th style={hdr}>Capital Lost</th>
-                          <th style={hdr}>Capital At Risk / Recovery</th>
-                        </tr></thead>
-                        <tbody>
-                          <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={Object.assign({}, cmc, { textAlign: "left", fontWeight: 700 })}><div>{money(r2(totalInvValue), displayCcy)}</div><div style={cnt}>{nFunded} invoices</div></td>
-                            <td style={Object.assign({}, cmc, { color: "var(--accent)" })}><div>{money(r2(totalCapAdv), displayCcy)} <span style={{ fontSize: 10, color: "var(--muted)" }}>({advPct}%)</span></div><div style={cnt}>{nFunded} invoices</div></td>
-                            <td style={Object.assign({}, cmc, { color: "#059669" })}><div>{money(r2(totalCapReturned), displayCcy)}</div><div style={cnt}>{nReturned} invoices</div></td>
-                            <td style={Object.assign({}, cmc, { color: "var(--text)", fontWeight: 700 })}><div>{money(r2(totalCapOS), displayCcy)}</div><div style={cnt}>{nOS} invoices</div></td>
-                            <td style={Object.assign({}, cmc, { color: totalCapLost > 0 ? "#DC2626" : "var(--muted)", fontWeight: totalCapLost > 0 ? 700 : 400 })}><div>{money(r2(totalCapLost), displayCcy)}</div><div style={cnt}>{nLost} invoices</div></td>
-                            <td style={Object.assign({}, cmc, { color: totalCapAtRisk > 0 ? "#D97706" : "var(--muted)", fontWeight: totalCapAtRisk > 0 ? 700 : 400 })}><div>{money(r2(totalCapAtRisk), displayCcy)}</div><div style={cnt}>{nAtRisk} invoices</div></td>
-                          </tr>
-                        </tbody>
-                      </table>
+                    <div style={{ padding: "18px 22px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+                        {tile("Invoice Value Funded", money(r2(totalInvValue), displayCcy), nFunded + " invoice" + (nFunded === 1 ? "" : "s"), "var(--text)", "#64748B")}
+                        {tile("Capital Advanced", money(r2(totalCapAdv), displayCcy) + " (" + advPct + "%)", nFunded + " invoice" + (nFunded === 1 ? "" : "s"), "var(--accent)", "var(--accent)")}
+                        {tile("Capital Returned", money(r2(totalCapReturned), displayCcy), nReturned + " of " + nFunded + " settled", "#059669", "#059669")}
+                        {tile("Capital Outstanding", money(r2(totalCapOS), displayCcy), nOS + " invoice" + (nOS === 1 ? "" : "s"), totalCapOS > 0 ? "var(--text)" : "var(--muted)", "#0EA5E9")}
+                        {tile("Capital Lost", money(r2(totalCapLost), displayCcy), nLost === 0 ? "none" : nLost + " invoice" + (nLost === 1 ? "" : "s"), totalCapLost > 0 ? "#DC2626" : "var(--muted)", "#DC2626")}
+                        {tile("Capital At Risk / Recovery", money(r2(totalCapAtRisk), displayCcy), nAtRisk === 0 ? "none" : nAtRisk + " invoice" + (nAtRisk === 1 ? "" : "s"), totalCapAtRisk > 0 ? "#D97706" : "var(--muted)", "#D97706")}
+                      </div>
                     </div>
                   </div>;
                 })()}
@@ -8990,7 +9084,7 @@ export default function FactoringDashboard() {
 
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 22 }}>
                     <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Interest Summary</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Interest Summary</div>
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -9116,7 +9210,7 @@ export default function FactoringDashboard() {
 
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px", marginBottom: 22 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Balance Owed by Status Over Time</div>
+                      <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Balance Owed by Status Over Time</div>
                       <div style={{ display: "flex", gap: 12 }}>
                         {layers.map(function(l) { return <div key={l.key} style={{ display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: l.color, opacity: 0.7 }}></div><span style={{ fontSize: 9.5, color: "var(--muted)" }}>{l.label}</span></div>; })}
                       </div>
@@ -9200,7 +9294,7 @@ export default function FactoringDashboard() {
 
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px", marginBottom: 22 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Utilisation Rate Over Time</div>
+                      <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Utilisation Rate Over Time</div>
                       <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: utilColor }}>{lastUtil.toFixed(1)}%</div>
                     </div>
                     <svg width={cW} height={cH} style={{ display: "block", width: "100%", height: "auto" }} viewBox={"0 0 " + cW + " " + cH}>
@@ -9213,32 +9307,119 @@ export default function FactoringDashboard() {
                 })()}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 22 }}>
                   <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid var(--accent)", color: "var(--text)" }}>Program Details</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px", fontSize: 13 }}>
-                      <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Name: </span><strong style={{ fontSize: 14 }}>{prog.name}</strong></div>
-                      <div><span style={{ color: "var(--muted)" }}>ID: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{prog.id}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Currency: </span><strong>{prog.currency}</strong></div>
-                      <div><span style={{ color: "var(--muted)" }}>Max Size: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{money(prog.maxSize, prog.currency)}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Funder Contributions: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(funderInflows), prog.currency)}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Buyer Receipts: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(buyerReceipts), prog.currency)}</span></div>
-                      <div style={{ paddingLeft: 12 }}><span style={{ color: "var(--muted)", fontStyle: "italic" }}>of which Holdback: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(holdbackReceived), prog.currency)}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Total Funds In: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(r2(totalInflows), prog.currency)}</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Disbursed Funds: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalDisbursed), prog.currency)}</span>{pendingDisbursals > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED" }}> ({money(r2(pendingDisbursals), prog.currency)} pending)</span>}</div>
-                      <div><span style={{ color: "var(--muted)" }}>Capital Advanced: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fundedBalance), prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#38BDF8" }}> (+{money(r2(approvedCapital), prog.currency)} approved)</span>}</div>
-                      <div><span style={{ color: "var(--muted)" }}>Total Funds Out: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{money(r2(totalFundsOut), prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#38BDF8" }}> (+{money(r2(approvedCapital), prog.currency)})</span>}</div>
-                      <div><span style={{ color: "var(--muted)" }}>Available: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: avail > 0 ? "#059669" : "#DC2626", fontWeight: 700 }}>{money(avail, prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#38BDF8" }}> ({money(r2(avail - approvedCapital), prog.currency)} after approved)</span>}</div>
-                      <div><span style={{ color: "var(--muted)" }}>Utilisation Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: parseFloat(utilisation) > 90 ? "#DC2626" : parseFloat(utilisation) > 70 ? "#D97706" : "#059669", fontWeight: 700 }}>{utilisation}%</span><span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 6 }}>({money(r2(fundedBalance), prog.currency)} / {money(r2(utilisationDenom), prog.currency)})</span></div>
-                      <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}><span style={{ color: "var(--muted)" }}>Max Advance Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{(prog.maxAdvanceRate * 100).toFixed(0)}%</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Min Interest Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(prog.minInterestRate * 100).toFixed(1)}%</span></div>
-                      <div><span style={{ color: "var(--muted)" }}>Max Invoice Term: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{prog.maxInvoiceTerm}d</span></div>
-                      <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 4 }}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)" }}>Status Thresholds: </span><span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span style={{ color: "#EF4444" }}>Overdue {prog.thresholdOverdue || 1}d</span> → <span style={{ color: "#8B5CF6" }}>At Risk {prog.thresholdAtRisk || 7}d</span> → <span style={{ color: "#DC2626" }}>Recovery {prog.thresholdRecovery || 30}d</span> | <span style={{ color: "#8B5CF6" }}>Dispute→Risk {prog.thresholdDisputeAtRisk || 1}d</span> → <span style={{ color: "#DC2626" }}>Dispute→Recovery {prog.thresholdDisputeRecovery || 14}d</span></span></div>
-                      {prog.eligibleBuyers && prog.eligibleBuyers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Buyers: </span>{prog.eligibleBuyers.map(function(bid) { return buyName(bid) || bid; }).join(", ")}</div>}
-                      {prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "var(--muted)" }}>Eligible Suppliers: </span>{prog.eligibleSuppliers.map(function(eid) { return getEntityDisplayName(eid) || eid; }).join(", ")}</div>}
-                    </div>
+                    {(function() {
+                      var sectionHeader = { fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 10, paddingBottom: 4, borderBottom: "1px solid var(--border)" };
+                      var fieldLbl = { fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 };
+                      var utilColor = parseFloat(utilisation) > 90 ? "#DC2626" : parseFloat(utilisation) > 70 ? "#D97706" : "#059669";
+                      var utilStatus = parseFloat(utilisation) > 90 ? "Capacity stretched" : parseFloat(utilisation) > 70 ? "Healthy utilisation" : parseFloat(utilisation) > 30 ? "Capacity available" : "Under-utilised";
+                      return <div>
+                        {/* Header + Name */}
+                        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid var(--accent)", color: "var(--text)" }}>Program Details</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px", marginBottom: 20 }}>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div style={fieldLbl}>Name</div>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{prog.name}</div>
+                          </div>
+                          <div>
+                            <div style={fieldLbl}>Program ID</div>
+                            <div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{prog.id}</div>
+                          </div>
+                          <div>
+                            <div style={fieldLbl}>Currency</div>
+                            <div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>{prog.currency}</div>
+                          </div>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div style={fieldLbl}>Program Size</div>
+                            <div style={{ fontSize: 15, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "var(--text)" }}>{money(prog.maxSize, prog.currency)}</div>
+                          </div>
+                        </div>
+
+                        {/* TERMS section */}
+                        <div style={sectionHeader}>Terms</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px 24px", marginBottom: 20 }}>
+                          <div><div style={fieldLbl}>Max Advance Rate</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{(prog.maxAdvanceRate * 100).toFixed(0)}%</div></div>
+                          <div><div style={fieldLbl}>Min Interest Rate</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(prog.minInterestRate * 100).toFixed(1)}%</div></div>
+                          <div><div style={fieldLbl}>Max Invoice Term</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>{prog.maxInvoiceTerm}d</div></div>
+                        </div>
+
+                        {/* STATUS THRESHOLDS */}
+                        <div style={sectionHeader}>Status Thresholds</div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20, fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>
+                          <span style={{ padding: "4px 9px", borderRadius: 5, background: "#EF444415", color: "#EF4444", border: "1px solid #EF444430" }}>Overdue {prog.thresholdOverdue || 1}d</span>
+                          <span style={{ color: "var(--muted)" }}>{"\u2192"}</span>
+                          <span style={{ padding: "4px 9px", borderRadius: 5, background: "#8B5CF615", color: "#A78BFA", border: "1px solid #8B5CF630" }}>At Risk {prog.thresholdAtRisk || 7}d</span>
+                          <span style={{ color: "var(--muted)" }}>{"\u2192"}</span>
+                          <span style={{ padding: "4px 9px", borderRadius: 5, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262630" }}>Recovery {prog.thresholdRecovery || 30}d</span>
+                          <span style={{ color: "var(--muted)" }}>|</span>
+                          <span style={{ padding: "4px 9px", borderRadius: 5, background: "#8B5CF615", color: "#A78BFA", border: "1px solid #8B5CF630" }}>Dispute{"\u2192"}Risk {prog.thresholdDisputeAtRisk || 1}d</span>
+                          <span style={{ padding: "4px 9px", borderRadius: 5, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262630" }}>Dispute{"\u2192"}Recovery {prog.thresholdDisputeRecovery || 14}d</span>
+                        </div>
+
+                        {/* ELIGIBILITY */}
+                        {((prog.eligibleBuyers && prog.eligibleBuyers.length > 0) || (prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0)) && <>
+                          <div style={sectionHeader}>Eligibility</div>
+                          <div style={{ marginBottom: 20 }}>
+                            {prog.eligibleBuyers && prog.eligibleBuyers.length > 0 && <div style={{ marginBottom: 8 }}>
+                              <div style={fieldLbl}>Eligible Buyers ({prog.eligibleBuyers.length})</div>
+                              <div style={{ fontSize: 12, color: "var(--text)" }}>{prog.eligibleBuyers.map(function(bid) { return buyName(bid) || bid; }).join(", ")}</div>
+                            </div>}
+                            {prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 && <div>
+                              <div style={fieldLbl}>Eligible Suppliers ({prog.eligibleSuppliers.length})</div>
+                              <div style={{ fontSize: 12, color: "var(--text)" }}>{prog.eligibleSuppliers.map(function(eid) { return getEntityDisplayName(eid) || eid; }).join(", ")}</div>
+                            </div>}
+                          </div>
+                        </>}
+
+                        {/* FINANCIAL STATE section — live metrics */}
+                        <div style={sectionHeader}>Financial State</div>
+
+                        {/* Utilisation meter — top of Financial State */}
+                        <div style={{ marginBottom: 16, padding: "12px 14px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Utilisation</div>
+                              <span style={{ fontSize: 9, color: "var(--muted)", fontStyle: "italic" }}>vs Available Funds</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: utilColor }}>{utilStatus}</span>
+                              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: utilColor }}>{utilisation}%</div>
+                            </div>
+                          </div>
+                          {/* Meter: 0-100% scale, colour-coded */}
+                          <div style={{ position: "relative", height: 8, background: "var(--card)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+                            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: Math.min(parseFloat(utilisation), 100) + "%", background: utilColor, borderRadius: 3, transition: "width 0.3s ease" }}></div>
+                            <div style={{ position: "absolute", left: "70%", top: 0, bottom: 0, width: 1, background: "var(--muted)", opacity: 0.4 }}></div>
+                            <div style={{ position: "absolute", left: "90%", top: 0, bottom: 0, width: 1, background: "var(--muted)", opacity: 0.4 }}></div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>
+                            <span>{money(r2(fundedBalance), prog.currency)} deployed</span>
+                            <span>of {money(r2(utilisationDenom), prog.currency)} capacity</span>
+                          </div>
+                        </div>
+
+                        {/* Financial rows */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px", fontSize: 13 }}>
+                          <div><span style={{ color: "var(--muted)" }}>Funder Contributions: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(funderInflows), prog.currency)}</span></div>
+                          <div><span style={{ color: "var(--muted)" }}>Buyer Receipts: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(buyerReceipts), prog.currency)}</span></div>
+                          <div style={{ gridColumn: "1 / -1", paddingLeft: 12 }}><span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 11 }}>of which Holdback: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontSize: 11 }}>{money(r2(holdbackReceived), prog.currency)}</span></div>
+                          <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 8 }}><span style={{ color: "var(--muted)" }}>Total Funds In: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(r2(totalInflows), prog.currency)}</span></div>
+                          <div><span style={{ color: "var(--muted)" }}>Disbursed Funds: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalDisbursed), prog.currency)}</span>{pendingDisbursals > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED" }}> ({money(r2(pendingDisbursals), prog.currency)} pending)</span>}</div>
+                          <div><span style={{ color: "var(--muted)" }}>Capital Advanced: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fundedBalance), prog.currency)}</span>{approvedCapital > 0 && <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#38BDF8" }}> (+{money(r2(approvedCapital), prog.currency)} approved)</span>}</div>
+                          <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border)", paddingTop: 8 }}><span style={{ color: "var(--muted)" }}>Total Funds Out: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{money(r2(totalFundsOut), prog.currency)}</span></div>
+                          <div style={{ gridColumn: "1 / -1", background: avail > 0 ? "#05966915" : "#DC262615", border: "1px solid " + (avail > 0 ? "#05966940" : "#DC262640"), borderRadius: 6, padding: "10px 12px" }}>
+                            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>Available</span>
+                              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 16, color: avail > 0 ? "#059669" : "#DC2626", fontWeight: 700 }}>{money(avail, prog.currency)}</span>
+                            </div>
+                            {approvedCapital > 0 && <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#38BDF8", marginTop: 2 }}>{money(r2(avail - approvedCapital), prog.currency)} after approved capital</div>}
+                          </div>
+                        </div>
+                      </div>;
+                    })()}
                   </div>
                   {/* Donut */}
                   <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Invoice Funding Status</div>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Invoice Funding Status</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
                       <div style={{ position: "relative", width: donutSize, height: donutSize, flexShrink: 0 }}>
                         <svg width={donutSize} height={donutSize} viewBox={"0 0 " + donutSize + " " + donutSize}>
@@ -9289,7 +9470,7 @@ export default function FactoringDashboard() {
                   var bw = Math.max(20, aiW / 8 - 8);
 
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px", marginBottom: 22 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Ageing Analysis</div>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Ageing Analysis</div>
                     <svg width={aw} height={ah} style={{ display: "block", width: "100%", height: "auto" }} viewBox={"0 0 " + aw + " " + ah}>
                       {[0, 0.25, 0.5, 0.75, 1].map(function(f) { var y = apT + aiH - f * aiH; return <g key={f}><line x1={apL} x2={aw - apR} y1={y} y2={y} stroke="#1C2A42" strokeWidth={1} /><text x={apL - 6} y={y + 3} textAnchor="end" fontSize={8} fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{money(r2(maxBal * f), displayCcy)}</text></g>; })}
                       {/* Divider line between before and after */}
@@ -9312,27 +9493,56 @@ export default function FactoringDashboard() {
                 })()}
 
                 {/* Fund Flows History */}
-                {prog.fundFlows && prog.fundFlows.length > 0 && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-                  <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Fund Flows ({prog.fundFlows.length})</div>
-                  </div>
-                  <div style={{ maxHeight: 200, overflowY: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Date", "Type", "Service Provider", "Amount", "Reason", "Timestamp"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{prog.fundFlows.slice().reverse().map(function(ff, fi) {
-                        var isIn = ff.type === "inflow";
-                        return <tr key={fi} style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ff.date)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11, fontWeight: 700, color: isIn ? "#059669" : "#D97706" }}>{isIn ? "Funds Added" : "Funds Disbursed"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)" }}>{ff.serviceProvider || ff.funder || "\u2014"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: isIn ? "#059669" : "#D97706" }}>{isIn ? "+" : "-"}{money(ff.amount, prog.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{ff.reason || "\u2014"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{ff.display}</td>
-                        </tr>;
-                      })}</tbody>
-                    </table>
-                  </div>
-                </div>}
+                {/* Fund Flows — inflows and outflows */}
+                {prog.fundFlows && prog.fundFlows.length > 0 && (function() {
+                  var ff = prog.fundFlows;
+                  var nIn = ff.filter(function(f) { return f.type === "inflow"; }).length;
+                  var nOut = ff.length - nIn;
+                  var sumIn = ff.filter(function(f) { return f.type === "inflow"; }).reduce(function(s, f) { return s + (f.amount || 0); }, 0);
+                  var sumOut = ff.filter(function(f) { return f.type !== "inflow"; }).reduce(function(s, f) { return s + (f.amount || 0); }, 0);
+                  var netBalance = sumIn - sumOut;
+                  // Sort: most recent first, by date descending
+                  var sortedFf = ff.slice().sort(function(a, b) { return a.date > b.date ? -1 : a.date < b.date ? 1 : 0; });
+                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+                    <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Fund Flows</div>
+                      <div style={{ display: "flex", gap: 16, alignItems: "baseline", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>In</span>
+                          <span style={{ color: "#059669", fontWeight: 600 }}>{money(r2(sumIn), prog.currency)}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 10 }}>({nIn})</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Out</span>
+                          <span style={{ color: "#D97706", fontWeight: 600 }}>{money(r2(sumOut), prog.currency)}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 10 }}>({nOut})</span>
+                        </div>
+                        <div style={{ paddingLeft: 12, borderLeft: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Net</span>
+                          <span style={{ color: netBalance >= 0 ? "#059669" : "#DC2626", fontWeight: 700, fontSize: 13 }}>{netBalance >= 0 ? "+" : ""}{money(r2(netBalance), prog.currency)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr>{["Date", "Type", "Service Provider", "Amount", "Reason", "Timestamp"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 1 }}>{h}</th>; })}</tr></thead>
+                        <tbody>{sortedFf.map(function(f, fi) {
+                          var isIn = f.type === "inflow";
+                          return <tr key={fi} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(f.date)}</td>
+                            <td style={{ padding: "8px 10px" }}>
+                              <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", background: isIn ? "#05966920" : "#D9770620", color: isIn ? "#059669" : "#F59E0B", border: "1px solid " + (isIn ? "#05966940" : "#D9770640") }}>{isIn ? "Funds Added" : "Funds Disbursed"}</span>
+                            </td>
+                            <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)" }}>{f.serviceProvider || f.funder || "\u2014"}</td>
+                            <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: isIn ? "#059669" : "#D97706", whiteSpace: "nowrap" }}>{isIn ? "+" : "\u2212"}{money(f.amount, prog.currency)}</td>
+                            <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{f.reason || "\u2014"}</td>
+                            <td style={{ padding: "8px 10px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{f.display}</td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>
+                  </div>;
+                })()}
 
                 {/* Program Audit Log */}
                 {(function() {
@@ -9355,7 +9565,7 @@ export default function FactoringDashboard() {
                   if (progLogs.length === 0) return null;
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                     <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Program Audit Log ({progLogs.length})</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Program Audit Log ({progLogs.length})</div>
                     </div>
                     <div style={{ maxHeight: 300, overflowY: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -9377,52 +9587,114 @@ export default function FactoringDashboard() {
 
             // Invoices
             if (progTab === "invoices") {
-              var fInvs = progInvs.slice();
+              var allProgInvsTab = progInvs.slice();
+              var fInvs = allProgInvsTab.slice();
               // Apply filters
-              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1; });
+              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
               if (piSupFilter) fInvs = fInvs.filter(function(inv) { return inv.supplierName === piSupFilter; });
               if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return inv.buyerName === piBuyFilter; });
               if (piInvStFilter) fInvs = fInvs.filter(function(inv) { return inv.invoiceStatus === piInvStFilter; });
               if (piFundStFilter) fInvs = fInvs.filter(function(inv) { return inv.fundingStatus === piFundStFilter; });
-              fInvs.sort(function(a, b) { return a.invoiceDate > b.invoiceDate ? -1 : 1; });
+
+              // Sort
+              fInvs.sort(function(a, b) {
+                var av = a[piSort], bv = b[piSort];
+                if (av === undefined) av = "";
+                if (bv === undefined) bv = "";
+                if (av === bv) return 0;
+                var cmp = av > bv ? 1 : -1;
+                return piDir === "asc" ? cmp : -cmp;
+              });
+
+              // Pagination
+              var piTotalPages = Math.max(1, Math.ceil(fInvs.length / piPerPage));
+              var piCurPage = Math.min(piPage, piTotalPages - 1);
+              var piPageItems = fInvs.slice(piCurPage * piPerPage, (piCurPage + 1) * piPerPage);
+
               var pimc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-              var piCols = ["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Penalty", "Due", "Inv Status", "Fund Status", "O/S", ""];
+              // Column definitions with tooltips
+              var piColDefs = [
+                { key: "id", label: "Invoice", sortable: true, tooltip: null },
+                { key: "supplierName", label: "Supplier", sortable: true, tooltip: null },
+                { key: "buyerName", label: "Buyer", sortable: true, tooltip: null },
+                { key: "amount", label: "Amount", sortable: true, tooltip: null },
+                { key: "ccy", label: "CCY", sortable: false, tooltip: null },
+                { key: "capitalDue", label: "Capital", sortable: true, tooltip: "Capital advanced to the supplier against this invoice." },
+                { key: "interestCharged", label: "Interest", sortable: true, tooltip: "Interest charged on funded amount (annual rate applied over the term)." },
+                { key: "penaltyInterest", label: "Penalty", sortable: true, tooltip: "Penalty interest accrued on overdue balance." },
+                { key: "dueDate", label: "Due", sortable: true, tooltip: null },
+                { key: "invoiceStatus", label: "Inv Status", sortable: true, tooltip: null },
+                { key: "fundingStatus", label: "Fund Status", sortable: true, tooltip: "Derived from invoice lifecycle \u2014 not directly editable." },
+                { key: "totalOutstanding", label: "O/S", sortable: true, tooltip: "Total outstanding: Capital + Interest + Penalty." },
+                { key: "_x", label: "", sortable: false, tooltip: null }
+              ];
+
               // Get unique values for filter dropdowns
               var piSups = [], piBuys = [], piInvSts = [], piFundSts = [];
               var _ps = {}, _pb = {}, _pis = {}, _pfs = {};
-              progInvs.forEach(function(inv) {
+              allProgInvsTab.forEach(function(inv) {
                 if (!_ps[inv.supplierName]) { _ps[inv.supplierName] = true; piSups.push(inv.supplierName); }
                 if (!_pb[inv.buyerName]) { _pb[inv.buyerName] = true; piBuys.push(inv.buyerName); }
                 if (!_pis[inv.invoiceStatus]) { _pis[inv.invoiceStatus] = true; piInvSts.push(inv.invoiceStatus); }
                 if (!_pfs[inv.fundingStatus]) { _pfs[inv.fundingStatus] = true; piFundSts.push(inv.fundingStatus); }
               });
+              piSups.sort(); piBuys.sort();
+              var piHasActive = !!piSearch || !!piSupFilter || !!piBuyFilter || !!piInvStFilter || !!piFundStFilter;
+
+              // Filter-aware stat card metrics (on unfiltered superset for anchor values)
+              var approvedCount = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "approved"; }).length;
+              var approvedSum = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "approved"; }).reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0);
+              var overdueCount = allProgInvsTab.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.invoiceStatus !== "Cancelled" && (inv.balanceOwed || 0) > 0.01; }).length;
+              var fundedSum = allProgInvsTab.reduce(function(s, inv) { return s + (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" ? (inv.capitalDue || 0) : 0); }, 0);
+              var totalOS = allProgInvsTab.reduce(function(s, inv) { return s + (inv.totalOutstanding || 0); }, 0);
+
               var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+              function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+              function doPiSort(f) { if (piSort === f) setPiDir(piDir === "asc" ? "desc" : "asc"); else { setPiSort(f); setPiDir("desc"); } setPiPage(0); }
+
+              // M: Drill-in helpers
+              function drillToSupplier(supplierName) {
+                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+              }
+              function drillToBuyer(buyerName) {
+                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+                if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
+              }
+
               return <div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Invoices" value={String(progInvs.length)} accent="#0EA5E9" icon={"\u25c8"} />
-                  <StatCard label="Total Funded" value={money(progInvs.reduce(function(s, inv) { return s + (inv.fundingStatus !== "pending" ? inv.capitalDue : 0); }, 0), displayCcy)} accent="#E2E8F0" icon={"\u25b2"} />
+                {/* Filter-aware stat cards (4 cards) */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                  <StatCard label="Invoices" value={String(allProgInvsTab.length)} sub={piHasActive && fInvs.length !== allProgInvsTab.length ? fInvs.length + " shown" : (allProgInvsTab.length === 0 ? "none" : "in this program")} accent={allProgInvsTab.length > 0 ? "#0EA5E9" : "#64748B"} />
+                  <StatCard label="Capital Advanced" value={money(r2(fundedSum), displayCcy)} sub="funded to date" accent={fundedSum > 0 ? "#10B981" : "#64748B"} />
+                  <StatCard label="Awaiting Funding" value={String(approvedCount)} sub={approvedCount > 0 ? money(r2(approvedSum), displayCcy) : "\u2014"} accent={approvedCount > 0 ? "#38BDF8" : "#64748B"} />
+                  <StatCard label="Overdue / Outstanding" value={String(overdueCount)} sub={totalOS > 0 ? money(r2(totalOS), displayCcy) + " O/S" : "none"} accent={overdueCount > 0 ? "#F59E0B" : "#64748B"} />
                 </div>
+
+                {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                  <input type="text" value={piSearch} onChange={function(e) { setPiSearch(e.target.value); }} placeholder="Search invoices..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); }} style={fltSel}><option value="">All Suppliers</option>{piSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); }} style={fltSel}><option value="">All Buyers</option>{piBuys.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
-                  <select value={piInvStFilter} onChange={function(e) { setPiInvStFilter(e.target.value); }} style={fltSel}><option value="">All Inv Status</option>{piInvSts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                  <select value={piFundStFilter} onChange={function(e) { setPiFundStFilter(e.target.value); }} style={fltSel}><option value="">All Fund Status</option>{piFundSts.map(function(s) { var f = FST[s] || FST.funded; return <option key={s} value={s}>{f.label}</option>; })}</select>
-                  {(piSearch || piSupFilter || piBuyFilter || piInvStFilter || piFundStFilter) && <button onClick={function() { setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fInvs.length} of {progInvs.length}</span>
+                  <input type="text" value={piSearch} onChange={function(e) { setPiSearch(e.target.value); setPiPage(0); }} placeholder="Search invoices..." style={activeStyle(!!piSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
+                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piSupFilter, fltSel)}><option value="">All Suppliers</option>{piSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piBuyFilter, fltSel)}><option value="">All Buyers</option>{piBuys.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                  <select value={piInvStFilter} onChange={function(e) { setPiInvStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piInvStFilter, fltSel)}><option value="">All Inv Status</option>{piInvSts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <select value={piFundStFilter} onChange={function(e) { setPiFundStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piFundStFilter, fltSel)}><option value="">All Fund Status</option>{piFundSts.map(function(s) { var f = FST[s] || FST.funded; return <option key={s} value={s}>{f.label}</option>; })}</select>
+                  {piHasActive && <button onClick={function() { setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: piHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: piHasActive ? 600 : 400 }}>{piHasActive && fInvs.length !== allProgInvsTab.length ? fInvs.length + " of " + allProgInvsTab.length : fInvs.length} invoice{fInvs.length === 1 ? "" : "s"}</span>
                 </div>
 
                 {/* Approved — Awaiting Funding */}
                 {(function() {
                   var approvedInvs = progInvs.filter(function(inv) { return inv.fundingStatus === "approved"; });
                   if (approvedInvs.length === 0) return null;
-                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #567EBB30", overflow: "hidden", marginBottom: 18 }}>
-                    <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #567EBB40", overflow: "hidden", marginBottom: 18, boxShadow: "0 1px 8px rgba(86,126,187,0.08)" }}>
+                    <div style={{ padding: "14px 22px", borderBottom: "1px solid #567EBB30", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "linear-gradient(90deg, #567EBB08, transparent)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Approved {"\u2014"} Awaiting Funding ({approvedInvs.length})</div>
-                        <Badge label="Approved" bg="#567EBB14" color="#38BDF8" border="#567EBB30" />
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 5, background: "#567EBB14", color: "#38BDF8", border: "1px solid #567EBB40", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                          <span style={{ fontSize: 8 }}>{"\u23F3"}</span> Awaiting Funding
+                        </span>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{approvedInvs.length} invoice{approvedInvs.length === 1 ? "" : "s"} approved, ready to fund</div>
                       </div>
-                      <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#D97706" }}>{money(approvedInvs.reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0), displayCcy)} capital awaiting</div>
+                      <div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#D97706" }}>{money(approvedInvs.reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0), displayCcy)} <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>capital queued</span></div>
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
@@ -9436,8 +9708,8 @@ export default function FactoringDashboard() {
                             <tbody key={"appr-" + inv.id}>
                               <tr style={{ borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : "#567EBB04" }}>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                                <td style={{ padding: "8px 8px", fontSize: 12 }}>{inv.supplierName}</td>
-                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                                <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
+                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
                                 <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -9451,7 +9723,7 @@ export default function FactoringDashboard() {
                                 <div style={{ padding: "16px 22px" }}>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#38BDF8", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #567EBB" }}>Invoice Information</div>
+                                      <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "#38BDF8", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #567EBB" }}>Invoice Information</div>
                                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
                                         <div><span style={{ color: "var(--muted)" }}>Invoice: </span><span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{inv.id}</span></div>
                                         <div><span style={{ color: "var(--muted)" }}>Amount: </span><strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</strong></div>
@@ -9467,7 +9739,7 @@ export default function FactoringDashboard() {
                                       </div>
                                     </div>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Financial Breakdown</div>
+                                      <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Financial Breakdown</div>
                                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
                                         <div><span style={{ color: "var(--muted)" }}>Advance Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{((inv.advanceRate || 0.9) * 100).toFixed(0)}%</span></div>
                                         <div><span style={{ color: "var(--muted)" }}>Annual Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{((inv.annualRate || 0.15) * 100).toFixed(1)}%</span></div>
@@ -9483,7 +9755,7 @@ export default function FactoringDashboard() {
                                     <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Invoice is read-only while in Approved status</span>
                                   </div>
                                   {inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px" }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Status History</div>
+                                    <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Status History</div>
                                     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                                       {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
                                     </div>
@@ -9500,10 +9772,14 @@ export default function FactoringDashboard() {
 
                 {/* All Invoices (filtered) */}
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  <div style={{ overflowX: "auto" }}>
+                  {fInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{piHasActive ? "No invoices match filters." : "No invoices in this program."}</div>}
+                  {fInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 850 }}>
-                      <thead><tr>{piCols.map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2 }}>{h}</th>; })}</tr></thead>
-                      {fInvs.map(function(inv) {
+                      <thead><tr>{piColDefs.map(function(col) {
+                        var isSort = col.sortable && piSort === col.key;
+                        return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doPiSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (piDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                      })}</tr></thead>
+                      {piPageItems.map(function(inv) {
                         var isExp = exp === inv.id;
                         var ist = IST[inv.invoiceStatus] || IST["Received"];
                         var fst = FST[inv.fundingStatus] || FST.funded;
@@ -9512,8 +9788,8 @@ export default function FactoringDashboard() {
                           <tbody key={inv.id}>
                             <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                              <td style={{ padding: "8px 8px", fontSize: 12 }}>{inv.supplierName}</td>
-                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                              <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
+                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
                               <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -9525,14 +9801,24 @@ export default function FactoringDashboard() {
                               <td style={Object.assign({}, pimc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
                               <td style={{ padding: "8px 8px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25b4" : "\u25be"}</button></td>
                             </tr>
-                            {isExp && <tr><td colSpan={piCols.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                            {isExp && <tr><td colSpan={piColDefs.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
+                                  {editInv === inv.id && <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(14,165,233,0.15)" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#fff", background: "var(--accent)", padding: "3px 8px", borderRadius: 4, letterSpacing: "0.06em" }}>Editing</span>
+                                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Editing <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{inv.id}</span></span>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                      <button onClick={cancelEdit} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                                      <button onClick={saveEdit} style={{ padding: "6px 18px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                                    </div>
+                                  </div>}
                                   {/* Two-section layout */}
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                                     {/* Section 1: Invoice Information */}
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: editInv === inv.id ? "2px solid var(--accent)" : "1px solid var(--border)", padding: "16px 18px" }}>
                                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>
-                                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--accent)" }}>Invoice Information</div>
+                                        <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--accent)" }}>Invoice Information</div>
                                         {editInv === inv.id && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#fff", background: "var(--accent)", padding: "2px 6px", borderRadius: 4 }}>Editing</span>}
                                       </div>
                                       {(function() {
@@ -9548,24 +9834,28 @@ export default function FactoringDashboard() {
                                           var clearable = type === "date" && (key === "cancelledDate" || key === "declinedDate" || key === "disputedDate" || key === "settledDate" || key === "buyerReceivedDate" || key === "pelagicReceivedDate");
                                           return <span style={{ display: "flex", gap: 4, alignItems: "center" }}><input type={type || "text"} value={editFields[key] || ""} onChange={function(e) { var v = e.target.value; setEditFields(function(f) { var u = {}; u[key] = v; return Object.assign({}, f, u); }); }} style={type === "date" ? editDateInput : editInput} />{clearable && editFields[key] && <button onClick={function() { setEditFields(function(f) { var u = {}; u[key] = ""; return Object.assign({}, f, u); }); }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>×</button>}</span>;
                                         }
+                                        var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 10, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
                                         return <div>
+                                          <div style={Object.assign({}, sectionHeader, { marginTop: 0 })}>Parties</div>
                                           <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                          <div style={sectionHeader}>References</div>
                                           <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
                                           <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("poNumber") : <span style={val}>{inv.poNumber || "\u2014"}</span>}</div>
-                                          <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
+                                          <div style={sectionHeader}>Amounts</div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
                                           <div style={row}><span style={lbl}>Amount Post Dilutions</span><span style={Object.assign({}, val, { color: inv.dilutionTotal > 0 ? "#D97706" : "var(--text)", fontWeight: inv.dilutionTotal > 0 ? 700 : 400 })}>{money(inv.amountPostDilutions, inv.currency)}{inv.dilutionTotal > 0 && <span style={{ fontSize: 9, color: "#DC2626", marginLeft: 4 }}>(-{money(inv.dilutionTotal, inv.currency)})</span>}</span></div>
                                           <div style={row}><span style={lbl}>Payments to Invoice</span><span style={Object.assign({}, val, { color: inv.paymentsToInvoice > 0 ? "#059669" : "var(--muted)" })}>{money(inv.paymentsToInvoice || 0, inv.currency)}<span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4 }}>(of {money(inv.settlementThreshold || 0, inv.currency)})</span>{inv.paymentsToInvoice >= (inv.settlementThreshold || 0) - 0.01 && (inv.settlementThreshold || 0) > 0.01 && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginLeft: 6, background: "#2E8B5715", padding: "1px 5px", borderRadius: 3 }}>Settled</span>}</span></div>
                                           <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
+                                          <div style={sectionHeader}>Dates</div>
                                           <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
                                           <div style={row}><span style={lbl}>Due Date</span><span style={Object.assign({}, val, { color: inv.dueDate < viewDate ? "#DC2626" : "var(--text)" })}>{fmt(inv.dueDate)}</span></div>
                                           <div style={row}><span style={lbl}>Term</span><span style={val}>{term}d</span></div>
-                                          <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
+                                          <div style={sectionHeader}>Lifecycle</div>
                                           <div style={row}><span style={lbl}>Buyer Received Date</span>{isEditing ? eField("buyerReceivedDate", "date") : <span style={val}>{inv.buyerReceivedDate ? fmt(inv.buyerReceivedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Pelagic Received Date</span>{isEditing ? eField("pelagicReceivedDate", "date") : <span style={val}>{fmt(inv.createdDate)}</span>}</div>
                                           <div style={row}><span style={lbl}>Cancelled Date</span>{isEditing ? eField("cancelledDate", "date") : <span style={val}>{inv.cancelledDate ? fmt(inv.cancelledDate) : "\u2014"}</span>}</div>
@@ -9573,16 +9863,12 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Declined Date</span>{isEditing ? eField("declinedDate", "date") : <span style={val}>{inv.declinedDate ? fmt(inv.declinedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Disputed Date</span>{isEditing ? eField("disputedDate", "date") : <span style={val}>{inv.disputedDate ? fmt(inv.disputedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Settled Date</span>{isEditing ? eField("settledDate", "date") : <span style={val}>{inv.settledDate ? fmt(inv.settledDate) : "\u2014"}</span>}</div>
-                                          {isEditing && <div style={{ display: "flex", gap: 8, marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                                            <button onClick={saveEdit} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Save</button>
-                                            <button onClick={cancelEdit} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-                                          </div>}
                                         </div>;
                                       })()}
                                     </div>
                                     {/* Section 2: Funding Information */}
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Funding Information</div>
+                                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Funding Information</div>
                                       {(function() {
                                         var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600 };
                                         var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
@@ -9637,7 +9923,7 @@ export default function FactoringDashboard() {
                                   </div>
                                   {/* Adjustment Panel */}
                                   {adjInv === inv.id && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid " + (adjType === "credit" ? "#059669" : "#D97706"), padding: "14px 18px", marginBottom: 14 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: adjType === "credit" ? "#059669" : "#D97706", marginBottom: 10 }}>{adjType === "credit" ? "Credit Adjustment" : "Debit Adjustment"} — {adjType === "credit" ? "Decreases" : "Increases"} Outstanding</div>
+                                    <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: adjType === "credit" ? "#059669" : "#D97706", marginBottom: 10 }}>{adjType === "credit" ? "Credit Adjustment" : "Debit Adjustment"} — {adjType === "credit" ? "Decreases" : "Increases"} Outstanding</div>
                                     {(function() {
                                       var maxPen = inv.penaltyInterest || 0;
                                       var maxInt = inv.interestOutstanding || 0;
@@ -9678,7 +9964,7 @@ export default function FactoringDashboard() {
                                     var stRows = buildInvoiceStatement(inv);
                                     if (stRows.length === 0) return null;
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Position Statement</div>
+                                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Position Statement</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{stRows.map(function(r, ri) {
@@ -9702,7 +9988,7 @@ export default function FactoringDashboard() {
 
                                   {/* Payments from Buyer */}
                                   {inv.payments.length > 0 && <div style={{ marginBottom: 10 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
+                                    <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
                                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                       <thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                       <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
@@ -9716,7 +10002,7 @@ export default function FactoringDashboard() {
                                     if (supPayments.length === 0) return null;
                                     var totalToSup = supPayments.reduce(function(s, p) { return s + p.amount; }, 0);
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#0EA5E9", marginBottom: 6 }}>Payments to Supplier ({supPayments.length})</div>
+                                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "#0EA5E9", marginBottom: 6 }}>Payments to Supplier ({supPayments.length})</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Type", "Reference", "Date", "Amount", "Description"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#0EA5E9" : sp.type === "Holdback Return" ? "#E2E8F0" : "#D97706"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
@@ -9734,7 +10020,7 @@ export default function FactoringDashboard() {
                                     if (invCNs.length === 0) return null;
                                     var totalDilution = invCNs.reduce(function(s, c) { return s + c.allocatedAmount; }, 0);
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 6 }}>Credit Notes Applied ({invCNs.length})</div>
+                                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 6 }}>Credit Notes Applied ({invCNs.length})</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["CN ID", "Date", "Reference", "CN Amount", "Applied to Invoice"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{invCNs.map(function(c, ci) { return <tr key={ci} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -9752,7 +10038,7 @@ export default function FactoringDashboard() {
                                     var invLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.invoiceId === inv.id || (e.context.allocations && e.context.allocations.some(function(a) { return a.invoiceId === inv.id; })) || e.context.sourceInvoiceId === inv.id); });
                                     if (invLogs.length === 0) return null;
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({invLogs.length})</div>
+                                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({invLogs.length})</div>
                                       <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
                                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{invLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table>
                                       </div>
@@ -9760,7 +10046,7 @@ export default function FactoringDashboard() {
                                   })()}
                                   {/* Notes */}
                                   <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {inv.notes && inv.notes.length > 0 ? "(" + inv.notes.length + ")" : ""}</div>
+                                    <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {inv.notes && inv.notes.length > 0 ? "(" + inv.notes.length + ")" : ""}</div>
                                     {inv.notes && inv.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{inv.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "6px 10px", borderRadius: 6, background: "var(--card)", marginBottom: 4, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginBottom: 2 }}>{n.display}</div><div style={{ fontSize: 11.5, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
                                     <div style={{ display: "flex", gap: 6 }}>
                                       <input type="text" value={exp === inv.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) addInvoiceNote(inv.id, noteText); }} placeholder="Add a note..." style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11.5, outline: "none" }} />
@@ -9773,7 +10059,26 @@ export default function FactoringDashboard() {
                         );
                       })}
                     </table>
-                  </div>
+                  </div>}
+                  {/* Pagination */}
+                  {fInvs.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(piCurPage * piPerPage + 1) + "-" + Math.min((piCurPage + 1) * piPerPage, fInvs.length) + " of " + fInvs.length}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                      <select value={piPerPage} onChange={function(e) { setPiPerPage(parseInt(e.target.value, 10)); setPiPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <button onClick={function() { setPiPage(0); }} disabled={piCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: piCurPage === 0 ? 0.3 : 1, cursor: piCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                      <button onClick={function() { setPiPage(Math.max(0, piCurPage - 1)); }} disabled={piCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: piCurPage === 0 ? 0.3 : 1, cursor: piCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                      <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={piTotalPages} value={piCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= piTotalPages) setPiPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {piTotalPages}</span>
+                      <button onClick={function() { setPiPage(Math.min(piTotalPages - 1, piCurPage + 1)); }} disabled={piCurPage >= piTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: piCurPage >= piTotalPages - 1 ? 0.3 : 1, cursor: piCurPage >= piTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                      <button onClick={function() { setPiPage(piTotalPages - 1); }} disabled={piCurPage >= piTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: piCurPage >= piTotalPages - 1 ? 0.3 : 1, cursor: piCurPage >= piTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                    </div>
+                  </div>}
                 </div>
               </div>;
             }
@@ -9787,34 +10092,95 @@ export default function FactoringDashboard() {
                 var matchAllocs = p.allocations.filter(function(a) { return progInvIds[a.invoiceId]; });
                 if (matchAllocs.length > 0) allProgPays.push({ pay: p, allocs: matchAllocs });
               });
-              // Apply filters
+
+              // Derived metrics
+              var totalAllocated = allProgPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0);
+              var totalPayments = allProgPays.reduce(function(s, ep) { return s + (ep.pay.amount || 0); }, 0);
+              var totalUnallocated = allProgPays.reduce(function(s, ep) {
+                var allocSum = ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0);
+                return s + Math.max(0, (ep.pay.amount || 0) - allocSum);
+              }, 0);
+
+              // Filter + sort + paginate
               var progPays = allProgPays.slice();
               if (paSearch) progPays = progPays.filter(function(ep) { var s = paSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
               if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; }); });
               if (paDateFilter) progPays = progPays.filter(function(ep) { return ep.pay.date === paDateFilter; });
-              progPays.sort(function(a, b) { return a.pay.date > b.pay.date ? -1 : 1; });
+              progPays.sort(function(a, b) {
+                var av, bv;
+                if (paSort === "date") { av = a.pay.date; bv = b.pay.date; }
+                else if (paSort === "paymentId") { av = a.pay.paymentId; bv = b.pay.paymentId; }
+                else if (paSort === "amount") { av = a.pay.amount; bv = b.pay.amount; }
+                else if (paSort === "allocated") { av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0); bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0); }
+                else { av = a.pay.date; bv = b.pay.date; }
+                if (av === bv) return 0;
+                var cmp = av > bv ? 1 : -1;
+                return paDir === "asc" ? cmp : -cmp;
+              });
+              var paTotalPages = Math.max(1, Math.ceil(progPays.length / paPerPage));
+              var paCurPage = Math.min(paPage, paTotalPages - 1);
+              var paPageItems = progPays.slice(paCurPage * paPerPage, (paCurPage + 1) * paPerPage);
+              var paHasActive = !!paSearch || !!paSupFilter || !!paDateFilter;
+
               var paSups = []; var _pas = {};
               allProgPays.forEach(function(ep) { ep.allocs.forEach(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); if (inv && !_pas[inv.supplierName]) { _pas[inv.supplierName] = true; paSups.push(inv.supplierName); } }); });
+              paSups.sort();
+
               var pamc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
               var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+              function activeStyle(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+              function doPaSort(f) { if (paSort === f) setPaDir(paDir === "asc" ? "desc" : "asc"); else { setPaSort(f); setPaDir("desc"); } setPaPage(0); }
+
+              // Drill-ins
+              function drillToInvoice(invoiceId) {
+                setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
+                setProgTab("invoices");
+              }
+              function drillToSupplier(supplierName) {
+                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+              }
+              function drillToBuyer(buyerName) {
+                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+                if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
+              }
+
+              var paCols = [
+                { key: "paymentId", label: "Payment ID", sortable: true },
+                { key: "date", label: "Date", sortable: true },
+                { key: "amount", label: "Amount", sortable: true },
+                { key: "ccy", label: "CCY", sortable: false },
+                { key: "allocated", label: "Allocations", sortable: true },
+                { key: "_x", label: "", sortable: false }
+              ];
+
               return <div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Total Payments" value={String(allProgPays.length)} accent="#0EA5E9" icon={"\u25c6"} />
-                  <StatCard label="Total Allocated" value={money(allProgPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0), displayCcy)} accent="#059669" icon={"\u2713"} />
+                {/* Filter-aware stat cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                  <StatCard label="Payments Touching Program" value={String(allProgPays.length)} sub={paHasActive && progPays.length !== allProgPays.length ? progPays.length + " shown" : (allProgPays.length === 0 ? "none" : "total")} accent={allProgPays.length > 0 ? "#0EA5E9" : "#64748B"} />
+                  <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#64748B"} />
+                  <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#64748B"} />
+                  <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
                 </div>
+
+                {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                  <input type="text" value={paSearch} onChange={function(e) { setPaSearch(e.target.value); }} placeholder="Search payments..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); }} style={fltSel}><option value="">All Suppliers</option>{paSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                  <input type="date" value={paDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPaDateFilter(v); }} style={Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" })} />
-                  {(paSearch || paSupFilter || paDateFilter) && <button onClick={function() { setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{progPays.length} of {allProgPays.length}</span>
+                  <input type="text" value={paSearch} onChange={function(e) { setPaSearch(e.target.value); setPaPage(0); }} placeholder="Search payments..." style={activeStyle(!!paSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
+                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); setPaPage(0); }} style={activeStyle(!!paSupFilter, fltSel)}><option value="">All Suppliers</option>{paSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <input type="date" value={paDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPaDateFilter(v); setPaPage(0); } }} style={activeStyle(!!paDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
+                  {paHasActive && <button onClick={function() { setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPaPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: paHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: paHasActive ? 600 : 400 }}>{paHasActive && progPays.length !== allProgPays.length ? progPays.length + " of " + allProgPays.length : progPays.length} payment{progPays.length === 1 ? "" : "s"}</span>
                 </div>
+
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No payments match filters.</div>}
+                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated to this program's invoices."}</div>}
                   {progPays.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Payment ID", "Date", "Amount", "CCY", "Allocations", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      {progPays.map(function(ep) {
+                      <thead><tr>{paCols.map(function(col) {
+                        var isSort = col.sortable && paSort === col.key;
+                        return <th key={col.key} onClick={function() { if (col.sortable) doPaSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (paDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                      })}</tr></thead>
+                      {paPageItems.map(function(ep) {
                         var isExpPA = paExp === ep.pay.paymentId;
                         var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
                         return <tbody key={ep.pay.paymentId}>
@@ -9827,14 +10193,51 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpPA ? "var(--accent)" : "var(--card-hover)", color: isExpPA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpPA ? "\u25b4" : "\u25be"}</button></td>
                           </tr>
                           {isExpPA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Allocations ({ep.allocs.length})</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) { var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); var effDate = a.allocDate || ep.pay.date; var isBackdated = a.allocDate && a.allocDate !== ep.pay.date; return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}</td><td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv ? aInv.supplierName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{aInv ? aInv.buyerName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td></tr>; })}</tbody></table>
-                            {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
-                            <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>{ep.pay.notes && ep.pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{ep.pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={paExp === ep.pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>
+                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
+                              var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
+                              var effDate = a.allocDate || ep.pay.date;
+                              var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
+                              return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.invoiceId}</span></td>
+                                <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{aInv.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.buyerName}>{aInv.buyerName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
+                              </tr>;
+                            })}</tbody></table>
+                            {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>
+                              {ep.pay.notes && ep.pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{ep.pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input type="text" value={paExp === ep.pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                                <button onClick={function() { if (!noteText.trim()) return; if (!ep.pay.notes) ep.pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); ep.pay.notes.push({ text: noteText.trim(), display: nd }); savePayment(ep.pay.paymentId); auditLog("Payment Note Added", ep.pay.paymentId + ": " + noteText.trim(), { paymentId: ep.pay.paymentId, note: noteText.trim() }); savePayment(ep.pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                              </div>
+                            </div>
                           </td></tr>}
                         </tbody>;
                       })}
                     </table>
+                  </div>}
+                  {/* Pagination */}
+                  {progPays.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(paCurPage * paPerPage + 1) + "-" + Math.min((paCurPage + 1) * paPerPage, progPays.length) + " of " + progPays.length}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                      <select value={paPerPage} onChange={function(e) { setPaPerPage(parseInt(e.target.value, 10)); setPaPage(0); }} style={Object.assign({}, fltSel, { padding: "5px 8px" })}>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <button onClick={function() { setPaPage(0); }} disabled={paCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: paCurPage === 0 ? 0.3 : 1, cursor: paCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                      <button onClick={function() { setPaPage(Math.max(0, paCurPage - 1)); }} disabled={paCurPage === 0} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: paCurPage === 0 ? 0.3 : 1, cursor: paCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                      <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={paTotalPages} value={paCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= paTotalPages) setPaPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {paTotalPages}</span>
+                      <button onClick={function() { setPaPage(Math.min(paTotalPages - 1, paCurPage + 1)); }} disabled={paCurPage >= paTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 12px", opacity: paCurPage >= paTotalPages - 1 ? 0.3 : 1, cursor: paCurPage >= paTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                      <button onClick={function() { setPaPage(paTotalPages - 1); }} disabled={paCurPage >= paTotalPages - 1} style={Object.assign({}, fltSel, { padding: "5px 10px", opacity: paCurPage >= paTotalPages - 1 ? 0.3 : 1, cursor: paCurPage >= paTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                    </div>
                   </div>}
                 </div>
               </div>;
@@ -9845,60 +10248,150 @@ export default function FactoringDashboard() {
               var progInvIds2 = {};
               progInvs.forEach(function(inv) { progInvIds2[inv.id] = true; });
               var allProgHbps = HOLDBACK_PAYMENTS_DB.filter(function(hbp) { return progInvIds2[hbp.sourceInvoiceId]; });
-              // Apply filters
+
+              // Derived metrics
+              var totalDisbursed2 = allProgHbps.reduce(function(s, h) { return s + h.amount; }, 0);
+              var totalSupReturn = 0, totalInvAlloc = 0;
+              allProgHbps.forEach(function(hbp) { hbp.allocations.forEach(function(a) { if (a.type === "disbursement") totalSupReturn += a.amount; else totalInvAlloc += a.amount; }); });
+
+              // Filter + sort + paginate
               var progHbps = allProgHbps.slice();
               if (phSearch) progHbps = progHbps.filter(function(hbp) { var s = phSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
               if (phSupFilter) progHbps = progHbps.filter(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); return inv && inv.supplierName === phSupFilter; });
               if (phDateFilter) progHbps = progHbps.filter(function(hbp) { return hbp.date === phDateFilter; });
-              progHbps.sort(function(a, b) { return a.date > b.date ? -1 : 1; });
+              progHbps.sort(function(a, b) {
+                var av, bv;
+                if (phSort === "date") { av = a.date; bv = b.date; }
+                else if (phSort === "hbPaymentId") { av = a.hbPaymentId; bv = b.hbPaymentId; }
+                else if (phSort === "sourceInvoiceId") { av = a.sourceInvoiceId; bv = b.sourceInvoiceId; }
+                else if (phSort === "amount") { av = a.amount; bv = b.amount; }
+                else { av = a.date; bv = b.date; }
+                if (av === bv) return 0;
+                var cmp = av > bv ? 1 : -1;
+                return phDir === "asc" ? cmp : -cmp;
+              });
+              var phTotalPages = Math.max(1, Math.ceil(progHbps.length / phPerPage));
+              var phCurPage = Math.min(phPage, phTotalPages - 1);
+              var phPageItems = progHbps.slice(phCurPage * phPerPage, (phCurPage + 1) * phPerPage);
+              var phHasActive = !!phSearch || !!phSupFilter || !!phDateFilter;
+
               var phSups = []; var _phs = {};
               allProgHbps.forEach(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); if (inv && !_phs[inv.supplierName]) { _phs[inv.supplierName] = true; phSups.push(inv.supplierName); } });
-              var totalDisbursed2 = allProgHbps.reduce(function(s, h) { return s + h.amount; }, 0);
-              var totalSupReturn = 0, totalInvAlloc = 0;
-              allProgHbps.forEach(function(hbp) { hbp.allocations.forEach(function(a) { if (a.type === "disbursement") totalSupReturn += a.amount; else totalInvAlloc += a.amount; }); });
+              phSups.sort();
+
               var hmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
               var fltSel2 = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+              function activeStyleH(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+              function doPhSort(f) { if (phSort === f) setPhDir(phDir === "asc" ? "desc" : "asc"); else { setPhSort(f); setPhDir("desc"); } setPhPage(0); }
+
+              // Drill-ins
+              function drillToInvoice(invoiceId) {
+                setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
+                setProgTab("invoices");
+              }
+              function drillToSupplier(supplierName) {
+                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+              }
+
+              var phCols = [
+                { key: "hbPaymentId", label: "HBP ID", sortable: true },
+                { key: "date", label: "Date", sortable: true },
+                { key: "sourceInvoiceId", label: "Source Invoice", sortable: true },
+                { key: "amount", label: "Amount", sortable: true },
+                { key: "ccy", label: "CCY", sortable: false },
+                { key: "allocated", label: "Allocations", sortable: false },
+                { key: "_x", label: "", sortable: false }
+              ];
+
               return <div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Holdback Payments" value={String(allProgHbps.length)} accent="#0EA5E9" icon={"\u25c6"} />
-                  <StatCard label="Total Disbursed" value={money(totalDisbursed2, displayCcy)} accent="#059669" icon={"\u25b2"} />
-                  <StatCard label="Supplier Returns" value={money(totalSupReturn, displayCcy)} accent="#E2E8F0" icon={"\u21b5"} />
-                  <StatCard label="Invoice Allocations" value={money(totalInvAlloc, displayCcy)} accent="#D97706" icon={"\u2192"} />
+                {/* Filter-aware stat cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                  <StatCard label="Holdback Payments" value={String(allProgHbps.length)} sub={phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " shown" : (allProgHbps.length === 0 ? "none" : "in this program")} accent={allProgHbps.length > 0 ? "#8B5CF6" : "#64748B"} />
+                  <StatCard label="Total Disbursed" value={money(r2(totalDisbursed2), displayCcy)} sub="holdback amounts released" accent={totalDisbursed2 > 0 ? "#10B981" : "#64748B"} />
+                  <StatCard label="Supplier Returns" value={money(r2(totalSupReturn), displayCcy)} sub={totalSupReturn > 0 ? "returned to supplier" : "none"} accent={totalSupReturn > 0 ? "#34D399" : "#64748B"} />
+                  <StatCard label="Invoice Allocations" value={money(r2(totalInvAlloc), displayCcy)} sub={totalInvAlloc > 0 ? "re-applied to invoices" : "none"} accent={totalInvAlloc > 0 ? "#F59E0B" : "#64748B"} />
                 </div>
+
+                {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-                  <input type="text" value={phSearch} onChange={function(e) { setPhSearch(e.target.value); }} placeholder="Search HBPs..." style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); }} style={fltSel2}><option value="">All Suppliers</option>{phSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                  <input type="date" value={phDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPhDateFilter(v); }} style={Object.assign({}, fltSel2, { fontFamily: "'JetBrains Mono', monospace" })} />
-                  {(phSearch || phSupFilter || phDateFilter) && <button onClick={function() { setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{progHbps.length} of {allProgHbps.length}</span>
+                  <input type="text" value={phSearch} onChange={function(e) { setPhSearch(e.target.value); setPhPage(0); }} placeholder="Search HBP ID or source invoice..." style={activeStyleH(!!phSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 240 })} />
+                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); setPhPage(0); }} style={activeStyleH(!!phSupFilter, fltSel2)}><option value="">All Suppliers</option>{phSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <input type="date" value={phDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPhDateFilter(v); setPhPage(0); } }} style={activeStyleH(!!phDateFilter, Object.assign({}, fltSel2, { fontFamily: "'JetBrains Mono', monospace" }))} />
+                  {phHasActive && <button onClick={function() { setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPhPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                  <span style={{ marginLeft: "auto", fontSize: 11.5, color: phHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: phHasActive ? 600 : 400 }}>{phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " of " + allProgHbps.length : progHbps.length} HBP{progHbps.length === 1 ? "" : "s"}</span>
                 </div>
+
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  {progHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No holdback payments match filters.</div>}
+                  {progHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{phHasActive ? "No holdback payments match filters." : "No holdback payments for this program."}</div>}
                   {progHbps.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Allocations", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      {progHbps.map(function(hbp) {
+                      <thead><tr>{phCols.map(function(col) {
+                        var isSort = col.sortable && phSort === col.key;
+                        return <th key={col.key} onClick={function() { if (col.sortable) doPhSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (phDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                      })}</tr></thead>
+                      {phPageItems.map(function(hbp) {
                         var isExpHB = phExp === hbp.hbPaymentId;
                         var srcInv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; });
+                        var supCount = hbp.allocations.filter(function(a) { return a.type === "disbursement"; }).length;
+                        var invCount = hbp.allocations.filter(function(a) { return a.type !== "disbursement"; }).length;
                         return <tbody key={hbp.hbPaymentId}>
                           <tr style={{ borderBottom: isExpHB ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpHB ? "var(--card-hover)" : "transparent" }} onClick={function() { setPhExp(isExpHB ? null : hbp.hbPaymentId); }}>
-                            <td style={Object.assign({}, hmc, { color: "#059669", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
+                            <td style={Object.assign({}, hmc, { color: "#A78BFA", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
-                            <td style={Object.assign({}, hmc, { color: "var(--accent)" })}>{hbp.sourceInvoiceId}</td>
+                            <td style={Object.assign({}, hmc, {})} onClick={function(e) { e.stopPropagation(); drillToInvoice(hbp.sourceInvoiceId); }} title="Drill into invoice"><span style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{hbp.sourceInvoiceId}</span></td>
                             <td style={Object.assign({}, hmc, { fontWeight: 600 })}>{money(hbp.amount, hbp.currency)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{hbp.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ fontSize: 10, color: "var(--muted)" }}>{hbp.allocations.length} allocation(s)</span></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12 }}>
+                              {supCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#10B98120", color: "#34D399", border: "1px solid #10B98140", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{supCount} SUP</span>}
+                              {invCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{invCount} INV</span>}
+                              {supCount === 0 && invCount === 0 && <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>none</span>}
+                            </td>
                             <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPhExp(isExpHB ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpHB ? "var(--accent)" : "var(--card-hover)", color: isExpHB ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpHB ? "\u25b4" : "\u25be"}</button></td>
                           </tr>
                           {isExpHB && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Allocations ({hbp.allocations.length})</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) { return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: a.type === "disbursement" ? "#E2E8F0" : "#D97706" }}>{a.type === "disbursement" ? "Supplier Return" : "Invoice Alloc"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: a.type === "disbursement" ? "#E2E8F0" : "var(--accent)" }}>{a.type === "disbursement" ? (srcInv ? srcInv.supplierName : "Supplier") : a.targetId}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td></tr>; })}</tbody></table>
-                            {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.hbPaymentId === hbp.hbPaymentId || e.context.sourceInvoiceId === hbp.sourceInvoiceId); }); if (hLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
-                            <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {hbp.notes && hbp.notes.length > 0 ? "(" + hbp.notes.length + ")" : ""}</div>{hbp.notes && hbp.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{hbp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={phExp === hbp.hbPaymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({hbp.allocations.length})</div>
+                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) {
+                              var isSup = a.type === "disbursement";
+                              var supName = srcInv ? srcInv.supplierName : null;
+                              return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: isSup ? "#10B98120" : "#D9770620", color: isSup ? "#34D399" : "#F59E0B", border: "1px solid " + (isSup ? "#10B98140" : "#D9770640"), fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{isSup ? "Supplier Return" : "Invoice Alloc"}</span></td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{isSup ? (supName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(supName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + supName}>{supName}</span> : <span style={{ color: "var(--text-secondary)" }}>Supplier</span>) : <span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.targetId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.targetId}</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td>
+                              </tr>;
+                            })}</tbody></table>
+                            {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.hbPaymentId === hbp.hbPaymentId || e.context.sourceInvoiceId === hbp.sourceInvoiceId); }); if (hLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {hbp.notes && hbp.notes.length > 0 ? "(" + hbp.notes.length + ")" : ""}</div>
+                              {hbp.notes && hbp.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{hbp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input type="text" value={phExp === hbp.hbPaymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                                <button onClick={function() { if (!noteText.trim()) return; if (!hbp.notes) hbp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); hbp.notes.push({ text: noteText.trim(), display: nd }); saveHoldbackPayment(hbp.hbPaymentId); auditLog("HBP Note Added", hbp.hbPaymentId + ": " + noteText.trim(), { hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, note: noteText.trim() }); saveHoldbackPayment(hbp.hbPaymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button>
+                              </div>
+                            </div>
                           </td></tr>}
                         </tbody>;
                       })}
                     </table>
+                  </div>}
+                  {/* Pagination */}
+                  {progHbps.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(phCurPage * phPerPage + 1) + "-" + Math.min((phCurPage + 1) * phPerPage, progHbps.length) + " of " + progHbps.length}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                      <select value={phPerPage} onChange={function(e) { setPhPerPage(parseInt(e.target.value, 10)); setPhPage(0); }} style={Object.assign({}, fltSel2, { padding: "5px 8px" })}>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                      <button onClick={function() { setPhPage(0); }} disabled={phCurPage === 0} style={Object.assign({}, fltSel2, { padding: "5px 10px", opacity: phCurPage === 0 ? 0.3 : 1, cursor: phCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                      <button onClick={function() { setPhPage(Math.max(0, phCurPage - 1)); }} disabled={phCurPage === 0} style={Object.assign({}, fltSel2, { padding: "5px 12px", opacity: phCurPage === 0 ? 0.3 : 1, cursor: phCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                      <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={phTotalPages} value={phCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= phTotalPages) setPhPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {phTotalPages}</span>
+                      <button onClick={function() { setPhPage(Math.min(phTotalPages - 1, phCurPage + 1)); }} disabled={phCurPage >= phTotalPages - 1} style={Object.assign({}, fltSel2, { padding: "5px 12px", opacity: phCurPage >= phTotalPages - 1 ? 0.3 : 1, cursor: phCurPage >= phTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                      <button onClick={function() { setPhPage(phTotalPages - 1); }} disabled={phCurPage >= phTotalPages - 1} style={Object.assign({}, fltSel2, { padding: "5px 10px", opacity: phCurPage >= phTotalPages - 1 ? 0.3 : 1, cursor: phCurPage >= phTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                    </div>
                   </div>}
                 </div>
               </div>;
@@ -9988,46 +10481,134 @@ export default function FactoringDashboard() {
               });
               return !coveredByBundle;
             });
-            allProgFunding.sort(function(a, b) { return (a.createdAt || "") > (b.createdAt || "") ? -1 : 1; });
+
+            // Derived metrics
             var totalFunding = allProgFunding.reduce(function(s, fp) { return s + fp.amount; }, 0);
             var completedFunding = allProgFunding.filter(function(fp) { return fp.status === "Completed"; });
             var pendingFunding = allProgFunding.filter(function(fp) { return fp.status === "Pending"; });
-            var filteredFunding = allProgFunding;
+            var completedSum = completedFunding.reduce(function(s, fp) { return s + (fp.amount || 0); }, 0);
+            var pendingSum = pendingFunding.reduce(function(s, fp) { return s + (fp.amount || 0); }, 0);
+
+            // Apply filters
+            var filteredFunding = allProgFunding.slice();
+            if (pfSearch) filteredFunding = filteredFunding.filter(function(fp) { var s = pfSearch.toLowerCase(); return (fp.id || "").toLowerCase().indexOf(s) > -1 || (fp.invoiceId || "").toLowerCase().indexOf(s) > -1 || (fp.invoiceIds && fp.invoiceIds.join(",").toLowerCase().indexOf(s) > -1) || (fp.supplierName || "").toLowerCase().indexOf(s) > -1 || (fp.bankName || "").toLowerCase().indexOf(s) > -1; });
+            if (pfDateFilter) filteredFunding = filteredFunding.filter(function(fp) {
+              var d = (fp.executedDate || fp.createdDate || (fp.createdAt || "").slice(0, 10) || "");
+              return d === pfDateFilter;
+            });
+            if (pfStatusFilter) filteredFunding = filteredFunding.filter(function(fp) { return fp.status === pfStatusFilter; });
+
+            // Sort
+            filteredFunding.sort(function(a, b) {
+              var av, bv;
+              if (pfSort === "createdAt") { av = a.createdAt || ""; bv = b.createdAt || ""; }
+              else if (pfSort === "id") { av = a.id || ""; bv = b.id || ""; }
+              else if (pfSort === "supplierName") { av = a.supplierName || ""; bv = b.supplierName || ""; }
+              else if (pfSort === "amount") { av = a.amount || 0; bv = b.amount || 0; }
+              else if (pfSort === "status") { av = a.status || ""; bv = b.status || ""; }
+              else if (pfSort === "executedDisplay") { av = a.executedDate || a.createdDate || a.createdAt || ""; bv = b.executedDate || b.createdDate || b.createdAt || ""; }
+              else { av = a.createdAt || ""; bv = b.createdAt || ""; }
+              if (av === bv) return 0;
+              var cmp = av > bv ? 1 : -1;
+              return pfDir === "asc" ? cmp : -cmp;
+            });
+
+            // Pagination
+            var pfTotalPages = Math.max(1, Math.ceil(filteredFunding.length / pfPerPage));
+            var pfCurPage = Math.min(pfPage, pfTotalPages - 1);
+            var pfPageItems = filteredFunding.slice(pfCurPage * pfPerPage, (pfCurPage + 1) * pfPerPage);
+            var pfHasActive = !!pfSearch || !!pfDateFilter || !!pfStatusFilter;
+
+            var pfStatuses = []; var _pfSt = {};
+            allProgFunding.forEach(function(fp) { if (fp.status && !_pfSt[fp.status]) { _pfSt[fp.status] = true; pfStatuses.push(fp.status); } });
+            pfStatuses.sort();
+
             var pfmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+            var fltSelPf = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+            function activeStylePf(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+            function doPfSort(f) { if (pfSort === f) setPfDir(pfDir === "asc" ? "desc" : "asc"); else { setPfSort(f); setPfDir("desc"); } setPfPage(0); }
+
+            // Drill-ins
+            function drillToInvoice(invoiceId) {
+              setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
+              setProgTab("invoices");
+            }
+            function drillToSupplier(supplierName) {
+              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+            }
+
+            var pfCols = [
+              { key: "id", label: "Payment Ref", sortable: true },
+              { key: "invoice", label: "Invoice", sortable: false },
+              { key: "supplierName", label: "Supplier", sortable: true },
+              { key: "amount", label: "Amount", sortable: true },
+              { key: "ccy", label: "CCY", sortable: false },
+              { key: "bank", label: "Bank", sortable: false },
+              { key: "status", label: "Status", sortable: true },
+              { key: "executedDisplay", label: "Executed", sortable: true },
+              { key: "_x", label: "", sortable: false }
+            ];
 
             return <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label="Funding Payments" value={String(allProgFunding.length)} accent="#0EA5E9" icon={"\u25c6"} />
-                <StatCard label="Total Funded" value={money(r2(totalFunding), prog.currency)} accent="#059669" icon={"\u25b2"} />
-                <StatCard label="Completed" value={String(completedFunding.length)} accent="#059669" icon={"\u2713"} />
-                <StatCard label="Pending" value={String(pendingFunding.length)} accent="#D97706" icon={"\u23f3"} />
+              {/* Filter-aware stat cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <StatCard label="Funding Payments" value={String(allProgFunding.length)} sub={pfHasActive && filteredFunding.length !== allProgFunding.length ? filteredFunding.length + " shown" : (allProgFunding.length === 0 ? "none" : "in this program")} accent={allProgFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
+                <StatCard label="Total Funded" value={money(r2(totalFunding), prog.currency)} sub="gross of all status" accent={totalFunding > 0 ? "#10B981" : "#64748B"} />
+                <StatCard label="Completed" value={String(completedFunding.length)} sub={completedFunding.length > 0 ? money(r2(completedSum), prog.currency) : "none"} accent={completedFunding.length > 0 ? "#10B981" : "#64748B"} />
+                <StatCard label="Pending" value={String(pendingFunding.length)} sub={pendingFunding.length > 0 ? money(r2(pendingSum), prog.currency) : "none"} accent={pendingFunding.length > 0 ? "#D97706" : "#64748B"} />
               </div>
+
+              {/* Filter bar */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" value={pfSearch} onChange={function(e) { setPfSearch(e.target.value); setPfPage(0); }} placeholder="Search payment ref, invoice, supplier, bank..." style={activeStylePf(!!pfSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 280 })} />
+                <input type="date" value={pfDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPfDateFilter(v); setPfPage(0); } }} style={activeStylePf(!!pfDateFilter, Object.assign({}, fltSelPf, { fontFamily: "'JetBrains Mono', monospace" }))} />
+                <select value={pfStatusFilter} onChange={function(e) { setPfStatusFilter(e.target.value); setPfPage(0); }} style={activeStylePf(!!pfStatusFilter, fltSelPf)}><option value="">All Statuses</option>{pfStatuses.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                {pfHasActive && <button onClick={function() { setPfSearch(""); setPfDateFilter(""); setPfStatusFilter(""); setPfPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: pfHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: pfHasActive ? 600 : 400 }}>{pfHasActive && filteredFunding.length !== allProgFunding.length ? filteredFunding.length + " of " + allProgFunding.length : filteredFunding.length} payment{filteredFunding.length === 1 ? "" : "s"}</span>
+              </div>
+
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                {filteredFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No funding payments in this program.</div>}
+                {filteredFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{pfHasActive ? "No funding payments match filters." : "No funding payments in this program."}</div>}
                 {filteredFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Queue ID", "Invoice", "Supplier", "Amount", "CCY", "Bank", "Status", "Executed", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                    {filteredFunding.map(function(fp) {
-                      var sc = fp.status === "Completed" ? "#059669" : "#D97706";
+                    <thead><tr>{pfCols.map(function(col) {
+                      var isSort = col.sortable && pfSort === col.key;
+                      return <th key={col.key} onClick={function() { if (col.sortable) doPfSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (pfDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
+                    })}</tr></thead>
+                    {pfPageItems.map(function(fp) {
                       var isPfExp = fundPayExp === "pf-" + fp.id;
+                      var stMeta = fp.status === "Completed" ? { bg: "#10B98120", color: "#34D399", border: "#10B98140" } : fp.status === "Pending" ? { bg: "#D9770620", color: "#F59E0B", border: "#D9770640" } : fp.status === "Cancelled" ? { bg: "#6B728020", color: "#94A3B8", border: "#6B728040" } : fp.status === "Failed" ? { bg: "#DC262620", color: "#EF4444", border: "#DC262640" } : { bg: "#64748B20", color: "#94A3B8", border: "#64748B40" };
+                      var invDisplay = fp.invoiceId || (fp.invoiceIds ? (fp.invoiceIds.length <= 2 ? fp.invoiceIds.join(", ") : fp.invoiceIds[0] + " + " + (fp.invoiceIds.length - 1) + " more") : "\u2014");
+                      var invTitle = fp.invoiceIds ? fp.invoiceIds.join(", ") : "";
+                      var executedText = fp.executedDisplay || fp.createdDisplay || "\u2014";
+                      var executedFallback = !fp.executedDisplay && fp.createdDisplay;
                       return (
                         <tbody key={fp.id}>
                           <tr style={{ borderBottom: isPfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isPfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isPfExp ? null : "pf-" + fp.id); }}>
-                            <td style={Object.assign({}, pfmc, { color: "var(--accent)", fontWeight: 600 })}>{fp.id}</td>
-                            <td style={Object.assign({}, pfmc, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName}</td>
-                            <td style={Object.assign({}, pfmc, { fontWeight: 600 })}>{money(fp.amount, fp.currency)}</td>
+                            <td style={Object.assign({}, pfmc, { color: "var(--accent)", fontWeight: 600 })}>
+                              {fp.id}
+                              {fp.isBundle && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", letterSpacing: "0.04em", textTransform: "uppercase" }} title="Bundled payment">Bundle</span>}
+                            </td>
+                            <td style={Object.assign({}, pfmc, { color: "var(--accent)" })} title={invTitle || undefined}>
+                              {fp.invoiceId ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(fp.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{fp.invoiceId}</span> : <span>{invDisplay}</span>}
+                            </td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(fp.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + fp.supplierName}>{fp.supplierName}</span> : <span>{"\u2014"}</span>}</td>
+                            <td style={Object.assign({}, pfmc, { fontWeight: 600 })}>
+                              {money(fp.amount, fp.currency)}
+                              {fp.deductionTotal > 0 && <span style={{ marginLeft: 4, fontSize: 9, color: "#DC2626" }} title={"Net of " + money(fp.deductionTotal, fp.currency) + " deductions"}>{"\u2212"}</span>}
+                            </td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{fp.currency}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
-                            <td style={{ padding: "8px 8px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{fp.status}</span></td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.executedDisplay || fp.createdDisplay || "\u2014"}</td>
+                            <td style={{ padding: "8px 8px" }}><Badge label={fp.status} bg={stMeta.bg} color={stMeta.color} border={stMeta.border} /></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: executedFallback ? "var(--muted)" : "var(--text-secondary)", fontStyle: executedFallback ? "italic" : "normal" }} title={executedFallback ? "Created timestamp (not yet executed)" : undefined}>{executedText}</td>
                             <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isPfExp ? null : "pf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPfExp ? "var(--accent)" : "var(--card-hover)", color: isPfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPfExp ? "\u25b4" : "\u25be"}</button></td>
                           </tr>
                           {isPfExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                             <div style={{ padding: "16px 22px" }}>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Queue ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || prog.name}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
-                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Execution Details</div><div style={row}><span style={lbl}>Status</span><span style={Object.assign({}, val, { color: sc, fontWeight: 600 })}>{fp.status}</span></div><div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div><div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>{fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}<div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div><div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div></div>; })()}
+                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Payment Ref</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || prog.name}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
+                                {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Execution Details</div><div style={row}><span style={lbl}>Status</span><Badge label={fp.status} bg={stMeta.bg} color={stMeta.color} border={stMeta.border} /></div><div style={row}><span style={lbl}>Created</span><span style={val}>{fp.createdDisplay || "\u2014"}</span></div><div style={row}><span style={lbl}>Executed</span><span style={val}>{fp.executedDisplay || "\u2014"}</span></div>{fp.isBundle && <div style={row}><span style={lbl}>Bundle</span><span style={Object.assign({}, val, { color: "#8B5CF6" })}>Yes</span></div>}<div style={row}><span style={lbl}>Bank</span><span style={val}>{fp.bankName || "\u2014"}</span></div><div style={row}><span style={lbl}>Account Details</span><span style={val}>{fp.bankDetails || "\u2014"}</span></div></div>; })()}
                               </div>
                               <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>{fp.notes && fp.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{fp.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--bg)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={fundPayExp === "pf-" + fp.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); saveSPQEntry(fp.id); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); saveSPQEntry(fp.id); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!fp.notes) fp.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); fp.notes.push({ text: noteText.trim(), display: nd }); saveSPQEntry(fp.id); auditLog("Payment Note Added", fp.id + ": " + noteText.trim(), { paymentId: fp.id, supplierName: fp.supplierName, note: noteText.trim() }); saveSPQEntry(fp.id); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
                               {(function() { var fpLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.queueId === fp.id || e.context.paymentId === fp.id || e.context.completedPaymentId === fp.id || (fp.invoiceId && e.context.invoiceId === fp.invoiceId && (e.action === "Invoice Funded" || e.action === "Invoice Approved")) || (fp.invoiceIds && fp.invoiceIds.some(function(iid) { return e.context.invoiceId === iid && (e.action === "Invoice Funded" || e.action === "Invoice Approved"); }))); }); if (fpLogs.length === 0) return null; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Trail ({fpLogs.length})</div><div style={{ maxHeight: 180, overflowY: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead><tbody>{fpLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
@@ -10037,6 +10618,25 @@ export default function FactoringDashboard() {
                       );
                     })}
                   </table>
+                </div>}
+                {/* Pagination */}
+                {filteredFunding.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(pfCurPage * pfPerPage + 1) + "-" + Math.min((pfCurPage + 1) * pfPerPage, filteredFunding.length) + " of " + filteredFunding.length}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                    <select value={pfPerPage} onChange={function(e) { setPfPerPage(parseInt(e.target.value, 10)); setPfPage(0); }} style={Object.assign({}, fltSelPf, { padding: "5px 8px" })}>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <button onClick={function() { setPfPage(0); }} disabled={pfCurPage === 0} style={Object.assign({}, fltSelPf, { padding: "5px 10px", opacity: pfCurPage === 0 ? 0.3 : 1, cursor: pfCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                    <button onClick={function() { setPfPage(Math.max(0, pfCurPage - 1)); }} disabled={pfCurPage === 0} style={Object.assign({}, fltSelPf, { padding: "5px 12px", opacity: pfCurPage === 0 ? 0.3 : 1, cursor: pfCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                    <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={pfTotalPages} value={pfCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= pfTotalPages) setPfPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {pfTotalPages}</span>
+                    <button onClick={function() { setPfPage(Math.min(pfTotalPages - 1, pfCurPage + 1)); }} disabled={pfCurPage >= pfTotalPages - 1} style={Object.assign({}, fltSelPf, { padding: "5px 12px", opacity: pfCurPage >= pfTotalPages - 1 ? 0.3 : 1, cursor: pfCurPage >= pfTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                    <button onClick={function() { setPfPage(pfTotalPages - 1); }} disabled={pfCurPage >= pfTotalPages - 1} style={Object.assign({}, fltSelPf, { padding: "5px 10px", opacity: pfCurPage >= pfTotalPages - 1 ? 0.3 : 1, cursor: pfCurPage >= pfTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
+                  </div>
                 </div>}
               </div>
             </div>;
@@ -10053,49 +10653,47 @@ export default function FactoringDashboard() {
             var entries = [];
 
             // 1. Fund inflows/disbursals from program fundFlows
-            (prog.fundFlows || []).forEach(function(ff) {
+            (prog.fundFlows || []).forEach(function(ff, ffi) {
               if (ff.type === "inflow") {
-                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", ref: ff.reason || ff.description || "Capital injection", counterparty: ff.serviceProvider || ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency });
+                entries.push({ id: "FF-IN-" + ffi, date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", baseType: "Fund Inflow", status: null, ref: ff.reason || ff.description || "Capital injection", counterparty: ff.serviceProvider || ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency, source: { kind: "fundFlow", index: ffi, data: ff } });
               } else if (ff.type === "outflow" || ff.type === "disbursal") {
                 // Skip outflows that correspond to SPQ remittances (they're shown in section 5)
                 if (ff.reason && (ff.reason.indexOf("Pass-through") >= 0 || ff.reason.indexOf("Remittance executed") >= 0)) return;
-                entries.push({ date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", ref: ff.reason || ff.description || "Capital withdrawal", counterparty: ff.serviceProvider || ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency });
+                entries.push({ id: "FF-OUT-" + ffi, date: ff.date, sortDate: ff.date + "T00:00:02", type: "Fund Disbursal", baseType: "Fund Disbursal", status: null, ref: ff.reason || ff.description || "Capital withdrawal", counterparty: ff.serviceProvider || ff.destination || "Funder", credit: 0, debit: ff.amount || 0, currency: prog.currency, source: { kind: "fundFlow", index: ffi, data: ff } });
               }
             });
 
             // 2. Incoming buyer payments allocated to invoices on this program
             PAYMENTS_DB.forEach(function(pay) {
-              pay.allocations.forEach(function(a) {
+              pay.allocations.forEach(function(a, ai) {
                 if (progInvIds[a.invoiceId]) {
                   var inv = allProgInvs.find(function(x) { return x.id === a.invoiceId; });
-                  entries.push({ date: a.allocDate || pay.date, sortDate: (a.allocDate || pay.date) + "T12:00:00", type: "Buyer Payment", ref: pay.paymentId + " \u2192 " + a.invoiceId, counterparty: inv ? inv.buyerName : "\u2014", credit: a.amount, debit: 0, currency: pay.currency });
+                  entries.push({ id: "BP-" + pay.paymentId + "-" + ai, date: a.allocDate || pay.date, sortDate: (a.allocDate || pay.date) + "T12:00:00", type: "Buyer Payment", baseType: "Buyer Payment", status: null, ref: pay.paymentId + " \u2192 " + a.invoiceId, refParts: { payment: pay.paymentId, invoice: a.invoiceId }, counterparty: inv ? inv.buyerName : "\u2014", counterpartyKind: "buyer", credit: a.amount, debit: 0, currency: pay.currency, source: { kind: "payment", paymentId: pay.paymentId, invoiceId: a.invoiceId, data: pay, allocation: a } });
                 }
               });
             });
 
             // 3. Capital advances (funding execution) — debits
-            // Use individual invoice capitalDue to match fundedBalance calculation
             var capitalAdvanceSeen = {};
             allProgInvs.forEach(function(inv) {
               if (!inv.fundedDate || inv.fundingStatus === "pending" || inv.fundingStatus === "approved") return;
               if (capitalAdvanceSeen[inv.id]) return;
               capitalAdvanceSeen[inv.id] = true;
-              // Find the CPQ entry for this invoice
               var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.status === "Completed" && q.type === "funding" && (q.invoiceId === inv.id || (q.invoiceIds && q.invoiceIds.indexOf(inv.id) >= 0)); });
               var execDate = inv.fundedDate;
               var ref = (spq ? spq.id : "CPQ") + " / " + inv.id;
-              entries.push({ date: execDate, sortDate: execDate + "T06:00:00", type: "Capital Advance", ref: ref, counterparty: inv.supplierName, credit: 0, debit: inv.capitalDue, currency: inv.currency });
+              entries.push({ id: "CA-" + inv.id, date: execDate, sortDate: execDate + "T06:00:00", type: "Capital Advance", baseType: "Capital Advance", status: null, ref: ref, refParts: { spq: spq ? spq.id : null, invoice: inv.id }, counterparty: inv.supplierName, counterpartyKind: "supplier", credit: 0, debit: inv.capitalDue, currency: inv.currency, source: { kind: "capitalAdvance", invoiceId: inv.id, spqId: spq ? spq.id : null, data: inv } });
             });
 
             // 4. Holdback returns / holdback-to-invoice — debits
             HOLDBACK_PAYMENTS_DB.forEach(function(hbp) {
               if (!progInvIds[hbp.sourceInvoiceId]) return;
-              hbp.allocations.forEach(function(a) {
+              hbp.allocations.forEach(function(a, ai) {
                 if (a.type === "disbursement") {
                   var inv = allProgInvs.find(function(x) { return x.id === hbp.sourceInvoiceId; });
-                  entries.push({ date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback Return", ref: hbp.hbPaymentId + " / " + hbp.sourceInvoiceId, counterparty: inv ? inv.supplierName : "\u2014", credit: 0, debit: a.amount, currency: hbp.currency });
+                  entries.push({ id: "HB-OUT-" + hbp.hbPaymentId + "-" + ai, date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback Return", baseType: "Holdback Return", status: null, ref: hbp.hbPaymentId + " / " + hbp.sourceInvoiceId, refParts: { hbp: hbp.hbPaymentId, invoice: hbp.sourceInvoiceId }, counterparty: inv ? inv.supplierName : "\u2014", counterpartyKind: "supplier", credit: 0, debit: a.amount, currency: hbp.currency, source: { kind: "hbp", hbpId: hbp.hbPaymentId, data: hbp, allocation: a } });
                 } else if (a.type === "invoice") {
-                  entries.push({ date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback to Invoice", ref: hbp.hbPaymentId + " \u2192 " + a.targetId, counterparty: "\u2014", credit: a.amount, debit: 0, currency: hbp.currency });
+                  entries.push({ id: "HB-IN-" + hbp.hbPaymentId + "-" + ai, date: hbp.date, sortDate: hbp.date + "T12:00:00", type: "Holdback to Invoice", baseType: "Holdback to Invoice", status: null, ref: hbp.hbPaymentId + " \u2192 " + a.targetId, refParts: { hbp: hbp.hbPaymentId, invoice: a.targetId }, counterparty: "\u2014", counterpartyKind: null, credit: a.amount, debit: 0, currency: hbp.currency, source: { kind: "hbp", hbpId: hbp.hbPaymentId, data: hbp, allocation: a } });
                 }
               });
             });
@@ -10104,16 +10702,11 @@ export default function FactoringDashboard() {
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
               if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram) {
                 var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "";
-                var statusLabel = spq.status === "Completed" ? "" : " [" + spq.status + "]";
-                entries.push({ date: execDate, sortDate: spq.executedAt || spq.createdAt || execDate + "T12:00:00", type: "Remittance" + statusLabel, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), counterparty: spq.supplierName, credit: 0, debit: spq.amount, currency: spq.currency });
+                entries.push({ id: "RM-" + spq.id, date: execDate, sortDate: spq.executedAt || spq.createdAt || execDate + "T12:00:00", type: "Remittance", baseType: "Remittance", status: spq.status === "Completed" ? null : spq.status, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), refParts: { spq: spq.id, payment: spq.sourcePaymentId }, counterparty: spq.supplierName, counterpartyKind: "supplier", credit: 0, debit: spq.amount, currency: spq.currency, source: { kind: "spq", spqId: spq.id, data: spq } });
               }
             });
 
-            // 6. Pass-through source payment inflows — credits
-            // Pair with Section 5 remittance debits so INBOUND pass-throughs net to zero.
-            // IMPORTANT: only add this credit when the source payment is inbound. Outbound
-            // payments (user-initiated outgoing wires) are represented by their Section 5
-            // debit only — there is no matching credit because no money arrived.
+            // 6. Pass-through source payment inflows — credits (only for inbound sources)
             var passThroughSourcesSeen = {};
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
               if (spq.type !== "remittance") return;
@@ -10121,20 +10714,16 @@ export default function FactoringDashboard() {
               if (spq.programId !== selectedProgram) return;
               if (!spq.sourcePaymentId) return;
               var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
-              // Skip outbound-sourced remittances — they have no paired credit
               if (pay && pay.direction === "outbound") return;
               var key = spq.sourcePaymentId + ":" + spq.id;
               if (passThroughSourcesSeen[key]) return;
               passThroughSourcesSeen[key] = true;
               var inflowDate = pay ? pay.date : (spq.createdAt ? spq.createdAt.split("T")[0] : "");
               var ref = spq.sourcePaymentId + " \u2192 " + spq.supplierName;
-              entries.push({ date: inflowDate, sortDate: inflowDate + "T11:59:00", type: "Pass-through Received", ref: ref, counterparty: pay && pay.reference ? pay.reference : "Buyer", credit: spq.amount, debit: 0, currency: spq.currency });
+              entries.push({ id: "PT-" + spq.id, date: inflowDate, sortDate: inflowDate + "T11:59:00", type: "Pass-through Received", baseType: "Pass-through Received", status: null, ref: ref, refParts: { payment: spq.sourcePaymentId, spq: spq.id }, counterparty: pay && pay.reference ? pay.reference : "Buyer", counterpartyKind: null, credit: spq.amount, debit: 0, currency: spq.currency, source: { kind: "spq", spqId: spq.id, paymentId: spq.sourcePaymentId, data: spq } });
             });
 
-            // Option A: filter ledger entries to the user's as-of date so Statement Balance
-            // reconciles with Available Balance (which uses viewData, also filtered to viewDate).
-            // Entries dated after viewDate are excluded entirely; changing the date picker
-            // at the top of the page will reveal or hide entries.
+            // Filter to as-of viewDate
             entries = entries.filter(function(e) { return !e.date || e.date <= viewDate; });
 
             // Sort chronologically
@@ -10147,55 +10736,187 @@ export default function FactoringDashboard() {
               e.balance = runBal;
             });
 
-            // Search and pagination
-            var bsSearch = allocSearch;
-            var bsFiltered = entries;
+            // Type meta (colours + badges)
+            var typeMeta = {
+              "Fund Inflow":          { bg: "#0EA5E920", color: "#38BDF8", border: "#0EA5E940" },
+              "Fund Disbursal":       { bg: "#7C3AED20", color: "#A78BFA", border: "#7C3AED40" },
+              "Buyer Payment":        { bg: "#10B98120", color: "#34D399", border: "#10B98140" },
+              "Capital Advance":      { bg: "#64748B20", color: "#94A3B8", border: "#64748B40" },
+              "Holdback Return":      { bg: "#8B5CF620", color: "#A78BFA", border: "#8B5CF640" },
+              "Holdback to Invoice":  { bg: "#D9770620", color: "#F59E0B", border: "#D9770640" },
+              "Remittance":           { bg: "#14B8A620", color: "#2DD4BF", border: "#14B8A640" },
+              "Pass-through Received":{ bg: "#14B8A620", color: "#2DD4BF", border: "#14B8A640" }
+            };
+
+            // Collect available types for filter
+            var availableTypes = [];
+            var _tSeen = {};
+            entries.forEach(function(e) { if (!_tSeen[e.baseType]) { _tSeen[e.baseType] = true; availableTypes.push(e.baseType); } });
+            availableTypes.sort();
+
+            // Apply filters (search, type, direction, date range)
+            var bsFiltered = entries.slice();
             if (bsSearch) {
               var q = bsSearch.toLowerCase();
-              bsFiltered = entries.filter(function(e) {
+              bsFiltered = bsFiltered.filter(function(e) {
                 return (e.type || "").toLowerCase().indexOf(q) > -1 || (e.ref || "").toLowerCase().indexOf(q) > -1 || (e.counterparty || "").toLowerCase().indexOf(q) > -1 || (e.date || "").indexOf(q) > -1;
               });
             }
-            var bsPageSize = 20;
-            var bsTotalPages = Math.max(1, Math.ceil(bsFiltered.length / bsPageSize));
-            var bsCurPage = Math.min(pg, bsTotalPages - 1);
-            var bsPageItems = bsFiltered.slice(bsCurPage * bsPageSize, (bsCurPage + 1) * bsPageSize);
+            if (bsTypeFilter) bsFiltered = bsFiltered.filter(function(e) { return e.baseType === bsTypeFilter; });
+            if (bsDirFilter === "credit") bsFiltered = bsFiltered.filter(function(e) { return e.credit > 0; });
+            if (bsDirFilter === "debit") bsFiltered = bsFiltered.filter(function(e) { return e.debit > 0; });
+            if (bsDateFrom) bsFiltered = bsFiltered.filter(function(e) { return e.date >= bsDateFrom; });
+            if (bsDateTo) bsFiltered = bsFiltered.filter(function(e) { return e.date <= bsDateTo; });
 
-            // Summary totals
+            var bsHasActive = !!bsSearch || !!bsTypeFilter || !!bsDirFilter || !!bsDateFrom || !!bsDateTo;
+
+            var bsTotalPages = Math.max(1, Math.ceil(bsFiltered.length / bsPerPage));
+            var bsCurPage = Math.min(bsPage, bsTotalPages - 1);
+            var bsPageItems = bsFiltered.slice(bsCurPage * bsPerPage, (bsCurPage + 1) * bsPerPage);
+
+            // Unfiltered totals (statement integrity)
             var totalCredits = entries.reduce(function(s, e) { return s + e.credit; }, 0);
             var totalDebits = entries.reduce(function(s, e) { return s + e.debit; }, 0);
             var closingBal = entries.length > 0 ? entries[entries.length - 1].balance : 0;
             var calcAvail = getProgramAvailableBalance(selectedProgram);
             var bsDelta = r2(closingBal - calcAvail);
 
+            // Filtered totals (when active)
+            var fltCredits = bsHasActive ? bsFiltered.reduce(function(s, e) { return s + e.credit; }, 0) : 0;
+            var fltDebits = bsHasActive ? bsFiltered.reduce(function(s, e) { return s + e.debit; }, 0) : 0;
+
+            // Type breakdown (unfiltered)
+            var typeBreakdown = {};
+            entries.forEach(function(e) {
+              if (!typeBreakdown[e.baseType]) typeBreakdown[e.baseType] = { count: 0, credit: 0, debit: 0 };
+              typeBreakdown[e.baseType].count += 1;
+              typeBreakdown[e.baseType].credit += e.credit;
+              typeBreakdown[e.baseType].debit += e.debit;
+            });
+            var typeBreakdownArr = Object.keys(typeBreakdown).map(function(k) { return Object.assign({ type: k }, typeBreakdown[k]); }).sort(function(a, b) { return (b.credit + b.debit) - (a.credit + a.debit); });
+
+            var fltSelBs = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
+            function activeStyleBs(active, base) { return Object.assign({}, base, active ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}); }
+
+            // CSV export
+            function exportCsv() {
+              var rows = [["Date", "Type", "Status", "Reference", "Counterparty", "Credit", "Debit", "Balance", "Currency"]];
+              bsFiltered.forEach(function(e) {
+                rows.push([
+                  e.date,
+                  e.type,
+                  e.status || "",
+                  (e.ref || "").replace(/"/g, '""'),
+                  (e.counterparty || "").replace(/"/g, '""'),
+                  e.credit > 0 ? e.credit.toFixed(2) : "",
+                  e.debit > 0 ? e.debit.toFixed(2) : "",
+                  e.balance.toFixed(2),
+                  e.currency
+                ]);
+              });
+              var csv = rows.map(function(r) { return r.map(function(c) { return '"' + String(c) + '"'; }).join(","); }).join("\n");
+              var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement("a");
+              a.href = url;
+              a.download = "bank_statement_" + selectedProgram + "_" + viewDate + ".csv";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }
+
+            // Drill-in helpers
+            function drillToInvoice(invoiceId) {
+              setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
+              setProgTab("invoices");
+            }
+            function drillToSupplier(supplierName) {
+              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
+            }
+            function drillToBuyer(buyerName) {
+              var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+              if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
+            }
+
             return <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 10 }}>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Total Credits</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalCredits), prog.currency)}</div>
-                </div>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Total Debits</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalDebits), prog.currency)}</div>
-                </div>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Transactions</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{entries.length}</div>
+              {/* Volume stats */}
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 6 }}>Volume</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", borderLeft: "3px solid #10B981", padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, letterSpacing: "0.04em" }}>Total Credits</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#10B981" }}>{money(r2(totalCredits), prog.currency)}</div>
+                    {bsHasActive && <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{money(r2(fltCredits), prog.currency)} in filter</div>}
+                  </div>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", borderLeft: "3px solid #DC2626", padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, letterSpacing: "0.04em" }}>Total Debits</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalDebits), prog.currency)}</div>
+                    {bsHasActive && <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{money(r2(fltDebits), prog.currency)} in filter</div>}
+                  </div>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", borderLeft: "3px solid #64748B", padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, letterSpacing: "0.04em" }}>Transactions</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{entries.length}</div>
+                    {bsHasActive && <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{bsFiltered.length} in filter</div>}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 18 }}>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Statement Balance</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: closingBal >= 0 ? "#059669" : "#DC2626" }}>{money(r2(closingBal), prog.currency)}</div>
+
+              {/* Reconciliation stats */}
+              <div style={{ marginTop: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 6 }}>Reconciliation</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", borderLeft: "3px solid " + (closingBal >= 0 ? "#10B981" : "#DC2626"), padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, letterSpacing: "0.04em" }}>Statement Balance</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: closingBal >= 0 ? "#10B981" : "#DC2626" }}>{money(r2(closingBal), prog.currency)}</div>
+                  </div>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", borderLeft: "3px solid " + (calcAvail >= 0 ? "#10B981" : "#DC2626"), padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, letterSpacing: "0.04em" }}>Available Balance</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: calcAvail >= 0 ? "#10B981" : "#DC2626" }}>{money(r2(calcAvail), prog.currency)}</div>
+                  </div>
+                  <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid " + (Math.abs(bsDelta) < 0.02 ? "#10B98140" : "#EF444440"), borderLeft: "3px solid " + (Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444"), padding: "12px 16px" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444", marginBottom: 4, letterSpacing: "0.04em" }}>{Math.abs(bsDelta) < 0.02 ? "Reconciled \u2713" : "Delta"}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444" }}>{Math.abs(bsDelta) < 0.02 ? "\u2014" : money(bsDelta, prog.currency)}</div>
+                  </div>
                 </div>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Available Balance</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: calcAvail >= 0 ? "#059669" : "#DC2626" }}>{money(r2(calcAvail), prog.currency)}</div>
+              </div>
+
+              {/* Type Breakdown */}
+              {typeBreakdownArr.length > 0 && <div style={{ marginBottom: 18, background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "14px 16px" }}>
+                <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 10 }}>Breakdown by Type</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 10 }}>
+                  {typeBreakdownArr.map(function(tb) {
+                    var m = typeMeta[tb.type] || { bg: "#64748B20", color: "#94A3B8", border: "#64748B40" };
+                    var net = tb.credit - tb.debit;
+                    var isCredit = tb.credit > tb.debit;
+                    var isClickable = tb.type !== bsTypeFilter;
+                    return <div key={tb.type} onClick={function() { if (bsTypeFilter === tb.type) { setBsTypeFilter(""); setBsPage(0); } else { setBsTypeFilter(tb.type); setBsPage(0); } }} style={{ padding: "8px 10px", background: bsTypeFilter === tb.type ? m.bg : "var(--bg)", borderRadius: 6, border: "1px solid " + (bsTypeFilter === tb.type ? m.border : "var(--border)"), cursor: "pointer", transition: "background 0.15s" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: m.bg, color: m.color, border: "1px solid " + m.border, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{tb.type}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{tb.count}</span>
+                      </div>
+                      <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: isCredit ? "#10B981" : "#DC2626" }}>{isCredit ? "+" : "\u2212"}{money(r2(Math.abs(net)), prog.currency)}</div>
+                    </div>;
+                  })}
                 </div>
-                <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid " + (Math.abs(bsDelta) < 0.02 ? "#10B98140" : "#EF444440"), padding: "14px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444", marginBottom: 4 }}>{Math.abs(bsDelta) < 0.02 ? "Reconciled \u2713" : "Delta"}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: Math.abs(bsDelta) < 0.02 ? "#10B981" : "#EF4444" }}>{Math.abs(bsDelta) < 0.02 ? "\u2014" : money(bsDelta, prog.currency)}</div>
+                {bsTypeFilter && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, fontStyle: "italic" }}>Click {bsTypeFilter} tile again to clear the filter</div>}
+              </div>}
+
+              {/* Filter bar */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" value={bsSearch} onChange={function(e) { setBsSearch(e.target.value); setBsPage(0); }} placeholder="Search type, reference, counterparty..." style={activeStyleBs(!!bsSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 260 })} />
+                <select value={bsTypeFilter} onChange={function(e) { setBsTypeFilter(e.target.value); setBsPage(0); }} style={activeStyleBs(!!bsTypeFilter, fltSelBs)}><option value="">All Types</option>{availableTypes.map(function(t) { return <option key={t} value={t}>{t}</option>; })}</select>
+                <select value={bsDirFilter} onChange={function(e) { setBsDirFilter(e.target.value); setBsPage(0); }} style={activeStyleBs(!!bsDirFilter, fltSelBs)}><option value="">Credits + Debits</option><option value="credit">Credits only</option><option value="debit">Debits only</option></select>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>From</span>
+                  <input type="date" value={bsDateFrom} onChange={function(e) { setBsDateFrom(e.target.value); setBsPage(0); }} style={activeStyleBs(!!bsDateFrom, Object.assign({}, fltSelBs, { fontFamily: "'JetBrains Mono', monospace" }))} />
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>To</span>
+                  <input type="date" value={bsDateTo} onChange={function(e) { setBsDateTo(e.target.value); setBsPage(0); }} style={activeStyleBs(!!bsDateTo, Object.assign({}, fltSelBs, { fontFamily: "'JetBrains Mono', monospace" }))} />
                 </div>
+                {bsHasActive && <button onClick={function() { setBsSearch(""); setBsTypeFilter(""); setBsDirFilter(""); setBsDateFrom(""); setBsDateTo(""); setBsPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                <span style={{ marginLeft: "auto", fontSize: 11.5, color: bsHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: bsHasActive ? 600 : 400 }}>{bsHasActive && bsFiltered.length !== entries.length ? bsFiltered.length + " of " + entries.length : bsFiltered.length} transaction{bsFiltered.length === 1 ? "" : "s"}</span>
+                <button onClick={exportCsv} disabled={bsFiltered.length === 0} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: bsFiltered.length === 0 ? "default" : "pointer", opacity: bsFiltered.length === 0 ? 0.5 : 1 }} title="Export filtered statement as CSV">{"\u2b07"} CSV</button>
               </div>
 
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -10204,35 +10925,98 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Bank Statement {"\u2014"} {prog.name}</div>
                     <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{prog.currency}</span>
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="text" value={bsSearch} onChange={function(e) { setAllocSearch(e.target.value); setPg(0); }} placeholder="Search statement..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-                    {bsSearch && <button onClick={function() { setAllocSearch(""); setPg(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  </div>
                 </div>
-                {bsFiltered.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{bsSearch ? "No transactions match your search." : "No transactions recorded for this program."}</div> :
+                {bsFiltered.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{bsHasActive ? "No transactions match your filters." : "No transactions recorded for this program."}</div> :
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Date", "Type", "Reference", "Counterparty", "Credit", "Debit", "Balance"].map(function(h) { return <th key={h} style={{ textAlign: h === "Credit" || h === "Debit" || h === "Balance" ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{["Date", "Type", "Reference", "Counterparty", "Credit", "Debit", "Balance", ""].map(function(h) { return <th key={h} style={{ textAlign: h === "Credit" || h === "Debit" || h === "Balance" ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
                     <tbody>{bsPageItems.map(function(e, ei) {
-                      var typeColors = { "Fund Inflow": "#0EA5E9", "Fund Disbursal": "#7C3AED", "Buyer Payment": "#059669", "Capital Advance": "#E2E8F0", "Holdback Return": "#8B5CF6", "Holdback to Invoice": "#D97706" };
-                      var tc = typeColors[e.type] || (e.type.indexOf("Remittance") > -1 ? "#059669" : "var(--text-secondary)");
-                      return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(e.date)}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, fontWeight: 600, color: tc, whiteSpace: "nowrap" }}>{e.type}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.ref}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text)" }}>{e.counterparty}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600, textAlign: "right" }}>{e.credit > 0 ? money(e.credit, e.currency) : ""}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600, textAlign: "right" }}>{e.debit > 0 ? money(e.debit, e.currency) : ""}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", color: e.balance >= 0 ? "var(--text)" : "#DC2626" }}>{money(e.balance, e.currency)}</td>
-                      </tr>;
+                      var m = typeMeta[e.baseType] || { bg: "#64748B20", color: "#94A3B8", border: "#64748B40" };
+                      var isExpBs = bsExp === e.id;
+                      var cpDrill = null;
+                      if (e.counterpartyKind === "supplier" && e.counterparty && e.counterparty !== "\u2014") cpDrill = function(ev) { ev.stopPropagation(); drillToSupplier(e.counterparty); };
+                      else if (e.counterpartyKind === "buyer" && e.counterparty && e.counterparty !== "\u2014") cpDrill = function(ev) { ev.stopPropagation(); drillToBuyer(e.counterparty); };
+                      // Related audit log entries
+                      var relatedLogs = AUDIT_LOG.filter(function(log) {
+                        if (!log.context) return false;
+                        if (e.source.kind === "payment" && log.context.paymentId === e.source.paymentId) return true;
+                        if (e.source.kind === "capitalAdvance" && (log.context.invoiceId === e.source.invoiceId || log.context.queueId === e.source.spqId)) return true;
+                        if (e.source.kind === "hbp" && log.context.hbPaymentId === e.source.hbpId) return true;
+                        if (e.source.kind === "spq" && (log.context.queueId === e.source.spqId || log.context.paymentId === e.source.paymentId)) return true;
+                        return false;
+                      });
+                      return <React.Fragment key={e.id}>
+                        <tr style={{ borderBottom: isExpBs ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBs ? "var(--card-hover)" : "transparent" }} onClick={function() { setBsExp(isExpBs ? null : e.id); }}>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(e.date)}</td>
+                          <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
+                            <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: m.bg, color: m.color, border: "1px solid " + m.border, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{e.baseType}</span>
+                            {e.status && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 7px", borderRadius: 4, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.status}</span>}
+                          </td>
+                          <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.ref}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--text)" }}>{cpDrill ? <span onClick={cpDrill} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + e.counterparty}>{e.counterparty}</span> : <span>{e.counterparty}</span>}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#10B981", fontWeight: 600, textAlign: "right" }}>{e.credit > 0 ? money(e.credit, e.currency) : ""}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600, textAlign: "right" }}>{e.debit > 0 ? money(e.debit, e.currency) : ""}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", color: e.balance >= 0 ? "var(--text)" : "#DC2626" }}>{money(e.balance, e.currency)}</td>
+                          <td style={{ padding: "8px 8px", width: 36 }}><button onClick={function(ev) { ev.stopPropagation(); setBsExp(isExpBs ? null : e.id); }} style={{ width: 26, height: 26, borderRadius: 5, border: "none", background: isExpBs ? "var(--accent)" : "var(--card-hover)", color: isExpBs ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBs ? "\u25b4" : "\u25be"}</button></td>
+                        </tr>
+                        {isExpBs && <tr><td colSpan={8} style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: relatedLogs.length > 0 ? 14 : 0 }}>
+                            <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Transaction Details</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", fontSize: 11 }}>
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Date</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt(e.date)}</span>
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Type</span><span><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, background: m.bg, color: m.color, border: "1px solid " + m.border, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.baseType}</span>{e.status && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 7px", borderRadius: 4, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.status}</span>}</span>
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Reference</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.ref}</span>
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Counterparty</span><span>{cpDrill ? <span onClick={cpDrill} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{e.counterparty}</span> : e.counterparty}</span>
+                                {e.credit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Credit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#10B981", fontWeight: 600 }}>{money(e.credit, e.currency)}</span></>}
+                                {e.debit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Debit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{money(e.debit, e.currency)}</span></>}
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Balance</span><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(e.balance, e.currency)}</span>
+                                <span style={{ color: "var(--muted)", fontWeight: 600 }}>Currency</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.currency}</span>
+                              </div>
+                            </div>
+                            <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px" }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Linked Records</div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11 }}>
+                                {e.refParts && e.refParts.invoice && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Invoice</span><span onClick={function(ev) { ev.stopPropagation(); drillToInvoice(e.refParts.invoice); }} style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Go to invoice">{e.refParts.invoice}</span></div>}
+                                {e.refParts && e.refParts.payment && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Payment</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.refParts.payment}</span></div>}
+                                {e.refParts && e.refParts.spq && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Payment Ref (SPQ)</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.refParts.spq}</span></div>}
+                                {e.refParts && e.refParts.hbp && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Holdback Payment</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#A78BFA" }}>{e.refParts.hbp}</span></div>}
+                                {(!e.refParts || Object.keys(e.refParts).length === 0) && <span style={{ color: "var(--muted)", fontStyle: "italic" }}>No linked records</span>}
+                                {e.source.kind === "fundFlow" && e.source.data && e.source.data.reason && <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>Reason</span><span style={{ color: "var(--text-secondary)", textAlign: "right" }}>{e.source.data.reason}</span></div>}
+                              </div>
+                            </div>
+                          </div>
+                          {relatedLogs.length > 0 && <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px" }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Audit Trail ({relatedLogs.length})</div>
+                            <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                                <tbody>{relatedLogs.slice().reverse().map(function(log, li) { return <tr key={li} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{log.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{log.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{log.details}</td></tr>; })}</tbody>
+                              </table>
+                            </div>
+                          </div>}
+                        </td></tr>}
+                      </React.Fragment>;
                     })}</tbody>
                   </table>
                 </div>}
-                {bsTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {bsCurPage + 1} of {bsTotalPages} ({bsFiltered.length} transactions)</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={bsCurPage === 0} onClick={function() { setPg(bsCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: bsCurPage === 0 ? "transparent" : "var(--card)", color: bsCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: bsCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
-                    <button disabled={bsCurPage >= bsTotalPages - 1} onClick={function() { setPg(bsCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: bsCurPage >= bsTotalPages - 1 ? "transparent" : "var(--card)", color: bsCurPage >= bsTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: bsCurPage >= bsTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                {/* Pagination */}
+                {bsFiltered.length > 0 && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5 }}>{(bsCurPage * bsPerPage + 1) + "-" + Math.min((bsCurPage + 1) * bsPerPage, bsFiltered.length) + " of " + bsFiltered.length}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em" }}>Per page</label>
+                    <select value={bsPerPage} onChange={function(e) { setBsPerPage(parseInt(e.target.value, 10)); setBsPage(0); }} style={Object.assign({}, fltSelBs, { padding: "5px 8px" })}>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <button onClick={function() { setBsPage(0); }} disabled={bsCurPage === 0} style={Object.assign({}, fltSelBs, { padding: "5px 10px", opacity: bsCurPage === 0 ? 0.3 : 1, cursor: bsCurPage === 0 ? "default" : "pointer" })} title="First page">{"\u00ab"}</button>
+                    <button onClick={function() { setBsPage(Math.max(0, bsCurPage - 1)); }} disabled={bsCurPage === 0} style={Object.assign({}, fltSelBs, { padding: "5px 12px", opacity: bsCurPage === 0 ? 0.3 : 1, cursor: bsCurPage === 0 ? "default" : "pointer" })} title="Previous">{"\u2190"}</button>
+                    <span style={{ padding: "0 6px", fontSize: 11.5, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace", display: "flex", alignItems: "center", gap: 4 }}>Page <input type="number" min={1} max={bsTotalPages} value={bsCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= bsTotalPages) setBsPage(v - 1); }} style={{ width: 44, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", outline: "none", textAlign: "center" }} /> / {bsTotalPages}</span>
+                    <button onClick={function() { setBsPage(Math.min(bsTotalPages - 1, bsCurPage + 1)); }} disabled={bsCurPage >= bsTotalPages - 1} style={Object.assign({}, fltSelBs, { padding: "5px 12px", opacity: bsCurPage >= bsTotalPages - 1 ? 0.3 : 1, cursor: bsCurPage >= bsTotalPages - 1 ? "default" : "pointer" })} title="Next">{"\u2192"}</button>
+                    <button onClick={function() { setBsPage(bsTotalPages - 1); }} disabled={bsCurPage >= bsTotalPages - 1} style={Object.assign({}, fltSelBs, { padding: "5px 10px", opacity: bsCurPage >= bsTotalPages - 1 ? 0.3 : 1, cursor: bsCurPage >= bsTotalPages - 1 ? "default" : "pointer" })} title="Last page">{"\u00bb"}</button>
                   </div>
                 </div>}
               </div>
