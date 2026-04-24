@@ -2357,9 +2357,31 @@ export default function FactoringDashboard() {
   var pdd1 = useState(""), pdDateFilter = pdd1[0], setPdDateFilter = pdd1[1];
   var oqs1 = useState(""), oqSearch = oqs1[0], setOqSearch = oqs1[1];
   var oqp1 = useState(0), oqPage = oqp1[0], setOqPage = oqp1[1];
+  var oqpp1 = useState(25), oqPerPage = oqpp1[0], setOqPerPage = oqpp1[1];
+  var oqsrt1 = useState("date"), oqSort = oqsrt1[0], setOqSort = oqsrt1[1];
+  var oqdir1 = useState("desc"), oqDir = oqdir1[0], setOqDir = oqdir1[1];
   var ocs1 = useState(""), ocSearch = ocs1[0], setOcSearch = ocs1[1];
   var ocp1 = useState(0), ocPage = ocp1[0], setOcPage = ocp1[1];
+  var ocpp1 = useState(25), ocPerPage = ocpp1[0], setOcPerPage = ocpp1[1];
+  var ocsrt1 = useState("date"), ocSort = ocsrt1[0], setOcSort = ocsrt1[1];
+  var ocdir1 = useState("desc"), ocDir = ocdir1[0], setOcDir = ocdir1[1];
+  var octf1 = useState(""), ocTypeFilter = octf1[0], setOcTypeFilter = octf1[1];
+  var ocdf1 = useState(""), ocDateFrom = ocdf1[0], setOcDateFrom = ocdf1[1];
+  var ocdt1 = useState(""), ocDateTo = ocdt1[0], setOcDateTo = ocdt1[1];
   var ipg1 = useState(0), inPage = ipg1[0], setInPage = ipg1[1];
+  var inpp1 = useState(25), inPerPage = inpp1[0], setInPerPage = inpp1[1];
+  var insrt1 = useState("date"), inSort = insrt1[0], setInSort = insrt1[1];
+  var indir1 = useState("desc"), inDir = indir1[0], setInDir = indir1[1];
+  // Outgoing Payments — now split from Incoming (was sharing pdSearch/pdCcyFilter/pdDateFilter/inPage)
+  var ogs1 = useState(""), ogSearch = ogs1[0], setOgSearch = ogs1[1];
+  var ogc1 = useState(""), ogCcyFilter = ogc1[0], setOgCcyFilter = ogc1[1];
+  var ogdf1 = useState(""), ogDateFrom = ogdf1[0], setOgDateFrom = ogdf1[1];
+  var ogdt1 = useState(""), ogDateTo = ogdt1[0], setOgDateTo = ogdt1[1];
+  var ogst1 = useState(""), ogStatusFilter = ogst1[0], setOgStatusFilter = ogst1[1];
+  var ogp1 = useState(0), ogPage = ogp1[0], setOgPage = ogp1[1];
+  var ogpp1 = useState(25), ogPerPage = ogpp1[0], setOgPerPage = ogpp1[1];
+  var ogsrt1 = useState("date"), ogSort = ogsrt1[0], setOgSort = ogsrt1[1];
+  var ogdir1 = useState("desc"), ogDir = ogdir1[0], setOgDir = ogdir1[1];
   var hds1 = useState(""), hdSearch = hds1[0], setHdSearch = hds1[1];
   var hdc1 = useState(""), hdCcyFilter = hdc1[0], setHdCcyFilter = hdc1[1];
   var hdd1 = useState(""), hdDateFilter = hdd1[0], setHdDateFilter = hdd1[1];
@@ -5445,7 +5467,7 @@ export default function FactoringDashboard() {
                       </tr></thead>
                       <tbody>
                         {pendingOutbound.map(function(p) {
-                          return <tr key={p.paymentId} onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); setExpPay(p.paymentId); setPendingFocusPayId(p.paymentId); setView("payments"); setPayTab("outgoing_db"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                          return <tr key={p.paymentId} onClick={function() { setOgSearch(""); setOgCcyFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgStatusFilter(""); setOgPage(0); setExpPay(p.paymentId); setPendingFocusPayId(p.paymentId); setView("payments"); setPayTab("outgoing_db"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                             <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{p.paymentId}</td>
                             <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{fmt(p.date)}</td>
                             <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(p.amount), p.currency)}</td>
@@ -8692,7 +8714,7 @@ export default function FactoringDashboard() {
           {/* Program sub-tabs and selector */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-              {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (progTab === t ? "var(--accent)" : "var(--border)"), cursor: "pointer", fontSize: 13, fontWeight: 700, fontWeight: 600, letterSpacing: "0.03em", background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", boxShadow: progTab === t ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+              {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: progTab === t ? 600 : 400, background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
             </div>
             <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); setPiPage(0); setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPaPage(0); setPaExp(null); setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPhPage(0); setPhExp(null); setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPfPage(0); setFundPayExp(null); setPfSearch(""); setPfDateFilter(""); setPfStatusFilter(""); setBsPage(0); setBsExp(null); setBsSearch(""); setBsTypeFilter(""); setBsDirFilter(""); setBsDateFrom(""); setBsDateTo(""); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
               <option value="">Select Program...</option>
@@ -11079,7 +11101,7 @@ export default function FactoringDashboard() {
                 <span style={{ color: "#059669", fontWeight: 600 }}>{money(supAmt, srcInv.currency)}</span>
                 <span style={{ color: "var(--muted)" }}> of {money(pool, srcInv.currency)} to {srcInv.supplierName}</span>
               </div>
-              <button onClick={executeHbDisburse} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#059669", color: "#fff", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #2E8B5740" }}>Confirm Disbursement</button>
+              <button onClick={executeHbDisburse} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#059669", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #2E8B5740" }}>Confirm Disbursement</button>
             </div>}
           </div>;
         })()}
@@ -11088,7 +11110,7 @@ export default function FactoringDashboard() {
         {isP && !allocPay && <div>
           {/* Payment Sub-tabs */}
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
-            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outgoing_db", l: "Outgoing Payments" }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOcSearch(""); setOcPage(0); setInPage(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
+            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outgoing_db", l: "Outgoing Payments" }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOqSort("date"); setOqDir("desc"); setOcSearch(""); setOcPage(0); setOcSort("date"); setOcDir("desc"); setOcTypeFilter(""); setOcDateFrom(""); setOcDateTo(""); setInPage(0); setInSort("date"); setInDir("desc"); setOgSearch(""); setOgCcyFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgStatusFilter(""); setOgPage(0); setOgSort("date"); setOgDir("desc"); setExpPay(null); setExp(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
           </div>
 
           {/* === OUTBOUND PENDING TAB === */}
@@ -11096,6 +11118,19 @@ export default function FactoringDashboard() {
           {payTab === "outbound_queue" && (function() {
               var pending = SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; });
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+              function drillToInvoice(invoiceId) {
+                var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+                if (!inv) return;
+                var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+                if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+              }
+              function drillToSupplier(supplierName) {
+                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+              }
+              function drillToProgram(programId) {
+                setView("program"); setSelectedProgram(programId); setProgTab("overview");
+              }
 
               return <div>
                 {/* Outbound Payments to be made */}
@@ -11159,7 +11194,7 @@ export default function FactoringDashboard() {
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {outboundRows.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#38BDF8" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Supplier Payments to be Made</div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>Supplier Payments to be Made</div>
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{outboundRows.length} awaiting execution</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -11178,21 +11213,59 @@ export default function FactoringDashboard() {
                     {outboundRows.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       <input type="text" value={oqSearch} onChange={function(e) { setOqSearch(e.target.value); setOqPage(0); }} placeholder="Search queue..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 }} />
                       {oqSearch && <button onClick={function() { setOqSearch(""); setOqPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                      <div style={{ flex: 1 }}></div>
+                      <button onClick={function() {
+                        var filteredOQcsv = outboundRows;
+                        if (oqSearch) { var q = oqSearch.toLowerCase(); filteredOQcsv = filteredOQcsv.filter(function(row) { return (row.supplierName || "").toLowerCase().indexOf(q) > -1 || (row.detail || "").toLowerCase().indexOf(q) > -1 || (row.programName || "").toLowerCase().indexOf(q) > -1 || (row.rowType || "").toLowerCase().indexOf(q) > -1 || (row.currency || "").toLowerCase().indexOf(q) > -1 || (row.rowId || "").toLowerCase().indexOf(q) > -1; }); }
+                        var headers = ["Type", "ID", "Date", "Supplier", "Detail", "Amount", "Currency", "Program", "Bank", "Account"];
+                        var rows = filteredOQcsv.map(function(row) {
+                          var tl = row.rowType === "funding" ? "Funding" : row.rowType === "passthrough" ? "Pass-through" : "Holdback";
+                          var id = row.rowType === "funding" ? row.inv.id : row.spqItem.id;
+                          var dt = row.rowType === "funding" ? fmt(row.inv.approvedDate) : row.spqItem.createdDisplay;
+                          return [tl, id, dt, row.supplierName || "", row.detail || "", row.amount, row.currency, row.programName || "", row.bankName || "", row.bankDetails || ""];
+                        });
+                        var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                        var blob = new Blob([csv], { type: "text/csv" });
+                        var url = URL.createObjectURL(blob);
+                        var a = document.createElement("a");
+                        a.href = url; a.download = "outbound-queue-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                        URL.revokeObjectURL(url);
+                      }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
                     </div>}
                     {(function() {
                       var filteredOQ = outboundRows;
                       if (oqSearch) { var q = oqSearch.toLowerCase(); filteredOQ = filteredOQ.filter(function(row) { return (row.supplierName || "").toLowerCase().indexOf(q) > -1 || (row.detail || "").toLowerCase().indexOf(q) > -1 || (row.programName || "").toLowerCase().indexOf(q) > -1 || (row.rowType || "").toLowerCase().indexOf(q) > -1 || (row.currency || "").toLowerCase().indexOf(q) > -1 || (row.rowId || "").toLowerCase().indexOf(q) > -1; }); }
-                      var oqPageSize = 20;
-                      var oqTotalPages = Math.max(1, Math.ceil(filteredOQ.length / oqPageSize));
+                      // Sort
+                      function oqDateKey(row) {
+                        if (row.rowType === "funding") return row.inv.approvedDate || "";
+                        var spq = row.spqItem;
+                        if (spq && spq.createdAt) return String(spq.createdAt).slice(0, 10);
+                        if (spq && spq.createdDisplay) { var p = new Date(spq.createdDisplay); if (!isNaN(p.getTime())) { var mm = String(p.getMonth() + 1).padStart(2, "0"); var dd = String(p.getDate()).padStart(2, "0"); return p.getFullYear() + "-" + mm + "-" + dd; } }
+                        return "";
+                      }
+                      function oqKey(row) {
+                        if (oqSort === "type") return row.rowType || "";
+                        if (oqSort === "id") return row.rowType === "funding" ? row.inv.id : row.spqItem.id;
+                        if (oqSort === "date") return oqDateKey(row);
+                        if (oqSort === "supplier") return row.supplierName || "";
+                        if (oqSort === "amount") return row.amount || 0;
+                        if (oqSort === "currency") return row.currency || "";
+                        if (oqSort === "program") return row.programName || "";
+                        return "";
+                      }
+                      filteredOQ = filteredOQ.slice().sort(function(a, b) { var ka = oqKey(a), kb = oqKey(b); if (ka < kb) return oqDir === "asc" ? -1 : 1; if (ka > kb) return oqDir === "asc" ? 1 : -1; return 0; });
+                      var oqTotalPages = Math.max(1, Math.ceil(filteredOQ.length / oqPerPage));
                       var oqCurPage = Math.min(oqPage, oqTotalPages - 1);
-                      var oqPageRows = filteredOQ.slice(oqCurPage * oqPageSize, (oqCurPage + 1) * oqPageSize);
+                      var oqPageRows = filteredOQ.slice(oqCurPage * oqPerPage, (oqCurPage + 1) * oqPerPage);
                       if (filteredOQ.length === 0) return <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{oqSearch ? "No items match your search." : "No supplier payments awaiting execution."}</div>;
+                      function oqSortH(key) { return function() { if (oqSort === key) setOqDir(oqDir === "asc" ? "desc" : "asc"); else { setOqSort(key); setOqDir("asc"); } setOqPage(0); }; }
+                      function oqArr(key) { return oqSort === key ? (oqDir === "asc" ? " \u25b4" : " \u25be") : ""; }
                       return <div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
                           <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allFeqSelected) { setFeqSelected({}); } else { var n = {}; if (feqLockSup !== null) { feqEligible.forEach(function(row) { n[row.rowId] = true; }); } else if (outboundRows.length > 0) { var firstRow = outboundRows[0]; var lockSup = getParentSupplierName(firstRow.supplierName); var lockProg = firstRow.programId; var lockPass = firstRow.rowType === "passthrough"; outboundRows.forEach(function(row) { if (getParentSupplierName(row.supplierName) === lockSup && row.programId === lockProg && (row.rowType === "passthrough") === lockPass) n[row.rowId] = true; }); } setFeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allFeqSelected ? "var(--accent)" : "var(--border)"), background: allFeqSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allFeqSelected ? "\u2713" : ""}</div></th>
-                          {["Type", "ID", "Date", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                          {[{ k: "type", l: "Type" }, { k: "id", l: "ID" }, { k: "date", l: "Date" }, { k: "supplier", l: "Supplier" }, { k: null, l: "Detail" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "program", l: "Program" }, { k: null, l: "Bank" }, { k: null, l: "Account" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"oqh-" + hi} onClick={h.k ? oqSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? oqArr(h.k) : ""}</th>; })}
                         </tr></thead>
                         <tbody>{oqPageRows.map(function(row) {
                           var isSel = !!feqSelected[row.rowId];
@@ -11202,13 +11275,13 @@ export default function FactoringDashboard() {
                           return <tr key={row.rowId} style={{ borderBottom: "1px solid var(--border)", background: isSel ? "#2E8B5708" : "transparent", opacity: isLocked ? 0.35 : 1 }}>
                             <td style={{ padding: "8px 8px" }}>{isLocked ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }}>{"\ud83d\udd12"}</div> : <div onClick={function() { setFeqSelected(function(p) { var n = Object.assign({}, p); if (n[row.rowId]) delete n[row.rowId]; else n[row.rowId] = true; return n; }); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}</td>
                             <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                            <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}>{row.rowType === "funding" ? row.inv.id : row.spqItem.id}</td>
+                            <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function(e) { if (row.rowType === "funding") { e.stopPropagation(); drillToInvoice(row.inv.id); } }} style={{ cursor: row.rowType === "funding" ? "pointer" : "default", borderBottom: row.rowType === "funding" ? "1px dotted var(--accent)" : "none" }} title={row.rowType === "funding" ? "Open invoice " + row.inv.id : ""}>{row.rowType === "funding" ? row.inv.id : row.spqItem.id}</span></td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.rowType === "funding" ? fmt(row.inv.approvedDate) : row.spqItem.createdDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{row.supplierName}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(row.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + row.supplierName}>{row.supplierName}</span></td>
                             <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{row.detail}</td>
                             <td style={Object.assign({}, aqmc, { fontWeight: 700, color: "#0EA5E9" })}>{money(row.amount, row.currency)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.programName}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.programId ? <span onClick={function(e) { e.stopPropagation(); drillToProgram(row.programId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View program " + row.programName}>{row.programName}</span> : row.programName}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.bankName || "\u2014"}</td>
                             <td style={Object.assign({}, aqmc, { color: "var(--text-secondary)" })}>{row.bankDetails || "\u2014"}</td>
                             <td style={{ padding: "8px 8px" }}>
@@ -11222,13 +11295,17 @@ export default function FactoringDashboard() {
                         })}</tbody>
                       </table>
                     </div>
-                    {oqTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                       <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {oqCurPage + 1} of {oqTotalPages} ({filteredOQ.length} items)</span>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button disabled={oqCurPage === 0} onClick={function() { setOqPage(oqCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage === 0 ? "transparent" : "var(--card)", color: oqCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
-                        <button disabled={oqCurPage >= oqTotalPages - 1} onClick={function() { setOqPage(oqCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage >= oqTotalPages - 1 ? "transparent" : "var(--card)", color: oqCurPage >= oqTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage >= oqTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <select value={oqPerPage} onChange={function(e) { setOqPerPage(parseInt(e.target.value, 10)); setOqPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                        <button disabled={oqCurPage === 0} onClick={function() { setOqPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage === 0 ? "transparent" : "var(--card)", color: oqCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                        <button disabled={oqCurPage === 0} onClick={function() { setOqPage(oqCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage === 0 ? "transparent" : "var(--card)", color: oqCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                        <input type="number" min="1" max={oqTotalPages} value={oqCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= oqTotalPages) setOqPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                        <button disabled={oqCurPage >= oqTotalPages - 1} onClick={function() { setOqPage(oqCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage >= oqTotalPages - 1 ? "transparent" : "var(--card)", color: oqCurPage >= oqTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage >= oqTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                        <button disabled={oqCurPage >= oqTotalPages - 1} onClick={function() { setOqPage(oqTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: oqCurPage >= oqTotalPages - 1 ? "transparent" : "var(--card)", color: oqCurPage >= oqTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: oqCurPage >= oqTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
                       </div>
-                    </div>}
+                    </div>
                     </div>;
                     })()}
                   </div>;
@@ -11262,7 +11339,7 @@ export default function FactoringDashboard() {
                     <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {pendingDisbursals.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#7C3AED" }}></div>}
-                        <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Service Provider Payments to be Made</div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>Service Provider Payments to be Made</div>
                         <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingDisbursals.length} awaiting execution</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -11312,7 +11389,7 @@ export default function FactoringDashboard() {
                 {batchConfirm && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBatchConfirm(null); }}>
                   <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "28px 32px", maxWidth: 1020, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Supplier Payments" : "Execute Service Provider Payments"}</div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: batchConfirm.type === "outbound" ? "#0EA5E9" : "#7C3AED" }}>{batchConfirm.type === "outbound" ? "Execute Supplier Payments" : "Execute Service Provider Payments"}</div>
                       <button onClick={function() { setBatchConfirm(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Confirm execution of {batchConfirm.items.length} payment{batchConfirm.items.length > 1 ? "s" : ""}.</div>
@@ -11695,7 +11772,7 @@ export default function FactoringDashboard() {
                             setDataVer(function(v) { return v + 1; });
                           }
                           setBatchConfirm(null);
-                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: insuffBal ? "var(--border)" : (batchConfirm.type === "outbound" ? "#059669" : "#7C3AED"), color: insuffBal ? "var(--muted)" : "#fff", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: insuffBal ? "not-allowed" : "pointer", boxShadow: insuffBal ? "none" : "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>{insuffBal ? "Insufficient Balance" : "Confirm Execution"}</button>;
+                        }} style={{ padding: "9px 28px", borderRadius: 8, border: "none", background: insuffBal ? "var(--border)" : (batchConfirm.type === "outbound" ? "#059669" : "#7C3AED"), color: insuffBal ? "var(--muted)" : "#fff", fontSize: 14, fontWeight: 600, cursor: insuffBal ? "not-allowed" : "pointer", boxShadow: insuffBal ? "none" : "0 4px 15px " + (batchConfirm.type === "outbound" ? "#2E8B5740" : "#7B5EA740") }}>{insuffBal ? "Insufficient Balance" : "Confirm Execution"}</button>;
                         })()}
                         <button onClick={function() { setBatchConfirm(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                       </div>
@@ -11707,7 +11784,7 @@ export default function FactoringDashboard() {
                 {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
                   <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600 }}>Bundle Payments to {bundleDialog.supplierName}</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>Bundle Payments to {bundleDialog.supplierName}</div>
                       <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{bundleDialog.items.length > 1 ? "There are " + bundleDialog.items.length + " pending payments to this supplier in " + bundleDialog.currency + ". Select which to include in a single consolidated payment." : "Confirm execution of this payment."}</div>
@@ -11759,7 +11836,7 @@ export default function FactoringDashboard() {
                               auditLog("Bundled Payment Executed", selItems.length + " payments bundled for " + bundleDialog.supplierName + ": " + money(r2(totalAmt), bundleDialog.currency) + " (" + bundledIds.join(", ") + ")", { supplierName: bundleDialog.supplierName, totalAmount: r2(totalAmt), currency: bundleDialog.currency, queueIds: bundledIds, count: selItems.length });
                             }
                             setBundleDialog(null);
-                          }} disabled={selItems.length === 0} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: selItems.length > 0 ? "#059669" : "var(--border)", color: selItems.length > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: selItems.length > 0 ? "pointer" : "default", boxShadow: selItems.length > 0 ? "0 2px 10px #2E8B5730" : "none" }}>{selItems.length > 1 ? "Execute Bundled Payment (" + selItems.length + ")" : "Execute Payment"}</button>
+                          }} disabled={selItems.length === 0} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: selItems.length > 0 ? "#059669" : "var(--border)", color: selItems.length > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: selItems.length > 0 ? "pointer" : "default", boxShadow: selItems.length > 0 ? "0 2px 10px #2E8B5730" : "none" }}>{selItems.length > 1 ? "Execute Bundled Payment (" + selItems.length + ")" : "Execute Payment"}</button>
                           <button onClick={function() { setBundleDialog(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                         </div>
                       </div>;
@@ -11786,47 +11863,151 @@ export default function FactoringDashboard() {
               var cpPopup = managePopup && managePopup.type === "completedPayment" ? managePopup : null;
               var cpItem = cpPopup ? SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === cpPopup.id; }) : null;
               var qmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+              function drillToInvoice(invoiceId) {
+                var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+                if (!inv) return;
+                var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+                if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+              }
+              function drillToSupplier(supplierName) {
+                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+              }
+              function drillToProgram(programId) {
+                if (!programId) return;
+                setView("program"); setSelectedProgram(programId); setProgTab("overview");
+              }
+              function itemProgramId(item) {
+                if (item.programId) return item.programId;
+                // Try to resolve from invoice
+                var invId = item.invoiceId || (item.invoiceIds && item.invoiceIds[0]) || item.sourceInvoiceId;
+                if (invId) { var inv = INVOICES_DB.find(function(x) { return x.id === invId; }); if (inv) return inv.fundingProgram; }
+                return null;
+              }
+              // Filter-aware stat tiles (honour search + type + date range)
+              function applyOcFilters(list) {
+                var r = list;
+                if (ocSearch) { var q = ocSearch.toLowerCase(); r = r.filter(function(item) { return (item.id || "").toLowerCase().indexOf(q) > -1 || (item.supplierName || "").toLowerCase().indexOf(q) > -1 || (item.type || "").toLowerCase().indexOf(q) > -1 || (item.programName || "").toLowerCase().indexOf(q) > -1 || (item.invoiceId || "").toLowerCase().indexOf(q) > -1 || (item.invoiceIds ? item.invoiceIds.join(", ") : "").toLowerCase().indexOf(q) > -1 || (item.sourceInvoiceId || "").toLowerCase().indexOf(q) > -1 || (item.currency || "").toLowerCase().indexOf(q) > -1; }); }
+                if (ocTypeFilter) { r = r.filter(function(item) {
+                  if (ocTypeFilter === "funding") return item.type === "funding";
+                  if (ocTypeFilter === "holdback") return item.type === "holdback_disbursement" || item.type === "holdback";
+                  if (ocTypeFilter === "passthrough") return item.type === "remittance";
+                  return true;
+                }); }
+                // Parse executedDisplay ("24 Apr 2026, 14:23:45") or executedDate to ISO "2026-04-24" for safe date comparison
+                function itemIsoDate(item) {
+                  if (item.executedDate) return String(item.executedDate).slice(0, 10);
+                  if (!item.executedDisplay) return "";
+                  var parsed = new Date(item.executedDisplay);
+                  if (isNaN(parsed.getTime())) return "";
+                  var mm = String(parsed.getMonth() + 1).padStart(2, "0");
+                  var dd = String(parsed.getDate()).padStart(2, "0");
+                  return parsed.getFullYear() + "-" + mm + "-" + dd;
+                }
+                if (ocDateFrom) r = r.filter(function(item) { var d = itemIsoDate(item); return d && d >= ocDateFrom; });
+                if (ocDateTo) r = r.filter(function(item) { var d = itemIsoDate(item); return d && d <= ocDateTo; });
+                return r;
+              }
+              var ocHasActive = !!(ocSearch || ocTypeFilter || ocDateFrom || ocDateTo);
+              var filteredForStats = applyOcFilters(allCompleted);
+              var statFunding = filteredForStats.filter(function(x) { return x.type === "funding"; });
+              var statHoldback = filteredForStats.filter(function(x) { return x.type === "holdback_disbursement" || x.type === "holdback"; });
+              var statPassthrough = filteredForStats.filter(function(x) { return x.type === "remittance"; });
+              var ccyGroups = {};
+              filteredForStats.forEach(function(x) { ccyGroups[x.currency] = (ccyGroups[x.currency] || 0) + x.amount; });
+              var ccyLabel = Object.keys(ccyGroups).length === 0 ? "none" : Object.keys(ccyGroups).map(function(c) { return money(r2(ccyGroups[c]), c); }).join(" \u00b7 ");
               return <div>
+              {/* Filter-aware stat cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <StatCard label="Completed Payments" value={String(filteredForStats.length)} sub={ocHasActive && filteredForStats.length !== allCompleted.length ? filteredForStats.length + " of " + allCompleted.length : (allCompleted.length === 0 ? "none" : "all completed")} accent={filteredForStats.length > 0 ? "#10B981" : "#64748B"} />
+                <StatCard label="Total Value" value={ccyLabel.length > 45 ? String(Object.keys(ccyGroups).length) + " CCY" : (Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY")} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#10B981" : "#64748B"} />
+                <StatCard label="Funding" value={String(statFunding.length)} sub={statFunding.length > 0 ? "capital advanced" : "none"} accent={statFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
+                <StatCard label="Holdback / Pass-through" value={String(statHoldback.length + statPassthrough.length)} sub={(statHoldback.length || "0") + " hb \u00b7 " + (statPassthrough.length || "0") + " pt"} accent={(statHoldback.length + statPassthrough.length) > 0 ? "#8B5CF6" : "#64748B"} />
+              </div>
               {(function() {
-                var filteredOC = allCompleted;
-                if (ocSearch) { var q = ocSearch.toLowerCase(); filteredOC = filteredOC.filter(function(item) { return (item.id || "").toLowerCase().indexOf(q) > -1 || (item.supplierName || "").toLowerCase().indexOf(q) > -1 || (item.type || "").toLowerCase().indexOf(q) > -1 || (item.programName || "").toLowerCase().indexOf(q) > -1 || (item.invoiceId || "").toLowerCase().indexOf(q) > -1 || (item.invoiceIds ? item.invoiceIds.join(", ") : "").toLowerCase().indexOf(q) > -1 || (item.sourceInvoiceId || "").toLowerCase().indexOf(q) > -1 || (item.currency || "").toLowerCase().indexOf(q) > -1; }); }
-                var ocPageSize = 20;
-                var ocTotalPages = Math.max(1, Math.ceil(filteredOC.length / ocPageSize));
+                var filteredOC = applyOcFilters(allCompleted);
+                // Sort
+                function ocDateKey(item) {
+                  if (item.executedDate) return String(item.executedDate).slice(0, 10);
+                  if (!item.executedDisplay) return "";
+                  var p = new Date(item.executedDisplay);
+                  if (isNaN(p.getTime())) return "";
+                  var mm = String(p.getMonth() + 1).padStart(2, "0");
+                  var dd = String(p.getDate()).padStart(2, "0");
+                  return p.getFullYear() + "-" + mm + "-" + dd;
+                }
+                function ocKey(item) {
+                  if (ocSort === "id") return item.id || "";
+                  if (ocSort === "type") return item.type || "";
+                  if (ocSort === "supplier") return item.supplierName || "";
+                  if (ocSort === "amount") return item.amount || 0;
+                  if (ocSort === "currency") return item.currency || "";
+                  if (ocSort === "date") return ocDateKey(item);
+                  return "";
+                }
+                filteredOC = filteredOC.slice().sort(function(a, b) { var ka = ocKey(a), kb = ocKey(b); if (ka < kb) return ocDir === "asc" ? -1 : 1; if (ka > kb) return ocDir === "asc" ? 1 : -1; return 0; });
+                var ocTotalPages = Math.max(1, Math.ceil(filteredOC.length / ocPerPage));
                 var ocCurPage = Math.min(ocPage, ocTotalPages - 1);
-                var ocPageItems = filteredOC.slice(ocCurPage * ocPageSize, (ocCurPage + 1) * ocPageSize);
+                var ocPageItems = filteredOC.slice(ocCurPage * ocPerPage, (ocCurPage + 1) * ocPerPage);
+                function ocSortH(key) { return function() { if (ocSort === key) setOcDir(ocDir === "asc" ? "desc" : "asc"); else { setOcSort(key); setOcDir("asc"); } setOcPage(0); }; }
+                function ocArr(key) { return ocSort === key ? (ocDir === "asc" ? " \u25b4" : " \u25be") : ""; }
                 return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
                 <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments ({allCompleted.length})</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="text" value={ocSearch} onChange={function(e) { setOcSearch(e.target.value); setOcPage(0); }} placeholder="Search completed..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
-                    {ocSearch && <button onClick={function() { setOcSearch(""); setOcPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Completed Outbound Payments {ocHasActive && filteredOC.length !== allCompleted.length ? "(" + filteredOC.length + " of " + allCompleted.length + ")" : "(" + allCompleted.length + ")"}</div>
+                  <button onClick={function() {
+                    var headers = ["ID", "Type", "Supplier", "Program", "Amount", "Currency", "Executed", "Invoice(s)", "Source Payment"];
+                    var rows = filteredOC.map(function(item) {
+                      var tl = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Pass-through" : (item.type || "Other");
+                      var invRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || ""));
+                      return [item.id, tl, item.supplierName || "", item.programName || "", item.amount, item.currency, item.executedDisplay || "", invRef, item.sourcePaymentId || ""];
+                    });
+                    var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                    var blob = new Blob([csv], { type: "text/csv" });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement("a");
+                    a.href = url; a.download = "outbound-completed-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                    URL.revokeObjectURL(url);
+                  }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
                 </div>
-                {filteredOC.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{ocSearch ? "No completed payments match your search." : "No completed outbound payments yet."}</div> :
+                <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <input type="text" value={ocSearch} onChange={function(e) { setOcSearch(e.target.value); setOcPage(0); }} placeholder="Search completed..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 180 }} />
+                  <select value={ocTypeFilter} onChange={function(e) { setOcTypeFilter(e.target.value); setOcPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ocTypeFilter ? "var(--accent)" : "var(--border)"), background: ocTypeFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                    <option value="">All types</option>
+                    <option value="funding">Funding</option>
+                    <option value="holdback">Holdback</option>
+                    <option value="passthrough">Pass-through</option>
+                  </select>
+                  <input type="date" value={ocDateFrom} onChange={function(e) { setOcDateFrom(e.target.value); setOcPage(0); }} placeholder="From" title="Executed from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ocDateFrom ? "var(--accent)" : "var(--border)"), background: ocDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                  <input type="date" value={ocDateTo} onChange={function(e) { setOcDateTo(e.target.value); setOcPage(0); }} placeholder="To" title="Executed to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ocDateTo ? "var(--accent)" : "var(--border)"), background: ocDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                  {ocHasActive && <button onClick={function() { setOcSearch(""); setOcTypeFilter(""); setOcDateFrom(""); setOcDateTo(""); setOcPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                </div>
+                {filteredOC.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{ocHasActive ? "No completed payments match your filters." : "No completed outbound payments yet."}</div> :
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["ID", "Type", "Supplier", "Amount", "CCY", "Date", "Invoice(s)", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                  <thead><tr>{[{ k: "id", l: "ID" }, { k: "type", l: "Type" }, { k: "supplier", l: "Supplier" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "date", l: "Date" }, { k: null, l: "Invoice(s)" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"och-" + hi} onClick={h.k ? ocSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ocArr(h.k) : ""}</th>; })}</tr></thead>
                   {ocPageItems.map(function(item) {
                     var typeColor = item.type === "funding" ? "#0EA5E9" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : item.type === "remittance" ? "#8B5CF6" : "#D97706";
                     var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Pass-through" : (item.type || "Other");
                     var isOcExp = exp === "oc-" + item.id;
-                    var invoiceRef = item.invoiceId || (item.invoiceIds ? item.invoiceIds.join(", ") : (item.sourceInvoiceId || "\u2014"));
+                    var invoiceRefList = item.invoiceIds && item.invoiceIds.length > 0 ? item.invoiceIds : (item.invoiceId ? [item.invoiceId] : (item.sourceInvoiceId ? [item.sourceInvoiceId] : []));
+                    var progId = itemProgramId(item);
                     return (
                       <tbody key={item.id}>
                         <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
                           <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
-                          <td style={Object.assign({}, qmc, { color: typeColor, fontWeight: 600 })}>{typeLabel}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName || "\u2014"}</td>
+                          <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{item.supplierName}</span> : "\u2014"}</td>
                           <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || "\u2014"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{invoiceRef}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{invoiceRefList.length === 0 ? "\u2014" : invoiceRefList.length === 1 ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(invoiceRefList[0]); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + invoiceRefList[0]}>{invoiceRefList[0]}</span> : <span title={invoiceRefList.join(", ")}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(invoiceRefList[0]); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{invoiceRefList[0]}</span> <span style={{ color: "var(--muted)" }}>+{invoiceRefList.length - 1} more</span></span>}</td>
                           <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isOcExp ? null : "oc-" + item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>{isOcExp ? "\u25b4" : "\u25be"}</button></td>
                         </tr>
                         {isOcExp && <tr><td colSpan={8} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Program:</strong> {item.programName || "\u2014"}</div>
-                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Bank:</strong> {item.bankName || "No bank on file"} {item.bankDetails || ""}</div>
-                            {item.sourcePaymentId && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><strong>Source:</strong> {item.sourcePaymentId}</div>}
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Program</span>{" "}{progId && item.programName ? <span onClick={function(e) { e.stopPropagation(); drillToProgram(progId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View program " + item.programName}>{item.programName}</span> : (item.programName || "\u2014")}</div>
+                            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Bank</span> {item.bankName || "No bank on file"} {item.bankDetails || ""}</div>
+                            {item.sourcePaymentId && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Source</span> {item.sourcePaymentId}</div>}
+                            {invoiceRefList.length > 1 && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>All invoices</span> {invoiceRefList.map(function(id, i) { return <span key={id}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(id); }} style={{ cursor: "pointer", color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", borderBottom: "1px dotted var(--accent)" }}>{id}</span>{i < invoiceRefList.length - 1 ? ", " : ""}</span>; })}</div>}
                             <button onClick={function() { paymentFailed(item); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer", marginLeft: "auto" }}>Payment Failed</button>
                           </div>
                         </td></tr>}
@@ -11834,13 +12015,17 @@ export default function FactoringDashboard() {
                     );
                   })}
                 </table></div>}
-                {ocTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {ocCurPage + 1} of {ocTotalPages} ({filteredOC.length} items)</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={ocCurPage === 0} onClick={function() { setOcPage(ocCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage === 0 ? "transparent" : "var(--card)", color: ocCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage === 0 ? "default" : "pointer" }}>{"← Previous"}</button>
-                    <button disabled={ocCurPage >= ocTotalPages - 1} onClick={function() { setOcPage(ocCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage >= ocTotalPages - 1 ? "transparent" : "var(--card)", color: ocCurPage >= ocTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage >= ocTotalPages - 1 ? "default" : "pointer" }}>{"Next →"}</button>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <select value={ocPerPage} onChange={function(e) { setOcPerPage(parseInt(e.target.value, 10)); setOcPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                    <button disabled={ocCurPage === 0} onClick={function() { setOcPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage === 0 ? "transparent" : "var(--card)", color: ocCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                    <button disabled={ocCurPage === 0} onClick={function() { setOcPage(ocCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage === 0 ? "transparent" : "var(--card)", color: ocCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                    <input type="number" min="1" max={ocTotalPages} value={ocCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= ocTotalPages) setOcPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                    <button disabled={ocCurPage >= ocTotalPages - 1} onClick={function() { setOcPage(ocCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage >= ocTotalPages - 1 ? "transparent" : "var(--card)", color: ocCurPage >= ocTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage >= ocTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                    <button disabled={ocCurPage >= ocTotalPages - 1} onClick={function() { setOcPage(ocTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: ocCurPage >= ocTotalPages - 1 ? "transparent" : "var(--card)", color: ocCurPage >= ocTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: ocCurPage >= ocTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
                   </div>
-                </div>}
+                </div>
               </div>;
               })()}
               {(function() {
@@ -11854,14 +12039,14 @@ export default function FactoringDashboard() {
                   </div>
                   <div style={{ maxHeight: 300, overflowX: "auto", overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Queue ID", "Type", "Executed", "Failed", "Recipient", "Program", "Amount", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{failedPayments.map(function(item) {
                         var typeLabel = item.type === "funding" ? "Funding" : item.type === "disbursal" ? "Disbursal" : item.type === "remittance" ? "Pass-through" : "Holdback";
                         var typeColor = item.type === "funding" ? "#0EA5E9" : item.type === "disbursal" ? "#7C3AED" : item.type === "remittance" ? "#8B5CF6" : "#059669";
                         var recipient = item.type === "disbursal" ? (item.serviceProvider || "\u2014") : (item.supplierName || "\u2014");
                         return <tr key={item.id} style={{ borderBottom: "1px solid var(--border)", background: "#C0392B06" }}>
                           <td style={{ padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{item.id}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 11, color: typeColor, fontWeight: 600 }}>{typeLabel}</td>
+                          <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{item.executedDisplay}</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "#DC2626", fontWeight: 600 }}>{item.failedDisplay}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{recipient}</td>
@@ -11880,17 +12065,21 @@ export default function FactoringDashboard() {
 
 
           {payTab === "outgoing_db" && (function() {
+            function drillToInvoice(invoiceId) {
+              var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+              if (!inv) return;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+              if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+            }
+            function drillToSupplier(supplierName) {
+              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+            }
+            function drillToProgram(programId) {
+              if (!programId) return;
+              setView("program"); setSelectedProgram(programId); setProgTab("overview");
+            }
             var outgoingPays = PAYMENTS_DB.filter(function(p) { return p.direction === "outbound"; });
-            // Apply filters (reuse inbound filter state for simplicity)
-            var filteredOutgoing = outgoingPays.filter(function(p) {
-              if (pdCcyFilter && p.currency !== pdCcyFilter) return false;
-              if (pdDateFilter && p.date !== pdDateFilter) return false;
-              if (pdSearch) {
-                var q = pdSearch.toLowerCase();
-                if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1) return false;
-              }
-              return true;
-            }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
 
             // Helper: compute execution status of an outbound payment by looking at its routings
             function getOutboundStatus(pay) {
@@ -11911,48 +12100,109 @@ export default function FactoringDashboard() {
               return { label: "Partial", color: "#7C3AED", linkedSPQs: linkedSPQs, linkedFlows: linkedFlows };
             }
 
-            var outPageSize = 20;
-            var outTotalPages = Math.max(1, Math.ceil(filteredOutgoing.length / outPageSize));
-            var outCurPage = Math.min(inPage, outTotalPages - 1);
-            var outPageItems = filteredOutgoing.slice(outCurPage * outPageSize, (outCurPage + 1) * outPageSize);
+            // Apply filters — now using dedicated ogSearch/ogCcyFilter/ogDateFrom/ogDateTo/ogStatusFilter (split from inbound pdSearch etc.)
+            function applyOgFilters(list) {
+              var r = list;
+              if (ogCcyFilter) r = r.filter(function(p) { return p.currency === ogCcyFilter; });
+              if (ogDateFrom) r = r.filter(function(p) { return p.date >= ogDateFrom; });
+              if (ogDateTo) r = r.filter(function(p) { return p.date <= ogDateTo; });
+              if (ogSearch) { var q = ogSearch.toLowerCase(); r = r.filter(function(p) { return p.paymentId.toLowerCase().indexOf(q) > -1 || (p.reference || "").toLowerCase().indexOf(q) > -1; }); }
+              if (ogStatusFilter) r = r.filter(function(p) { return getOutboundStatus(p).label.toLowerCase() === ogStatusFilter.toLowerCase(); });
+              return r;
+            }
+            var ogHasActive = !!(ogSearch || ogCcyFilter || ogDateFrom || ogDateTo || ogStatusFilter);
+            var filteredOutgoing = applyOgFilters(outgoingPays);
+
+            // Stat cards (filter-aware)
+            var ogCcyGroups = {};
+            filteredOutgoing.forEach(function(p) { ogCcyGroups[p.currency] = (ogCcyGroups[p.currency] || 0) + p.amount; });
+            var ogCcyLabel = Object.keys(ogCcyGroups).length === 0 ? "none" : Object.keys(ogCcyGroups).map(function(c) { return money(r2(ogCcyGroups[c]), c); }).join(" \u00b7 ");
+            var statUnrouted = filteredOutgoing.filter(function(p) { return getOutboundStatus(p).label === "Unrouted"; });
+            var statPending = filteredOutgoing.filter(function(p) { var l = getOutboundStatus(p).label; return l === "Pending" || l === "Partial"; });
+            var statCompleted = filteredOutgoing.filter(function(p) { return getOutboundStatus(p).label === "Completed"; });
+
+            // Sort
+            function ogKey(p) {
+              if (ogSort === "paymentId") return p.paymentId || "";
+              if (ogSort === "date") return p.date || "";
+              if (ogSort === "amount") return p.amount || 0;
+              if (ogSort === "currency") return p.currency || "";
+              if (ogSort === "reference") return p.reference || "";
+              if (ogSort === "status") return getOutboundStatus(p).label;
+              return "";
+            }
+            filteredOutgoing = filteredOutgoing.slice().sort(function(a, b) { var ka = ogKey(a), kb = ogKey(b); if (ka < kb) return ogDir === "asc" ? -1 : 1; if (ka > kb) return ogDir === "asc" ? 1 : -1; return 0; });
+
+            var outTotalPages = Math.max(1, Math.ceil(filteredOutgoing.length / ogPerPage));
+            var outCurPage = Math.min(ogPage, outTotalPages - 1);
+            var outPageItems = filteredOutgoing.slice(outCurPage * ogPerPage, (outCurPage + 1) * ogPerPage);
+            function ogSortH(key) { return function() { if (ogSort === key) setOgDir(ogDir === "asc" ? "desc" : "asc"); else { setOgSort(key); setOgDir("asc"); } setOgPage(0); }; }
+            function ogArr(key) { return ogSort === key ? (ogDir === "asc" ? " \u25b4" : " \u25be") : ""; }
+
             return <div style={{ marginTop: 0 }}>
+              {/* Filter-aware stat cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <StatCard label="Outgoing Payments" value={String(filteredOutgoing.length)} sub={ogHasActive && filteredOutgoing.length !== outgoingPays.length ? filteredOutgoing.length + " of " + outgoingPays.length : (outgoingPays.length === 0 ? "none" : "all outgoing")} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#64748B"} />
+                <StatCard label="Total Value" value={Object.keys(ogCcyGroups).length === 1 ? money(r2(ogCcyGroups[Object.keys(ogCcyGroups)[0]]), Object.keys(ogCcyGroups)[0]) : String(Object.keys(ogCcyGroups).length) + " CCY"} sub={ogCcyLabel.length > 45 ? "mixed currencies" : ogCcyLabel} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#64748B"} />
+                <StatCard label="Unrouted" value={String(statUnrouted.length)} sub={statUnrouted.length > 0 ? "needs routing" : "all routed"} accent={statUnrouted.length > 0 ? "#EF4444" : "#64748B"} />
+                <StatCard label="Pending / Partial" value={String(statPending.length)} sub={statCompleted.length > 0 ? statCompleted.length + " completed" : "0 completed"} accent={statPending.length > 0 ? "#D97706" : "#64748B"} />
+              </div>
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Outgoing Payments Database</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Outgoing Payments {ogHasActive && filteredOutgoing.length !== outgoingPays.length ? "(" + filteredOutgoing.length + " of " + outgoingPays.length + ")" : "(" + outgoingPays.length + ")"}</div>
                     <button onClick={function() { if (showNewPay && newPayDirection === "outbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("outbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "outbound" ? "#DC262630" : "#7C3AED"), background: "transparent", color: showNewPay && newPayDirection === "outbound" ? "#EF4444" : "#7C3AED", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "outbound" ? "Cancel" : "+ New Outgoing Payment"}</button>
                   </div>
+                  <button onClick={function() {
+                    var headers = ["Payment ID", "Date", "Amount", "Currency", "Reference", "Status", "Routings"];
+                    var rows = filteredOutgoing.map(function(p) { var st = getOutboundStatus(p); return [p.paymentId, p.date, p.amount, p.currency, p.reference || "", st.label, st.linkedSPQs.length + st.linkedFlows.length]; });
+                    var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                    var blob = new Blob([csv], { type: "text/csv" });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement("a");
+                    a.href = url; a.download = "outgoing-payments-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                    URL.revokeObjectURL(url);
+                  }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
                 </div>
                 <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <input type="text" value={pdSearch} onChange={function(e) { setPdSearch(e.target.value); }} placeholder="Search outgoing payments..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 170 }} />
-                  <select value={pdCcyFilter} onChange={function(e) { setPdCcyFilter(e.target.value); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-                  <input type="date" value={pdDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPdDateFilter(v); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                  {(pdSearch || pdCcyFilter || pdDateFilter) && <button onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                  <input type="text" value={ogSearch} onChange={function(e) { setOgSearch(e.target.value); setOgPage(0); }} placeholder="Search outgoing..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 170 }} />
+                  <select value={ogCcyFilter} onChange={function(e) { setOgCcyFilter(e.target.value); setOgPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ogCcyFilter ? "var(--accent)" : "var(--border)"), background: ogCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                  <select value={ogStatusFilter} onChange={function(e) { setOgStatusFilter(e.target.value); setOgPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ogStatusFilter ? "var(--accent)" : "var(--border)"), background: ogStatusFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                    <option value="">All status</option>
+                    <option value="unrouted">Unrouted</option>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                  <input type="date" value={ogDateFrom} onChange={function(e) { setOgDateFrom(e.target.value); setOgPage(0); }} title="Date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ogDateFrom ? "var(--accent)" : "var(--border)"), background: ogDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                  <input type="date" value={ogDateTo} onChange={function(e) { setOgDateTo(e.target.value); setOgPage(0); }} title="Date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (ogDateTo ? "var(--accent)" : "var(--border)"), background: ogDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                  {ogHasActive && <button onClick={function() { setOgSearch(""); setOgCcyFilter(""); setOgStatusFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
                 </div>
                 {/* Creation form (same as inbound, direction flag controls behavior) */}
                 {showNewPay && newPayDirection === "outbound" && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "#7C3AED08", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "#7C3AED" }}>Outgoing Payment</label>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#7C3AED" }}>Outgoing Payment</label>
                     <input type="text" value={newPayRef} onChange={function(e) { setNewPayRef(e.target.value); }} placeholder="Wire reference / memo" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Amount</label>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Amount</label>
                     <input type="number" step="0.01" value={newPayAmt} onChange={function(e) { setNewPayAmt(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 130 }} />
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Currency</label>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Currency</label>
                     <select value={newPayCcy} onChange={function(e) { setNewPayCcy(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Date</label>
                     <input type="date" value={newPayDate} onChange={function(e) { setNewPayDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
                   </div>
-                  <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? "#7C3AED" : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>Create & Route Outgoing</button>
+                  <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? "#7C3AED" : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>Create & Route Outgoing</button>
                 </div>}
                 <div style={{ maxHeight: 400, overflowY: "auto" }}>
-                  {filteredOutgoing.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No outgoing payments yet. Click "+ New Outgoing Payment" to create one.</div>}
+                  {filteredOutgoing.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{ogHasActive ? "No outgoing payments match your filters." : "No outgoing payments yet. Click \"+ New Outgoing Payment\" to create one."}</div>}
                   {filteredOutgoing.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Payment ID", "Date", "Amount", "CCY", "Reference", "Status", "Routings", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{[{ k: "paymentId", l: "Payment ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "reference", l: "Reference" }, { k: "status", l: "Status" }, { k: null, l: "Routings" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"ogh-" + hi} onClick={h.k ? ogSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ogArr(h.k) : ""}</th>; })}</tr></thead>
                     <tbody>{outPageItems.map(function(pay) {
                       var st = getOutboundStatus(pay);
                       var isExp = expPay === pay.paymentId;
@@ -11964,39 +12214,39 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--muted)" }}>{pay.currency}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{pay.reference || "\u2014"}</td>
-                          <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: st.color, letterSpacing: "0.04em" }}>{st.label}</span></td>
+                          <td style={{ padding: "8px 12px" }}><Badge label={st.label} bg={st.color + "14"} color={st.color} border={st.color + "30"} /></td>
                           <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--muted)" }}>{totalRoutings} {totalRoutings === 1 ? "routing" : "routings"}</td>
                           <td style={{ padding: "8px 12px", textAlign: "center", color: "var(--muted)", fontSize: 11 }}>{isExp ? "\u25B2" : "\u25BC"}</td>
                         </tr>
                         {isExp && <tr><td colSpan={8} style={{ padding: "0 0 12px 0", borderBottom: "1px solid var(--border)", background: "#7C3AED04" }}>
                           <div style={{ padding: "12px 22px" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Routings ({totalRoutings})</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Routings ({totalRoutings})</div>
                             {totalRoutings === 0 && <div style={{ fontSize: 12, color: "#EF4444", fontStyle: "italic" }}>No routings found. This payment was created but never routed.</div>}
                             {totalRoutings > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                              <thead><tr>{["Type", "Reference", "Counterparty", "Program", "Amount", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                              <thead><tr>{["Type", "Reference", "Counterparty", "Program", "Amount", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                               <tbody>
                                 {st.linkedSPQs.map(function(spq) {
                                   var isTerm = spq.status === "Cancelled" || spq.status === "Failed";
                                   var statusColor = spq.status === "Completed" ? "#059669" : spq.status === "Pending" ? "#D97706" : isTerm ? "#EF4444" : "var(--muted)";
                                   return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)", opacity: isTerm ? 0.6 : 1 }}>
-                                    <td style={{ padding: "6px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)" }}>Supplier</td>
+                                    <td style={{ padding: "6px 10px" }}><Badge label="Supplier" bg="var(--accent)14" color="var(--accent)" border="var(--accent)30" /></td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{spq.id}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", color: statusColor }}>{spq.status}</td>
+                                    <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={statusColor + "14"} color={statusColor} border={statusColor + "30"} /></td>
                                   </tr>;
                                 })}
                                 {st.linkedFlows.map(function(fl) {
                                   var isPending = fl.status === "Pending";
                                   var statusColor = isPending ? "#D97706" : "#059669";
                                   return <tr key={fl.flowId} style={{ borderBottom: "1px solid var(--border)" }}>
-                                    <td style={{ padding: "6px 10px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#7C3AED" }}>Service Provider</td>
+                                    <td style={{ padding: "6px 10px" }}><Badge label="Service Provider" bg="#7C3AED14" color="#7C3AED" border="#7C3AED30" /></td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED" }}>{fl.flowId}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11 }}>{fl.serviceProvider}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{fl.programName}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{fl.programId ? <span onClick={function(e) { e.stopPropagation(); drillToProgram(fl.programId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View program " + fl.programName}>{fl.programName}</span> : fl.programName}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(fl.amount, fl.programCurrency)}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", color: statusColor }}>{fl.status || "Completed"}</td>
+                                    <td style={{ padding: "6px 10px" }}><Badge label={fl.status || "Completed"} bg={statusColor + "14"} color={statusColor} border={statusColor + "30"} /></td>
                                   </tr>;
                                 })}
                               </tbody>
@@ -12007,35 +12257,91 @@ export default function FactoringDashboard() {
                     })}</tbody>
                   </table>}
                 </div>
-                {outTotalPages > 1 && <div style={{ padding: "10px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {outCurPage + 1} of {outTotalPages} ({filteredOutgoing.length} payments)</span>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button disabled={outCurPage === 0} onClick={function() { setInPage(outCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage === 0 ? "transparent" : "var(--card)", color: outCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
-                    <button disabled={outCurPage >= outTotalPages - 1} onClick={function() { setInPage(outCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage >= outTotalPages - 1 ? "transparent" : "var(--card)", color: outCurPage >= outTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage >= outTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <select value={ogPerPage} onChange={function(e) { setOgPerPage(parseInt(e.target.value, 10)); setOgPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                    <button disabled={outCurPage === 0} onClick={function() { setOgPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage === 0 ? "transparent" : "var(--card)", color: outCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                    <button disabled={outCurPage === 0} onClick={function() { setOgPage(outCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage === 0 ? "transparent" : "var(--card)", color: outCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                    <input type="number" min="1" max={outTotalPages} value={outCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= outTotalPages) setOgPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                    <button disabled={outCurPage >= outTotalPages - 1} onClick={function() { setOgPage(outCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage >= outTotalPages - 1 ? "transparent" : "var(--card)", color: outCurPage >= outTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage >= outTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                    <button disabled={outCurPage >= outTotalPages - 1} onClick={function() { setOgPage(outTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: outCurPage >= outTotalPages - 1 ? "transparent" : "var(--card)", color: outCurPage >= outTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: outCurPage >= outTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
                   </div>
-                </div>}
+                </div>
               </div>
             </div>;
           })()}
 
-          {payTab === "incoming" && <div style={{ marginTop: 0 }}>
+          {payTab === "incoming" && (function() {
+          function drillToInvoice(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+          }
+          function drillToBuyer(buyerName) {
+            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+          }
+          // Filter-aware stat cards
+          var allIncoming = PAYMENTS_DB.filter(function(p) { return (p.direction || "inbound") === "inbound"; });
+          function applyInFilters(list) {
+            var r = list;
+            if (payFilter !== "all") r = r.filter(function(p) { return getPayStatus(p) === payFilter; });
+            if (pdCcyFilter) r = r.filter(function(p) { return p.currency === pdCcyFilter; });
+            if (pdDateFilter) r = r.filter(function(p) { return p.date === pdDateFilter; });
+            if (pdSearch) { var q = pdSearch.toLowerCase(); r = r.filter(function(p) { return p.paymentId.toLowerCase().indexOf(q) > -1 || (p.reference || "").toLowerCase().indexOf(q) > -1 || !p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; }); }); }
+            return r;
+          }
+          var filteredForStats = applyInFilters(allIncoming);
+          var inHasActive = !!(pdSearch || pdCcyFilter || pdDateFilter || payFilter !== "all");
+          var unallocCount = filteredForStats.filter(function(p) { return getPayStatus(p) === "unallocated"; }).length;
+          var partialCount = filteredForStats.filter(function(p) { return getPayStatus(p) === "partial"; }).length;
+          var allocCount = filteredForStats.filter(function(p) { return getPayStatus(p) === "allocated"; }).length;
+          var inCcyGroups = {};
+          filteredForStats.forEach(function(p) { inCcyGroups[p.currency] = (inCcyGroups[p.currency] || 0) + p.amount; });
+          var inCcyLabel = Object.keys(inCcyGroups).length === 0 ? "none" : Object.keys(inCcyGroups).map(function(c) { return money(r2(inCcyGroups[c]), c); }).join(" \u00b7 ");
+          return <div style={{ marginTop: 0 }}>
           {successMsg && <div style={{ marginBottom: 16, padding: "16px 22px", borderRadius: 12, background: "#2E8B5710", border: "1px solid #2E8B5740", display: "flex", gap: 16 }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "#059669", marginBottom: 4 }}>Payment {successMsg.payId} allocated</div>{successMsg.lines.map(function(l) { return <div key={l.invoiceId} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.invoiceId}: {money(l.amount, successMsg.currency)}</div>; })}{successMsg.later.length > 0 && <div style={{ fontSize: 12, color: "#D97706", marginTop: 4 }}>Unallocated: {successMsg.later.map(function(u) { return u.pid; }).join(", ")}</div>}</div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: "#059669", marginBottom: 4 }}>Payment {successMsg.payId} allocated</div>{successMsg.lines.map(function(l) { return <div key={l.invoiceId} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.invoiceId}: {money(l.amount, successMsg.currency)}</div>; })}{successMsg.later.length > 0 && <div style={{ fontSize: 12, color: "#D97706", marginTop: 4 }}>Unallocated: {successMsg.later.map(function(u) { return u.pid; }).join(", ")}</div>}</div>
             <button onClick={function() { setSuccessMsg(null); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #2E8B5730", background: "transparent", color: "#059669", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Dismiss</button>
           </div>}
+          {/* Filter-aware stat cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+            <StatCard label="Incoming Payments" value={String(filteredForStats.length)} sub={inHasActive && filteredForStats.length !== allIncoming.length ? filteredForStats.length + " of " + allIncoming.length : (allIncoming.length === 0 ? "none" : "all incoming")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
+            <StatCard label="Total Received" value={Object.keys(inCcyGroups).length === 1 ? money(r2(inCcyGroups[Object.keys(inCcyGroups)[0]]), Object.keys(inCcyGroups)[0]) : String(Object.keys(inCcyGroups).length) + " CCY"} sub={inCcyLabel.length > 45 ? "mixed currencies" : inCcyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
+            <StatCard label="Unallocated" value={String(unallocCount)} sub={unallocCount > 0 ? "needs allocation" : "all allocated"} accent={unallocCount > 0 ? "#D97706" : "#64748B"} />
+            <StatCard label="Allocated / Partial" value={String(allocCount + partialCount)} sub={partialCount > 0 ? partialCount + " partial \u00b7 " + allocCount + " full" : allocCount + " full"} accent={(allocCount + partialCount) > 0 ? "#10B981" : "#64748B"} />
+          </div>
           <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-            <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Incoming Payments Database</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Incoming Payments {inHasActive && filteredForStats.length !== allIncoming.length ? "(" + filteredForStats.length + " of " + allIncoming.length + ")" : "(" + allIncoming.length + ")"}</div>
                 <button onClick={function() { if (showNewPay && newPayDirection === "inbound") { setShowNewPay(false); } else { setShowNewPay(true); setNewPayDirection("inbound"); } }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + (showNewPay && newPayDirection === "inbound" ? "#DC262630" : "var(--accent)"), background: "transparent", color: showNewPay && newPayDirection === "inbound" ? "#EF4444" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{showNewPay && newPayDirection === "inbound" ? "Cancel" : "+ New Payment"}</button>
               </div>
-              <div style={{ display: "flex", gap: 6 }}>{["all", "unallocated", "partial", "allocated"].map(function(f) { return <button key={f} onClick={function() { setPayFilter(f); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: payFilter === f ? "var(--accent)" : "transparent", color: payFilter === f ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f}</button>; })}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 6 }}>{["all", "unallocated", "partial", "allocated"].map(function(f) { return <button key={f} onClick={function() { setPayFilter(f); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid " + (payFilter === f && f !== "all" ? "var(--accent)" : "var(--border)"), background: payFilter === f ? "var(--accent)" : "transparent", color: payFilter === f ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>{f}</button>; })}</div>
+                <button onClick={function() {
+                  var headers = ["Payment ID", "Date", "Amount", "Currency", "Reference", "Status", "Allocated", "Remaining", "Allocations"];
+                  var rows = filteredForStats.map(function(p) { var rem = getPayRemaining(p); var al = r2(p.amount - rem); return [p.paymentId, p.date, p.amount, p.currency, p.reference || "", getPayStatus(p), al, rem, p.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return a.invoiceId + ":" + a.amount; }).join("|")]; });
+                  var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                  var blob = new Blob([csv], { type: "text/csv" });
+                  var url = URL.createObjectURL(blob);
+                  var a = document.createElement("a");
+                  a.href = url; a.download = "incoming-payments-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                  URL.revokeObjectURL(url);
+                }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
+              </div>
             </div>
             <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <input type="text" value={pdSearch} onChange={function(e) { setPdSearch(e.target.value); }} placeholder="Search payments..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 170 }} />
-              <select value={pdCcyFilter} onChange={function(e) { setPdCcyFilter(e.target.value); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-              <input type="date" value={pdDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) setPdDateFilter(v); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-              {(pdSearch || pdCcyFilter || pdDateFilter) && <button onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+              <input type="text" value={pdSearch} onChange={function(e) { setPdSearch(e.target.value); setInPage(0); }} placeholder="Search payments..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 170 }} />
+              <select value={pdCcyFilter} onChange={function(e) { setPdCcyFilter(e.target.value); setInPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (pdCcyFilter ? "var(--accent)" : "var(--border)"), background: pdCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+              <input type="date" value={pdDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPdDateFilter(v); setInPage(0); } }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (pdDateFilter ? "var(--accent)" : "var(--border)"), background: pdDateFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+              {(pdSearch || pdCcyFilter || pdDateFilter) && <button onClick={function() { setPdSearch(""); setPdCcyFilter(""); setPdDateFilter(""); setInPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
             </div>
             {showNewPay && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: newPayDirection === "outbound" ? "#7C3AED08" : "transparent", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -12054,23 +12360,36 @@ export default function FactoringDashboard() {
                 <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
                 <input type="date" value={newPayDate} onChange={function(e) { setNewPayDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none",  }} />
               </div>
-              <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? (newPayDirection === "outbound" ? "#7C3AED" : "var(--accent)") : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>{newPayDirection === "outbound" ? "Create & Route Outgoing" : "Create Payment"}</button>
+              <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? (newPayDirection === "outbound" ? "#7C3AED" : "var(--accent)") : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>{newPayDirection === "outbound" ? "Create & Route Outgoing" : "Create Payment"}</button>
             </div>}
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
               {(function() {
-                var filteredIncoming = PAYMENTS_DB.filter(function(p) { if ((p.direction || "inbound") !== "inbound") return false; var s = getPayStatus(p); if (payFilter !== "all" && payFilter !== s) return false; if (pdCcyFilter && p.currency !== pdCcyFilter) return false; if (pdDateFilter && p.date !== pdDateFilter) return false; if (pdSearch) { var q = pdSearch.toLowerCase(); if (p.paymentId.toLowerCase().indexOf(q) === -1 && (p.reference || "").toLowerCase().indexOf(q) === -1 && p.allocations.every(function(a) { return a.invoiceId.toLowerCase().indexOf(q) === -1; })) return false; } return true; }).sort(function(a, b) { return a.date > b.date ? -1 : 1; });
-                var inPageSize = 20;
-                var inTotalPages = Math.max(1, Math.ceil(filteredIncoming.length / inPageSize));
+                var filteredIncoming = applyInFilters(allIncoming);
+                // Sort
+                function inKey(p) {
+                  if (inSort === "paymentId") return p.paymentId || "";
+                  if (inSort === "date") return p.date || "";
+                  if (inSort === "amount") return p.amount || 0;
+                  if (inSort === "currency") return p.currency || "";
+                  if (inSort === "allocated") return r2(p.amount - getPayRemaining(p));
+                  if (inSort === "remaining") return getPayRemaining(p);
+                  if (inSort === "status") return getPayStatus(p);
+                  return "";
+                }
+                filteredIncoming = filteredIncoming.slice().sort(function(a, b) { var ka = inKey(a), kb = inKey(b); if (ka < kb) return inDir === "asc" ? -1 : 1; if (ka > kb) return inDir === "asc" ? 1 : -1; return 0; });
+                var inTotalPages = Math.max(1, Math.ceil(filteredIncoming.length / inPerPage));
                 var inCurPage = Math.min(inPage, inTotalPages - 1);
                 if (filteredIncoming.length === 0) return <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No payments match your filters.</div>;
-                var pageItems = filteredIncoming.slice(inCurPage * inPageSize, (inCurPage + 1) * inPageSize);
+                var pageItems = filteredIncoming.slice(inCurPage * inPerPage, (inCurPage + 1) * inPerPage);
+                function inSortH(key) { return function() { if (inSort === key) setInDir(inDir === "asc" ? "desc" : "asc"); else { setInSort(key); setInDir("asc"); } setInPage(0); }; }
+                function inArr(key) { return inSort === key ? (inDir === "asc" ? " \u25b4" : " \u25be") : ""; }
                 return <div>
               <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{["ID", "Date", "Amount", "CCY", "Allocated", "Remaining", "Status", "", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                <thead><tr>{[{ k: "paymentId", l: "ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"inh-" + hi} onClick={h.k ? inSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? inArr(h.k) : ""}</th>; })}</tr></thead>
                 {pageItems.map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
-                  var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "var(--muted)";
+                  var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "#64748B";
                   var isPayExp = expPay === pay.paymentId;
                   return <tbody key={pay.paymentId}>
                     <tr data-payment-row={pay.paymentId} style={{ borderBottom: isPayExp ? "none" : "1px solid var(--border)", background: isPayExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setExpPay(isPayExp ? null : pay.paymentId); }}>
@@ -12080,35 +12399,36 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--muted)" }}>{pay.currency}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(al, pay.currency)}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
-                    <td style={{ padding: "8px 10px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{status}</span></td>
+                    <td style={{ padding: "8px 10px" }}><Badge label={status} bg={sc + "14"} color={sc} border={sc + "30"} /></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
                       <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
                   {isPayExp && <tr><td colSpan={9} style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", background: "var(--card-hover)" }}>
-                    {pay.reference && <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Ref: </span>{pay.reference}</div>}
+                    {pay.reference && <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}><span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Ref: </span>{pay.reference}</div>}
                     {pay.allocations.length > 0 && <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)", marginBottom: 8 }}>Allocations for {pay.paymentId}</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Allocations for {pay.paymentId}</div>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Invoice", "Buyer", "Amount Allocated", "Invoice Total", "Invoice Due Date"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{["Invoice", "Buyer", "Amount Allocated", "Invoice Total", "Invoice Due Date"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{pay.allocations.map(function(a, ai) {
                           var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                           return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
-                            <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? inv.buyerName : "\u2014"}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + a.invoiceId}>{a.invoiceId}</span></td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pay.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{inv ? money(inv.amount, inv.currency) : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? fmt(inv.dueDate) : "\u2014"}</td>
                           </tr>;
                         })}
                         {SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === pay.paymentId && (spq.type === "remittance" || spq.type === "holdback"); }).map(function(spq, ri) {
+                          var spqStatusColor = spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706";
                           return <tr key={"rem-" + ri} style={{ borderBottom: "1px solid var(--border)", background: "#8B5CF608" }}>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted #8B5CF6" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
-                            <td style={{ padding: "6px 10px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td>
+                            <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={spqStatusColor + "14"} color={spqStatusColor} border={spqStatusColor + "30"} /></td>
                           </tr>;
                         })}</tbody>
                       </table>
@@ -12131,18 +12451,22 @@ export default function FactoringDashboard() {
                 })}
               </table>
               </div>
-              {inTotalPages > 1 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {inCurPage + 1} of {inTotalPages} ({filteredIncoming.length} payments)</span>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button disabled={inCurPage === 0} onClick={function() { setInPage(inCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Previous"}</button>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={inPerPage} onChange={function(e) { setInPerPage(parseInt(e.target.value, 10)); setInPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                  <button disabled={inCurPage === 0} onClick={function() { setInPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                  <button disabled={inCurPage === 0} onClick={function() { setInPage(inCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage === 0 ? "transparent" : "var(--card)", color: inCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                  <input type="number" min="1" max={inTotalPages} value={inCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= inTotalPages) setInPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
                   <button disabled={inCurPage >= inTotalPages - 1} onClick={function() { setInPage(inCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage >= inTotalPages - 1 ? "transparent" : "var(--card)", color: inCurPage >= inTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage >= inTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  <button disabled={inCurPage >= inTotalPages - 1} onClick={function() { setInPage(inTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: inCurPage >= inTotalPages - 1 ? "transparent" : "var(--card)", color: inCurPage >= inTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: inCurPage >= inTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
                 </div>
-              </div>}
+              </div>
               </div>;
               })()}
           </div>
         </div>
-        </div>}
+        </div>; })()}
 
         {/* Holdback Payments DB — only on dedicated holdback tab, not on payment tabs */}
         {isP && !allocPay && false && (function() {
