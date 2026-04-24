@@ -2244,6 +2244,18 @@ export default function FactoringDashboard() {
   var cns1 = useState(""), cnSearch = cns1[0], setCnSearch = cns1[1];
   var cnp1 = useState(""), cnProgFilter = cnp1[0], setCnProgFilter = cnp1[1];
   var cnsup1 = useState(""), cnSupFilter = cnsup1[0], setCnSupFilter = cnsup1[1];
+  // Credit Notes LIST filters (separate from allocation modal filters above)
+  var cnls1 = useState(""), cnlSearch = cnls1[0], setCnlSearch = cnls1[1];
+  var cnlc1 = useState(""), cnlCcyFilter = cnlc1[0], setCnlCcyFilter = cnlc1[1];
+  var cnlsup1 = useState(""), cnlSupFilter = cnlsup1[0], setCnlSupFilter = cnlsup1[1];
+  var cnlbuy1 = useState(""), cnlBuyFilter = cnlbuy1[0], setCnlBuyFilter = cnlbuy1[1];
+  var cnlst1 = useState(""), cnlStatusFilter = cnlst1[0], setCnlStatusFilter = cnlst1[1];
+  var cnldf1 = useState(""), cnlDateFrom = cnldf1[0], setCnlDateFrom = cnldf1[1];
+  var cnldt1 = useState(""), cnlDateTo = cnldt1[0], setCnlDateTo = cnldt1[1];
+  var cnlpg1 = useState(0), cnlPage = cnlpg1[0], setCnlPage = cnlpg1[1];
+  var cnlpp1 = useState(25), cnlPerPage = cnlpp1[0], setCnlPerPage = cnlpp1[1];
+  var cnlsrt1 = useState("date"), cnlSort = cnlsrt1[0], setCnlSort = cnlsrt1[1];
+  var cnldir1 = useState("desc"), cnlDir = cnldir1[0], setCnlDir = cnldir1[1];
   var cnff1 = useState({ amount: "", currency: "GBP", date: new Date().toISOString().split("T")[0], reference: "", supplier: "", buyer: "" }), cnFormFields = cnff1[0], setCnFormFields = cnff1[1];
   var rej1 = useState(null), rejectConfirm = rej1[0], setRejectConfirm = rej1[1];
   var rst1 = useState(false), resetConfirm = rst1[0], setResetConfirm = rst1[1];
@@ -5239,11 +5251,11 @@ export default function FactoringDashboard() {
           </div>
       <div style={{ padding: "20px 24px", maxWidth: "none" }}>
         {/* Supplier Sub-tabs */}
-        {isS && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-          <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Pass-through Payments", funding: "Funding Payments", statement: "Funding Balance" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+        {isS && <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 10, width: "fit-content" }}>
+            {["overview", "invoices", "allocations", "holdback", "funding", "statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Pass-through Payments", funding: "Funding Payments", statement: "Funding Balance" }; return <button key={t} onClick={function() { setSupTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: supTab === t ? 600 : 400, background: supTab === t ? "var(--accent)" : "transparent", color: supTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap" }}>{lb[t]}</button>; })}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSelectedInvs({}); setSaPage(0); setSaExp(null); setShPage(0); setShExp(null); setRemSearch(""); setRemStatusFilter("all"); setSfPage(0); setSfSearch(""); setSfStatusFilter("all"); setSfDateFilter(""); setFundPayExp(null); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label + " (" + se.value + ")"}</option>; })}
             </select>
@@ -5255,11 +5267,11 @@ export default function FactoringDashboard() {
         </div>}
 
         {/* Buyer Sub-tabs */}
-        {isB && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-          <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-            {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setBuyTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: buyTab === t ? 600 : 400, background: buyTab === t ? "var(--accent)" : "transparent", color: buyTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+        {isB && <div style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 10, width: "fit-content" }}>
+            {["overview", "invoices", "allocations", "holdback", "funding"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments" }; return <button key={t} onClick={function() { setBuyTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: buyTab === t ? 600 : 400, background: buyTab === t ? "var(--accent)" : "transparent", color: buyTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap" }}>{lb[t]}</button>; })}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBaPage(0); setBaExp(null); setBaSearch(""); setBaDateFilter(""); setBhPage(0); setBhExp(null); setBhSearch(""); setBhDateFilter(""); setBfPage(0); setBfSearch(""); setBfStatusFilter("all"); setBfDateFilter(""); setFundPayExp(null); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
             </select>
@@ -8712,18 +8724,20 @@ export default function FactoringDashboard() {
         {/* Program View */}
         {isF && <div>
           {/* Program sub-tabs and selector */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
-            <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)" }}>
-              {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: progTab === t ? 600 : 400, background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{lb[t]}</button>; })}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 10, width: "fit-content" }}>
+              {["overview", "invoices", "allocations", "holdback", "funding", "bank_statement"].map(function(t) { var lb = { overview: "Overview", invoices: "Invoices", allocations: "Payment Allocations", holdback: "Holdback Payments", funding: "Funding Payments", bank_statement: "Bank Statement" }; return <button key={t} onClick={function() { setProgTab(t); setPg(0); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: progTab === t ? 600 : 400, background: progTab === t ? "var(--accent)" : "transparent", color: progTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap" }}>{lb[t]}</button>; })}
             </div>
-            <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); setPiPage(0); setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPaPage(0); setPaExp(null); setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPhPage(0); setPhExp(null); setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPfPage(0); setFundPayExp(null); setPfSearch(""); setPfDateFilter(""); setPfStatusFilter(""); setBsPage(0); setBsExp(null); setBsSearch(""); setBsTypeFilter(""); setBsDirFilter(""); setBsDateFrom(""); setBsDateTo(""); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
-              <option value="">Select Program...</option>
-              {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
-            </select>
-            {selectedProgram && <select value={progSupFilter} onChange={function(e) { setProgSupFilter(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 200 }}>
-              <option value="">All Suppliers</option>
-              {(function() { var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; }); var eligIds = prog && prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 ? prog.eligibleSuppliers : SUPPLIERS_DB.map(function(s) { return s.id; }); var opts = []; eligIds.forEach(function(eid) { var parsed = parseEntityId(eid); var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; }); if (!sup) return; if (parsed.branchId) { var br = sup.branches && sup.branches.find(function(b) { return b.branchId === parsed.branchId; }); if (br) opts.push({ value: eid, label: sup.name + " \u2014 " + br.branchName }); } else { opts.push({ value: sup.id, label: sup.name }); if (sup.branches) sup.branches.forEach(function(br) { opts.push({ value: makeEntityId(sup.id, br.branchId), label: sup.name + " \u2014 " + br.branchName }); }); } }); return opts; })().map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
-            </select>}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <select value={selectedProgram} onChange={function(e) { setSelectedProgram(e.target.value); setProgSupFilter(""); setPg(0); setPiPage(0); setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPaPage(0); setPaExp(null); setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPhPage(0); setPhExp(null); setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPfPage(0); setFundPayExp(null); setPfSearch(""); setPfDateFilter(""); setPfStatusFilter(""); setBsPage(0); setBsExp(null); setBsSearch(""); setBsTypeFilter(""); setBsDirFilter(""); setBsDateFrom(""); setBsDateTo(""); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 240 }}>
+                <option value="">Select Program...</option>
+                {FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}
+              </select>
+              {selectedProgram && <select value={progSupFilter} onChange={function(e) { setProgSupFilter(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 200 }}>
+                <option value="">All Suppliers</option>
+                {(function() { var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; }); var eligIds = prog && prog.eligibleSuppliers && prog.eligibleSuppliers.length > 0 ? prog.eligibleSuppliers : SUPPLIERS_DB.map(function(s) { return s.id; }); var opts = []; eligIds.forEach(function(eid) { var parsed = parseEntityId(eid); var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; }); if (!sup) return; if (parsed.branchId) { var br = sup.branches && sup.branches.find(function(b) { return b.branchId === parsed.branchId; }); if (br) opts.push({ value: eid, label: sup.name + " \u2014 " + br.branchName }); } else { opts.push({ value: sup.id, label: sup.name }); if (sup.branches) sup.branches.forEach(function(br) { opts.push({ value: makeEntityId(sup.id, br.branchId), label: sup.name + " \u2014 " + br.branchName }); }); } }); return opts; })().map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
+              </select>}
+            </div>
           </div>
 
           {!selectedProgram && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "40px 28px", textAlign: "center" }}>
@@ -13011,6 +13025,20 @@ export default function FactoringDashboard() {
         {isCN && (function() {
           var cnmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
           var cnf = cnFormFields, setCnf = setCnFormFields;
+          function drillToInvoice(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+          }
+          function drillToBuyer(buyerName) {
+            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
+          }
 
           function createCreditNote() {
             var amt = r2(parseFloat(cnf.amount) || 0);
@@ -13057,7 +13085,7 @@ export default function FactoringDashboard() {
           return <div>
             {/* Create Credit Note */}
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, marginBottom: 14 }}>Create Credit Note</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Create Credit Note</div>
               <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Supplier</label><select value={cnf.supplier} onChange={function(e) { setCnf(Object.assign({}, cnf, { supplier: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select supplier...</option>{getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}</select></div>
@@ -13070,15 +13098,102 @@ export default function FactoringDashboard() {
             </div>
 
             {/* Credit Notes List */}
-            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
-              <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Credit Notes Database ({CREDIT_NOTES_DB.length})</div>
+            {(function() {
+              var cnlHasActive = !!(cnlSearch || cnlCcyFilter || cnlSupFilter || cnlBuyFilter || cnlStatusFilter || cnlDateFrom || cnlDateTo);
+              function cnStatus(cn) {
+                var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
+                var remaining = r2(cn.amount - allocated);
+                return remaining < 0.01 ? "allocated" : allocated > 0 ? "partial" : "unallocated";
+              }
+              function applyCnlFilters(list) {
+                var r = list;
+                if (cnlCcyFilter) r = r.filter(function(cn) { return cn.currency === cnlCcyFilter; });
+                if (cnlSupFilter) r = r.filter(function(cn) { return cn.supplierName === cnlSupFilter; });
+                if (cnlBuyFilter) r = r.filter(function(cn) { return cn.buyerName === cnlBuyFilter; });
+                if (cnlStatusFilter) r = r.filter(function(cn) { return cnStatus(cn) === cnlStatusFilter; });
+                if (cnlDateFrom) r = r.filter(function(cn) { return (cn.date || "") >= cnlDateFrom; });
+                if (cnlDateTo) r = r.filter(function(cn) { return (cn.date || "") <= cnlDateTo; });
+                if (cnlSearch) { var q = cnlSearch.toLowerCase(); r = r.filter(function(cn) { return (cn.creditNoteId || "").toLowerCase().indexOf(q) > -1 || (cn.reference || "").toLowerCase().indexOf(q) > -1 || (cn.supplierName || "").toLowerCase().indexOf(q) > -1 || (cn.buyerName || "").toLowerCase().indexOf(q) > -1; }); }
+                return r;
+              }
+              var filteredForStats = applyCnlFilters(CREDIT_NOTES_DB);
+              var statUnalloc = filteredForStats.filter(function(cn) { return cnStatus(cn) === "unallocated"; });
+              var statPartial = filteredForStats.filter(function(cn) { return cnStatus(cn) === "partial"; });
+              var statAlloc = filteredForStats.filter(function(cn) { return cnStatus(cn) === "allocated"; });
+              var ccyGroups = {};
+              filteredForStats.forEach(function(cn) { ccyGroups[cn.currency] = (ccyGroups[cn.currency] || 0) + cn.amount; });
+              var ccyLabel = Object.keys(ccyGroups).length === 0 ? "none" : Object.keys(ccyGroups).map(function(c) { return money(r2(ccyGroups[c]), c); }).join(" \u00b7 ");
+              // Supplier/Buyer filter options built from what's actually present in CN data
+              var cnSupplierOpts = []; var cnBuyerOpts = [];
+              (function() { var seenS = {}, seenB = {}; CREDIT_NOTES_DB.forEach(function(cn) { if (cn.supplierName && !seenS[cn.supplierName]) { seenS[cn.supplierName] = true; cnSupplierOpts.push(cn.supplierName); } if (cn.buyerName && !seenB[cn.buyerName]) { seenB[cn.buyerName] = true; cnBuyerOpts.push(cn.buyerName); } }); cnSupplierOpts.sort(); cnBuyerOpts.sort(); })();
+              // Sort
+              function cnKey(cn) {
+                if (cnlSort === "creditNoteId") return cn.creditNoteId || "";
+                if (cnlSort === "date") return cn.date || "";
+                if (cnlSort === "supplier") return cn.supplierName || "";
+                if (cnlSort === "buyer") return cn.buyerName || "";
+                if (cnlSort === "reference") return cn.reference || "";
+                if (cnlSort === "amount") return cn.amount || 0;
+                if (cnlSort === "currency") return cn.currency || "";
+                if (cnlSort === "allocated") return cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
+                if (cnlSort === "remaining") return r2(cn.amount - cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0));
+                if (cnlSort === "status") return cnStatus(cn);
+                return "";
+              }
+              var filteredCn = filteredForStats.slice().sort(function(a, b) { var ka = cnKey(a), kb = cnKey(b); if (ka < kb) return cnlDir === "asc" ? -1 : 1; if (ka > kb) return cnlDir === "asc" ? 1 : -1; return 0; });
+              var cnlTotalPages = Math.max(1, Math.ceil(filteredCn.length / cnlPerPage));
+              var cnlCurPage = Math.min(cnlPage, cnlTotalPages - 1);
+              var cnlPageItems = filteredCn.slice(cnlCurPage * cnlPerPage, (cnlCurPage + 1) * cnlPerPage);
+              function cnSortH(key) { return function() { if (cnlSort === key) setCnlDir(cnlDir === "asc" ? "desc" : "asc"); else { setCnlSort(key); setCnlDir("asc"); } setCnlPage(0); }; }
+              function cnArr(key) { return cnlSort === key ? (cnlDir === "asc" ? " \u25b4" : " \u25be") : ""; }
+              return <div>
+              {/* Filter-aware stat cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <StatCard label="Credit Notes" value={String(filteredForStats.length)} sub={cnlHasActive && filteredForStats.length !== CREDIT_NOTES_DB.length ? filteredForStats.length + " of " + CREDIT_NOTES_DB.length : (CREDIT_NOTES_DB.length === 0 ? "none" : "all credit notes")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
+                <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
+                <StatCard label="Unallocated / Partial" value={String(statUnalloc.length + statPartial.length)} sub={statUnalloc.length + " unalloc \u00b7 " + statPartial.length + " partial"} accent={(statUnalloc.length + statPartial.length) > 0 ? "#D97706" : "#64748B"} />
+                <StatCard label="Fully Allocated" value={String(statAlloc.length)} sub={statAlloc.length > 0 ? "closed" : "none"} accent={statAlloc.length > 0 ? "#10B981" : "#64748B"} />
               </div>
+            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Credit Notes {cnlHasActive && filteredCn.length !== CREDIT_NOTES_DB.length ? "(" + filteredCn.length + " of " + CREDIT_NOTES_DB.length + ")" : "(" + CREDIT_NOTES_DB.length + ")"}</div>
+                <button onClick={function() {
+                  var headers = ["CN ID", "Date", "Supplier", "Buyer", "Reference", "Amount", "Currency", "Allocated", "Remaining", "Status", "Allocations"];
+                  var rows = filteredCn.map(function(cn) {
+                    var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
+                    var remaining = r2(cn.amount - allocated);
+                    var allocStr = cn.allocations.map(function(a) { return a.invoiceId + ":" + a.amount; }).join("|");
+                    return [cn.creditNoteId, cn.date, cn.supplierName || "", cn.buyerName || "", cn.reference || "", cn.amount, cn.currency, r2(allocated), remaining, cnStatus(cn), allocStr];
+                  });
+                  var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                  var blob = new Blob([csv], { type: "text/csv" });
+                  var url = URL.createObjectURL(blob);
+                  var a = document.createElement("a");
+                  a.href = url; a.download = "credit-notes-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                  URL.revokeObjectURL(url);
+                }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
+              </div>
+              {CREDIT_NOTES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" value={cnlSearch} onChange={function(e) { setCnlSearch(e.target.value); setCnlPage(0); }} placeholder="Search CN, ref, supplier, buyer..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
+                <select value={cnlCcyFilter} onChange={function(e) { setCnlCcyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlCcyFilter ? "var(--accent)" : "var(--border)"), background: cnlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                <select value={cnlSupFilter} onChange={function(e) { setCnlSupFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlSupFilter ? "var(--accent)" : "var(--border)"), background: cnlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{cnSupplierOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                <select value={cnlBuyFilter} onChange={function(e) { setCnlBuyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlBuyFilter ? "var(--accent)" : "var(--border)"), background: cnlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{cnBuyerOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={cnlStatusFilter} onChange={function(e) { setCnlStatusFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlStatusFilter ? "var(--accent)" : "var(--border)"), background: cnlStatusFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">All status</option>
+                  <option value="unallocated">Unallocated</option>
+                  <option value="partial">Partial</option>
+                  <option value="allocated">Allocated</option>
+                </select>
+                <input type="date" value={cnlDateFrom} onChange={function(e) { setCnlDateFrom(e.target.value); setCnlPage(0); }} title="Date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateFrom ? "var(--accent)" : "var(--border)"), background: cnlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                <input type="date" value={cnlDateTo} onChange={function(e) { setCnlDateTo(e.target.value); setCnlPage(0); }} title="Date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateTo ? "var(--accent)" : "var(--border)"), background: cnlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                {cnlHasActive && <button onClick={function() { setCnlSearch(""); setCnlCcyFilter(""); setCnlSupFilter(""); setCnlBuyFilter(""); setCnlStatusFilter(""); setCnlDateFrom(""); setCnlDateTo(""); setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              </div>}
               {CREDIT_NOTES_DB.length === 0 && <div style={{ padding: "20px 28px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No credit notes created yet.</div>}
-              {CREDIT_NOTES_DB.length > 0 && <div style={{ overflowX: "auto" }}>
+              {CREDIT_NOTES_DB.length > 0 && filteredCn.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No credit notes match your filters.</div>}
+              {filteredCn.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["CN ID", "Date", "Supplier", "Buyer", "Reference", "Amount", "CCY", "Allocated", "Remaining", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                  {CREDIT_NOTES_DB.slice().reverse().map(function(cn) {
+                  <thead><tr>{[{ k: "creditNoteId", l: "CN ID" }, { k: "date", l: "Date" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "reference", l: "Reference" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"cnh-" + hi} onClick={h.k ? cnSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? cnArr(h.k) : ""}</th>; })}</tr></thead>
+                  {cnlPageItems.map(function(cn) {
                     var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
                     var remaining = r2(cn.amount - allocated);
                     var status = remaining < 0.01 ? "allocated" : allocated > 0 ? "partial" : "unallocated";
@@ -13089,8 +13204,8 @@ export default function FactoringDashboard() {
                       <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
                       <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName || "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName || "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</td>
                       <td style={Object.assign({}, cnmc, { fontWeight: 600 })}>{money(cn.amount, cn.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--muted)" }}>{cn.currency}</td>
@@ -13108,14 +13223,14 @@ export default function FactoringDashboard() {
                           <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "18px 22px" }}>
                             <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 12, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Credit Note Details</div>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Credit Note ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cn.creditNoteId}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Date</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(cn.date)}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName || "\u2014"}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Reference</div><div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Amount</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(cn.amount, cn.currency)}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Unallocated Balance</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "#D97706" : "#059669" }}>{money(remaining, cn.currency)}</div></div>
-                              <div><div style={{ fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>Created</div><div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{cn.createdDisplay}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Credit Note ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cn.creditNoteId}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Date</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(cn.date)}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Reference</div><div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Amount</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(cn.amount, cn.currency)}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Unallocated Balance</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "#D97706" : "#059669" }}>{money(remaining, cn.currency)}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Created</div><div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{cn.createdDisplay}</div></div>
                             </div>
                             {/* Allocate button for non-fully-allocated */}
                             {status !== "allocated" && <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
@@ -13132,8 +13247,8 @@ export default function FactoringDashboard() {
                               <tbody>{cn.allocations.map(function(a, ai) {
                                 var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
                                 return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
-                                  <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}</td>
-                                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv ? aInv.buyerName : "\u2014"}</td>
+                                  <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + a.invoiceId}>{a.invoiceId}</span></td>
+                                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + aInv.buyerName}>{aInv.buyerName}</span> : "\u2014"}</td>
                                   <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#D97706" }}>{money(a.amount, cn.currency)}</td>
                                   <td style={{ padding: "6px 8px" }}><button onClick={function(e) {
                                     e.stopPropagation();
@@ -13189,7 +13304,20 @@ export default function FactoringDashboard() {
                   })}
                 </table>
               </div>}
+              {filteredCn.length > 0 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {cnlCurPage + 1} of {cnlTotalPages} ({filteredCn.length} credit notes)</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={cnlPerPage} onChange={function(e) { setCnlPerPage(parseInt(e.target.value, 10)); setCnlPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                  <button disabled={cnlCurPage === 0} onClick={function() { setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: cnlCurPage === 0 ? "transparent" : "var(--card)", color: cnlCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: cnlCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                  <button disabled={cnlCurPage === 0} onClick={function() { setCnlPage(cnlCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: cnlCurPage === 0 ? "transparent" : "var(--card)", color: cnlCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: cnlCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                  <input type="number" min="1" max={cnlTotalPages} value={cnlCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= cnlTotalPages) setCnlPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                  <button disabled={cnlCurPage >= cnlTotalPages - 1} onClick={function() { setCnlPage(cnlCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: cnlCurPage >= cnlTotalPages - 1 ? "transparent" : "var(--card)", color: cnlCurPage >= cnlTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: cnlCurPage >= cnlTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  <button disabled={cnlCurPage >= cnlTotalPages - 1} onClick={function() { setCnlPage(cnlTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: cnlCurPage >= cnlTotalPages - 1 ? "transparent" : "var(--card)", color: cnlCurPage >= cnlTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: cnlCurPage >= cnlTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
+                </div>
+              </div>}
             </div>
+            </div>;
+            })()}
 
             {/* Allocation Modal */}
             {allocCN && (function() {
@@ -13212,18 +13340,18 @@ export default function FactoringDashboard() {
                 <div style={{ background: "var(--card)", borderRadius: 16, border: "2px solid var(--accent)", padding: "28px 32px", maxWidth: 960, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600 }}>Allocate Credit Note: {allocCN.creditNoteId}</div>
+                    <div style={{ fontSize: 16, fontWeight: 600 }}>Allocate Credit Note: {allocCN.creditNoteId}</div>
                     <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{allocCN.supplierName} / {allocCN.buyerName || "All Buyers"} {"\u2014"} {money(allocCN.amount, allocCN.currency)} {"\u2014"} Available: <strong style={{ color: r2(avail - allocTotal) > 0 ? "#059669" : "#DC2626" }}>{money(r2(avail - allocTotal), allocCN.currency)}</strong></div>
                   </div>
                   <button onClick={function() { setAllocCN(null); setAllocs([]); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                   <input type="text" value={cnSearch} onChange={function(e) { setCnSearch(e.target.value); }} placeholder="Search invoices..." style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 220 }} />
-                  <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>{eligible.length} invoices for {allocCN.supplierName} / {allocCN.buyerName || "All"}</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>{eligible.length > 50 ? "Showing first 50 of " + eligible.length + " invoices for " : eligible.length + " invoices for "}{allocCN.supplierName} / {allocCN.buyerName || "All"}</span>
                 </div>
                 <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 16 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Invoice", "Supplier", "Buyer", "Inv Amount", "Inv Status", "Fund Status", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{["Invoice", "Supplier", "Buyer", "Inv Amount", "Inv Status", "Fund Status", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{eligible.slice(0, 50).map(function(inv) {
                       var aa = allocs.find(function(a) { return a.invoiceId === inv.id; });
                       var aaAmt = aa ? aa.amount : 0;
@@ -13231,9 +13359,9 @@ export default function FactoringDashboard() {
                       var ist = IST[inv.invoiceStatus] || IST["Received"];
                       var fst = FST[inv.fundingStatus] || FST.funded;
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aaAmt > 0 ? "#2B4C7E06" : "transparent" }}>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12 }}>{inv.supplierName}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
+                        <td style={{ padding: "8px 12px", fontSize: 12 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                         <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "8px 12px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                         <td style={{ padding: "8px 12px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
@@ -13247,7 +13375,7 @@ export default function FactoringDashboard() {
                 </div>
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <button onClick={executeCNAllocation} disabled={allocTotal < 0.01} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: allocTotal > 0 ? "var(--accent)" : "var(--border)", color: allocTotal > 0 ? "#fff" : "var(--muted)", fontSize: 14, fontWeight: 700, fontWeight: 600, cursor: allocTotal > 0 ? "pointer" : "default", boxShadow: allocTotal > 0 ? "0 2px 10px #2B4C7E30" : "none" }}>Allocate {money(r2(allocTotal), allocCN.currency)}</button>
+                    <button onClick={executeCNAllocation} disabled={allocTotal < 0.01} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: allocTotal > 0 ? "var(--accent)" : "var(--border)", color: allocTotal > 0 ? "#fff" : "var(--muted)", fontSize: 14, fontWeight: 600, cursor: allocTotal > 0 ? "pointer" : "default", boxShadow: allocTotal > 0 ? "0 2px 10px #2B4C7E30" : "none" }}>Allocate {money(r2(allocTotal), allocCN.currency)}</button>
                     <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{allocs.filter(function(a) { return a.amount > 0; }).length} invoice(s)</span>
                   </div>
                   <button onClick={function() { setAllocCN(null); setAllocs([]); }} style={{ padding: "10px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
