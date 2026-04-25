@@ -226,12 +226,23 @@ function getEligiblePrograms(inv, supDilRates) {
 }
 
 // Compute the maximum capital any eligible program could offer for this invoice
-function getMaxAvailableCapital(inv, supDilRates) {
+function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected) {
   var eligible = getEligiblePrograms(inv, supDilRates);
   if (eligible.length === 0) return 0;
+  // Effective fundable base:
+  //  - cap at invoice amount (always)
+  //  - cap at partialApprovedAmount if the invoice is Approved in Part (buyer won't pay more than that)
+  //  - cap at amount minus any credit-note dilutions already applied
+  //  - cap at amount minus any buyer payments already collected (the collected portion is no longer a receivable)
+  // Funding advance rate applies to the lowest of these.
+  var partial = (inv.invoiceStatus === "Approved in Part" && inv.partialApprovedAmount > 0) ? inv.partialApprovedAmount : inv.amount;
+  var postDilutions = inv.amount - (cnDilutionTotal || 0);
+  var postCollected = inv.amount - (buyerCollected || 0);
+  var effectiveBase = Math.max(0, Math.min(inv.amount, partial, postDilutions, postCollected));
+  if (effectiveBase <= 0) return 0;
   var maxCap = 0;
   eligible.forEach(function(fp) {
-    var cap = r2(inv.amount * fp.maxAdvanceRate);
+    var cap = r2(effectiveBase * fp.maxAdvanceRate);
     if (cap > maxCap) maxCap = cap;
   });
   return maxCap;
@@ -1651,7 +1662,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var daysOverdue = pastDue ? daysBetween(rawInv.dueDate, viewDate) : 0;
     var daysDisputed = (statusAsOfDate === "Disputed" && disputedDate) ? daysBetween(disputedDate, viewDate) : 0;
     // Capital/interest/holdback balances only apply once the invoice is actually funded (money advanced)
-    var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
+    var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
     var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
     var hbBal = isFunded ? (rawInv.deferredPayment !== undefined && rawInv.deferredPayment !== null ? rawInv.deferredPayment : r2((rawInv.holdback || 0) - (rawInv.interestCharged || 0))) : 0;
     var hbRecd = 0;
@@ -1750,7 +1761,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
 
     if (rawInv.fundingStatus === "historic") fs = "historic";
     else if (rawInv.fundingStatus === "pending") fs = "pending";
-    else if (rawInv.fundingStatus === "approved" && !terminalInvStatus) fs = "approved";
+    else if (rawInv.fundingStatus === "purchased" && !terminalInvStatus) fs = "purchased";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
     else if (rawInv.fundingStatus === "write_off" && debtBal < 0.005) fs = "fully_repaid";
     else if (debtBal < 0.005 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
@@ -1778,10 +1789,16 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (paysForInv.length > 0) lastPayDate = paysForInv[paysForInv.length - 1].date;
       if (hbAppsForInv.length > 0 && hbAppsForInv[hbAppsForInv.length - 1].date > lastPayDate) lastPayDate = hbAppsForInv[hbAppsForInv.length - 1].date;
       rawInv.fullyRepaidDate = lastPayDate;
+      // If prior status was recovery_mode, log the legal repurchase event
+      if (rawInv.fundingStatus === "recovery_mode" || rawInv.priorFundingStatus === "recovery_mode") {
+        auditLog("Repurchased by Supplier", rawInv.id + " (recovery_mode) reached full repayment \u2014 legally repurchased by supplier " + rawInv.supplierName + " on " + lastPayDate, { invoiceId: rawInv.id, amount: rawInv.amount, currency: rawInv.currency, supplierId: rawInv.supplierId, supplier: rawInv.supplierName, buyerId: rawInv.buyerId, buyer: rawInv.buyerName, fullyRepaidDate: lastPayDate, fundingProgram: rawInv.fundingProgram, priorStatus: "recovery_mode" });
+      }
     } else if (fs !== "fully_repaid" && rawInv.fullyRepaidDate) {
       // Clear if no longer fully repaid (e.g. payment unallocated)
       rawInv.fullyRepaidDate = null;
     }
+    // Remember status for next tick (used for transition-based audit events)
+    rawInv.priorFundingStatus = fs;
     var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
     // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
     var settleThreshold = rawInv.amount;
@@ -1802,8 +1819,23 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       // Re-evaluate funding status since settled with balance triggers recovery
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
     }
-    // For unfunded invoices, compute max available capital from eligible programs and unallocated payment total
-    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv) : 0;
+    // For unfunded invoices, compute max available capital from eligible programs.
+    // buyerCollected reduces fundable headroom — the portion already paid by the buyer
+    // is no longer a receivable, so we can't advance against it.
+    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv, undefined, cnDilutionByInvoice.get(rawInv.id) || 0, totalBuyerPaid) : 0;
+    // Funding headroom for purchased/funded invoices with a current program — used by the top-up workflow
+    var fundingHeadroom = 0;
+    if (rawInv.fundingProgram && (rawInv.fundingStatus === "purchased" || rawInv.fundingStatus === "funded" || rawInv.fundingStatus === "at_risk" || rawInv.fundingStatus === "overdue")) {
+      var currentProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === rawInv.fundingProgram; });
+      if (currentProg) {
+        var hPartial = (rawInv.invoiceStatus === "Approved in Part" && rawInv.partialApprovedAmount > 0) ? rawInv.partialApprovedAmount : rawInv.amount;
+        var hPostDil = rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0);
+        var hPostCol = rawInv.amount - totalBuyerPaid;
+        var hEffBase = Math.max(0, Math.min(rawInv.amount, hPartial, hPostDil, hPostCol));
+        var hMaxCap = r2(hEffBase * currentProg.maxAdvanceRate);
+        fundingHeadroom = r2(Math.max(0, hMaxCap - (rawInv.capitalDue || 0)));
+      }
+    }
     var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
@@ -1815,6 +1847,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       totalOutstanding: r2(intBal + penBal + capBal + Math.max(hbBal, holdbackOverdrawn)),
       balanceOwed: r2(capBal + intBal + penBal + holdbackOverdrawn),
       maxAvailableCapital: r2(maxAvailCap),
+      fundingHeadroom: r2(fundingHeadroom),
       unallocatedPayments: r2(unallocatedPayments),
       writeOffTotal: r2(woTotalPen + woTotalInt + woTotalCap + woTotalHb),
       writeOffPenalty: r2(woTotalPen), writeOffInterest: r2(woTotalInt), writeOffCapital: r2(woTotalCap), writeOffHoldback: r2(woTotalHb),
@@ -1841,9 +1874,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
 }
 
 var IST = { "Received": { bg: "#8C9AB525", color: "#94A3B8", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5725", color: "#10B981", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3025", color: "#F59E0B", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5735", color: "#059669", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728025", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B30", color: "#EF4444", border: "#DC262625", icon: "\u2715" }, "Disputed": { bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B35", color: "#DC2626", border: "#DC262630", icon: "\u2716" } };
-var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", border: "#C08B3030" }, approved: { label: "Approved", bg: "#567EBB25", color: "#38BDF8", border: "#567EBB30" }, funded: { label: "Funded", bg: "#2B4C7E25", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5735", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B35", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B25", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728035", color: "#6B7280", border: "#6B728040" }, historic: { label: "Historic", bg: "#64748B25", color: "#94A3B8", border: "#64748B30" } };
+var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", border: "#C08B3030" }, purchased: { label: "Purchased", bg: "#7B5EA725", color: "#8B5CF6", border: "#7B5EA730" }, funded: { label: "Funded", bg: "#2B4C7E25", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5735", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B35", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B25", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728035", color: "#6B7280", border: "#6B728040" }, historic: { label: "Historic", bg: "#64748B25", color: "#94A3B8", border: "#64748B30" } };
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
-var FUND_STATUSES = ["pending", "approved", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
+var FUND_STATUSES = ["pending", "purchased", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
 
 function Badge(p) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
@@ -2222,6 +2255,36 @@ export default function FactoringDashboard() {
   var map1 = useState(0), mgAudPage = map1[0], setMgAudPage = map1[1];
   var mapp1 = useState(25), mgAudPerPage = mapp1[0], setMgAudPerPage = mapp1[1];
   var madir1 = useState("desc"), mgAudDir = madir1[0], setMgAudDir = madir1[1];
+  // Invoices LIST filters (for top-level Invoices view)
+  var ils1 = useState(""), invlSearch = ils1[0], setInvlSearch = ils1[1];
+  var ilc1 = useState(""), invlCcyFilter = ilc1[0], setInvlCcyFilter = ilc1[1];
+  var ilsup1 = useState(""), invlSupFilter = ilsup1[0], setInvlSupFilter = ilsup1[1];
+  var ilbuy1 = useState(""), invlBuyFilter = ilbuy1[0], setInvlBuyFilter = ilbuy1[1];
+  var ilprog1 = useState(""), invlProgFilter = ilprog1[0], setInvlProgFilter = ilprog1[1];
+  var ilinv1 = useState(""), invlInvStFilter = ilinv1[0], setInvlInvStFilter = ilinv1[1];
+  var ilfund1 = useState(""), invlFundStFilter = ilfund1[0], setInvlFundStFilter = ilfund1[1];
+  var ildnf1 = useState(""), invlDnfFilter = ildnf1[0], setInvlDnfFilter = ildnf1[1];
+  var ildf1 = useState(""), invlDateFrom = ildf1[0], setInvlDateFrom = ildf1[1];
+  var ildt1 = useState(""), invlDateTo = ildt1[0], setInvlDateTo = ildt1[1];
+  var ilpg1 = useState(0), invlPage = ilpg1[0], setInvlPage = ilpg1[1];
+  var ilpp1 = useState(25), invlPerPage = ilpp1[0], setInvlPerPage = ilpp1[1];
+  var ilsrt1 = useState("invoiceDate"), invlSort = ilsrt1[0], setInvlSort = ilsrt1[1];
+  var ildir1 = useState("desc"), invlDir = ildir1[0], setInvlDir = ildir1[1];
+  var ilshow1 = useState(false), invlShowCreate = ilshow1[0], setInvlShowCreate = ilshow1[1];
+  // Unpurchased Invoices queue state
+  var upis1 = useState(""), upiSearch = upis1[0], setUpiSearch = upis1[1];
+  var upisup1 = useState(""), upiSupFilter = upisup1[0], setUpiSupFilter = upisup1[1];
+  var upibuy1 = useState(""), upiBuyFilter = upibuy1[0], setUpiBuyFilter = upibuy1[1];
+  var upicc1 = useState(""), upiCcyFilter = upicc1[0], setUpiCcyFilter = upicc1[1];
+  var upidf1 = useState(""), upiDateFrom = upidf1[0], setUpiDateFrom = upidf1[1];
+  var upidt1 = useState(""), upiDateTo = upidt1[0], setUpiDateTo = upidt1[1];
+  var upip1 = useState(0), upiPage = upip1[0], setUpiPage = upip1[1];
+  var upipp1 = useState(25), upiPerPage = upipp1[0], setUpiPerPage = upipp1[1];
+  var upisrt1 = useState("invoiceDate"), upiSort = upisrt1[0], setUpiSort = upisrt1[1];
+  var upidir1 = useState("desc"), upiDir = upidir1[0], setUpiDir = upidir1[1];
+  var upisel1 = useState({}), upiSelected = upisel1[0], setUpiSelected = upisel1[1];
+  var upibulkp1 = useState(""), upiBulkProg = upibulkp1[0], setUpiBulkProg = upibulkp1[1];
+  var pfii1 = useState(null), pendingFocusInvId = pfii1[0], setPendingFocusInvId = pfii1[1];
   var mp1 = useState(null), managePopup = mp1[0], setManagePopup = mp1[1];
   var mdt1 = useState("overview"), manageDetailTab = mdt1[0], setManageDetailTab = mdt1[1];
   var ap2 = useState(null), auditPopup = ap2[0], setAuditPopup = ap2[1];
@@ -2460,7 +2523,7 @@ export default function FactoringDashboard() {
   var csvRes2 = useState("mapping"), csvImportStep = csvRes2[0], setCsvImportStep = csvRes2[1]; // "mapping" | "resolution" | "processing" | "done"
   var ps1 = useState(25), PS = ps1[0], setPS = ps1[1];
   var sel1 = useState({}), selectedInvs = sel1[0], setSelectedInvs = sel1[1]; // {invoiceId: true} for bulk actions
-  var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isM = view === "manage";
+  var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isI = view === "invoices", isUI = view === "unpurchased", isM = view === "manage";
 
   var viewData = useMemo(function() { return processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB); }, [viewDate, dataVer]);
 
@@ -2741,7 +2804,7 @@ export default function FactoringDashboard() {
     activeAllocs.forEach(function(a) {
       var rawInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
       if (!rawInv) return;
-      var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "approved" && rawInv.fundedDate;
+      var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
       if (isFunded) return;
       // Unfunded invoice — funds should be remitted to the supplier
       var supplierEntityId = rawInv.supplierId || "";
@@ -2824,7 +2887,7 @@ export default function FactoringDashboard() {
       ids.forEach(function(invId) {
         var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
         if (raw && raw.fundingStatus === "funded") {
-          raw.fundingStatus = "approved";
+          raw.fundingStatus = "purchased";
           raw.fundedDate = null;
           var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
           if (prog) prog.currentFundedBalance = r2(Math.max(0, (prog.currentFundedBalance || 0) - raw.capitalDue));
@@ -3007,7 +3070,7 @@ export default function FactoringDashboard() {
     var progInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === programId; });
     var fundedBalance = 0;
     progInvs.forEach(function(inv) {
-      if (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") return;
+      if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") return;
       fundedBalance += inv.capitalDue || 0;
     });
     var funderInflows = 0, totalDisbursed = 0, pendingDisbursalsAmt = 0;
@@ -3049,7 +3112,7 @@ export default function FactoringDashboard() {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "pending") return;
     if (!programId) return;
-    raw.fundingStatus = "approved";
+    raw.fundingStatus = "purchased";
     raw.approvedDate = fundPopupFields.paymentDate || viewDate;
     raw.fundingProgram = programId;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
@@ -3061,12 +3124,20 @@ export default function FactoringDashboard() {
 
   function executeFunding(invId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
-    if (!raw || raw.fundingStatus !== "approved") return;
+    if (!raw || raw.fundingStatus !== "purchased") return;
     raw.fundingStatus = "funded";
     raw.fundedDate = raw.intendedPaymentDate || viewDate;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
     var progName = prog ? prog.name : raw.fundingProgram;
+    // Zero-capital "funding" (arrears workflow) — transition state only, do NOT queue a £0 supplier payment
+    if (r2(raw.capitalDue) <= 0) {
+      saveInvoice(invId);
+      if (prog) saveFundingProgram(prog.id);
+      auditLog("Invoice Funded (Zero Capital)", invId + " transitioned to funded with zero capital via " + progName + " \u2014 " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: 0, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName });
+      setDataVer(function(v) { return v + 1; });
+      return;
+    }
     var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
     var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
     var now = new Date();
@@ -3089,15 +3160,137 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
+  function confirmFundPopup() {
+    if (!fundPopup) return;
+    var inv = fundPopup.inv, prog = fundPopup.prog;
+    var newCap = r2(parseFloat(fundPopupFields.capitalDue) || 0);
+    var rate = parseFloat(fundPopupFields.annualRate) / 100;
+    if (newCap < 0 || newCap > fundPopupFields.maxCap + 0.01) return;
+    if (rate < fundPopupFields.minRate - 0.0001) return;
+    var availBal = getProgramAvailableBalance(prog.id);
+    if (newCap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(newCap, inv.currency)); return; }
+    var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+    if (!raw) return;
+    var isTopup = raw.fundingStatus === "purchased" || raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue";
+    if (isTopup) {
+      // Top-up path: add the new capital to existing, recompute downstream figures, queue a funding payment.
+      if (newCap <= 0) { alert("Capital to advance must be greater than zero for a top-up."); return; }
+      var fundingDate = fundPopupFields.paymentDate || viewDate;
+      var existingCap = r2(raw.capitalDue || 0);
+      raw.capitalDue = r2(existingCap + newCap);
+      raw.holdback = r2(raw.amount - raw.capitalDue);
+      // Keep existing rate unless this is an initial fund (no prior cash). For true top-ups we keep the weighted approach simple: use new rate going forward.
+      raw.annualRate = rate;
+      raw.penaltyRate = rate * 1.5;
+      var term = daysBetween(fundingDate, raw.dueDate);
+      if (term < 1) term = 1;
+      raw.daysToMaturity = term;
+      raw.interestCharged = r2(raw.capitalDue * (rate / 360) * term);
+      raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
+      raw.advanceRate = raw.amount > 0 ? raw.capitalDue / raw.amount : 0;
+      raw.intendedPaymentDate = fundingDate;
+      if (!raw.fundedDate) raw.fundedDate = fundingDate;
+      // Create the supplier payment for the delta capital
+      var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
+      var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
+      var now = new Date();
+      var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      var cpId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+      SUPPLIER_PAYMENT_QUEUE.push({
+        id: cpId, type: "funding", invoiceId: raw.id, invoiceIds: [raw.id],
+        supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
+        bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified,
+        amount: newCap, currency: raw.currency, status: "Completed",
+        programId: raw.fundingProgram, programName: prog.name,
+        createdDisplay: useDisplay,
+        executedAt: now.toISOString(),
+        executedDisplay: useDisplay,
+        isTopup: existingCap > 0
+      });
+      // Update state if needed (purchased → funded)
+      var wasPurchased = raw.fundingStatus === "purchased";
+      if (wasPurchased) raw.fundingStatus = "funded";
+      // Program's funded balance picks up the delta
+      if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + newCap);
+      saveInvoice(raw.id);
+      if (prog) saveFundingProgram(prog.id);
+      saveSPQEntry(cpId);
+      auditLog(wasPurchased ? "Purchased Invoice Funded" : "Funding Topped Up", raw.id + ": " + money(newCap, raw.currency) + " advanced via " + prog.name + " (now " + money(raw.capitalDue, raw.currency) + " total capital) \u2014 " + raw.supplierName + " (" + cpId + ")", { invoiceId: raw.id, deltaCapital: newCap, newTotalCapital: raw.capitalDue, previousCapital: existingCap, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundingProgram: raw.fundingProgram, fundingProgramName: prog.name, completedPaymentId: cpId, priorStatus: wasPurchased ? "purchased" : raw.fundingStatus });
+      setFundPopup(null); setFundPopupFields({});
+      setDataVer(function(v) { return v + 1; });
+      return;
+    }
+    // Original pending → purchased path (unchanged semantics)
+    raw.capitalDue = newCap;
+    raw.holdback = r2(raw.amount - newCap);
+    raw.annualRate = rate;
+    raw.penaltyRate = rate * 1.5;
+    var dailyRate = rate / 360;
+    var fundingDate2 = fundPopupFields.paymentDate || viewDate;
+    var term2 = daysBetween(fundingDate2, raw.dueDate);
+    if (term2 < 1) term2 = 1;
+    raw.daysToMaturity = term2;
+    raw.interestCharged = r2(newCap * dailyRate * term2);
+    raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
+    raw.advanceRate = raw.amount > 0 ? newCap / raw.amount : 0;
+    raw.intendedPaymentDate = fundingDate2;
+    fundInvoice(inv.id, prog.id);
+    setFundPopup(null); setFundPopupFields({});
+  }
+
+  // Open the Fund popup for any invoice (pending, purchased, or funded with headroom).
+  // Handles pre-fill for the three cases: initial allocation, top-up of zero-capital purchase,
+  // and top-up of an already-funded invoice.
+  function openFundPopupFor(invProc) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
+    if (!raw) return;
+    var prog = null;
+    if (raw.fundingProgram) prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+    if (!prog) {
+      // For pending invoices — pick first eligible program
+      var eligible = getEligiblePrograms(raw, null);
+      if (eligible.length === 0) { alert("No eligible funding programs for " + raw.id + "."); return; }
+      prog = eligible[0];
+    }
+    var supRate = getSupplierRate(raw.supplierId || raw.supplierName);
+    var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
+    var postDil = raw.amount - (invProc.dilutionTotal || 0);
+    var buyerPaid = (invProc.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+    var postCol = raw.amount - buyerPaid;
+    var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
+    var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+    var currentCap = r2(raw.capitalDue || 0);
+    var headroom = r2(Math.max(0, maxCap - currentCap));
+    if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready funded: " + money(currentCap, raw.currency)); return; }
+    var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
+    if (defaultNewCap < 0) defaultNewCap = 0;
+    setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id });
+  }
+
   function cancelApproval(invId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
-    if (!raw || raw.fundingStatus !== "approved") return;
+    if (!raw || raw.fundingStatus !== "purchased") return;
+    // Safety guards: deallocation requires NO cash history of any kind
+    if (raw.fundedDate) { alert("Cannot deallocate " + invId + ": this invoice has been funded (cash advanced). Funded invoices cannot be returned to pending."); return; }
+    var paymentCount = (raw.payments && raw.payments.length) || 0;
+    if (paymentCount > 0) { alert("Cannot deallocate " + invId + ": " + paymentCount + " buyer payment(s) recorded against this invoice. Once buyer payments are received, the allocation is locked in."); return; }
+    // Also block if any holdback payment ever flowed against this invoice
+    var hasHbpActivity = SUPPLIER_PAYMENT_QUEUE.some(function(q) { return (q.sourceInvoiceId === invId || (q.invoiceIds && q.invoiceIds.indexOf(invId) > -1)) && q.type !== "funding"; });
+    if (hasHbpActivity) { alert("Cannot deallocate " + invId + ": holdback or pass-through activity exists. The allocation is locked in once any economic activity has occurred."); return; }
     var oldProg = raw.fundingProgram;
     var progName = "";
     if (oldProg) { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === oldProg; }); if (fp) progName = fp.name; }
     raw.fundingStatus = "pending";
     raw.fundingProgram = null;
     raw.approvedDate = null;
+    // Reset capital figures (was set if funding was queued but not executed)
+    raw.capitalDue = 0;
+    raw.holdback = 0;
+    raw.interestCharged = 0;
+    raw.deferredPayment = 0;
+    raw.advanceRate = 0;
+    raw.intendedPaymentDate = null;
     // Remove any associated payment queue entries for this invoice
     var removed = [];
     for (var qi = SUPPLIER_PAYMENT_QUEUE.length - 1; qi >= 0; qi--) {
@@ -3356,6 +3549,63 @@ export default function FactoringDashboard() {
         })}
       </div>
       <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
+      {/* GLOBAL Fund Popup Modal — renders regardless of view */}
+      {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
+        <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>{fundPopup.isTopup ? "Fund Purchased Invoice" : "Fund Invoice"}: {fundPopup.inv.id}</div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>{fundPopup.inv.supplierName} / {fundPopup.inv.buyerName}</div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong> {"\u2014"} Available: <strong style={{ color: getProgramAvailableBalance(fundPopup.prog.id) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(getProgramAvailableBalance(fundPopup.prog.id), fundPopup.inv.currency)}</strong></div>
+          {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
+          {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
+          {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies {"\u2014"} max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
+            <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.inv.amount, fundPopup.inv.currency)}</div>
+            </div>
+            <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>{fundPopup.isTopup && fundPopup.currentCapital > 0 ? "Max Top-Up Headroom" : "Max Advance"}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{money(fundPopupFields.maxCap || 0, fundPopup.inv.currency)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18 }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>{fundPopup.isTopup && fundPopup.currentCapital > 0 ? "Additional Capital to Advance" : "Capital to Advance"} ({fundPopup.inv.currency})</label>
+              <input type="number" step="0.01" value={fundPopupFields.capitalDue || ""} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { capitalDue: e.target.value }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 16, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Annual Interest Rate (%)</label>
+              <input type="number" step="0.01" value={fundPopupFields.annualRate || ""} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { annualRate: e.target.value }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 16, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+              {fundPopupFields.minRate > 0 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>Program minimum: {(fundPopupFields.minRate * 100).toFixed(2)}%</div>}
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Funding Date</label>
+              <input type="date" value={fundPopupFields.paymentDate || viewDate} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { paymentDate: e.target.value }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            </div>
+          </div>
+          {(function() {
+            var cap = parseFloat(fundPopupFields.capitalDue) || 0;
+            var rate = parseFloat(fundPopupFields.annualRate) / 100 || 0;
+            var fundingDate = fundPopupFields.paymentDate || viewDate;
+            var term = daysBetween(fundingDate, fundPopup.inv.dueDate);
+            if (term < 1) term = 1;
+            var int = r2(cap * (rate / 360) * term);
+            var hb = r2(fundPopup.inv.amount - cap);
+            var def = r2(hb - int);
+            return <div style={{ padding: "12px 14px", borderRadius: 8, background: "var(--bg)", marginBottom: 16, fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div><span style={{ color: "var(--muted)" }}>Term: </span><strong style={{ color: "var(--text)" }}>{term}d</strong></div>
+                <div><span style={{ color: "var(--muted)" }}>Interest: </span><strong style={{ color: "#D97706" }}>{money(int, fundPopup.inv.currency)}</strong></div>
+                <div><span style={{ color: "var(--muted)" }}>Holdback: </span><strong style={{ color: "#10B981" }}>{money(def, fundPopup.inv.currency)}</strong></div>
+              </div>
+            </div>;
+          })()}
+          <div style={{ display: "flex", gap: 10 }}>
+            {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0; var progAvail = getProgramAvailableBalance(fundPopup.prog.id); var insufficientBal = capNeeded > progAvail + 0.01; var disabled = blocked || insufficientBal; var label = insufficientBal ? "Insufficient Program Balance" : (fundPopup.isTopup ? "Advance Funding" : "Approve for Funding"); return <button onClick={confirmFundPopup} disabled={disabled} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{label}</button>; })()}
+            <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      </div>}
       {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
         <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
@@ -3492,7 +3742,7 @@ export default function FactoringDashboard() {
         var spTotalInvoiced = 0, spCapAdvanced = 0, spCapOS = 0, spIntOS = 0, spPenOS = 0, spBalanceOwed = 0, spHoldbackAvail = 0, spTotalRepaid = 0;
         spInvs.forEach(function(inv) {
           spTotalInvoiced += inv.amount || 0;
-          if (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") {
+          if (inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased") {
             if (inv.fundedDate) spCapAdvanced += inv.capitalDue || 0;
             spCapOS += inv.capitalOutstanding || 0;
             spIntOS += inv.interestOutstanding || 0;
@@ -3958,7 +4208,7 @@ export default function FactoringDashboard() {
                     statusCap[fs] += inv.capitalOutstanding || 0;
                     statusCount[fs] += 1;
                   });
-                  var donutColors = { funded: "#0EA5E9", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626", approved: "#38BDF8" };
+                  var donutColors = { funded: "#0EA5E9", overdue: "#EF4444", at_risk: "#8B5CF6", recovery_mode: "#DC2626", purchased: "#8B5CF6" };
                   Object.keys(statusCap).forEach(function(fs) {
                     if (statusCap[fs] < 0.01) return;
                     var fst = FST[fs] || FST.funded;
@@ -4158,7 +4408,7 @@ export default function FactoringDashboard() {
                               return React.createElement("td", { style: Object.assign({}, portalTd, { color: fpColor, fontSize: 12 }, fpStyle) }, fpName);
                             })(),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(inv.amount, inv.currency)),
-                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: inv.fundedDate ? spText : spMuted }) }, inv.fundedDate ? money(inv.capitalDue || 0, inv.currency) : inv.fundingStatus === "approved" ? "Pending" : "\u2014"),
+                            React.createElement("td", { style: Object.assign({}, portalTdMono, { color: inv.fundedDate ? spText : spMuted }) }, inv.fundedDate ? money(inv.capitalDue || 0, inv.currency) : inv.fundingStatus === "purchased" ? "Pending" : "\u2014"),
                             React.createElement("td", { style: Object.assign({}, portalTd, { color: daysToMat < 0 ? spRed : spText, fontSize: 12 }) }, fmt(inv.dueDate)),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: fundingOS > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(fundingOS, inv.currency)),
                             React.createElement("td", { style: portalTd },
@@ -4358,7 +4608,7 @@ export default function FactoringDashboard() {
                                   )
                                 ) : null,
                                 /* Approved but not yet funded message */
-                                inv.fundingStatus === "approved" && !inv.fundedDate ? React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid #F59E0B40", padding: "18px 20px", marginTop: 16 } },
+                                inv.fundingStatus === "purchased" && !inv.fundedDate ? React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid #F59E0B40", padding: "18px 20px", marginTop: 16 } },
                                   React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#F59E0B", marginBottom: 8 } }, "Funding Approved"),
                                   React.createElement("div", { style: { fontSize: 12, color: spText, lineHeight: 1.6 } }, "This invoice has been approved for funding. Final terms including advance amount, interest rate, and payment date will be confirmed upon execution. You will be notified once the advance has been made.")
                                 ) : null,
@@ -5231,7 +5481,7 @@ export default function FactoringDashboard() {
             <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
@@ -5247,7 +5497,7 @@ export default function FactoringDashboard() {
             <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
@@ -5266,7 +5516,7 @@ export default function FactoringDashboard() {
           <div style={{ background: "var(--card)", borderBottom: "1px solid var(--border)", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <button onClick={function() { setSidebarOpen(true); }} style={{ background: "none", border: "none", color: "var(--text)", cursor: "pointer", padding: 4, display: "none" }} className="ff-menu-btn"><Menu size={22} /></button>
-              <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: 0 }}>{{ company: "Pelagic Overview", supplier: "Suppliers", buyer: "Buyers", program: "Programs", payments: "Payments", creditnotes: "Credit Notes", manage: "Admin" }[view] || "Dashboard"}</h1>
+              <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: 0 }}>{{ company: "Pelagic Overview", supplier: "Suppliers", buyer: "Buyers", program: "Programs", payments: "Payments", creditnotes: "Credit Notes", invoices: "Invoices", unpurchased: "Unpurchased Invoices", manage: "Admin" }[view] || "Dashboard"}</h1>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "var(--muted)" }}>
               <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{st.n} invoices</span>
@@ -5543,7 +5793,7 @@ export default function FactoringDashboard() {
                       </tr></thead>
                       <tbody>
                         {eligibleInvoices.map(function(inv) {
-                          return <tr key={inv.id} onClick={function() { toast.info("Pending Funding queue coming soon", "Approve & fund from the supplier's overview for now."); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                          return <tr key={inv.id} onClick={function() { setUpiSearch(""); setUpiSupFilter(""); setUpiBuyFilter(""); setUpiCcyFilter(""); setUpiDateFrom(""); setUpiDateTo(""); setUpiPage(0); setPendingFocusInvId(inv.id); setView("unpurchased"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                             <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{inv.id}</td>
                             <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>
                             <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(inv.maxAvailableCapital), inv.currency)}</td>
@@ -5733,9 +5983,9 @@ export default function FactoringDashboard() {
           </div>;
         })()}
 
-        {!isM && !isP && !isCN && !isF && !isB && !isC && (!isS || supTab === "invoices") && isS && (function() {
+        {!isM && !isI && !isUI && !isP && !isCN && !isF && !isB && !isC && (!isS || supTab === "invoices") && isS && (function() {
           var supTotal = filtered.reduce(function(s, inv) { return s + inv.amount; }, 0);
-          var supCapAdv = filtered.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") ? s + inv.capitalDue : s; }, 0);
+          var supCapAdv = filtered.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased") ? s + inv.capitalDue : s; }, 0);
           var supCapOS = filtered.reduce(function(s, inv) { return s + (inv.capitalOutstanding || 0); }, 0);
           var overdueCount = filtered.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.capitalOutstanding > 0.01; }).length;
           var pendingCount = filtered.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
@@ -5747,8 +5997,8 @@ export default function FactoringDashboard() {
             <StatCard label="Pending Funding" value={String(pendingCount)} sub={pendingCount > 0 ? "awaiting decision" : "\u2014"} accent={pendingCount > 0 ? "#38BDF8" : "#64748B"} />
           </div>;
         })()}
-        {!isM && !isB && !isP && !isCN && !isS && !isF && !isC && <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 22 }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Monthly Volume</div><MiniChart data={viewData.chartData} /></div>}
-        {!isM && !isP && !isCN && !isF && !isB && !isC && (!isS || supTab === "invoices") && <div>
+        {!isM && !isI && !isUI && !isB && !isP && !isCN && !isS && !isF && !isC && <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 22 }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Monthly Volume</div><MiniChart data={viewData.chartData} /></div>}
+        {!isM && !isI && !isUI && !isP && !isCN && !isF && !isB && !isC && (!isS || supTab === "invoices") && <div>
         {/* Filters */}
         {(function() {
           var activeFilters = [];
@@ -5772,7 +6022,7 @@ export default function FactoringDashboard() {
             <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: fsf !== "all" ? "var(--accent)" : undefined, color: fsf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
             <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{b + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
             {hasActive && <button onClick={clearAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters ({activeFilters.length})</button>}
-            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }); }); setView("manage"); setManageTab("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
+            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
             <div style={{ marginLeft: isS ? 0 : "auto", fontSize: 11.5, color: hasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: hasActive ? 600 : 400 }}>{hasActive && filtered.length !== totalCount ? filtered.length + " of " + totalCount : filtered.length} invoices</div>
           </div>;
         })()}
@@ -5842,16 +6092,16 @@ export default function FactoringDashboard() {
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontWeight: 500 })}>{inv.supplierName}</td>}
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
                       <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                      {(isS || isB) && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
                       {(isS || isB) && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
-                      {!isS && !isB && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
                       {!isS && !isB && <td style={Object.assign({}, mc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>}
                       {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>}
                       <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{fmt(inv.invoiceDate)}</td>
                       <td style={Object.assign({}, tc, { color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400 })}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 6px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
                       <td style={{ padding: "8px 6px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: "#EF4444", background: "#DC262615", border: "1px solid #DC262640", letterSpacing: "0.06em" }} title="Do Not Fund \u2014 this invoice is deliberately excluded from funding">DNF</span>}</td>
-                      {(isS || isB) && <td style={Object.assign({}, mc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>}
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>}
                       {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
                       <td style={{ padding: "8px 6px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
@@ -5931,7 +6181,7 @@ export default function FactoringDashboard() {
                                         var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
                                         var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past maturity";
                                         var matColor = daysToMat >= 0 ? "#059669" : "#DC2626";
-                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundedDate;
+                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundedDate;
                                         return <div>
                                           {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
@@ -5944,8 +6194,8 @@ export default function FactoringDashboard() {
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#E2E8F0" : "#059669", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Total Funds Applied</span><span style={Object.assign({}, val, { color: "#059669" })}>{money(inv.totalFundsApplied || 0, inv.currency)}</span></div>
                                           </> : <>{/* Unfunded invoice — show potential capital and unallocated payments */}
-                                          {inv.fundingStatus === "approved" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
-                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "approved" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
+                                          {inv.fundingStatus === "purchased" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
+                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "purchased" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
                                           {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#059669" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
                                           {inv.fundingStatus === "pending" && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#C08B3008", border: "1px solid #C08B3020", fontSize: 10, color: "#D97706", fontStyle: "italic" }}>Capital and interest will be set when funding is approved and executed</div>}
                                           </>}
@@ -5953,8 +6203,8 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Funded Date</span><span style={val}>{inv.fundedDate ? fmt(inv.fundedDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Days to/Past Maturity</span><span style={Object.assign({}, val, { color: matColor, fontWeight: 600 })}>{matLabel}</span></div>
-                                          <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
@@ -5969,9 +6219,10 @@ export default function FactoringDashboard() {
                                   </div>
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
-                                    {inv.fundingStatus === "approved" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {(inv.fundingStatus === "purchased" || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01 ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
-                                    {inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
+                                    {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: adjInv === inv.id && adjType === "credit" ? "#2E8B5720" : "transparent", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "debit" ? null : inv.id); setAdjType("debit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C08B30", background: adjInv === inv.id && adjType === "debit" ? "#C08B3020" : "transparent", color: "#D97706", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Debit Adjustment</button>
                                     {inv.fundingStatus === "pending" && <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginLeft: 8 }}><input type="checkbox" checked={inv.doNotFund || false} onChange={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = !raw.doNotFund; saveInvoice(raw.id); auditLog(raw.doNotFund ? "Do Not Fund Set" : "Do Not Fund Cleared", inv.id + (raw.doNotFund ? " marked Do Not Fund" : " returned to funding queue"), { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ width: 14, height: 14, accentColor: "#6B7280" }} /><span style={{ fontSize: 11, fontWeight: 600, color: inv.doNotFund ? "#6B7280" : "var(--muted)" }}>Do Not Fund</span></label>}
@@ -6157,7 +6408,7 @@ export default function FactoringDashboard() {
           // unpaid balance of Settled invoices, and holdback not yet disbursed
           var collateralValue = 0;
           supInvs.forEach(function(inv) {
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "approved" || inv.fundingStatus === "historic") return;
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
             if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") {
               collateralValue += inv.amount || 0;
@@ -6278,7 +6529,7 @@ export default function FactoringDashboard() {
           var pendingInvs = supInvs.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; });
 
           // Approved — awaiting funding
-          var approvedInvs = supInvs.filter(function(inv) { return inv.fundingStatus === "approved"; });
+          var approvedInvs = supInvs.filter(function(inv) { return inv.fundingStatus === "purchased"; });
 
           // Invoices with holdback available
           var hbAvailInvs = supInvs.filter(function(inv) { return inv.holdbackAvailable > 0.01; });
@@ -6359,7 +6610,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
                   </div>
-                  {(function() { var pendDecision = supInvs.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length; var pendDisbursal = supInvs.filter(function(inv) { return inv.fundingStatus === "approved"; }).length; return <>
+                  {(function() { var pendDecision = supInvs.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length; var pendDisbursal = supInvs.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length; return <>
                   <div onClick={pendDecision > 0 ? function() { var el = document.getElementById("sup-ov-pending"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); } : null} style={{ borderLeft: "3px solid #7BA0D4", paddingLeft: 12, cursor: pendDecision > 0 ? "pointer" : "default", transition: "opacity 0.15s ease" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u23f3"} Pending Decision{pendDecision > 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>{"\u2193"}</span>}</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pendDecision > 0 ? "#38BDF8" : "var(--muted)" }}>{pendDecision}</div>
@@ -6442,14 +6693,14 @@ export default function FactoringDashboard() {
                 <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     {approvedInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#38BDF8" }}></div>}
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Approved {"\u2014"} Awaiting Funding ({approvedInvs.length})</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Purchased {"\u2014"} Awaiting Funding ({approvedInvs.length})</div>
                   </div>
                   {approvedInvs.length > 0 && <div style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#38BDF8" }}>{money(r2(approvedInvs.reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0)), displayCcy)}</div>}
                 </div>
-                {approvedInvs.length === 0 && <div style={{ padding: "20px 20px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No approved invoices awaiting funding.</div>}
+                {approvedInvs.length === 0 && <div style={{ padding: "20px 20px", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No purchased invoices awaiting funding.</div>}
                 {approvedInvs.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Invoice", "Capital", "Interest", "Due", "Program"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr>{["Invoice", "Capital", "Interest", "Due", "Program", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{approvedInvs.map(function(inv) {
                       var progName = inv.fundingProgram ? (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; }); return fp ? fp.name : inv.fundingProgram; })() : "\u2014";
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -6458,6 +6709,7 @@ export default function FactoringDashboard() {
                         <td style={Object.assign({}, mc, { padding: "6px 8px", color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{progName}</td>
+                        <td style={{ padding: "6px 8px" }}>{((inv.fundingHeadroom || 0) > 0.01) && <button onClick={function(e) { e.stopPropagation(); openFundPopupFor(inv); }} style={{ padding: "3px 10px", borderRadius: 6, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title={"Advance capital. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{(inv.capitalDue || 0) < 0.01 ? "Fund" : "Top Up"}</button>}</td>
                       </tr>;
                     })}</tbody>
                   </table>
@@ -7714,7 +7966,7 @@ export default function FactoringDashboard() {
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
           buyInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending") return;
-            if (inv.fundingStatus === "approved") return;
+            if (inv.fundingStatus === "purchased") return;
             totalCapOS += inv.capitalOutstanding || 0;
             totalIntOS += inv.interestOutstanding || 0;
             totalPenOS += inv.penaltyInterest || 0;
@@ -7723,7 +7975,7 @@ export default function FactoringDashboard() {
 
           var collateralValue = 0;
           buyInvs.forEach(function(inv) {
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "approved" || inv.fundingStatus === "historic") return;
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
             if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
             else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
@@ -7742,7 +7994,7 @@ export default function FactoringDashboard() {
           var ageData = [{ label: "Current", days: 0, color: "#059669" }, { label: "1-30d", days: 30, color: "#D97706" }, { label: "31-60d", days: 60, color: "#f97316" }, { label: "61-90d", days: 90, color: "#DC2626" }, { label: "90d+", days: 999, color: "#991b1b" }];
           var ageBuckets = [0, 0, 0, 0, 0];
           buyInvs.forEach(function(inv) {
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "approved" || inv.fundingStatus === "fully_repaid") return;
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "fully_repaid") return;
             var dp = inv.daysPastDue || 0;
             if (dp <= 0) ageBuckets[0] += inv.balanceOwed || 0;
             else if (dp <= 30) ageBuckets[1] += inv.balanceOwed || 0;
@@ -8089,7 +8341,7 @@ export default function FactoringDashboard() {
 
           // Stat cards (filter-aware)
           var totalInv = buyInvs.reduce(function(s, inv) { return s + inv.amount; }, 0);
-          var totalCapAdv = buyInvs.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved") ? s + inv.capitalDue : s; }, 0);
+          var totalCapAdv = buyInvs.reduce(function(s, inv) { return (inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased") ? s + inv.capitalDue : s; }, 0);
           var totalCapOS = buyInvs.reduce(function(s, inv) { return s + (inv.capitalOutstanding || 0); }, 0);
           var overdueCount = buyInvs.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && (inv.balanceOwed || 0) > 0.01; }).length;
           var disputedCount = buyInvs.filter(function(inv) { return inv.invoiceStatus === "Disputed"; }).length;
@@ -8171,7 +8423,7 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                       <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
                       <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                      <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
+                      <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400, whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
@@ -8786,7 +9038,7 @@ export default function FactoringDashboard() {
               var approvedCapital = 0;
               allProgInvs.forEach(function(inv) {
                 if (inv.fundingStatus === "pending") return;
-                if (inv.fundingStatus === "approved") { approvedCapital += inv.capitalDue || 0; return; }
+                if (inv.fundingStatus === "purchased") { approvedCapital += inv.capitalDue || 0; return; }
                 totalCapOS += inv.capitalOutstanding || 0;
                 totalIntOS += inv.interestOutstanding || 0;
                 totalPenOS += inv.penaltyInterest || 0;
@@ -8833,7 +9085,7 @@ export default function FactoringDashboard() {
               // Collateral
               var collateralValue = 0;
               progInvs.forEach(function(inv) {
-                if (inv.fundingStatus === "pending" || inv.fundingStatus === "approved" || inv.fundingStatus === "historic") return;
+                if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
                 var ist = inv.invoiceStatus;
                 if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
                 else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
@@ -9062,7 +9314,7 @@ export default function FactoringDashboard() {
                 </div>
                 {/* Capital Summary */}
                 {(function() {
-                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved"; });
+                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased"; });
                   var totalInvValue = 0, totalCapAdv = 0, totalCapReturned = 0, totalCapOS = 0, totalCapLost = 0, totalCapAtRisk = 0;
                   var nFunded = fundedInvs.length, nReturned = 0, nOS = 0, nLost = 0, nAtRisk = 0;
                   fundedInvs.forEach(function(inv) {
@@ -9102,7 +9354,7 @@ export default function FactoringDashboard() {
                 })()}
                 {/* Interest Summary Table */}
                 {(function() {
-                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved"; });
+                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased"; });
                   if (fundedInvs.length === 0) return null;
 
                   var totalInitIntCharged = 0, totalInitIntReceived = 0;
@@ -9173,7 +9425,7 @@ export default function FactoringDashboard() {
                 {/* Balance Owed Time Series Chart */}
                 {(function() {
                   // Build daily time series of balance owed by status category
-                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && (inv.fundedDate || inv.invoiceDate); });
+                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && (inv.fundedDate || inv.invoiceDate); });
                   if (fundedInvs.length === 0) return null;
 
                   // Find date range — use earliest invoiceDate for full history
@@ -9296,7 +9548,7 @@ export default function FactoringDashboard() {
                 })()}
                 {/* Utilisation Rate Over Time Chart */}
                 {(function() {
-                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && (inv.fundedDate || inv.invoiceDate); });
+                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && (inv.fundedDate || inv.invoiceDate); });
                   if (fundedInvs.length === 0) return null;
 
                   var allDates = fundedInvs.map(function(inv) { return inv.invoiceDate || inv.fundedDate; }).sort();
@@ -9504,7 +9756,7 @@ export default function FactoringDashboard() {
 
                 {/* Ageing Analysis */}
                 {(function() {
-                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off"; });
+                  var fundedInvs = progInvs.filter(function(inv) { return inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off"; });
                   if (fundedInvs.length === 0) return null;
                   var buckets = [
                     { label: "91+ before", color: "#10B981", count: 0, bal: 0 },
@@ -9706,10 +9958,10 @@ export default function FactoringDashboard() {
               var piHasActive = !!piSearch || !!piSupFilter || !!piBuyFilter || !!piInvStFilter || !!piFundStFilter;
 
               // Filter-aware stat card metrics (on unfiltered superset for anchor values)
-              var approvedCount = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "approved"; }).length;
-              var approvedSum = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "approved"; }).reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0);
+              var approvedCount = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length;
+              var approvedSum = allProgInvsTab.filter(function(inv) { return inv.fundingStatus === "purchased"; }).reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0);
               var overdueCount = allProgInvsTab.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.invoiceStatus !== "Cancelled" && (inv.balanceOwed || 0) > 0.01; }).length;
-              var fundedSum = allProgInvsTab.reduce(function(s, inv) { return s + (inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" ? (inv.capitalDue || 0) : 0); }, 0);
+              var fundedSum = allProgInvsTab.reduce(function(s, inv) { return s + (inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" ? (inv.capitalDue || 0) : 0); }, 0);
               var totalOS = allProgInvsTab.reduce(function(s, inv) { return s + (inv.totalOutstanding || 0); }, 0);
 
               var fltSel = { padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" };
@@ -9748,7 +10000,7 @@ export default function FactoringDashboard() {
 
                 {/* Approved — Awaiting Funding */}
                 {(function() {
-                  var approvedInvs = progInvs.filter(function(inv) { return inv.fundingStatus === "approved"; });
+                  var approvedInvs = progInvs.filter(function(inv) { return inv.fundingStatus === "purchased"; });
                   if (approvedInvs.length === 0) return null;
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #567EBB40", overflow: "hidden", marginBottom: 18, boxShadow: "0 1px 8px rgba(86,126,187,0.08)" }}>
                     <div style={{ padding: "14px 22px", borderBottom: "1px solid #567EBB30", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: "linear-gradient(90deg, #567EBB08, transparent)" }}>
@@ -9756,7 +10008,7 @@ export default function FactoringDashboard() {
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 5, background: "#567EBB14", color: "#38BDF8", border: "1px solid #567EBB40", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
                           <span style={{ fontSize: 8 }}>{"\u23F3"}</span> Awaiting Funding
                         </span>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{approvedInvs.length} invoice{approvedInvs.length === 1 ? "" : "s"} approved, ready to fund</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{approvedInvs.length} invoice{approvedInvs.length === 1 ? "" : "s"} purchased, ready to fund</div>
                       </div>
                       <div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#D97706" }}>{money(approvedInvs.reduce(function(s, inv) { return s + (inv.capitalDue || 0); }, 0), displayCcy)} <span style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>capital queued</span></div>
                     </div>
@@ -9781,7 +10033,12 @@ export default function FactoringDashboard() {
                                 <td style={Object.assign({}, pimc)}>{aTerm}d</td>
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: aDp ? "#EF4444" : "var(--text-secondary)", fontWeight: aDp ? 600 : 400 }}>{fmt(inv.dueDate)}</td>
                                 <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={aIst.bg} color={aIst.color} border={aIst.border} icon={aIst.icon} /></td>
-                                <td style={{ padding: "8px 8px" }}><button onClick={function() { setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: aIsExp ? "var(--accent)" : "var(--card-hover)", color: aIsExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{aIsExp ? "\u25b4" : "\u25be"}</button></td>
+                                <td style={{ padding: "8px 8px" }}>
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                    {((inv.fundingHeadroom || 0) > 0.01) && <button onClick={function(e) { e.stopPropagation(); openFundPopupFor(inv); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title={"Advance capital. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{(inv.capitalDue || 0) < 0.01 ? "Fund" : "Top Up"}</button>}
+                                    <button onClick={function() { setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: aIsExp ? "var(--accent)" : "var(--card-hover)", color: aIsExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{aIsExp ? "\u25b4" : "\u25be"}</button>
+                                  </div>
+                                </td>
                               </tr>
                               {aIsExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
@@ -9940,7 +10197,7 @@ export default function FactoringDashboard() {
                                         var daysToMat = inv.dueDate ? daysBetween(viewDate, inv.dueDate) : 0;
                                         var matLabel = daysToMat >= 0 ? daysToMat + "d to maturity" : Math.abs(daysToMat) + "d past maturity";
                                         var matColor = daysToMat >= 0 ? "#059669" : "#DC2626";
-                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundedDate;
+                                        var invIsFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundedDate;
                                         return <div>
                                           {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
@@ -9953,8 +10210,8 @@ export default function FactoringDashboard() {
                                           <div style={Object.assign({}, row, { background: "#2B4C7E08", borderRadius: 4, padding: "5px 6px" })}><span style={Object.assign({}, lbl, { fontWeight: 700, color: "var(--text)" })}>Total Balance O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.balanceOwed > 0 ? "#E2E8F0" : "#059669", fontSize: 13 })}>{money(inv.balanceOwed, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Total Funds Applied</span><span style={Object.assign({}, val, { color: "#059669" })}>{money(inv.totalFundsApplied || 0, inv.currency)}</span></div>
                                           </> : <>{/* Unfunded invoice — show potential capital and unallocated payments */}
-                                          {inv.fundingStatus === "approved" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
-                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "approved" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
+                                          {inv.fundingStatus === "purchased" && <div style={row}><span style={lbl}>Capital (Approved)</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.capitalDue, inv.currency)}</span></div>}
+                                          <div style={row}><span style={lbl}>{inv.fundingStatus === "purchased" ? "Max Available Capital" : "Potential Capital"}</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
                                           {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#059669" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
                                           {inv.fundingStatus === "pending" && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#C08B3008", border: "1px solid #C08B3020", fontSize: 10, color: "#D97706", fontStyle: "italic" }}>Capital and interest will be set when funding is approved and executed</div>}
                                           </>}
@@ -9962,8 +10219,8 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Funded Date</span><span style={val}>{inv.fundedDate ? fmt(inv.fundedDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Days to/Past Maturity</span><span style={Object.assign({}, val, { color: matColor, fontWeight: 600 })}>{matLabel}</span></div>
-                                          <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "approved") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
@@ -9978,9 +10235,10 @@ export default function FactoringDashboard() {
                                   </div>
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
-                                    {inv.fundingStatus === "approved" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {(inv.fundingStatus === "purchased" || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01 ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
-                                    {inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
+                                    {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: adjInv === inv.id && adjType === "credit" ? "#2E8B5720" : "transparent", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "debit" ? null : inv.id); setAdjType("debit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C08B30", background: adjInv === inv.id && adjType === "debit" ? "#C08B3020" : "transparent", color: "#D97706", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Debit Adjustment</button>
                                     {inv.fundingStatus === "pending" && <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", marginLeft: 8 }}><input type="checkbox" checked={inv.doNotFund || false} onChange={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = !raw.doNotFund; saveInvoice(raw.id); auditLog(raw.doNotFund ? "Do Not Fund Set" : "Do Not Fund Cleared", inv.id + (raw.doNotFund ? " marked Do Not Fund" : " returned to funding queue"), { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ width: 14, height: 14, accentColor: "#6B7280" }} /><span style={{ fontSize: 11, fontWeight: 600, color: inv.doNotFund ? "#6B7280" : "var(--muted)" }}>Do Not Fund</span></label>}
@@ -10740,7 +10998,7 @@ export default function FactoringDashboard() {
             // 3. Capital advances (funding execution) — debits
             var capitalAdvanceSeen = {};
             allProgInvs.forEach(function(inv) {
-              if (!inv.fundedDate || inv.fundingStatus === "pending" || inv.fundingStatus === "approved") return;
+              if (!inv.fundedDate || inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") return;
               if (capitalAdvanceSeen[inv.id]) return;
               capitalAdvanceSeen[inv.id] = true;
               var spq = SUPPLIER_PAYMENT_QUEUE.find(function(q) { return q.status === "Completed" && q.type === "funding" && (q.invoiceId === inv.id || (q.invoiceIds && q.invoiceIds.indexOf(inv.id) >= 0)); });
@@ -11177,7 +11435,9 @@ export default function FactoringDashboard() {
               return <div>
                 {/* Outbound Payments to be made */}
                 {(function() {
-                  var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "approved"; });
+                  // Purchased invoices with capital > 0 need a funding payment queued;
+                  // zero-capital purchases (arrears collateral-only) are skipped.
+                  var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "purchased" && r2(x.capitalDue || 0) > 0; });
                   // Build unified rows: funding + holdback
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
@@ -13414,6 +13674,624 @@ export default function FactoringDashboard() {
           </div>;
         })()}
 
+        {/* ========== INVOICES VIEW ========== */}
+        {isI && (function() {
+          var nf = newInvFields;
+          var amt = parseFloat(nf.amount) || 0;
+          var days = (nf.invoiceDate && nf.dueDate) ? daysBetween(nf.invoiceDate, nf.dueDate) : 0;
+          var inpS = { padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%", boxSizing: "border-box" };
+          var ilmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+          // Drill helpers
+          function drillToInvoice(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+          }
+          function drillToBuyer(buyerName) {
+            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
+          }
+          function drillToProgram(programId) {
+            if (!programId) return;
+            setView("program"); setSelectedProgram(programId); setProgTab("overview");
+          }
+          function createInvoice() {
+            if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
+            var newId = nextId("INV-", INVOICES_DB, "id");
+            var hist = [{ status: "Received", date: nf.invoiceDate }];
+            var supRate = getSupplierRate(nf.supplier);
+            var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
+            var supParentName = getParentSupplierName(nf.supplier) || supDisplayName;
+            var buyDisplayName = buyName(nf.buyer) || nf.buyer;
+            INVOICES_DB.push({
+              id: newId, supplierId: nf.supplier, supplierName: supParentName, buyerId: nf.buyer, buyerName: buyDisplayName,
+              amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
+              interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
+              advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
+              buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", poNumber: nf.poNumber || "",
+              invoiceStatus: "Received", invoiceStatusHistory: hist,
+              fundingStatus: "pending", fundingProgram: null,
+              invoiceDate: nf.invoiceDate, dueDate: nf.dueDate,
+              approvedDate: null, fundedDate: null, payments: [], notes: [],
+              doNotFund: nf.doNotFund || false
+            });
+            auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: nf.buyer, dueDate: nf.dueDate });
+            saveInvoice(newId);
+            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
+            setInvlShowCreate(false);
+            setDataVer(function(v) { return v + 1; });
+          }
+          // Build filtered list
+          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDateFrom || invlDateTo);
+          function applyInvlFilters(list) {
+            var r = list;
+            if (invlCcyFilter) r = r.filter(function(inv) { return inv.currency === invlCcyFilter; });
+            if (invlSupFilter) r = r.filter(function(inv) { return (inv.supplierName === invlSupFilter) || (inv.supplierId === invlSupFilter); });
+            if (invlBuyFilter) r = r.filter(function(inv) { return (inv.buyerName === invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
+            if (invlProgFilter) {
+              if (invlProgFilter === "__none__") r = r.filter(function(inv) { return !inv.fundingProgram; });
+              else r = r.filter(function(inv) { return inv.fundingProgram === invlProgFilter; });
+            }
+            if (invlInvStFilter) r = r.filter(function(inv) { return inv.invoiceStatus === invlInvStFilter; });
+            if (invlFundStFilter) r = r.filter(function(inv) { return inv.fundingStatus === invlFundStFilter; });
+            if (invlDnfFilter === "yes") r = r.filter(function(inv) { return !!inv.doNotFund; });
+            if (invlDnfFilter === "no") r = r.filter(function(inv) { return !inv.doNotFund; });
+            if (invlDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= invlDateFrom; });
+            if (invlDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= invlDateTo; });
+            if (invlSearch) { var q = invlSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            return r;
+          }
+          // Stats (always honour filters)
+          var filteredForStats = applyInvlFilters(INVOICES_DB);
+          var statCount = filteredForStats.length;
+          var statPending = filteredForStats.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
+          var statPurchased = filteredForStats.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length;
+          var statFunded = filteredForStats.filter(function(inv) { return inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode"; }).length;
+          var statDnf = filteredForStats.filter(function(inv) { return inv.doNotFund; }).length;
+          var ccyGroups = {};
+          filteredForStats.forEach(function(inv) { ccyGroups[inv.currency] = (ccyGroups[inv.currency] || 0) + (inv.amount || 0); });
+          var ccyLabel = Object.keys(ccyGroups).length === 0 ? "none" : Object.keys(ccyGroups).map(function(c) { return money(r2(ccyGroups[c]), c); }).join(" \u00b7 ");
+          // Supplier + Buyer dropdown options drawn from actual data
+          var supOpts = []; var buyOpts = [];
+          (function() { var seenS = {}, seenB = {}; INVOICES_DB.forEach(function(inv) { if (inv.supplierName && !seenS[inv.supplierName]) { seenS[inv.supplierName] = true; supOpts.push(inv.supplierName); } if (inv.buyerName && !seenB[inv.buyerName]) { seenB[inv.buyerName] = true; buyOpts.push(inv.buyerName); } }); supOpts.sort(); buyOpts.sort(); })();
+          // Sort
+          function ilKey(inv) {
+            if (invlSort === "id") return inv.id || "";
+            if (invlSort === "invoiceDate") return inv.invoiceDate || "";
+            if (invlSort === "dueDate") return inv.dueDate || "";
+            if (invlSort === "supplier") return (inv.supplierName || "").toLowerCase();
+            if (invlSort === "buyer") return (inv.buyerName || "").toLowerCase();
+            if (invlSort === "amount") return inv.amount || 0;
+            if (invlSort === "currency") return inv.currency || "";
+            if (invlSort === "invStatus") return inv.invoiceStatus || "";
+            if (invlSort === "fundStatus") return inv.fundingStatus || "";
+            if (invlSort === "program") return inv.fundingProgram || "";
+            return "";
+          }
+          var filteredInvs = filteredForStats.slice().sort(function(a, b) { var ka = ilKey(a), kb = ilKey(b); if (ka < kb) return invlDir === "asc" ? -1 : 1; if (ka > kb) return invlDir === "asc" ? 1 : -1; return 0; });
+          var invlTotalPages = Math.max(1, Math.ceil(filteredInvs.length / invlPerPage));
+          var invlCurPage = Math.min(invlPage, invlTotalPages - 1);
+          var invlPageItems = filteredInvs.slice(invlCurPage * invlPerPage, (invlCurPage + 1) * invlPerPage);
+          function ilSortH(key) { return function() { if (invlSort === key) setInvlDir(invlDir === "asc" ? "desc" : "asc"); else { setInvlSort(key); setInvlDir("asc"); } setInvlPage(0); }; }
+          function ilArr(key) { return invlSort === key ? (invlDir === "asc" ? " \u25b4" : " \u25be") : ""; }
+          return <div>
+            {/* Filter-aware stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Invoices" value={String(statCount)} sub={invlHasActive && statCount !== INVOICES_DB.length ? statCount + " of " + INVOICES_DB.length : (INVOICES_DB.length === 0 ? "none" : "all invoices")} accent={statCount > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Unpurchased" value={String(statPending)} sub={statPurchased > 0 ? statPurchased + " purchased" : (statFunded + " funded")} accent={statPending > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Do Not Fund" value={String(statDnf)} sub={statDnf > 0 ? "excluded" : "none flagged"} accent={statDnf > 0 ? "#EF4444" : "#64748B"} />
+            </div>
+
+            {/* Create Invoice (collapsible) */}
+            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid " + (invlShowCreate ? "var(--accent)" : "var(--border)"), overflow: "hidden", marginBottom: 14 }}>
+              <div onClick={function() { setInvlShowCreate(!invlShowCreate); }} style={{ padding: "14px 22px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: invlShowCreate ? "var(--accent)" : "var(--text)" }}>{invlShowCreate ? "\u2212" : "+"} Create New Invoice</span>
+                  {!invlShowCreate && <span style={{ fontSize: 11, color: "var(--muted)" }}>Click to expand</span>}
+                </div>
+              </div>
+              {invlShowCreate && <div style={{ padding: "0 28px 24px 28px", borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px", marginTop: 18 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Supplier</label>
+                    <select value={nf.supplier} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                      <option value="">Select supplier...</option>
+                      {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Buyer</label>
+                    <select value={nf.buyer} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyer: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                      <option value="">Select buyer...</option>
+                      {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Currency</label>
+                    <select value={nf.currency} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { currency: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                      {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Invoice Amount</label>
+                    <input type="number" step="0.01" value={nf.amount} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { amount: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Invoice Date</label>
+                    <input type="date" value={nf.invoiceDate} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { invoiceDate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Due Date</label>
+                    <input type="date" value={nf.dueDate} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { dueDate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Buyer Invoice Ref</label>
+                    <input type="text" value={nf.buyerRef} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyerRef: e.target.value }); }); }} placeholder="Optional" style={inpS} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Supplier Invoice Ref</label>
+                    <input type="text" value={nf.supplierRef} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplierRef: e.target.value }); }); }} placeholder="Optional" style={inpS} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Purchase Order No.</label>
+                    <input type="text" value={nf.poNumber} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { poNumber: e.target.value }); }); }} placeholder="Optional" style={inpS} />
+                  </div>
+                </div>
+                {amt > 0 && days > 0 && <div style={{ marginTop: 12, padding: "10px 16px", borderRadius: 8, background: "var(--bg)", fontSize: 12 }}>
+                  <span style={{ color: "var(--muted)" }}>Term: </span><strong>{days}d</strong>
+                </div>}
+                <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 16 }}>
+                  <button onClick={createInvoice} disabled={amt <= 0 || days <= 0 || !nf.supplier || !nf.buyer} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: amt > 0 && days > 0 ? "var(--accent)" : "var(--border)", color: amt > 0 && days > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: amt > 0 && days > 0 ? "pointer" : "default" }}>Create Invoice</button>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                    <input type="checkbox" checked={nf.doNotFund || false} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { doNotFund: e.target.checked }); }); }} style={{ width: 16, height: 16, accentColor: "#DC2626" }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: nf.doNotFund ? "#DC2626" : "var(--muted)" }}>Do Not Fund</span>
+                  </label>
+                </div>
+              </div>}
+            </div>
+
+            {/* Invoices list */}
+            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
+              <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Invoices {invlHasActive && filteredInvs.length !== INVOICES_DB.length ? "(" + filteredInvs.length + " of " + INVOICES_DB.length + ")" : "(" + INVOICES_DB.length + ")"}</div>
+                <button onClick={function() {
+                  var headers = ["Invoice ID", "Invoice Date", "Due Date", "Supplier", "Buyer", "Amount", "Currency", "Invoice Status", "Funding Status", "Program", "Do Not Fund", "Buyer Ref", "Supplier Ref", "PO"];
+                  var rows = filteredInvs.map(function(inv) {
+                    var progName = "";
+                    if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
+                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.fundingStatus || "", progName, inv.doNotFund ? "yes" : "no", inv.buyerRef || "", inv.supplierRef || "", inv.poNumber || ""];
+                  });
+                  var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                  var blob = new Blob([csv], { type: "text/csv" });
+                  var url = URL.createObjectURL(blob);
+                  var a = document.createElement("a");
+                  a.href = url; a.download = "invoices-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                  URL.revokeObjectURL(url);
+                }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
+              </div>
+
+              {INVOICES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" value={invlSearch} onChange={function(e) { setInvlSearch(e.target.value); setInvlPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
+                <select value={invlCcyFilter} onChange={function(e) { setInvlCcyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlCcyFilter ? "var(--accent)" : "var(--border)"), background: invlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                <select value={invlSupFilter} onChange={function(e) { setInvlSupFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlSupFilter ? "var(--accent)" : "var(--border)"), background: invlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                <select value={invlBuyFilter} onChange={function(e) { setInvlBuyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlBuyFilter ? "var(--accent)" : "var(--border)"), background: invlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={invlProgFilter} onChange={function(e) { setInvlProgFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlProgFilter ? "var(--accent)" : "var(--border)"), background: invlProgFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All programs</option><option value="__none__">Unpurchased (no program)</option>{FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>
+                <select value={invlInvStFilter} onChange={function(e) { setInvlInvStFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlInvStFilter ? "var(--accent)" : "var(--border)"), background: invlInvStFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">All invoice status</option>
+                  {["Received", "Approved in Full", "Approved in Part", "Disputed", "Declined", "Cancelled", "Settled", "Buyer Default"].map(function(s) { return <option key={s} value={s}>{s}</option>; })}
+                </select>
+                <select value={invlFundStFilter} onChange={function(e) { setInvlFundStFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlFundStFilter ? "var(--accent)" : "var(--border)"), background: invlFundStFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">All funding status</option>
+                  <option value="pending">Pending</option>
+                  <option value="purchased">Purchased</option>
+                  <option value="funded">Funded</option>
+                  <option value="at_risk">At Risk</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="recovery_mode">Recovery Mode</option>
+                  <option value="fully_repaid">Fully Repaid</option>
+                  <option value="write_off">Write-Off</option>
+                </select>
+                <select value={invlDnfFilter} onChange={function(e) { setInvlDnfFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDnfFilter ? "var(--accent)" : "var(--border)"), background: invlDnfFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">DNF: any</option>
+                  <option value="yes">Do Not Fund only</option>
+                  <option value="no">Exclude DNF</option>
+                </select>
+                <input type="date" value={invlDateFrom} onChange={function(e) { setInvlDateFrom(e.target.value); setInvlPage(0); }} title="Invoice date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateFrom ? "var(--accent)" : "var(--border)"), background: invlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                <input type="date" value={invlDateTo} onChange={function(e) { setInvlDateTo(e.target.value); setInvlPage(0); }} title="Invoice date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateTo ? "var(--accent)" : "var(--border)"), background: invlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              </div>}
+
+              {INVOICES_DB.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices yet. Expand "Create New Invoice" above to add one.</div>}
+              {INVOICES_DB.length > 0 && filteredInvs.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No invoices match your filters.</div>}
+              {filteredInvs.length > 0 && <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>{[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "dueDate", l: "Due Date" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "invStatus", l: "Invoice Status" }, { k: "fundStatus", l: "Funding Status" }, { k: "program", l: "Program" }].map(function(h, hi) { return <th key={"ih-" + hi} onClick={h.k ? ilSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? ilArr(h.k) : ""}</th>; })}</tr></thead>
+                  <tbody>{invlPageItems.map(function(inv) {
+                    var ist = IST[inv.invoiceStatus] || IST["Received"];
+                    var fst = FST[inv.fundingStatus] || FST.pending;
+                    var progName = "";
+                    if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
+                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", opacity: inv.doNotFund ? 0.7 : 1 }} onClick={function() { drillToInvoice(inv.id); }}>
+                      <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNF</span>}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={Object.assign({}, ilmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
+                      <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus || "Received"} bg={ist.bg} color={ist.color} border={ist.border} /></td>
+                      <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{progName ? <span onClick={function(e) { e.stopPropagation(); drillToProgram(inv.fundingProgram); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View program " + progName}>{progName}</span> : "\u2014"}</td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>}
+              {filteredInvs.length > 0 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {invlCurPage + 1} of {invlTotalPages} ({filteredInvs.length} invoices)</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={invlPerPage} onChange={function(e) { setInvlPerPage(parseInt(e.target.value, 10)); setInvlPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                  <button disabled={invlCurPage === 0} onClick={function() { setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: invlCurPage === 0 ? "transparent" : "var(--card)", color: invlCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: invlCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                  <button disabled={invlCurPage === 0} onClick={function() { setInvlPage(invlCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: invlCurPage === 0 ? "transparent" : "var(--card)", color: invlCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: invlCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                  <input type="number" min="1" max={invlTotalPages} value={invlCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= invlTotalPages) setInvlPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                  <button disabled={invlCurPage >= invlTotalPages - 1} onClick={function() { setInvlPage(invlCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: invlCurPage >= invlTotalPages - 1 ? "transparent" : "var(--card)", color: invlCurPage >= invlTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: invlCurPage >= invlTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  <button disabled={invlCurPage >= invlTotalPages - 1} onClick={function() { setInvlPage(invlTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: invlCurPage >= invlTotalPages - 1 ? "transparent" : "var(--card)", color: invlCurPage >= invlTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: invlCurPage >= invlTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
+                </div>
+              </div>}
+            </div>
+          </div>;
+        })()}
+
+        {/* ========== UNPURCHASED INVOICES VIEW ========== */}
+        {isUI && (function() {
+          var upimc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
+          // Drill helpers
+          function drillToInvoice(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+          }
+          function drillToSupplier(supplierName) {
+            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
+          }
+          function drillToBuyer(buyerName) {
+            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
+          }
+          // Source data: processed invoices where fundingStatus === "pending" (i.e. not yet allocated to any program), and not DNF
+          var unpurchasedAll = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; });
+          var unpurchasedDnf = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending" && inv.doNotFund; });
+          // Filters
+          var upiHasActive = !!(upiSearch || upiSupFilter || upiBuyFilter || upiCcyFilter || upiDateFrom || upiDateTo);
+          function applyUpiFilters(list) {
+            var r = list;
+            if (upiCcyFilter) r = r.filter(function(inv) { return inv.currency === upiCcyFilter; });
+            if (upiSupFilter) r = r.filter(function(inv) { return inv.supplierName === upiSupFilter; });
+            if (upiBuyFilter) r = r.filter(function(inv) { return inv.buyerName === upiBuyFilter; });
+            if (upiDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= upiDateFrom; });
+            if (upiDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= upiDateTo; });
+            if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            return r;
+          }
+          // Build eligible programs per-invoice (intersection driver for bulk allocate)
+          function invEligibleProgramIds(inv) {
+            var rawInv = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+            if (!rawInv) return [];
+            return getEligiblePrograms(rawInv, null).map(function(p) { return p.id; });
+          }
+          // Supplier + Buyer dropdown options drawn from unpurchased pool
+          var supOpts = []; var buyOpts = [];
+          (function() { var seenS = {}, seenB = {}; unpurchasedAll.forEach(function(inv) { if (inv.supplierName && !seenS[inv.supplierName]) { seenS[inv.supplierName] = true; supOpts.push(inv.supplierName); } if (inv.buyerName && !seenB[inv.buyerName]) { seenB[inv.buyerName] = true; buyOpts.push(inv.buyerName); } }); supOpts.sort(); buyOpts.sort(); })();
+          // Stats (always honour filters)
+          var filteredForStats = applyUpiFilters(unpurchasedAll);
+          var statCount = filteredForStats.length;
+          var ccyGroups = {};
+          filteredForStats.forEach(function(inv) { ccyGroups[inv.currency] = (ccyGroups[inv.currency] || 0) + (inv.amount || 0); });
+          var ccyLabel = Object.keys(ccyGroups).length === 0 ? "none" : Object.keys(ccyGroups).map(function(c) { return money(r2(ccyGroups[c]), c); }).join(" \u00b7 ");
+          // Oldest pending
+          var oldestDate = null;
+          filteredForStats.forEach(function(inv) { if (inv.invoiceDate && (!oldestDate || inv.invoiceDate < oldestDate)) oldestDate = inv.invoiceDate; });
+          var oldestDays = oldestDate ? daysBetween(oldestDate, REF_DATE) : 0;
+          // Count of invoices with no eligible programs (orphaned)
+          var noEligibleCount = filteredForStats.filter(function(inv) { return invEligibleProgramIds(inv).length === 0; }).length;
+          // Sort
+          function upiKey(inv) {
+            if (upiSort === "id") return inv.id || "";
+            if (upiSort === "invoiceDate") return inv.invoiceDate || "";
+            if (upiSort === "dueDate") return inv.dueDate || "";
+            if (upiSort === "supplier") return (inv.supplierName || "").toLowerCase();
+            if (upiSort === "buyer") return (inv.buyerName || "").toLowerCase();
+            if (upiSort === "amount") return inv.amount || 0;
+            if (upiSort === "currency") return inv.currency || "";
+            if (upiSort === "maxCap") return inv.maxAvailableCapital || 0;
+            if (upiSort === "daysPending") return inv.invoiceDate ? -daysBetween(inv.invoiceDate, REF_DATE) : 0;
+            return "";
+          }
+          var sortedInvs = filteredForStats.slice().sort(function(a, b) { var ka = upiKey(a), kb = upiKey(b); if (ka < kb) return upiDir === "asc" ? -1 : 1; if (ka > kb) return upiDir === "asc" ? 1 : -1; return 0; });
+          var upiTotalPages = Math.max(1, Math.ceil(sortedInvs.length / upiPerPage));
+          // If a focused invoice is set, find which page it lives on and auto-navigate (once)
+          if (pendingFocusInvId) {
+            var focusedIdx = sortedInvs.findIndex(function(inv) { return inv.id === pendingFocusInvId; });
+            if (focusedIdx >= 0) {
+              var focusedPage = Math.floor(focusedIdx / upiPerPage);
+              if (focusedPage !== upiPage) {
+                // Defer the page change to next tick (can't update state during render)
+                setTimeout(function() { setUpiPage(focusedPage); }, 0);
+              } else {
+                // Already on correct page — schedule scroll-into-view next paint
+                setTimeout(function() {
+                  var el = document.getElementById("upi-row-" + pendingFocusInvId);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  // Clear focus after one render so the highlight fades on subsequent renders
+                  setTimeout(function() { setPendingFocusInvId(null); }, 2000);
+                }, 50);
+              }
+            } else {
+              // Focused invoice not in filtered set — clear (filters auto-cleared at click time, but defensive)
+              setTimeout(function() { setPendingFocusInvId(null); }, 0);
+            }
+          }
+          var upiCurPage = Math.min(upiPage, upiTotalPages - 1);
+          var upiPageItems = sortedInvs.slice(upiCurPage * upiPerPage, (upiCurPage + 1) * upiPerPage);
+          function upiSortH(key) { return function() { if (upiSort === key) setUpiDir(upiDir === "asc" ? "desc" : "asc"); else { setUpiSort(key); setUpiDir("asc"); } setUpiPage(0); }; }
+          function upiArr(key) { return upiSort === key ? (upiDir === "asc" ? " \u25b4" : " \u25be") : ""; }
+          // Selection state — only eligible invoices can be selected
+          var selectedIds = Object.keys(upiSelected).filter(function(k) { return upiSelected[k]; });
+          var selectedInvs = selectedIds.map(function(id) { return INVOICES_DB.find(function(x) { return x.id === id; }); }).filter(Boolean);
+          // Compute program eligibility intersection across selected
+          var intersectedProgIds = null;
+          var selectedByProgCcy = {};
+          selectedInvs.forEach(function(inv) {
+            var elig = invEligibleProgramIds(inv);
+            if (intersectedProgIds === null) intersectedProgIds = elig.slice();
+            else intersectedProgIds = intersectedProgIds.filter(function(pid) { return elig.indexOf(pid) > -1; });
+          });
+          if (intersectedProgIds === null) intersectedProgIds = [];
+          // Compute selection totals per currency (needed for capacity check)
+          selectedInvs.forEach(function(inv) {
+            selectedByProgCcy[inv.currency] = (selectedByProgCcy[inv.currency] || 0) + (inv.amount || 0);
+          });
+          var selectionCurrencies = Object.keys(selectedByProgCcy);
+          var selectionTotalStr = selectionCurrencies.map(function(c) { return money(r2(selectedByProgCcy[c]), c); }).join(" \u00b7 ");
+          // Build eligible-program-for-bulk options (must be in intersection AND currency-compatible)
+          var bulkProgOpts = [];
+          FUNDING_PROGRAMS_DB.forEach(function(fp) {
+            if (intersectedProgIds.indexOf(fp.id) === -1) return;
+            // Currency check — program.currency must match all selected invoice currencies
+            if (selectionCurrencies.length > 1 || (selectionCurrencies.length === 1 && selectionCurrencies[0] !== fp.currency)) return;
+            var avail = getProgramAvailableBalance(fp.id);
+            // For allocate-only, capacity doesn't matter (no cash moves). But capacity matters for "Allocate & Fund at max".
+            // Compute potential capital at max advance rate for the selected currency
+            var potentialAtMax = 0;
+            selectedInvs.forEach(function(inv) {
+              var partial = (inv.invoiceStatus === "Approved in Part" && inv.partialApprovedAmount > 0) ? inv.partialApprovedAmount : inv.amount;
+              var postDil = inv.amount - (inv.dilutionTotal || 0);
+              var buyerCollected = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+              var postCol = inv.amount - buyerCollected;
+              var effectiveBase = Math.max(0, Math.min(inv.amount, partial, postDil, postCol));
+              potentialAtMax += effectiveBase * fp.maxAdvanceRate;
+            });
+            potentialAtMax = r2(potentialAtMax);
+            var fundBlocked = potentialAtMax > avail + 0.01;
+            bulkProgOpts.push({ fp: fp, avail: avail, potentialAtMax: potentialAtMax, fundBlocked: fundBlocked });
+          });
+          bulkProgOpts.sort(function(a, b) { return (a.fp.name || "").localeCompare(b.fp.name || ""); });
+          var selectedBulkOpt = bulkProgOpts.find(function(o) { return o.fp.id === upiBulkProg; });
+          // Allocation handlers
+          function bulkAllocate(fundAtMax) {
+            if (!selectedBulkOpt || selectedInvs.length === 0) return;
+            var fp = selectedBulkOpt.fp;
+            if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
+            var allocated = [], funded = [];
+            var now = new Date();
+            var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+            selectedInvs.forEach(function(invProc) {
+              var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
+              if (!raw || raw.fundingStatus !== "pending") return;
+              if (fundAtMax) {
+                // Compute effective base (matches getMaxAvailableCapital + buyer-collected term)
+                var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
+                var postDil = raw.amount - (invProc.dilutionTotal || 0);
+                var buyerCollected = (invProc.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+                var postCol = raw.amount - buyerCollected;
+                var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
+                var cap = r2(effectiveBase * fp.maxAdvanceRate);
+                raw.capitalDue = cap;
+                raw.holdback = r2(raw.amount - cap);
+                raw.annualRate = fp.minInterestRate;
+                raw.penaltyRate = fp.minInterestRate * 1.5;
+                var fundingDate = viewDate;
+                var term = daysBetween(fundingDate, raw.dueDate);
+                if (term < 1) term = 1;
+                raw.daysToMaturity = term;
+                raw.interestCharged = r2(cap * (fp.minInterestRate / 360) * term);
+                raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
+                raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
+                raw.intendedPaymentDate = fundingDate;
+                funded.push(raw.id);
+              } else {
+                // Allocate only — stay at capitalDue=0
+                raw.capitalDue = 0;
+                raw.holdback = 0;
+                raw.annualRate = fp.minInterestRate;
+                raw.penaltyRate = fp.minInterestRate * 1.5;
+                raw.daysToMaturity = daysBetween(viewDate, raw.dueDate);
+                raw.interestCharged = 0;
+                raw.deferredPayment = 0;
+                raw.advanceRate = 0;
+                raw.intendedPaymentDate = null;
+                allocated.push(raw.id);
+              }
+              raw.fundingStatus = "purchased";
+              raw.approvedDate = viewDate;
+              raw.fundingProgram = fp.id;
+              saveInvoice(raw.id);
+            });
+            if (allocated.length > 0) {
+              auditLog("Invoices Allocated to Program", allocated.length + " invoice(s) allocated to " + fp.name + " at \u00a30 capital: " + allocated.join(", "), { invoiceIds: allocated, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_only" });
+            }
+            if (funded.length > 0) {
+              auditLog("Invoices Allocated & Funded", funded.length + " invoice(s) allocated to " + fp.name + " and funded at max: " + funded.join(", "), { invoiceIds: funded, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_and_fund" });
+            }
+            setUpiSelected({});
+            setUpiBulkProg("");
+            setDataVer(function(v) { return v + 1; });
+          }
+          // Per-row Fund popup opener (re-uses existing Admin Fund popup state machinery)
+          function openRowFundPopup(inv) {
+            var rawInv = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+            if (!rawInv) return;
+            var elig = invEligibleProgramIds(inv);
+            if (elig.length === 0) { alert("No eligible funding programs for " + inv.id + "."); return; }
+            // Default to first eligible program
+            var progId = elig[0];
+            var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === progId; });
+            var supRate = getSupplierRate(rawInv.supplierId || rawInv.supplierName);
+            var invPartial = (rawInv.invoiceStatus === "Approved in Part" && rawInv.partialApprovedAmount > 0) ? rawInv.partialApprovedAmount : rawInv.amount;
+            var invPostDil = rawInv.amount - (inv.dilutionTotal || 0);
+            var effectiveBase = Math.max(0, Math.min(rawInv.amount, invPartial, invPostDil));
+            var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+            var defaultCap = r2(effectiveBase * supRate.advanceRate);
+            var defaultRate = supRate.annualRate;
+            if (defaultCap > maxCap) defaultCap = maxCap;
+            setFundPopup({ inv: rawInv, prog: prog });
+            setFundPopupFields({ capitalDue: String(defaultCap), annualRate: String((defaultRate * 100).toFixed(2)), maxCap: maxCap, minRate: prog.minInterestRate, paymentDate: viewDate, programId: progId, eligibleProgIds: elig });
+          }
+          // Checkbox select-all behaviour — selects only eligible rows on current page
+          var pageEligibleIds = upiPageItems.filter(function(inv) { return invEligibleProgramIds(inv).length > 0; }).map(function(inv) { return inv.id; });
+          var allPageSelected = pageEligibleIds.length > 0 && pageEligibleIds.every(function(id) { return !!upiSelected[id]; });
+          function toggleSelectAllPage() {
+            if (allPageSelected) {
+              setUpiSelected(function(prev) { var n = Object.assign({}, prev); pageEligibleIds.forEach(function(id) { delete n[id]; }); return n; });
+            } else {
+              setUpiSelected(function(prev) { var n = Object.assign({}, prev); pageEligibleIds.forEach(function(id) { n[id] = true; }); return n; });
+            }
+          }
+          function toggleSelect(id) {
+            setUpiSelected(function(prev) { var n = Object.assign({}, prev); if (n[id]) delete n[id]; else n[id] = true; return n; });
+          }
+          return <div>
+            {/* Filter-aware stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+              <StatCard label="Unpurchased Invoices" value={String(statCount)} sub={upiHasActive && statCount !== unpurchasedAll.length ? statCount + " of " + unpurchasedAll.length : (unpurchasedAll.length === 0 ? "queue empty" : "all awaiting allocation")} accent={statCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Oldest Pending" value={oldestDays > 0 ? oldestDays + "d" : "\u2014"} sub={oldestDate ? "since " + fmt(oldestDate) : "none waiting"} accent={oldestDays > 30 ? "#EF4444" : oldestDays > 7 ? "#D97706" : "#10B981"} />
+              <StatCard label="No Eligible Program" value={String(noEligibleCount)} sub={noEligibleCount > 0 ? "cannot be allocated" : "all have options"} accent={noEligibleCount > 0 ? "#EF4444" : "#10B981"} />
+            </div>
+
+            {/* DNF count banner */}
+            {unpurchasedDnf.length > 0 && <div style={{ marginBottom: 14, padding: "10px 18px", borderRadius: 10, border: "1px solid #EF444430", background: "#EF444408", display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#EF4444" }}>Excluded</span>
+              <span style={{ color: "var(--text-secondary)" }}>{unpurchasedDnf.length} invoice{unpurchasedDnf.length === 1 ? "" : "s"} flagged "Do Not Fund" {"\u2014"} not shown in queue</span>
+              <button onClick={function() { setView("invoices"); setInvlDnfFilter("yes"); }} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>View in Invoices</button>
+            </div>}
+
+            <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: selectedInvs.length > 0 ? 90 : 0 }}>
+              <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Queue {upiHasActive && sortedInvs.length !== unpurchasedAll.length ? "(" + sortedInvs.length + " of " + unpurchasedAll.length + ")" : "(" + unpurchasedAll.length + ")"}</div>
+                <button onClick={function() {
+                  var headers = ["Invoice ID", "Invoice Date", "Due Date", "Supplier", "Buyer", "Amount", "Currency", "Invoice Status", "Max Available Capital", "Eligible Programs"];
+                  var rows = sortedInvs.map(function(inv) {
+                    var elig = invEligibleProgramIds(inv);
+                    var progNames = elig.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join("; ");
+                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.maxAvailableCapital || 0, progNames];
+                  });
+                  var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
+                  var blob = new Blob([csv], { type: "text/csv" });
+                  var url = URL.createObjectURL(blob);
+                  var a = document.createElement("a");
+                  a.href = url; a.download = "unpurchased-invoices-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+                  URL.revokeObjectURL(url);
+                }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Export CSV</button>
+              </div>
+              {unpurchasedAll.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="text" value={upiSearch} onChange={function(e) { setUpiSearch(e.target.value); setUpiPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
+                <select value={upiSupFilter} onChange={function(e) { setUpiSupFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiSupFilter ? "var(--accent)" : "var(--border)"), background: upiSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                <select value={upiBuyFilter} onChange={function(e) { setUpiBuyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiBuyFilter ? "var(--accent)" : "var(--border)"), background: upiBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={upiCcyFilter} onChange={function(e) { setUpiCcyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiCcyFilter ? "var(--accent)" : "var(--border)"), background: upiCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                <input type="date" value={upiDateFrom} onChange={function(e) { setUpiDateFrom(e.target.value); setUpiPage(0); }} title="From" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateFrom ? "var(--accent)" : "var(--border)"), background: upiDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                <input type="date" value={upiDateTo} onChange={function(e) { setUpiDateTo(e.target.value); setUpiPage(0); }} title="To" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateTo ? "var(--accent)" : "var(--border)"), background: upiDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
+                {upiHasActive && <button onClick={function() { setUpiSearch(""); setUpiSupFilter(""); setUpiBuyFilter(""); setUpiCcyFilter(""); setUpiDateFrom(""); setUpiDateTo(""); setUpiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+              </div>}
+              {unpurchasedAll.length === 0 && <div style={{ padding: "40px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>Queue empty. New invoices awaiting program allocation will appear here.</div>}
+              {unpurchasedAll.length > 0 && sortedInvs.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No invoices match your filters.</div>}
+              {sortedInvs.length > 0 && <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", width: 32 }}>
+                      <div onClick={toggleSelectAllPage} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allPageSelected ? "var(--accent)" : "var(--border)"), background: allPageSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: pageEligibleIds.length > 0 ? "pointer" : "default", opacity: pageEligibleIds.length > 0 ? 1 : 0.3 }} title={pageEligibleIds.length === 0 ? "No eligible rows on this page" : (allPageSelected ? "Deselect all on page" : "Select all on page")}>{allPageSelected ? "\u2713" : ""}</div>
+                    </th>
+                    {[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "daysPending", l: "Days" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "maxCap", l: "Max Capital" }, { k: null, l: "Eligibility" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"uph-" + hi} onClick={h.k ? upiSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? upiArr(h.k) : ""}</th>; })}
+                  </tr></thead>
+                  <tbody>{upiPageItems.map(function(inv) {
+                    var ist = IST[inv.invoiceStatus] || IST["Received"];
+                    var eligIds = invEligibleProgramIds(inv);
+                    var isSel = !!upiSelected[inv.id];
+                    var noElig = eligIds.length === 0;
+                    var daysPending = inv.invoiceDate ? daysBetween(inv.invoiceDate, REF_DATE) : 0;
+                    var isFocused = pendingFocusInvId === inv.id;
+                    return <tr id={"upi-row-" + inv.id} key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isFocused ? "#0EA5E920" : (isSel ? "#2B4C7E08" : "transparent"), opacity: noElig ? 0.6 : 1, transition: "background 0.5s ease" }}>
+                      <td style={{ padding: "8px 8px" }}>
+                        {noElig ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }} title="No eligible programs">{"\ud83d\udd12"}</div> : <div onClick={function() { toggleSelect(inv.id); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}
+                      </td>
+                      <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 11, color: daysPending > 30 ? "#EF4444" : daysPending > 7 ? "#D97706" : "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{daysPending}d</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={Object.assign({}, upimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
+                      <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 11 }}>
+                        {noElig ? <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>}
+                      </td>
+                      <td style={{ padding: "8px 8px" }}>
+                        {!noElig && <button onClick={function() { openRowFundPopup(inv); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #38BDF8", background: "transparent", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Allocate & Fund</button>}
+                      </td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>}
+              {sortedInvs.length > 0 && <div style={{ padding: "12px 22px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)" }}>Page {upiCurPage + 1} of {upiTotalPages} ({sortedInvs.length} invoices)</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <select value={upiPerPage} onChange={function(e) { setUpiPerPage(parseInt(e.target.value, 10)); setUpiPage(0); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>{[25, 50, 100].map(function(n) { return <option key={n} value={n}>{n}/page</option>; })}</select>
+                  <button disabled={upiCurPage === 0} onClick={function() { setUpiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: upiCurPage === 0 ? "transparent" : "var(--card)", color: upiCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: upiCurPage === 0 ? "default" : "pointer" }}>{"\u00ab First"}</button>
+                  <button disabled={upiCurPage === 0} onClick={function() { setUpiPage(upiCurPage - 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: upiCurPage === 0 ? "transparent" : "var(--card)", color: upiCurPage === 0 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: upiCurPage === 0 ? "default" : "pointer" }}>{"\u2190 Prev"}</button>
+                  <input type="number" min="1" max={upiTotalPages} value={upiCurPage + 1} onChange={function(e) { var v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 1 && v <= upiTotalPages) setUpiPage(v - 1); }} style={{ width: 54, padding: "4px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }} />
+                  <button disabled={upiCurPage >= upiTotalPages - 1} onClick={function() { setUpiPage(upiCurPage + 1); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: upiCurPage >= upiTotalPages - 1 ? "transparent" : "var(--card)", color: upiCurPage >= upiTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: upiCurPage >= upiTotalPages - 1 ? "default" : "pointer" }}>{"Next \u2192"}</button>
+                  <button disabled={upiCurPage >= upiTotalPages - 1} onClick={function() { setUpiPage(upiTotalPages - 1); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: upiCurPage >= upiTotalPages - 1 ? "transparent" : "var(--card)", color: upiCurPage >= upiTotalPages - 1 ? "var(--border)" : "var(--text)", fontSize: 11, fontWeight: 600, cursor: upiCurPage >= upiTotalPages - 1 ? "default" : "pointer" }}>{"Last \u00bb"}</button>
+                </div>
+              </div>}
+            </div>
+
+            {/* Floating bulk action pill (shown when 1+ rows selected) */}
+            {selectedInvs.length > 0 && <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 12, boxShadow: "0 8px 32px rgba(14,165,233,0.25)", padding: "12px 20px", display: "flex", alignItems: "center", gap: 14, zIndex: 100, flexWrap: "wrap", maxWidth: "95vw" }}>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{selectedInvs.length} selected</span>
+                <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{selectionTotalStr}</span>
+              </div>
+              <div style={{ width: 1, height: 32, background: "var(--border)" }}></div>
+              {bulkProgOpts.length === 0 ? <span style={{ fontSize: 11, color: "#EF4444", fontStyle: "italic", maxWidth: 280 }}>{selectionCurrencies.length > 1 ? "Cannot bulk-allocate: selection mixes currencies" : "No program is eligible for all selected invoices"}</span> : <select value={upiBulkProg} onChange={function(e) { setUpiBulkProg(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 280 }}>
+                <option value="">Select program...</option>
+                {bulkProgOpts.map(function(o) { return <option key={o.fp.id} value={o.fp.id}>{o.fp.name} {"\u00b7"} {money(o.avail, o.fp.currency)} avail{o.fundBlocked ? " (insufficient for fund-at-max)" : ""}</option>; })}
+              </select>}
+              {selectedBulkOpt && <React.Fragment>
+                <button onClick={function() { bulkAllocate(false); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "transparent", color: "#8B5CF6", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Allocate to program as collateral, no cash advanced">Allocate</button>
+                <button onClick={function() { bulkAllocate(true); }} disabled={selectedBulkOpt.fundBlocked} style={{ padding: "8px 16px", borderRadius: 7, border: "none", background: selectedBulkOpt.fundBlocked ? "var(--border)" : "#38BDF8", color: selectedBulkOpt.fundBlocked ? "var(--muted)" : "#fff", fontSize: 12, fontWeight: 700, cursor: selectedBulkOpt.fundBlocked ? "not-allowed" : "pointer", whiteSpace: "nowrap" }} title={selectedBulkOpt.fundBlocked ? "Insufficient program balance" : "Allocate + fund at maximum capital"}>Allocate & Fund at max</button>
+              </React.Fragment>}
+              <button onClick={function() { setUpiSelected({}); setUpiBulkProg(""); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>
+            </div>}
+          </div>;
+        })()}
+
         {/* ========== MANAGE VIEW ========== */}
         {isM && (function() {
           var isSupTab = manageTab === "suppliers";
@@ -13661,7 +14539,7 @@ export default function FactoringDashboard() {
           return <div>
             <div style={{ padding: "8px 16px", background: "#0EA5E920", border: "1px solid #0EA5E9", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#0EA5E9", fontWeight: 600 }}>v14 — CSV Import + Review Queue enabled</div>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 16, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
-              {["suppliers", "buyers", "service_providers", "programs", "invoices", "csv_import", "csv_review", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "invoices" ? "Create Invoice" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "csv_import", "csv_review", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -15338,404 +16216,6 @@ export default function FactoringDashboard() {
               </div>;
             })()}
 
-            {!manageDetail && manageTab === "invoices" && (function() {
-              var nf = newInvFields;
-              var amt = parseFloat(nf.amount) || 0;
-              var days = (nf.invoiceDate && nf.dueDate) ? daysBetween(nf.invoiceDate, nf.dueDate) : 0;
-              var inpS = { padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%", boxSizing: "border-box" };
-              function drillToInvoice(invoiceId) {
-                var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
-                if (!inv) return;
-                var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
-                if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
-              }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-              }
-              function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
-              }
-
-              function createInvoice() {
-                if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
-                var newId = nextId("INV-", INVOICES_DB, "id");
-                var hist = [{ status: "Received", date: nf.invoiceDate }];
-                var supRate = getSupplierRate(nf.supplier);
-                var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
-                var supParentName = getParentSupplierName(nf.supplier) || supDisplayName;
-                var buyDisplayName = buyName(nf.buyer) || nf.buyer;
-                // Capital/interest/holdback are NOT set at creation — they are set when funding is approved via the Fund popup
-                INVOICES_DB.push({
-                  id: newId, supplierId: nf.supplier, supplierName: supParentName, buyerId: nf.buyer, buyerName: buyDisplayName,
-                  amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
-                  interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
-                  advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
-                  buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", poNumber: nf.poNumber || "",
-                  doNotFund: nf.doNotFund || false,
-                  invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, fundedDate: null,
-                  createdDate: new Date().toISOString().split("T")[0],
-                  fullyRepaidDate: null, invoiceStatus: "Received", invoiceStatusHistory: hist,
-                  fundingStatus: "pending", partialApprovedAmount: 0
-                });
-                saveInvoice(newId);
-                auditLog("Invoice Created", newId + " created: " + money(r2(amt), nf.currency) + " from " + supDisplayName + " / " + buyDisplayName + ", due " + nf.dueDate + (nf.doNotFund ? " [Do Not Fund]" : ""), { invoiceId: newId, amount: r2(amt), currency: nf.currency, supplierId: nf.supplier, supplier: supDisplayName, buyerId: nf.buyer, buyer: buyDisplayName, invoiceDate: nf.invoiceDate, dueDate: nf.dueDate, capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, term: days, advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate, buyerRef: nf.buyerRef, supplierRef: nf.supplierRef, poNumber: nf.poNumber, doNotFund: nf.doNotFund });
-                setNewInvFields({ supplier: nf.supplier, buyer: nf.buyer, amount: "", currency: nf.currency, invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
-                setDataVer(function(v) { return v + 1; });
-              }
-
-              return <div>
-              <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px" }}>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Create New Invoice</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Supplier</label>
-                    <select value={nf.supplier} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
-                      <option value="">Select supplier...</option>
-                      {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}
-                    </select>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Buyer</label>
-                    <select value={nf.buyer} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyer: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
-                      <option value="">Select buyer...</option>
-                      {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}
-                    </select>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Currency</label>
-                    <select value={nf.currency} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { currency: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
-                      {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
-                    </select>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Amount</label>
-                    <input type="number" step="0.01" value={nf.amount} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { amount: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Date</label>
-                    <input type="date" value={nf.invoiceDate} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { invoiceDate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Due Date</label>
-                    <input type="date" value={nf.dueDate} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { dueDate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Buyer Invoice Ref</label>
-                    <input type="text" value={nf.buyerRef} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyerRef: e.target.value }); }); }} placeholder="Optional" style={inpS} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Supplier Invoice Ref</label>
-                    <input type="text" value={nf.supplierRef} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { supplierRef: e.target.value }); }); }} placeholder="Optional" style={inpS} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Purchase Order No.</label>
-                    <input type="text" value={nf.poNumber} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { poNumber: e.target.value }); }); }} placeholder="Optional" style={inpS} />
-                  </div>
-                </div>
-                {amt > 0 && days > 0 && <div style={{ marginTop: 12, padding: "10px 16px", borderRadius: 8, background: "var(--bg)", fontSize: 12 }}>
-                  <span style={{ color: "var(--muted)" }}>Term: </span><strong>{days}d</strong>
-                </div>}
-                <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 16 }}>
-                  <button onClick={createInvoice} disabled={amt <= 0 || days <= 0 || !nf.supplier || !nf.buyer} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: amt > 0 && days > 0 ? "var(--accent)" : "var(--border)", color: amt > 0 && days > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: amt > 0 && days > 0 ? "pointer" : "default" }}>Create Invoice</button>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                    <input type="checkbox" checked={nf.doNotFund || false} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { doNotFund: e.target.checked }); }); }} style={{ width: 16, height: 16, accentColor: "#DC2626" }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: nf.doNotFund ? "#DC2626" : "var(--muted)" }}>Do Not Fund</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Funding Queue */}
-              {(function() {
-                var pendingInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "pending" && !x.doNotFund; });
-                var fqmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-
-                function openFundPopup(inv, progId) {
-                  var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === progId; });
-                  if (!prog) return;
-                  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
-                  var maxCap = r2(inv.amount * prog.maxAdvanceRate);
-                  var defaultCap = r2(inv.amount * supRate.advanceRate);
-                  // Apply per-program credit limit cap
-                  var parentSupplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
-                  var parentId = getParentEntityId(inv.supplierId) || "";
-                  var creditLimitForProg = 0;
-                  if (parentSupplier && parentSupplier.creditLimits && parentSupplier.creditLimits[progId] > 0) {
-                    creditLimitForProg = parentSupplier.creditLimits[progId];
-                    var currentOS = 0;
-                    viewData.invoices.forEach(function(existInv) {
-                      if (existInv.id === inv.id) return;
-                      var existParentId = getParentEntityId(existInv.supplierId) || "";
-                      if (existParentId ? existParentId !== parentId : getParentSupplierName(existInv.supplierName) !== getParentSupplierName(inv.supplierName)) return;
-                      if (existInv.fundingStatus === "pending") return;
-                      if (existInv.fundingProgram !== progId) return;
-                      currentOS += (existInv.capitalOutstanding || 0) + (existInv.interestOutstanding || 0) + (existInv.penaltyInterest || 0);
-                    });
-                    var headroom = r2(creditLimitForProg - currentOS);
-                    if (headroom < 0) headroom = 0;
-                    if (headroom < maxCap) maxCap = headroom;
-                    if (defaultCap > maxCap) defaultCap = maxCap;
-                  }
-                  setFundPopup({ inv: inv, prog: prog });
-                  setFundPopupFields({ capitalDue: String(Math.min(defaultCap, maxCap)), annualRate: String((supRate.annualRate * 100).toFixed(1)), maxCap: maxCap, minRate: prog.minInterestRate, creditLimitApplied: creditLimitForProg, paymentDate: viewDate });
-                }
-
-                function confirmFundPopup() {
-                  if (!fundPopup) return;
-                  var inv = fundPopup.inv, prog = fundPopup.prog;
-                  var cap = r2(parseFloat(fundPopupFields.capitalDue) || 0);
-                  var rate = parseFloat(fundPopupFields.annualRate) / 100;
-                  if (cap < 0 || cap > fundPopupFields.maxCap + 0.01) return;
-                  if (rate < fundPopupFields.minRate - 0.0001) return;
-                  // Check program available balance
-                  var availBal = getProgramAvailableBalance(prog.id);
-                  if (cap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(cap, inv.currency)); return; }
-                  // Update the raw invoice with final funding terms
-                  var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
-                  if (!raw) return;
-                  raw.capitalDue = cap;
-                  raw.holdback = r2(raw.amount - cap);
-                  raw.annualRate = rate;
-                  raw.penaltyRate = rate * 1.5;
-                  var dailyRate = rate / 360;
-                  var fundingDate = fundPopupFields.paymentDate || viewDate;
-                  var term = daysBetween(fundingDate, raw.dueDate);
-                  if (term < 1) term = 1;
-                  raw.daysToMaturity = term;
-                  raw.interestCharged = r2(cap * dailyRate * term);
-                  raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
-                  raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
-                  raw.intendedPaymentDate = fundingDate;
-                  fundInvoice(inv.id, prog.id);
-                  setFundPopup(null); setFundPopupFields({});
-                }
-
-                return <div style={{ background: "var(--card)", borderRadius: 12, border: pendingInvs.length > 0 ? "1px solid #C08B3040" : "1px solid var(--border)", overflow: "hidden", marginTop: 18 }}>
-                  <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-                    {pendingInvs.length > 0 && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#D97706" }}></div>}
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Funding Queue</div>
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{pendingInvs.length} pending approval</span>
-                  </div>
-                  {pendingInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices pending approval. Created invoices will appear here for funding.</div>}
-                  {pendingInvs.length > 0 && <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Potential Capital", "Term", "Due Date", "Program", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{pendingInvs.map(function(inv) {
-                        var selProg = fundProgSelections[inv.id] || "";
-                        var eligProgs = getEligiblePrograms(inv, supDilRates);
-                        var selProgObj = selProg ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selProg; }) : null;
-                        var dispCap = selProgObj ? money(r2(inv.amount * selProgObj.maxAdvanceRate), inv.currency) : (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014");
-                        var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
-                        // Build ineligibility reasons for ALL programs
-                        var reasons = [];
-                        var badInvSt = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
-                        if (badInvSt[inv.invoiceStatus]) {
-                          reasons.push("Invoice Status: " + inv.invoiceStatus);
-                        } else {
-                          var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
-                          var dr = supDilRates[getParentEntityId(inv.supplierId)] || supDilRates[inv.supplierName] || {};
-                          var eligProgIds = {};
-                          eligProgs.forEach(function(fp) { eligProgIds[fp.id] = true; });
-                          FUNDING_PROGRAMS_DB.forEach(function(fp) {
-                            if (eligProgIds[fp.id]) return; // skip eligible ones
-                            var r = [];
-                            if (supRate.annualRate < fp.minInterestRate - 0.0001) r.push("Rate " + (supRate.annualRate * 100).toFixed(1) + "% < min " + (fp.minInterestRate * 100).toFixed(1) + "%");
-                            if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) r.push("Advance " + (supRate.advanceRate * 100).toFixed(0) + "% > max " + (fp.maxAdvanceRate * 100).toFixed(0) + "%");
-                            if (term > fp.maxInvoiceTerm) r.push("Term " + term + "d > max " + fp.maxInvoiceTerm + "d");
-                            if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) r.push("Term " + term + "d < min " + fp.minInvoiceTenor + "d");
-                            if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) r.push("Size " + money(inv.amount, inv.currency) + " < min " + money(fp.minInvoiceSize, inv.currency));
-                            if (fp.maxSupDilLive && dr.dilRate > fp.maxSupDilLive) r.push("Sup Dil " + dr.dilRate.toFixed(1) + "% > " + fp.maxSupDilLive + "%");
-                            if (fp.maxSupDil30 && dr.dil30 > fp.maxSupDil30) r.push("Sup Dil 30d " + dr.dil30.toFixed(1) + "% > " + fp.maxSupDil30 + "%");
-                            if (fp.maxSupDil90 && dr.dil90 > fp.maxSupDil90) r.push("Sup Dil 90d " + dr.dil90.toFixed(1) + "% > " + fp.maxSupDil90 + "%");
-                            if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) r.push("Fund Dil " + dr.fdilRate.toFixed(1) + "% > " + fp.maxFundDilLive + "%");
-                            if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) r.push("Fund Dil 30d " + dr.fdil30.toFixed(1) + "% > " + fp.maxFundDil30 + "%");
-                            if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) r.push("Fund Dil 90d " + dr.fdil90.toFixed(1) + "% > " + fp.maxFundDil90 + "%");
-                            if (r.length > 0) reasons.push(fp.name + ": " + r.join(", "));
-                          });
-                        }
-                        return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: "#C08B3006" }}>
-                          <td style={Object.assign({}, fqmc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)" }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
-                          <td style={Object.assign({}, fqmc, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
-                          <td style={Object.assign({}, fqmc, { color: "var(--accent)" })}>{dispCap}</td>
-                          <td style={Object.assign({}, fqmc)}>{term}d</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: inv.dueDate < REF_DATE ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                          <td style={{ padding: "8px 8px" }}>{eligProgs.length > 0 ? <div><select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 130 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>{reasons.length > 0 && <div style={{ fontSize: 9, color: "#DC2626", marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 3 }}><span style={{ fontWeight: 600 }}>Ineligible for:</span>{reasons.map(function(r, ri) { return <div key={ri}>{r}</div>; })}</div>}</div> : <div><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Ineligible</span>{reasons.length > 0 && <div style={{ fontSize: 9, color: "#DC2626", marginTop: 2 }}>{reasons.map(function(r, ri) { return <div key={ri}>{r}</div>; })}</div>}</div>}</td>
-                          <td style={{ padding: "8px 8px" }}>
-                            <button onClick={function() { openFundPopup(inv, selProg); }} disabled={!selProg} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: selProg ? "#059669" : "var(--border)", color: selProg ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 600, cursor: selProg ? "pointer" : "default", boxShadow: selProg ? "0 2px 10px #2E8B5730" : "none" }}>Fund</button>
-                          </td>
-                        </tr>;
-                      })}</tbody>
-                    </table>
-                  </div>}
-
-                  {/* Fund Popup Modal */}
-                  {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
-                    <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Fund Invoice: {fundPopup.inv.id}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>{fundPopup.inv.supplierName} / {fundPopup.inv.buyerName}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong> — Available: <strong style={{ color: getProgramAvailableBalance(fundPopup.prog.id) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(getProgramAvailableBalance(fundPopup.prog.id), fundPopup.inv.currency)}</strong></div>
-                      {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies — max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
-                        <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.inv.amount, fundPopup.inv.currency)}</div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Payment Date</label>
-                          <input type="date" value={fundPopupFields.paymentDate || viewDate} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { paymentDate: e.target.value }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-                          <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>Term: {Math.max(1, daysBetween(fundPopupFields.paymentDate || viewDate, fundPopup.inv.dueDate))}d to maturity</div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Capital Amount (max {money(fundPopupFields.maxCap, fundPopup.inv.currency)})</label>
-                          <input type="number" step="0.01" value={fundPopupFields.capitalDue || ""} onChange={function(e) { var v = parseFloat(e.target.value) || 0; setFundPopupFields(function(f) { return Object.assign({}, f, { capitalDue: String(Math.min(v, f.maxCap)) }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid " + (parseFloat(fundPopupFields.capitalDue) > fundPopupFields.maxCap ? "#DC2626" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a. (min {(fundPopupFields.minRate * 100).toFixed(1)}%)</label>
-                          <input type="number" step="0.1" value={fundPopupFields.annualRate || ""} onChange={function(e) { var v = parseFloat(e.target.value) || 0; setFundPopupFields(function(f) { return Object.assign({}, f, { annualRate: String(Math.max(v, f.minRate * 100)) }); }); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid " + (parseFloat(fundPopupFields.annualRate) / 100 < fundPopupFields.minRate - 0.0001 ? "#DC2626" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
-                        </div>
-                      </div>
-                      {(function() {
-                        var pc = r2(parseFloat(fundPopupFields.capitalDue) || 0);
-                        var pr = (parseFloat(fundPopupFields.annualRate) || 0) / 100;
-                        var ph = r2(fundPopup.inv.amount - pc);
-                        var pt = daysBetween(fundPopupFields.paymentDate || viewDate, fundPopup.inv.dueDate);
-                        if (pt < 1) pt = 1;
-                        var pi = r2(pc * (pr / 360) * pt);
-                        return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#2B4C7E08", border: "1px solid #2B4C7E20", marginBottom: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
-                          <div><span style={{ color: "var(--muted)" }}>Capital: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{money(pc, fundPopup.inv.currency)}</span></div>
-                          <div><span style={{ color: "var(--muted)" }}>Holdback: </span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(ph, fundPopup.inv.currency)}</span></div>
-                          <div><span style={{ color: "var(--muted)" }}>Interest: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(pi, fundPopup.inv.currency)}</span></div>
-                          <div><span style={{ color: "var(--muted)" }}>Adv Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{(pc / fundPopup.inv.amount * 100).toFixed(1)}%</span></div>
-                          <div><span style={{ color: "var(--muted)" }}>Int Rate: </span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{fundPopupFields.annualRate}% p.a.</span></div>
-                          <div><span style={{ color: "var(--muted)" }}>Term: </span>{pt}d</div>
-                        </div>;
-                      })()}
-                      {(function() {
-                        var bankInfo = getSupplierBankDetails(fundPopup.inv.supplierId || fundPopup.inv.supplierName, fundPopup.prog.id);
-                        return <div style={{ padding: "10px 14px", borderRadius: 8, background: "#05966908", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 16, fontSize: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Payment to</span>
-                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#05966914", color: "#059669" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: "#EF444414", color: "#EF4444" }}>Unverified</span>}
-                          </div>
-                          {bankInfo.bankName ? <div>
-                            <span style={{ color: "var(--text)", fontWeight: 600 }}>{bankInfo.bankName}</span>
-                            {bankInfo.bankDetails ? <div style={{ color: "var(--text-secondary)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{bankInfo.bankDetails}</div> : null}
-                          </div> : <div style={{ color: "#D97706", fontWeight: 600 }}>No bank details on file for this supplier/program</div>}
-                        </div>;
-                      })()}
-                      {(function() {
-                        var supPaused = isEntityPaused(fundPopup.inv.supplierId);
-                        var buyPaused = isBuyerPaused(fundPopup.inv.buyerId);
-                        if (supPaused || buyPaused) {
-                          var reasons = [];
-                          if (supPaused) reasons.push("Supplier " + getEntityDisplayName(fundPopup.inv.supplierId) + " is paused");
-                          if (buyPaused) reasons.push("Buyer " + (fundPopup.inv.buyerName || "") + " is paused");
-                          return <div style={{ padding: "12px 16px", borderRadius: 8, background: "#EF444414", border: "1px solid #EF444440", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontSize: 16 }}>{"\u26D4"}</span>
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444" }}>Funding Blocked</div>
-                              <div style={{ fontSize: 11, color: "#EF4444", opacity: 0.8 }}>{reasons.join(" • ")}</div>
-                            </div>
-                          </div>;
-                        }
-                        return null;
-                      })()}
-                      <div style={{ display: "flex", gap: 10 }}>
-                        {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0; var progAvail = getProgramAvailableBalance(fundPopup.prog.id); var insufficientBal = capNeeded > progAvail + 0.01; var disabled = blocked || insufficientBal; return <button onClick={confirmFundPopup} disabled={disabled} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{insufficientBal ? "Insufficient Program Balance" : "Approve for Funding"}</button>; })()}
-                        <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-                      </div>
-                    </div>
-                  </div>}
-                </div>;
-              })()}
-
-              {/* Do Not Fund List */}
-              {(function() {
-                var dnfInvs = viewData.invoices.filter(function(x) { return x.fundingStatus === "pending" && x.doNotFund; });
-                if (dnfInvs.length === 0) return null;
-                var dnfmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
-                return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid #6B728030", overflow: "hidden", marginTop: 18 }}>
-                  <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6B7280" }}></div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>Do Not Fund ({dnfInvs.length})</div>
-                    </div>
-                    <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{dnfInvs.length} invoice{dnfInvs.length !== 1 ? "s" : ""} excluded from funding</span>
-                  </div>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Inv Date", "Due Date", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{dnfInvs.map(function(inv) {
-                        var ist = IST[inv.invoiceStatus] || IST["Received"];
-                        var isExpanded = exp === "dnf-" + inv.id;
-                        return <React.Fragment key={inv.id}>
-                        <tr onClick={function() { setExp(isExpanded ? null : "dnf-" + inv.id); }} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer", background: isExpanded ? "var(--card-hover)" : "transparent" }}>
-                          <td style={Object.assign({}, dnfmc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
-                          <td style={Object.assign({}, dnfmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.invoiceDate)}</td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                          <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} /></td>
-                          <td style={{ padding: "8px 8px", textAlign: "right" }}>
-                            <button onClick={function(e) { e.stopPropagation(); var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = false; saveInvoice(raw.id); auditLog("Do Not Fund Cleared", inv.id + " returned to funding queue", { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #2E8B57", background: "transparent", color: "#059669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Return to Queue</button>
-                          </td>
-                        </tr>
-                        {isExpanded && <tr><td colSpan={9} style={{ padding: 0 }}>
-                          <div style={{ padding: "18px 22px", background: "var(--card-hover)", borderBottom: "2px solid var(--accent)20" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                              <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Invoice Details</div>
-                                {(function() {
-                                  var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600 };
-                                  var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
-                                  var row = { display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid var(--border)" };
-                                  return <div>
-                                    <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{inv.id}</span></div>
-                                    <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
-                                    <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
-                                    <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
-                                    <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
-                                    <div style={row}><span style={lbl}>Due Date</span><span style={val}>{fmt(inv.dueDate)}</span></div>
-                                    <div style={row}><span style={lbl}>Term</span><span style={val}>{inv.daysToMaturity || 0}d</span></div>
-                                    {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Ref</span><span style={val}>{inv.buyerRef}</span></div>}
-                                    {inv.supplierRef && <div style={row}><span style={lbl}>Supplier Ref</span><span style={val}>{inv.supplierRef}</span></div>}
-                                    {inv.poNumber && <div style={row}><span style={lbl}>PO Number</span><span style={val}>{inv.poNumber}</span></div>}
-                                    <div style={row}><span style={lbl}>Potential Capital</span><span style={Object.assign({}, val, { color: "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014 no eligible programs"}</span></div>
-                                    {inv.unallocatedPayments > 0 && <div style={row}><span style={lbl}>Unallocated Payments</span><span style={Object.assign({}, val, { color: "#059669" })}>{money(inv.unallocatedPayments, inv.currency)}</span></div>}
-                                  </div>;
-                                })()}
-                              </div>
-                              <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Actions</div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                  <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (raw) { raw.doNotFund = false; saveInvoice(raw.id); auditLog("Do Not Fund Cleared", inv.id + " returned to funding queue", { invoiceId: inv.id }); setDataVer(function(v) { return v + 1; }); } }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{"\u21b6"} Return to Funding Queue</button>
-                                  <button onClick={function() { startEdit(inv); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{"\u270e"} Edit Invoice</button>
-                                </div>
-                                <div style={{ marginTop: 14, padding: "8px 10px", borderRadius: 6, background: "#6B728008", border: "1px solid #6B728020" }}>
-                                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280", marginBottom: 4 }}>Status History</div>
-                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                    {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </td></tr>}
-                        </React.Fragment>;
-                      })}</tbody>
-                    </table>
-                  </div>
-                </div>;
-              })()}
-
-            </div>;
-            })()}
 
             {/* Payment Queue */}
             {/* Audit Log */}
@@ -15746,7 +16226,7 @@ export default function FactoringDashboard() {
                 { key: "supplier", label: "Supplier", required: true, hints: ["supplier","supplier_name","supplier_id","vendor","vendor_name"] },
                 { key: "buyer", label: "Buyer", required: true, hints: ["buyer","buyer_name","buyer_id","customer","debtor"] },
                 { key: "invoice_amount", label: "Invoice Amount", required: true, hints: ["invoice_amount","amount","inv_amount","invoice_value","gross_amount","total"] },
-                { key: "approved_amount", label: "Approved Amount", required: false, hints: ["approved_amount","approved","net_amount"] },
+                { key: "approved_amount", label: "Approved Amount", required: false, hints: ["approved_amount","purchased","net_amount"] },
                 { key: "currency", label: "Currency", required: false, hints: ["currency","ccy","curr"] },
                 { key: "purchase_order", label: "Purchase Order", required: false, hints: ["purchase_order","po","po_number"] },
                 { key: "supplier_ref", label: "Supplier Invoice Ref", required: false, hints: ["supplier_ref","supplier_invoice_ref","supplier_reference"] },
@@ -15993,7 +16473,7 @@ export default function FactoringDashboard() {
                   }
 
                   // UPDATE existing invoice — compare fields
-                  var isFunded = existing.fundingStatus !== "pending" && existing.fundingStatus !== "approved" && existing.fundingStatus !== "historic" && existing.fundedDate;
+                  var isFunded = existing.fundingStatus !== "pending" && existing.fundingStatus !== "purchased" && existing.fundingStatus !== "historic" && existing.fundedDate;
                   var changes = [];
 
                   function queueForReview(field, label, oldVal, newVal) {
@@ -16306,7 +16786,7 @@ export default function FactoringDashboard() {
                 else if (item.field === "approvalDate") { inv.invoiceStatusHistory.push({ status: "Approved", date: item.newValue, note: "Accepted from CSV review" }); inv.invoiceStatus = "Approved"; inv.approvedDate = item.newValue; }
 
                 // Move to recovery mode if funded
-                var isFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "approved" && inv.fundedDate;
+                var isFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundedDate;
                 if (isFunded) inv.fundingStatus = "recovery_mode";
 
                 inv.notes.push({ text: "CSV review accepted: " + item.label + " changed from " + (item.oldValue || "\u2014") + " to " + item.newValue + (isFunded ? ". Moved to Recovery Mode." : ""), display: nowD });
