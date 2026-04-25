@@ -14032,9 +14032,10 @@ export default function FactoringDashboard() {
             var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
-          // Source data: processed invoices where fundingStatus === "pending" (i.e. not yet allocated to any program), and not DNP
-          var unpurchasedAll = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; });
-          var unpurchasedDnf = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending" && inv.doNotFund; });
+          // Source data: ALL pending invoices (including DNP'd ones — they are visible but dimmed and ineligible for allocation)
+          var unpurchasedAll = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending"; });
+          var unpurchasedDnf = unpurchasedAll.filter(function(inv) { return inv.doNotFund; });
+          var unpurchasedActive = unpurchasedAll.filter(function(inv) { return !inv.doNotFund; });
           // Filters
           var upiHasActive = !!(upiSearch || upiSupFilter || upiBuyFilter || upiCcyFilter || upiDateFrom || upiDateTo);
           function applyUpiFilters(list) {
@@ -14058,16 +14059,19 @@ export default function FactoringDashboard() {
           (function() { var seenS = {}, seenB = {}; unpurchasedAll.forEach(function(inv) { if (inv.supplierName && !seenS[inv.supplierName]) { seenS[inv.supplierName] = true; supOpts.push(inv.supplierName); } if (inv.buyerName && !seenB[inv.buyerName]) { seenB[inv.buyerName] = true; buyOpts.push(inv.buyerName); } }); supOpts.sort(); buyOpts.sort(); })();
           // Stats (always honour filters)
           var filteredForStats = applyUpiFilters(unpurchasedAll);
-          var statCount = filteredForStats.length;
+          var filteredActive = filteredForStats.filter(function(inv) { return !inv.doNotFund; });
+          var filteredDnp = filteredForStats.filter(function(inv) { return inv.doNotFund; });
+          var statCount = filteredActive.length;
+          var statDnpCount = filteredDnp.length;
           var ccyGroups = {};
-          filteredForStats.forEach(function(inv) { ccyGroups[inv.currency] = (ccyGroups[inv.currency] || 0) + (inv.amount || 0); });
+          filteredActive.forEach(function(inv) { ccyGroups[inv.currency] = (ccyGroups[inv.currency] || 0) + (inv.amount || 0); });
           var ccyLabel = Object.keys(ccyGroups).length === 0 ? "none" : Object.keys(ccyGroups).map(function(c) { return money(r2(ccyGroups[c]), c); }).join(" \u00b7 ");
-          // Oldest pending
+          // Oldest pending (active only)
           var oldestDate = null;
-          filteredForStats.forEach(function(inv) { if (inv.invoiceDate && (!oldestDate || inv.invoiceDate < oldestDate)) oldestDate = inv.invoiceDate; });
+          filteredActive.forEach(function(inv) { if (inv.invoiceDate && (!oldestDate || inv.invoiceDate < oldestDate)) oldestDate = inv.invoiceDate; });
           var oldestDays = oldestDate ? daysBetween(oldestDate, REF_DATE) : 0;
-          // Count of invoices with no eligible programs (orphaned)
-          var noEligibleCount = filteredForStats.filter(function(inv) { return invEligibleProgramIds(inv).length === 0; }).length;
+          // Count of invoices with no eligible programs (orphaned, active only)
+          var noEligibleCount = filteredActive.filter(function(inv) { return invEligibleProgramIds(inv).length === 0; }).length;
           // Sort
           function upiKey(inv) {
             if (upiSort === "id") return inv.id || "";
@@ -14112,17 +14116,41 @@ export default function FactoringDashboard() {
           // Selection state — only eligible invoices can be selected
           var selectedIds = Object.keys(upiSelected).filter(function(k) { return upiSelected[k]; });
           var selectedInvs = selectedIds.map(function(id) { return INVOICES_DB.find(function(x) { return x.id === id; }); }).filter(Boolean);
-          // Compute program eligibility intersection across selected
+          // Composition of selection: DNP-only / non-DNP-only / mixed
+          var selectedDnp = selectedInvs.filter(function(inv) { return inv.doNotFund; });
+          var selectedNonDnp = selectedInvs.filter(function(inv) { return !inv.doNotFund; });
+          var selDnpOnly = selectedInvs.length > 0 && selectedDnp.length === selectedInvs.length;
+          var selNonDnpOnly = selectedInvs.length > 0 && selectedNonDnp.length === selectedInvs.length;
+          var selMixed = selectedDnp.length > 0 && selectedNonDnp.length > 0;
+          // Bulk DNP/Clear-DNP handler
+          function bulkSetDnp(value) {
+            var changed = [];
+            selectedInvs.forEach(function(inv) {
+              var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+              if (!raw || raw.fundingStatus !== "pending") return;
+              if (!!raw.doNotFund === !!value) return;
+              raw.doNotFund = !!value;
+              saveInvoice(raw.id);
+              changed.push(raw.id);
+            });
+            if (changed.length > 0) {
+              auditLog(value ? "Do Not Purchase Set" : "Do Not Purchase Cleared", changed.length + " invoice(s) " + (value ? "marked Do Not Purchase (bulk)" : "returned to purchase queue (bulk)") + ": " + changed.join(", "), { invoiceIds: changed, bulk: true });
+            }
+            setUpiSelected({});
+            setUpiBulkProg("");
+            setDataVer(function(v) { return v + 1; });
+          }
+          // Compute program eligibility intersection across selected (only for non-DNP allocate workflow)
           var intersectedProgIds = null;
           var selectedByProgCcy = {};
-          selectedInvs.forEach(function(inv) {
+          selectedNonDnp.forEach(function(inv) {
             var elig = invEligibleProgramIds(inv);
             if (intersectedProgIds === null) intersectedProgIds = elig.slice();
             else intersectedProgIds = intersectedProgIds.filter(function(pid) { return elig.indexOf(pid) > -1; });
           });
           if (intersectedProgIds === null) intersectedProgIds = [];
-          // Compute selection totals per currency (needed for capacity check)
-          selectedInvs.forEach(function(inv) {
+          // Compute selection totals per currency (needed for capacity check, non-DNP only)
+          selectedNonDnp.forEach(function(inv) {
             selectedByProgCcy[inv.currency] = (selectedByProgCcy[inv.currency] || 0) + (inv.amount || 0);
           });
           var selectionCurrencies = Object.keys(selectedByProgCcy);
@@ -14137,7 +14165,7 @@ export default function FactoringDashboard() {
             // For allocate-only, capacity doesn't matter (no cash moves). But capacity matters for "Allocate & Fund at max".
             // Compute potential capital at max advance rate for the selected currency
             var potentialAtMax = 0;
-            selectedInvs.forEach(function(inv) {
+            selectedNonDnp.forEach(function(inv) {
               var partial = (inv.invoiceStatus === "Approved in Part" && inv.partialApprovedAmount > 0) ? inv.partialApprovedAmount : inv.amount;
               var postDil = inv.amount - (inv.dilutionTotal || 0);
               var buyerCollected = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
@@ -14234,7 +14262,7 @@ export default function FactoringDashboard() {
             setFundPopupFields({ capitalDue: String(defaultCap), annualRate: String((defaultRate * 100).toFixed(2)), maxCap: maxCap, minRate: prog.minInterestRate, paymentDate: viewDate, programId: progId, eligibleProgIds: elig });
           }
           // Checkbox select-all behaviour — selects only eligible rows on current page
-          var pageEligibleIds = upiPageItems.filter(function(inv) { return invEligibleProgramIds(inv).length > 0; }).map(function(inv) { return inv.id; });
+          var pageEligibleIds = upiPageItems.filter(function(inv) { return inv.doNotFund || invEligibleProgramIds(inv).length > 0; }).map(function(inv) { return inv.id; });
           var allPageSelected = pageEligibleIds.length > 0 && pageEligibleIds.every(function(id) { return !!upiSelected[id]; });
           function toggleSelectAllPage() {
             if (allPageSelected) {
@@ -14249,18 +14277,11 @@ export default function FactoringDashboard() {
           return <div>
             {/* Filter-aware stat cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Unpurchased Invoices" value={String(statCount)} sub={upiHasActive && statCount !== unpurchasedAll.length ? statCount + " of " + unpurchasedAll.length : (unpurchasedAll.length === 0 ? "queue empty" : "all awaiting allocation")} accent={statCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Awaiting Allocation" value={String(statCount)} sub={upiHasActive && statCount !== unpurchasedActive.length ? statCount + " of " + unpurchasedActive.length : (unpurchasedActive.length === 0 ? "queue empty" : "ready to allocate")} accent={statCount > 0 ? "#D97706" : "#64748B"} />
               <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#D97706" : "#64748B"} />
               <StatCard label="Oldest Pending" value={oldestDays > 0 ? oldestDays + "d" : "\u2014"} sub={oldestDate ? "since " + fmt(oldestDate) : "none waiting"} accent={oldestDays > 30 ? "#EF4444" : oldestDays > 7 ? "#D97706" : "#10B981"} />
-              <StatCard label="No Eligible Program" value={String(noEligibleCount)} sub={noEligibleCount > 0 ? "cannot be allocated" : "all have options"} accent={noEligibleCount > 0 ? "#EF4444" : "#10B981"} />
+              <StatCard label="Do Not Purchase" value={String(statDnpCount)} sub={statDnpCount > 0 ? "flagged out" : (noEligibleCount > 0 ? noEligibleCount + " no eligible program" : "none flagged")} accent={statDnpCount > 0 ? "#EF4444" : (noEligibleCount > 0 ? "#D97706" : "#64748B")} />
             </div>
-
-            {/* DNP count banner */}
-            {unpurchasedDnf.length > 0 && <div style={{ marginBottom: 14, padding: "10px 18px", borderRadius: 10, border: "1px solid #EF444430", background: "#EF444408", display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#EF4444" }}>Excluded</span>
-              <span style={{ color: "var(--text-secondary)" }}>{unpurchasedDnf.length} invoice{unpurchasedDnf.length === 1 ? "" : "s"} flagged "Do Not Purchase" {"\u2014"} not shown in queue</span>
-              <button onClick={function() { setView("invoices"); setInvlDnfFilter("yes"); }} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>View in Invoices</button>
-            </div>}
 
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: selectedInvs.length > 0 ? 90 : 0 }}>
               <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -14303,14 +14324,26 @@ export default function FactoringDashboard() {
                     var ist = IST[inv.invoiceStatus] || IST["Received"];
                     var eligIds = invEligibleProgramIds(inv);
                     var isSel = !!upiSelected[inv.id];
+                    var isDnp = !!inv.doNotFund;
                     var noElig = eligIds.length === 0;
+                    var canAllocate = !isDnp && !noElig;
                     var daysPending = inv.invoiceDate ? daysBetween(inv.invoiceDate, REF_DATE) : 0;
                     var isFocused = pendingFocusInvId === inv.id;
-                    return <tr id={"upi-row-" + inv.id} key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isFocused ? "#0EA5E920" : (isSel ? "#2B4C7E08" : "transparent"), opacity: noElig ? 0.6 : 1, transition: "background 0.5s ease" }}>
+                    function toggleRowDnp() {
+                      var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+                      if (!raw) return;
+                      raw.doNotFund = !raw.doNotFund;
+                      saveInvoice(raw.id);
+                      auditLog(raw.doNotFund ? "Do Not Purchase Set" : "Do Not Purchase Cleared", inv.id + (raw.doNotFund ? " marked Do Not Purchase" : " returned to purchase queue"), { invoiceId: inv.id });
+                      // If the invoice was selected and just got DNP'd, deselect it
+                      if (raw.doNotFund && upiSelected[inv.id]) { setUpiSelected(function(prev) { var n = Object.assign({}, prev); delete n[inv.id]; return n; }); }
+                      setDataVer(function(v) { return v + 1; });
+                    }
+                    return <tr id={"upi-row-" + inv.id} key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: isFocused ? "#0EA5E920" : (isSel ? "#2B4C7E08" : "transparent"), opacity: isDnp ? 0.45 : (noElig ? 0.6 : 1), transition: "background 0.5s ease, opacity 0.2s ease" }}>
                       <td style={{ padding: "8px 8px" }}>
-                        {noElig ? <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }} title="No eligible programs">{"\ud83d\udd12"}</div> : <div onClick={function() { toggleSelect(inv.id); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div>}
+                        {(!noElig || isDnp) ? <div onClick={function() { toggleSelect(inv.id); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div> : <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }} title="No eligible programs">{"\ud83d\udd12"}</div>}
                       </td>
-                      <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
+                      <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{isDnp && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11, color: daysPending > 30 ? "#EF4444" : daysPending > 7 ? "#D97706" : "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{daysPending}d</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
@@ -14319,10 +14352,13 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11 }}>
-                        {noElig ? <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>}
+                        {isDnp ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Excluded</span> : (noElig ? <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>)}
                       </td>
                       <td style={{ padding: "8px 8px" }}>
-                        {!noElig && <button onClick={function() { openRowFundPopup(inv); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #38BDF8", background: "transparent", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Allocate & Fund</button>}
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          {canAllocate && <button onClick={function() { openRowFundPopup(inv); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #38BDF8", background: "transparent", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Allocate & Fund</button>}
+                          <button onClick={toggleRowDnp} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (isDnp ? "var(--accent)" : "#6B7280"), background: isDnp ? "transparent" : "#6B728010", color: isDnp ? "var(--accent)" : "#94A3B8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: 1 }} title={isDnp ? "Clear Do Not Purchase \u2014 return to allocation queue" : "Mark this invoice Do Not Purchase \u2014 exclude from allocation"}>{isDnp ? "Clear DNP" : "Mark DNP"}</button>
+                        </div>
                       </td>
                     </tr>;
                   })}</tbody>
@@ -14344,18 +14380,23 @@ export default function FactoringDashboard() {
             {/* Floating bulk action pill (shown when 1+ rows selected) */}
             {selectedInvs.length > 0 && <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 12, boxShadow: "0 8px 32px rgba(14,165,233,0.25)", padding: "12px 20px", display: "flex", alignItems: "center", gap: 14, zIndex: 100, flexWrap: "wrap", maxWidth: "95vw" }}>
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{selectedInvs.length} selected</span>
-                <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{selectionTotalStr}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{selectedInvs.length} selected{selMixed ? " (" + selectedNonDnp.length + " active, " + selectedDnp.length + " DNP)" : selDnpOnly ? " (all DNP)" : ""}</span>
+                <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{selNonDnpOnly ? selectionTotalStr : (selDnpOnly ? "all flagged Do Not Purchase" : "mixed selection")}</span>
               </div>
               <div style={{ width: 1, height: 32, background: "var(--border)" }}></div>
-              {bulkProgOpts.length === 0 ? <span style={{ fontSize: 11, color: "#EF4444", fontStyle: "italic", maxWidth: 280 }}>{selectionCurrencies.length > 1 ? "Cannot bulk-allocate: selection mixes currencies" : "No program is eligible for all selected invoices"}</span> : <select value={upiBulkProg} onChange={function(e) { setUpiBulkProg(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 280 }}>
+              {/* Allocation actions: only when ALL selected are non-DNP */}
+              {selNonDnpOnly && (bulkProgOpts.length === 0 ? <span style={{ fontSize: 11, color: "#EF4444", fontStyle: "italic", maxWidth: 280 }}>{selectionCurrencies.length > 1 ? "Cannot bulk-allocate: selection mixes currencies" : "No program is eligible for all selected invoices"}</span> : <select value={upiBulkProg} onChange={function(e) { setUpiBulkProg(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 280 }}>
                 <option value="">Select program...</option>
                 {bulkProgOpts.map(function(o) { return <option key={o.fp.id} value={o.fp.id}>{o.fp.name} {"\u00b7"} {money(o.avail, o.fp.currency)} avail{o.fundBlocked ? " (insufficient for fund-at-max)" : ""}</option>; })}
-              </select>}
-              {selectedBulkOpt && <React.Fragment>
+              </select>)}
+              {selNonDnpOnly && selectedBulkOpt && <React.Fragment>
                 <button onClick={function() { bulkAllocate(false); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "transparent", color: "#8B5CF6", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Allocate to program as collateral, no cash advanced">Allocate</button>
                 <button onClick={function() { bulkAllocate(true); }} disabled={selectedBulkOpt.fundBlocked} style={{ padding: "8px 16px", borderRadius: 7, border: "none", background: selectedBulkOpt.fundBlocked ? "var(--border)" : "#38BDF8", color: selectedBulkOpt.fundBlocked ? "var(--muted)" : "#fff", fontSize: 12, fontWeight: 700, cursor: selectedBulkOpt.fundBlocked ? "not-allowed" : "pointer", whiteSpace: "nowrap" }} title={selectedBulkOpt.fundBlocked ? "Insufficient program balance" : "Allocate + fund at maximum capital"}>Allocate & Fund at max</button>
+                <div style={{ width: 1, height: 32, background: "var(--border)" }}></div>
               </React.Fragment>}
+              {/* DNP toggle actions */}
+              {selectedNonDnp.length > 0 && <button onClick={function() { bulkSetDnp(true); }} style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Mark selected as Do Not Purchase \u2014 they will not be allocated">Mark DNP{selMixed ? " (" + selectedNonDnp.length + ")" : ""}</button>}
+              {selectedDnp.length > 0 && <button onClick={function() { bulkSetDnp(false); }} style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Clear Do Not Purchase \u2014 return to allocation queue">Clear DNP{selMixed ? " (" + selectedDnp.length + ")" : ""}</button>}
               <button onClick={function() { setUpiSelected({}); setUpiBulkProg(""); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>
             </div>}
           </div>;
