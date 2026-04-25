@@ -5625,31 +5625,18 @@ export default function FactoringDashboard() {
             return getPayRemaining(p) > 0.01;
           }).sort(function(a, b) { return a.date < b.date ? -1 : 1; }); // oldest first
 
-          // ---------- Attention card data: Outgoing Payments ----------
-          function getOutboundStatusForLanding(pay) {
-            var linkedSPQs = SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.sourcePaymentId === pay.paymentId && q.type === "remittance"; });
-            var linkedFlows = [];
-            FUNDING_PROGRAMS_DB.forEach(function(fp) {
-              (fp.fundFlows || []).forEach(function(ff) {
-                if (ff.type === "outflow" && ff.sourcePaymentId === pay.paymentId) linkedFlows.push(ff);
-              });
-            });
-            var total = linkedSPQs.length + linkedFlows.length;
-            if (total === 0) return "unrouted";
-            var completed = linkedSPQs.filter(function(q) { return q.status === "Completed"; }).length + linkedFlows.filter(function(f) { return f.status !== "Pending"; }).length;
-            var cancelled = linkedSPQs.filter(function(q) { return q.status === "Cancelled" || q.status === "Failed"; }).length;
-            if (cancelled === total) return "cancelled";
-            if (completed === total) return "completed";
-            if (completed === 0) return "pending";
-            return "partial";
-          }
-          var pendingOutbound = PAYMENTS_DB.filter(function(p) {
-            if (p.direction !== "outbound") return false;
-            var s = getOutboundStatusForLanding(p);
-            return s === "pending" || s === "partial" || s === "unrouted";
-          }).sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+          // ---------- Attention card data: Outbound Queue (SPQ pending) ----------
+          // The card surfaces Pending items in the Supplier Payment Queue —
+          // funding, holdback, and remittance entries awaiting cash execution.
+          var pendingOutbound = SUPPLIER_PAYMENT_QUEUE.filter(function(q) {
+            return q.status === "Pending";
+          }).sort(function(a, b) {
+            var aD = a.executedAt || a.createdAt || "";
+            var bD = b.executedAt || b.createdAt || "";
+            return aD < bD ? -1 : 1;
+          });
 
-          // ---------- Attention card data: Invoices Eligible for Funding ----------
+          // ---------- Attention card data: Invoices Eligible for Purchase ----------
           var eligibleInvoices = viewData.invoices.filter(function(inv) {
             return inv.fundingStatus === "pending" && (inv.maxAvailableCapital || 0) > 0 && !inv.fundingProgram;
           }).sort(function(a, b) { return a.createdDate < b.createdDate ? -1 : 1; });
@@ -5672,7 +5659,7 @@ export default function FactoringDashboard() {
             });
             var nOut = progInvs.length;
             var avgOut = nOut > 0 ? progOut / nOut : 0;
-            var available = Math.max(0, (fp.maxSize || 0) - (fp.currentFundedBalance || 0));
+            var available = getProgramAvailableBalance(fp.id);
             return {
               id: fp.id, name: fp.name, currency: fp.currency,
               balance: fp.currentFundedBalance || 0, max: fp.maxSize || 0, pct: pct,
@@ -5790,11 +5777,13 @@ export default function FactoringDashboard() {
                         <th style={Object.assign({}, attnTh, { textAlign: "right" })}>Amount</th>
                       </tr></thead>
                       <tbody>
-                        {pendingOutbound.map(function(p) {
-                          return <tr key={p.paymentId} onClick={function() { setOgSearch(""); setOgCcyFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgStatusFilter(""); setOgPage(0); setExpPay(p.paymentId); setPendingFocusPayId(p.paymentId); setView("payments"); setPayTab("outgoing_db"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
-                            <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{p.paymentId}</td>
-                            <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{fmt(p.date)}</td>
-                            <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(p.amount), p.currency)}</td>
+                        {pendingOutbound.map(function(q) {
+                          var qDate = (q.executedAt || q.createdAt || "").substring(0, 10) || viewDate;
+                          var typeLabel = q.type === "funding" ? "Funding" : q.type === "remittance" ? "Remittance" : q.type === "holdback" ? "Holdback" : (q.type || "Payment");
+                          return <tr key={q.id} onClick={function() { setOqSearch(""); setOqPage(0); setView("payments"); setPayTab("outbound_queue"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
+                            <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{q.id} <span style={{ color: "var(--muted)", fontWeight: 400, fontSize: 9 }}>{typeLabel}</span></td>
+                            <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{fmt(qDate)}</td>
+                            <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(q.amount), q.currency)}</td>
                           </tr>;
                         })}
                       </tbody>
@@ -5807,9 +5796,9 @@ export default function FactoringDashboard() {
             {/* ============ ROW 2: Eligible + Recent Activity (50/50, matched height) ============ */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
 
-              {/* Attention card — Eligible for Funding */}
+              {/* Attention card — Eligible for Purchase */}
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <div style={Object.assign({}, sectionLabel, { marginBottom: 8 })}>Invoices eligible for funding</div>
+                <div style={Object.assign({}, sectionLabel, { marginBottom: 8 })}>Invoices eligible for purchase</div>
                 <div style={Object.assign(attnCard("#F59E0B"), { minHeight: cardTotalMinH })}>
                   <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", justifyContent: "space-between", flexShrink: 0 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
