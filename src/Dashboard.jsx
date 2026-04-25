@@ -5658,7 +5658,7 @@ export default function FactoringDashboard() {
 
           // ---------- Attention card data: Invoices Eligible for Purchase ----------
           var eligibleInvoices = viewData.invoices.filter(function(inv) {
-            return inv.fundingStatus === "pending" && (inv.maxAvailableCapital || 0) > 0 && !inv.fundingProgram;
+            return inv.fundingStatus === "pending" && (inv.maxAvailableCapital || 0) > 0 && !inv.fundingProgram && !inv.doNotFund;
           }).sort(function(a, b) { return a.createdDate < b.createdDate ? -1 : 1; });
 
           // ---------- Recent activity ----------
