@@ -3245,12 +3245,19 @@ export default function FactoringDashboard() {
     var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
     if (!raw) return;
     var prog = null;
-    if (raw.fundingProgram) prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+    var eligibleProgIds = [];
+    if (raw.fundingProgram) {
+      prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+      // For purchased/funded invoices, the assigned program is the only valid program for top-ups.
+      // (Re-allocating to a different program would require deallocation first.)
+      if (prog) eligibleProgIds = [prog.id];
+    }
     if (!prog) {
-      // For pending invoices — pick first eligible program
+      // For pending invoices — show all eligible programs, default to first
       var eligible = getEligiblePrograms(raw, null);
       if (eligible.length === 0) { alert("No eligible funding programs for " + raw.id + "."); return; }
       prog = eligible[0];
+      eligibleProgIds = eligible.map(function(p) { return p.id; });
     }
     var supRate = getSupplierRate(raw.supplierId || raw.supplierName);
     var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
@@ -3264,8 +3271,8 @@ export default function FactoringDashboard() {
     if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready funded: " + money(currentCap, raw.currency)); return; }
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
-    setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id });
+    setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds });
   }
 
   function cancelApproval(invId) {
@@ -3554,7 +3561,34 @@ export default function FactoringDashboard() {
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>{fundPopup.isTopup ? "Fund Purchased Invoice" : "Fund Invoice"}: {fundPopup.inv.id}</div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>{fundPopup.inv.supplierName} / {fundPopup.inv.buyerName}</div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong> {"\u2014"} Available: <strong style={{ color: getProgramAvailableBalance(fundPopup.prog.id) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(getProgramAvailableBalance(fundPopup.prog.id), fundPopup.inv.currency)}</strong></div>
+          {(function() {
+            var eligIds = (fundPopupFields.eligibleProgIds || []);
+            // Only show selector if there are 2+ eligible programs
+            if (eligIds.length <= 1) {
+              return <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Program: <strong style={{ color: "var(--text)" }}>{fundPopup.prog.name}</strong> {"\u2014"} Available: <strong style={{ color: getProgramAvailableBalance(fundPopup.prog.id) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(getProgramAvailableBalance(fundPopup.prog.id), fundPopup.inv.currency)}</strong></div>;
+            }
+            return <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Funding Program</label>
+              <select value={fundPopup.prog.id} onChange={function(e) {
+                var newProgId = e.target.value;
+                var newProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === newProgId; });
+                if (!newProg) return;
+                // Recompute headroom + default capital under new program
+                var effectiveBase = fundPopup.effectiveBase || fundPopup.inv.amount;
+                var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
+                var currentCap = fundPopup.currentCapital || 0;
+                var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
+                var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
+                var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
+                if (newDefault < 0) newDefault = 0;
+                setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
+                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault) }); });
+              }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
+                {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
+              </select>
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{eligIds.length} eligible programs {"\u00b7"} Available balance: <strong style={{ color: getProgramAvailableBalance(fundPopup.prog.id) < (parseFloat(fundPopupFields.capitalDue) || 0) ? "#EF4444" : "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{money(getProgramAvailableBalance(fundPopup.prog.id), fundPopup.inv.currency)}</strong></div>
+            </div>;
+          })()}
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
           {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies {"\u2014"} max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
@@ -14164,12 +14198,14 @@ export default function FactoringDashboard() {
             var supRate = getSupplierRate(rawInv.supplierId || rawInv.supplierName);
             var invPartial = (rawInv.invoiceStatus === "Approved in Part" && rawInv.partialApprovedAmount > 0) ? rawInv.partialApprovedAmount : rawInv.amount;
             var invPostDil = rawInv.amount - (inv.dilutionTotal || 0);
-            var effectiveBase = Math.max(0, Math.min(rawInv.amount, invPartial, invPostDil));
+            var buyerPaid = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+            var invPostCol = rawInv.amount - buyerPaid;
+            var effectiveBase = Math.max(0, Math.min(rawInv.amount, invPartial, invPostDil, invPostCol));
             var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
             var defaultCap = r2(effectiveBase * supRate.advanceRate);
             var defaultRate = supRate.annualRate;
             if (defaultCap > maxCap) defaultCap = maxCap;
-            setFundPopup({ inv: rawInv, prog: prog });
+            setFundPopup({ inv: rawInv, prog: prog, isTopup: false, currentCapital: 0, effectiveBase: effectiveBase });
             setFundPopupFields({ capitalDue: String(defaultCap), annualRate: String((defaultRate * 100).toFixed(2)), maxCap: maxCap, minRate: prog.minInterestRate, paymentDate: viewDate, programId: progId, eligibleProgIds: elig });
           }
           // Checkbox select-all behaviour — selects only eligible rows on current page
