@@ -11188,7 +11188,14 @@ export default function FactoringDashboard() {
             });
 
             // Filter to as-of viewDate
+            console.log("[BankStmt] entries before viewDate filter:", entries.length, "(viewDate =", viewDate + ")");
+            entries.forEach(function(e) {
+              if (e.baseType === "Remittance" || e.baseType === "Pass-through Received") {
+                console.log("[BankStmt]   pre-viewDate:", e.id, "date =", JSON.stringify(e.date), "<= viewDate?", !e.date || e.date <= viewDate);
+              }
+            });
             entries = entries.filter(function(e) { return !e.date || e.date <= viewDate; });
+            console.log("[BankStmt] entries after viewDate filter:", entries.length);
 
             // Sort chronologically
             entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
