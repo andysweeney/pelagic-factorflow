@@ -11157,16 +11157,16 @@ export default function FactoringDashboard() {
             });
 
             // 5. Remittances to suppliers — debits (only completed or pending)
-            // TEMP DIAGNOSTIC — remove after issue resolved
-            console.log("[BankStmt] selectedProgram =", JSON.stringify(selectedProgram));
-            console.log("[BankStmt] SPQ remittances total:", SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.type === "remittance"; }).length);
-            SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.type === "remittance"; }).forEach(function(q) {
-              console.log("[BankStmt] SPQ", q.id, "programId =", JSON.stringify(q.programId), "status =", JSON.stringify(q.status), "match?", q.programId === selectedProgram);
-            });
+            // For pass-throughs (sourcePaymentId points to an inbound payment), use the
+            // source payment date so the debit and credit legs sit together on the statement.
+            // Standalone outbound remittances use executedAt/createdAt (their own date).
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
               if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram) {
-                var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "";
-                entries.push({ id: "RM-" + spq.id, date: execDate, sortDate: spq.executedAt || spq.createdAt || execDate + "T12:00:00", type: "Remittance", baseType: "Remittance", status: spq.status === "Completed" ? null : spq.status, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), refParts: { spq: spq.id, payment: spq.sourcePaymentId }, counterparty: spq.supplierName, counterpartyKind: "supplier", credit: 0, debit: spq.amount, currency: spq.currency, source: { kind: "spq", spqId: spq.id, data: spq } });
+                var srcPay = spq.sourcePaymentId ? PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; }) : null;
+                var isPassThrough = srcPay && srcPay.direction === "inbound";
+                var execDate = isPassThrough ? srcPay.date : (spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "");
+                var sortDate = isPassThrough ? (srcPay.date + "T11:59:30") : (spq.executedAt || spq.createdAt || execDate + "T12:00:00");
+                entries.push({ id: "RM-" + spq.id, date: execDate, sortDate: sortDate, type: "Remittance", baseType: "Remittance", status: spq.status === "Completed" ? null : spq.status, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), refParts: { spq: spq.id, payment: spq.sourcePaymentId }, counterparty: spq.supplierName, counterpartyKind: "supplier", credit: 0, debit: spq.amount, currency: spq.currency, source: { kind: "spq", spqId: spq.id, data: spq } });
               }
             });
 
@@ -11188,14 +11188,7 @@ export default function FactoringDashboard() {
             });
 
             // Filter to as-of viewDate
-            console.log("[BankStmt] entries before viewDate filter:", entries.length, "(viewDate =", viewDate + ")");
-            entries.forEach(function(e) {
-              if (e.baseType === "Remittance" || e.baseType === "Pass-through Received") {
-                console.log("[BankStmt]   pre-viewDate:", e.id, "date =", JSON.stringify(e.date), "<= viewDate?", !e.date || e.date <= viewDate);
-              }
-            });
             entries = entries.filter(function(e) { return !e.date || e.date <= viewDate; });
-            console.log("[BankStmt] entries after viewDate filter:", entries.length);
 
             // Sort chronologically
             entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
