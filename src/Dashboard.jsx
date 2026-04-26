@@ -11157,6 +11157,12 @@ export default function FactoringDashboard() {
             });
 
             // 5. Remittances to suppliers — debits (only completed or pending)
+            // TEMP DIAGNOSTIC — remove after issue resolved
+            console.log("[BankStmt] selectedProgram =", JSON.stringify(selectedProgram));
+            console.log("[BankStmt] SPQ remittances total:", SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.type === "remittance"; }).length);
+            SUPPLIER_PAYMENT_QUEUE.filter(function(q) { return q.type === "remittance"; }).forEach(function(q) {
+              console.log("[BankStmt] SPQ", q.id, "programId =", JSON.stringify(q.programId), "status =", JSON.stringify(q.status), "match?", q.programId === selectedProgram);
+            });
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
               if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram) {
                 var execDate = spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "";
