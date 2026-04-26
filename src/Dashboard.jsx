@@ -420,7 +420,7 @@ async function saveInvoice(invId) {
       invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
-      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
       notes: inv.notes || []
     };
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
@@ -627,7 +627,7 @@ function mapInvoiceRow(row) {
     invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
-    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
     notes: row.notes || [],
     csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
     intendedPaymentDate: row.intended_payment_date || null
@@ -786,7 +786,7 @@ async function loadPersistedData() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
           notes: row.notes || []
         });
       });
@@ -1001,7 +1001,7 @@ async function reloadForSupplier(supplierId) {
       invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
       invoiceStatusHistory: row.invoice_status_history || [],
       adjustments: row.adjustments || [],
-      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
       notes: row.notes || [],
       csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
       intendedPaymentDate: row.intended_payment_date || null
@@ -1120,7 +1120,7 @@ async function reloadInvoices() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
           notes: row.notes || []
         });
       });
@@ -1425,7 +1425,7 @@ async function savePersistedData() {
         invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
         invoice_status_history: inv.invoiceStatusHistory || [],
         adjustments: inv.adjustments || [],
-        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
         notes: inv.notes || []
       };
     });
@@ -1833,7 +1833,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         var hPostCol = rawInv.amount - totalBuyerPaid;
         var hEffBase = Math.max(0, Math.min(rawInv.amount, hPartial, hPostDil, hPostCol));
         var hMaxCap = r2(hEffBase * currentProg.maxAdvanceRate);
-        fundingHeadroom = r2(Math.max(0, hMaxCap - (rawInv.capitalDue || 0)));
+        var hCommitted = (rawInv.capitalDue || 0) + (rawInv.pendingTopUpAmount || 0);
+        fundingHeadroom = r2(Math.max(0, hMaxCap - hCommitted));
       }
     }
     var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
@@ -3070,9 +3071,20 @@ export default function FactoringDashboard() {
     if (!prog) return 0;
     var progInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === programId; });
     var fundedBalance = 0;
+    var pendingFundingAmt = 0;
     progInvs.forEach(function(inv) {
-      if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") return;
-      fundedBalance += inv.capitalDue || 0;
+      if (inv.fundingStatus === "pending") return;
+      // Funded/at-risk/overdue invoices: capital is fully deployed
+      if (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") {
+        fundedBalance += inv.capitalDue || 0;
+        // Pending top-ups stage additional capital — count as committed
+        pendingFundingAmt += inv.pendingTopUpAmount || 0;
+        return;
+      }
+      // Purchased invoices: capital is queued for execution but not yet deployed
+      if (inv.fundingStatus === "purchased") {
+        pendingFundingAmt += inv.capitalDue || 0;
+      }
     });
     var funderInflows = 0, totalDisbursed = 0, pendingDisbursalsAmt = 0;
     if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursalsAmt += ff.amount; else totalDisbursed += ff.amount; });
@@ -3106,7 +3118,7 @@ export default function FactoringDashboard() {
     });
     var totalInflows = r2(funderInflows + buyerReceipts);
     var totalFundsOut = r2(totalDisbursed + fundedBalance + totalHoldbackDisbursed);
-    return r2(totalInflows - totalFundsOut - pendingDisbursalsAmt);
+    return r2(totalInflows - totalFundsOut - pendingDisbursalsAmt - pendingFundingAmt);
   }
 
   function fundInvoice(invId, programId) {
@@ -3123,14 +3135,72 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
+  function cancelTopUp(invId) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+    if (!raw || r2(raw.pendingTopUpAmount || 0) <= 0) return;
+    var cancelled = r2(raw.pendingTopUpAmount);
+    raw.pendingTopUpAmount = 0;
+    raw.pendingTopUpRate = null;
+    raw.pendingTopUpDate = null;
+    saveInvoice(invId);
+    auditLog("Top-Up Cancelled", invId + ": " + money(cancelled, raw.currency) + " queued top-up cancelled before execution \u2014 " + raw.supplierName, { invoiceId: invId, cancelledAmount: cancelled, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, fundingProgram: raw.fundingProgram });
+    setDataVer(function(v) { return v + 1; });
+  }
+
   function executeFunding(invId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
-    if (!raw || raw.fundingStatus !== "purchased") return;
+    if (!raw) return;
+    var isPurchasedFlow = raw.fundingStatus === "purchased";
+    var isTopupFlow = (raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue") && r2(raw.pendingTopUpAmount || 0) > 0;
+    if (!isPurchasedFlow && !isTopupFlow) return;
+    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+    var progName = prog ? prog.name : raw.fundingProgram;
+    if (isTopupFlow) {
+      // Execute top-up: increment capitalDue by pendingTopUpAmount, add to program balance, recompute interest, queue Completed CPQ.
+      var deltaCap = r2(raw.pendingTopUpAmount);
+      var topupRate = raw.pendingTopUpRate || raw.annualRate;
+      var topupDate = raw.pendingTopUpDate || viewDate;
+      raw.capitalDue = r2((raw.capitalDue || 0) + deltaCap);
+      raw.holdback = r2(raw.amount - raw.capitalDue);
+      raw.annualRate = topupRate;
+      raw.penaltyRate = topupRate * 1.5;
+      var term2 = daysBetween(topupDate, raw.dueDate);
+      if (term2 < 1) term2 = 1;
+      raw.daysToMaturity = term2;
+      raw.interestCharged = r2(raw.capitalDue * (topupRate / 360) * term2);
+      raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
+      raw.advanceRate = raw.amount > 0 ? raw.capitalDue / raw.amount : 0;
+      raw.pendingTopUpAmount = 0;
+      raw.pendingTopUpRate = null;
+      raw.pendingTopUpDate = null;
+      if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + deltaCap);
+      var supplierTU = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
+      var bankInfoTU = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
+      var nowTU = new Date();
+      var useDispTU = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : nowTU.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      var cpIdTU = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+      SUPPLIER_PAYMENT_QUEUE.push({
+        id: cpIdTU, type: "funding", invoiceId: invId, invoiceIds: [invId],
+        supplierName: raw.supplierName, supplierId: raw.supplierId || (supplierTU ? supplierTU.id : ""),
+        bankName: bankInfoTU.bankName, bankDetails: bankInfoTU.bankDetails, bankVerified: bankInfoTU.bankVerified,
+        amount: deltaCap, currency: raw.currency, status: "Completed",
+        programId: raw.fundingProgram, programName: progName,
+        createdDisplay: useDispTU,
+        executedAt: nowTU.toISOString(),
+        executedDisplay: useDispTU,
+        isTopup: true
+      });
+      saveInvoice(invId);
+      if (prog) saveFundingProgram(prog.id);
+      saveSPQEntry(cpIdTU);
+      auditLog("Funding Topped Up", invId + " topped up via " + progName + ": +" + money(deltaCap, raw.currency) + " advanced (now " + money(raw.capitalDue, raw.currency) + " total) \u2014 " + raw.supplierName + " (" + cpIdTU + ")", { invoiceId: invId, deltaCapital: deltaCap, newTotalCapital: raw.capitalDue, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpIdTU });
+      setDataVer(function(v) { return v + 1; });
+      return;
+    }
+    // Initial funding: purchased → funded
     raw.fundingStatus = "funded";
     raw.fundedDate = raw.intendedPaymentDate || viewDate;
-    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
-    var progName = prog ? prog.name : raw.fundingProgram;
     // Zero-capital "funding" (arrears workflow) — transition state only, do NOT queue a £0 supplier payment
     if (r2(raw.capitalDue) <= 0) {
       saveInvoice(invId);
@@ -3166,57 +3236,58 @@ export default function FactoringDashboard() {
     var inv = fundPopup.inv, prog = fundPopup.prog;
     var newCap = r2(parseFloat(fundPopupFields.capitalDue) || 0);
     var rate = parseFloat(fundPopupFields.annualRate) / 100;
-    if (newCap < 0 || newCap > fundPopupFields.maxCap + 0.01) return;
-    if (rate < fundPopupFields.minRate - 0.0001) return;
-    var availBal = getProgramAvailableBalance(prog.id);
-    if (newCap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(newCap, inv.currency)); return; }
+    if (newCap < 0) { alert("Capital amount cannot be negative."); return; }
+    if (rate < fundPopupFields.minRate - 0.0001) { alert("Annual rate is below program minimum (" + (fundPopupFields.minRate * 100).toFixed(2) + "%)."); return; }
+    // Fresh headroom recompute (popup-open snapshot may be stale if other actions occurred)
     var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
     if (!raw) return;
-    var isTopup = raw.fundingStatus === "purchased" || raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue";
+    var freshPartial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
+    var freshDilTotal = (function() { var t = 0; CREDIT_NOTES_DB.forEach(function(cn) { (cn.allocations || []).forEach(function(a) { if (a.invoiceId === raw.id) t += a.amount || 0; }); }); return t; })();
+    var freshPostDil = raw.amount - freshDilTotal;
+    var freshBuyerPaid = (raw.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+    var freshPostCol = raw.amount - freshBuyerPaid;
+    var freshEffBase = Math.max(0, Math.min(raw.amount, freshPartial, freshPostDil, freshPostCol));
+    var freshMaxCap = r2(freshEffBase * prog.maxAdvanceRate);
+    var freshCommitted = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
+    var freshHeadroom = r2(Math.max(0, freshMaxCap - freshCommitted));
+    if (newCap > freshHeadroom + 0.01) { alert("Capital exceeds available headroom.\n\nMax cap @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(freshMaxCap, inv.currency) + "\nAlready committed: " + money(freshCommitted, inv.currency) + "\nMax additional advance: " + money(freshHeadroom, inv.currency) + "\nRequested: " + money(newCap, inv.currency)); return; }
+    var availBal = getProgramAvailableBalance(prog.id);
+    if (newCap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(newCap, inv.currency)); return; }
+    var isPurchased = raw.fundingStatus === "purchased";
+    var isFunded = raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue";
+    var isTopup = isPurchased || isFunded;
     if (isTopup) {
-      // Top-up path: add the new capital to existing, recompute downstream figures, queue a funding payment.
-      if (newCap <= 0) { alert("Capital to advance must be greater than zero for a top-up."); return; }
+      if (newCap <= 0) { alert("Capital to advance must be greater than zero."); return; }
       var fundingDate = fundPopupFields.paymentDate || viewDate;
-      var existingCap = r2(raw.capitalDue || 0);
-      raw.capitalDue = r2(existingCap + newCap);
-      raw.holdback = r2(raw.amount - raw.capitalDue);
-      // Keep existing rate unless this is an initial fund (no prior cash). For true top-ups we keep the weighted approach simple: use new rate going forward.
-      raw.annualRate = rate;
-      raw.penaltyRate = rate * 1.5;
-      var term = daysBetween(fundingDate, raw.dueDate);
-      if (term < 1) term = 1;
-      raw.daysToMaturity = term;
-      raw.interestCharged = r2(raw.capitalDue * (rate / 360) * term);
-      raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
-      raw.advanceRate = raw.amount > 0 ? raw.capitalDue / raw.amount : 0;
-      raw.intendedPaymentDate = fundingDate;
-      if (!raw.fundedDate) raw.fundedDate = fundingDate;
-      // Create the supplier payment for the delta capital
-      var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
-      var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
-      var now = new Date();
-      var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-      var cpId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
-      SUPPLIER_PAYMENT_QUEUE.push({
-        id: cpId, type: "funding", invoiceId: raw.id, invoiceIds: [raw.id],
-        supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
-        bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified,
-        amount: newCap, currency: raw.currency, status: "Completed",
-        programId: raw.fundingProgram, programName: prog.name,
-        createdDisplay: useDisplay,
-        executedAt: now.toISOString(),
-        executedDisplay: useDisplay,
-        isTopup: existingCap > 0
-      });
-      // Update state if needed (purchased → funded)
-      var wasPurchased = raw.fundingStatus === "purchased";
-      if (wasPurchased) raw.fundingStatus = "funded";
-      // Program's funded balance picks up the delta
-      if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + newCap);
-      saveInvoice(raw.id);
-      if (prog) saveFundingProgram(prog.id);
-      saveSPQEntry(cpId);
-      auditLog(wasPurchased ? "Purchased Invoice Funded" : "Funding Topped Up", raw.id + ": " + money(newCap, raw.currency) + " advanced via " + prog.name + " (now " + money(raw.capitalDue, raw.currency) + " total capital) \u2014 " + raw.supplierName + " (" + cpId + ")", { invoiceId: raw.id, deltaCapital: newCap, newTotalCapital: raw.capitalDue, previousCapital: existingCap, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundingProgram: raw.fundingProgram, fundingProgramName: prog.name, completedPaymentId: cpId, priorStatus: wasPurchased ? "purchased" : raw.fundingStatus });
+      if (isPurchased) {
+        // Initial funding of a zero-capital purchased invoice (or top-up before queue execution).
+        // Set capitalDue + figures; the synthetic Outbound Queue picks up purchased invoices with capitalDue > 0.
+        var existingCap = r2(raw.capitalDue || 0);
+        raw.capitalDue = r2(existingCap + newCap);
+        raw.holdback = r2(raw.amount - raw.capitalDue);
+        raw.annualRate = rate;
+        raw.penaltyRate = rate * 1.5;
+        var term = daysBetween(fundingDate, raw.dueDate);
+        if (term < 1) term = 1;
+        raw.daysToMaturity = term;
+        raw.interestCharged = r2(raw.capitalDue * (rate / 360) * term);
+        raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
+        raw.advanceRate = raw.amount > 0 ? raw.capitalDue / raw.amount : 0;
+        raw.intendedPaymentDate = fundingDate;
+        // Stay in 'purchased' state until queue executes.
+        saveInvoice(raw.id);
+        auditLog("Funding Queued", raw.id + ": " + money(raw.capitalDue, raw.currency) + " queued for advance via " + prog.name + " \u2014 " + raw.supplierName + " (awaiting Outbound Queue execution)", { invoiceId: raw.id, capitalDue: raw.capitalDue, deltaCapital: newCap, previousCapital: existingCap, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundingProgram: raw.fundingProgram, fundingProgramName: prog.name });
+      } else {
+        // Top-up of a live funded invoice: stage the delta in pendingTopUpAmount.
+        // The queue picks up invoices with pendingTopUpAmount > 0.
+        // capitalDue stays at the executed amount until queue executes the top-up.
+        var existingPending = r2(raw.pendingTopUpAmount || 0);
+        raw.pendingTopUpAmount = r2(existingPending + newCap);
+        raw.pendingTopUpRate = rate;
+        raw.pendingTopUpDate = fundingDate;
+        saveInvoice(raw.id);
+        auditLog("Top-Up Queued", raw.id + ": " + money(newCap, raw.currency) + " top-up queued via " + prog.name + " (current capital " + money(raw.capitalDue, raw.currency) + ", pending +" + money(raw.pendingTopUpAmount, raw.currency) + ") \u2014 " + raw.supplierName + " (awaiting Outbound Queue execution)", { invoiceId: raw.id, deltaCapital: newCap, currentCapital: raw.capitalDue, pendingTopUp: raw.pendingTopUpAmount, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundingProgram: raw.fundingProgram, fundingProgramName: prog.name });
+      }
       setFundPopup(null); setFundPopupFields({});
       setDataVer(function(v) { return v + 1; });
       return;
@@ -3245,6 +3316,11 @@ export default function FactoringDashboard() {
   function openFundPopupFor(invProc) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
     if (!raw) return;
+    // Block stacked top-ups: if a top-up is already queued, force the user to execute or cancel it first
+    if (r2(raw.pendingTopUpAmount || 0) > 0) {
+      alert("A top-up of " + money(raw.pendingTopUpAmount, raw.currency) + " is already queued for " + raw.id + ".\n\nExecute or cancel the queued top-up via the Outbound Queue before queuing another.");
+      return;
+    }
     var prog = null;
     var eligibleProgIds = [];
     if (raw.fundingProgram) {
@@ -3267,9 +3343,10 @@ export default function FactoringDashboard() {
     var postCol = raw.amount - buyerPaid;
     var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
     var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
-    var currentCap = r2(raw.capitalDue || 0);
+    // Committed = executed capital + any queued top-up not yet executed
+    var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
-    if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready funded: " + money(currentCap, raw.currency)); return; }
+    if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready committed: " + money(currentCap, raw.currency)); return; }
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
@@ -11494,16 +11571,24 @@ export default function FactoringDashboard() {
               return <div>
                 {/* Outbound Payments to be made */}
                 {(function() {
-                  // Purchased invoices with capital > 0 need a funding payment queued;
-                  // zero-capital purchases (arrears collateral-only) are skipped.
-                  var approvedInvs = INVOICES_DB.filter(function(x) { return x.fundingStatus === "purchased" && r2(x.capitalDue || 0) > 0; });
+                  // Funding payments queued: 
+                  //  (a) purchased invoices with capitalDue > 0 (awaiting initial funding execution)
+                  //  (b) funded/at-risk/overdue invoices with pendingTopUpAmount > 0 (awaiting top-up execution)
+                  // Zero-capital purchases (arrears collateral-only) are skipped.
+                  var approvedInvs = INVOICES_DB.filter(function(x) {
+                    if (x.fundingStatus === "purchased" && r2(x.capitalDue || 0) > 0) return true;
+                    if ((x.fundingStatus === "funded" || x.fundingStatus === "at_risk" || x.fundingStatus === "overdue") && r2(x.pendingTopUpAmount || 0) > 0) return true;
+                    return false;
+                  });
                   // Build unified rows: funding + holdback
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
                     var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: inv.capitalDue, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName, cancelFn: function() { cancelApproval(inv.id); } });
+                    var isInvTopup = inv.fundingStatus !== "purchased";  // funded/at_risk/overdue with pending top-up
+                    var rowAmount = isInvTopup ? r2(inv.pendingTopUpAmount || 0) : inv.capitalDue;
+                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, isTopup: isInvTopup, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: rowAmount, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: isInvTopup ? (inv.pendingTopUpDate || viewDate) : inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName + (isInvTopup ? " (top-up)" : ""), cancelFn: function() { isInvTopup ? cancelTopUp(inv.id) : cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
@@ -16697,7 +16782,7 @@ export default function FactoringDashboard() {
                     invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
                     invoice_status_history: inv.invoiceStatusHistory || [],
                     adjustments: inv.adjustments || [],
-                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
                     notes: inv.notes || []
                   };
                 });
