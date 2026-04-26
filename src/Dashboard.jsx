@@ -11166,7 +11166,7 @@ export default function FactoringDashboard() {
                 var isPassThrough = srcPay && srcPay.direction === "inbound";
                 var execDate = isPassThrough ? srcPay.date : (spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "");
                 var sortDate = isPassThrough ? (srcPay.date + "T11:59:30") : (spq.executedAt || spq.createdAt || execDate + "T12:00:00");
-                entries.push({ id: "RM-" + spq.id, date: execDate, sortDate: sortDate, type: "Remittance", baseType: "Remittance", status: spq.status === "Completed" ? null : spq.status, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), refParts: { spq: spq.id, payment: spq.sourcePaymentId }, counterparty: spq.supplierName, counterpartyKind: "supplier", credit: 0, debit: spq.amount, currency: spq.currency, source: { kind: "spq", spqId: spq.id, data: spq } });
+                entries.push({ id: "RM-" + spq.id, date: execDate, sortDate: sortDate, type: "Remittance", baseType: "Remittance", status: spq.status === "Completed" ? null : spq.status, ref: spq.id + (spq.sourcePaymentId ? " / " + spq.sourcePaymentId : ""), refParts: { spq: spq.id, payment: spq.sourcePaymentId }, counterparty: spq.supplierName, counterpartyKind: "supplier", credit: 0, debit: spq.amount, currency: spq.currency, source: { kind: "spq", spqId: spq.id, paymentId: spq.sourcePaymentId, data: spq } });
               }
             });
 
@@ -11403,10 +11403,20 @@ export default function FactoringDashboard() {
                       // Related audit log entries
                       var relatedLogs = AUDIT_LOG.filter(function(log) {
                         if (!log.context) return false;
-                        if (e.source.kind === "payment" && log.context.paymentId === e.source.paymentId) return true;
-                        if (e.source.kind === "capitalAdvance" && (log.context.invoiceId === e.source.invoiceId || log.context.queueId === e.source.spqId)) return true;
-                        if (e.source.kind === "hbp" && log.context.hbPaymentId === e.source.hbpId) return true;
-                        if (e.source.kind === "spq" && (log.context.queueId === e.source.spqId || log.context.paymentId === e.source.paymentId)) return true;
+                        if (e.source.kind === "payment" && e.source.paymentId && log.context.paymentId === e.source.paymentId) return true;
+                        if (e.source.kind === "capitalAdvance") {
+                          if (e.source.invoiceId && log.context.invoiceId === e.source.invoiceId) return true;
+                          if (e.source.spqId && log.context.queueId === e.source.spqId) return true;
+                        }
+                        if (e.source.kind === "hbp" && e.source.hbpId && log.context.hbPaymentId === e.source.hbpId) return true;
+                        if (e.source.kind === "spq") {
+                          if (e.source.spqId && log.context.queueId === e.source.spqId) return true;
+                          if (e.source.paymentId && log.context.paymentId === e.source.paymentId) return true;
+                        }
+                        if (e.source.kind === "fundFlow" && e.source.data) {
+                          if (e.source.data.flowId && log.context.flowId === e.source.data.flowId) return true;
+                          if (e.source.data.sourcePaymentId && log.context.paymentId === e.source.data.sourcePaymentId) return true;
+                        }
                         return false;
                       });
                       return <React.Fragment key={e.id}>
