@@ -14010,7 +14010,13 @@ export default function FactoringDashboard() {
             return r;
           }
           // Stats (always honour filters)
-          var filteredForStats = applyInvlFilters(INVOICES_DB);
+          // Read from viewData.invoices (the derived live view) rather than INVOICES_DB
+          // (the raw cached rows). Every other tab in the app reads from viewData; this
+          // tab is now consistent. Today's processForDate persistence fix means the two
+          // sources contain the same data, but reading from viewData ensures we still
+          // show correct values even in the brief window before a status change has
+          // been persisted (or if a save fails).
+          var filteredForStats = applyInvlFilters(viewData.invoices);
           var statCount = filteredForStats.length;
           var statPending = filteredForStats.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
           var statPurchased = filteredForStats.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length;
