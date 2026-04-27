@@ -6697,7 +6697,7 @@ export default function FactoringDashboard() {
           // unpaid balance of Settled invoices, and holdback not yet disbursed
           var collateralValue = 0;
           supInvs.forEach(function(inv) {
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
             if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") {
               collateralValue += inv.amount || 0;
@@ -8268,7 +8268,7 @@ export default function FactoringDashboard() {
 
           var collateralValue = 0;
           buyInvs.forEach(function(inv) {
-            if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
+            if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
             if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
             else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
@@ -9378,7 +9378,7 @@ export default function FactoringDashboard() {
               // Collateral
               var collateralValue = 0;
               progInvs.forEach(function(inv) {
-                if (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased" || inv.fundingStatus === "historic") return;
+                if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
                 var ist = inv.invoiceStatus;
                 if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
                 else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
