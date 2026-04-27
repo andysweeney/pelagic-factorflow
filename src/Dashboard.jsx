@@ -2005,6 +2005,19 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       rawInv.fullyRepaidDate = null;
     }
     // Remember status for next tick (used for transition-based audit events)
+    // Backfill settledDate from history for invoices that are already Settled
+    // (per statusAsOfDate) but whose raw.settledDate is missing. Handles the
+    // historical case of invoices Settled before saveInvoice persisted the
+    // field. Without this, processForDate's existing auto-settle block won't
+    // populate it because that block is gated on statusAsOfDate !== "Settled".
+    if (statusAsOfDate === "Settled" && !rawInv.settledDate && Array.isArray(rawInv.invoiceStatusHistory)) {
+      for (var sh = 0; sh < rawInv.invoiceStatusHistory.length; sh++) {
+        if (rawInv.invoiceStatusHistory[sh].status === "Settled") {
+          rawInv.settledDate = rawInv.invoiceStatusHistory[sh].date;
+          break;
+        }
+      }
+    }
     rawInv.priorFundingStatus = fs;
     var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
     // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
