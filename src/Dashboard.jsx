@@ -274,6 +274,8 @@ function getEligiblePrograms(inv, supDilRates) {
   if (badInvStatuses[inv.invoiceStatus]) return [];
   var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
   return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    // Currency must match — a program in EUR cannot fund a GBP invoice and vice versa
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) return false;
     // Eligible suppliers check — by ID (parent or entity)
     if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
       var entityId = inv.supplierId || "";
