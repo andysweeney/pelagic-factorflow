@@ -13239,6 +13239,7 @@ export default function FactoringDashboard() {
 
           // PHASE 1: Route payment to Program + Supplier
           if (phase === "route") {
+            console.log("[Route Render Debug]", { payRoutingsLength: payRoutings.length, payRoutings: payRoutings, allocPayId: allocPay && allocPay.paymentId, remaining: remaining });
             return <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div><div style={{ fontSize: 14, fontWeight: 700 }}>Step 1: Allocate Payment to Program & Supplier</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{allocPay.paymentId} — {money(allocPay.amount, allocPay.currency)} received {fmt(allocPay.date)}</div></div>
