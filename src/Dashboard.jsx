@@ -1758,10 +1758,6 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var disputedDate = dispEntry ? dispEntry.date : null;
     var daysOverdue = pastDue ? daysBetween(rawInv.dueDate, viewDate) : 0;
     var daysDisputed = (statusAsOfDate === "Disputed" && disputedDate) ? daysBetween(disputedDate, viewDate) : 0;
-    // Track whether processForDate has derived state that differs from what's stored on rawInv.
-    // Set to true at every mutation site below; if true at the end of the per-invoice block,
-    // we call saveInvoice to persist the drift back to Supabase. See block at end for rationale.
-    var needsPersist = false;
     // Capital/interest/holdback balances only apply once the invoice is actually funded (money advanced)
     var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
     var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
@@ -1902,7 +1898,6 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (paysForInv.length > 0) lastPayDate = paysForInv[paysForInv.length - 1].date;
       if (hbAppsForInv.length > 0 && hbAppsForInv[hbAppsForInv.length - 1].date > lastPayDate) lastPayDate = hbAppsForInv[hbAppsForInv.length - 1].date;
       rawInv.fullyRepaidDate = lastPayDate;
-      needsPersist = true;
       // If prior status was recovery_mode, log the legal repurchase event
       if (rawInv.fundingStatus === "recovery_mode" || rawInv.priorFundingStatus === "recovery_mode") {
         auditLog("Repurchased by Supplier", rawInv.id + " (recovery_mode) reached full repayment \u2014 legally repurchased by supplier " + rawInv.supplierName + " on " + lastPayDate, { invoiceId: rawInv.id, amount: rawInv.amount, currency: rawInv.currency, supplierId: rawInv.supplierId, supplier: rawInv.supplierName, buyerId: rawInv.buyerId, buyer: rawInv.buyerName, fullyRepaidDate: lastPayDate, fundingProgram: rawInv.fundingProgram, priorStatus: "recovery_mode" });
@@ -1910,7 +1905,6 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     } else if (fs !== "fully_repaid" && rawInv.fullyRepaidDate) {
       // Clear if no longer fully repaid (e.g. payment unallocated)
       rawInv.fullyRepaidDate = null;
-      needsPersist = true;
     }
     // Remember status for next tick (used for transition-based audit events)
     rawInv.priorFundingStatus = fs;
@@ -1929,37 +1923,11 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         rawInv.settledDate = settlePayDate;
         rawInv.invoiceStatusHistory = rawInv.invoiceStatusHistory || [];
         rawInv.invoiceStatusHistory.push({ status: "Settled", date: settlePayDate });
-        needsPersist = true;
       }
       statusAsOfDate = "Settled";
       // Re-evaluate funding status since settled with balance triggers recovery
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
     }
-    // === Persist derivations to rawInv and to Supabase ===
-    // processForDate is the ONLY place certain transitions are computed:
-    //   - fundingStatus: pending/purchased → funded → at_risk/overdue/recovery_mode → fully_repaid
-    //   - invoiceStatus: auto-Settled when buyer payments cross threshold (above)
-    //   - fullyRepaidDate, settledDate, invoiceStatusHistory: already mutated above with needsPersist=true
-    // Without this block these derivations only ever lived on the in-memory processed copy
-    // (Object.assign at end of function), so the DB drifted: stored funding_status reflected
-    // the last user-initiated transition (purchase, fund, recover) but never the implicit
-    // ones (fully_repaid, at_risk, overdue, auto-settle). Compare-then-conditional-save keeps
-    // this idempotent — once everything is reconciled, no writes fire.
-    if (rawInv.fundingStatus !== fs) {
-      rawInv.fundingStatus = fs;
-      needsPersist = true;
-    }
-    if (rawInv.invoiceStatus !== statusAsOfDate) {
-      rawInv.invoiceStatus = statusAsOfDate;
-      needsPersist = true;
-    }
-    if (needsPersist) {
-      // Fire-and-forget: saveInvoice is async with its own error handling and _isSaving
-      // serialisation. We do not await — processForDate must remain synchronous because
-      // it runs inside a useMemo on every render.
-      saveInvoice(rawInv.id);
-    }
-    // =====================================================================
     // For unfunded invoices, compute max available capital from eligible programs.
     // buyerCollected reduces fundable headroom — the portion already paid by the buyer
     // is no longer a receivable, so we can't advance against it.
@@ -14012,10 +13980,9 @@ export default function FactoringDashboard() {
           // Stats (always honour filters)
           // Read from viewData.invoices (the derived live view) rather than INVOICES_DB
           // (the raw cached rows). Every other tab in the app reads from viewData; this
-          // tab is now consistent. Today's processForDate persistence fix means the two
-          // sources contain the same data, but reading from viewData ensures we still
-          // show correct values even in the brief window before a status change has
-          // been persisted (or if a save fails).
+          // tab is now consistent. Note that this means stored funding_status in Supabase
+          // may differ from what's displayed here — the live view shows derived state, the
+          // DB stores last-known state. Reconciling those is a separate piece of work.
           var filteredForStats = applyInvlFilters(viewData.invoices);
           var statCount = filteredForStats.length;
           var statPending = filteredForStats.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
