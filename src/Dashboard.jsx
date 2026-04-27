@@ -13318,10 +13318,31 @@ export default function FactoringDashboard() {
                       var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routeProgV; });
                       if (routeCpType === "supplier") {
                         var supName = getEntityDisplayName(routeSupV) || routeSupV;
-                        setPayRoutings(function(prev) { return prev.concat([{ counterpartyType: "supplier", supplierId: routeSupV, supplierName: supName, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]); });
+                        // Merge into an existing routing for the same (supplierId, programId)
+                        // rather than appending a duplicate. Two routings with the same key
+                        // can't be distinguished in pay.allocations (which only carries
+                        // invoiceId+amount), so allowing duplicates breaks Edit Allocations.
+                        setPayRoutings(function(prev) {
+                          var idx = prev.findIndex(function(r) { return r.counterpartyType === "supplier" && r.supplierId === routeSupV && r.programId === routeProgV; });
+                          if (idx >= 0) {
+                            var merged = prev.slice();
+                            merged[idx] = Object.assign({}, merged[idx], { amount: r2(merged[idx].amount + amt) });
+                            return merged;
+                          }
+                          return prev.concat([{ counterpartyType: "supplier", supplierId: routeSupV, supplierName: supName, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]);
+                        });
                       } else {
                         var sp = SERVICE_PROVIDERS_DB.find(function(x) { return x.id === routeSpV; });
-                        setPayRoutings(function(prev) { return prev.concat([{ counterpartyType: "service_provider", serviceProviderId: routeSpV, serviceProviderName: sp ? sp.name : routeSpV, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]); });
+                        // Merge into existing routing for same (serviceProviderId, programId).
+                        setPayRoutings(function(prev) {
+                          var idx = prev.findIndex(function(r) { return r.counterpartyType === "service_provider" && r.serviceProviderId === routeSpV && r.programId === routeProgV; });
+                          if (idx >= 0) {
+                            var merged = prev.slice();
+                            merged[idx] = Object.assign({}, merged[idx], { amount: r2(merged[idx].amount + amt) });
+                            return merged;
+                          }
+                          return prev.concat([{ counterpartyType: "service_provider", serviceProviderId: routeSpV, serviceProviderName: sp ? sp.name : routeSpV, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]);
+                        });
                       }
                       setRouteProgV(""); setRouteSupV(""); setRouteSpV(""); setRouteAmtV(String(r2(remaining - amt)));
                     }} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: cpCanAllocate ? "var(--accent)" : "var(--border)", color: cpCanAllocate ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: cpCanAllocate ? "pointer" : "default", whiteSpace: "nowrap" }}>Allocate</button>
