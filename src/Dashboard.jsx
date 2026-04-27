@@ -35,6 +35,86 @@ function addDays(s, n) { var p = s.split("-"); var d = new Date(Date.UTC(parseIn
 function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); return Math.round((Date.UTC(parseInt(pb[0]), parseInt(pb[1]) - 1, parseInt(pb[2])) - Date.UTC(parseInt(pa[0]), parseInt(pa[1]) - 1, parseInt(pa[2]))) / 86400000); }
 function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 
+// ======== Tranche helpers ========
+// A "tranche" represents a discrete capital advance event on an invoice.
+// The full set of tranches is the source of truth for interest/capital math.
+
+// Synthesize a tranche from legacy invoice fields when tranches is empty/missing.
+// Idempotent — safe to call repeatedly. Returns a new array; does not mutate input.
+function synthesizeTranches(inv) {
+  if (Array.isArray(inv.tranches) && inv.tranches.length > 0) return inv.tranches;
+  if (!inv.fundedDate || !(inv.capitalDue > 0)) return [];
+  var term = daysBetween(inv.fundedDate, inv.dueDate);
+  if (term < 1) term = 1;
+  return [{
+    trancheId: "T1",
+    capital: r2(inv.capitalDue),
+    capitalRepaid: 0,
+    rate: inv.annualRate || 0,
+    advancedDate: inv.fundedDate,
+    term: term,
+    status: "active"
+  }];
+}
+
+// Sum the active capital across all tranches — i.e. capital that has been
+// advanced but not yet repaid. Equivalent to invoice.capitalDue under the
+// new model.
+function tranchesActiveCapital(tranches) {
+  if (!Array.isArray(tranches)) return 0;
+  return r2(tranches.reduce(function(s, t) { return s + Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0)); }, 0));
+}
+
+// Compute total interest charged across active tranches. Each tranche
+// contributes: outstanding_capital * (rate / 360) * term_days.
+function tranchesInterestCharged(tranches) {
+  if (!Array.isArray(tranches)) return 0;
+  return r2(tranches.reduce(function(s, t) {
+    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
+    if (outstanding <= 0) return s;
+    return s + outstanding * ((t.rate || 0) / 360) * (t.term || 0);
+  }, 0));
+}
+
+// Weighted-average rate across active tranches, by capital outstanding.
+// Used for display purposes only.
+function tranchesWeightedRate(tranches) {
+  if (!Array.isArray(tranches) || tranches.length === 0) return 0;
+  var num = 0, den = 0;
+  tranches.forEach(function(t) {
+    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
+    if (outstanding <= 0) return;
+    num += outstanding * (t.rate || 0);
+    den += outstanding;
+  });
+  return den > 0 ? num / den : 0;
+}
+
+// Apply a capital repayment FIFO across tranches.
+// Mutates tranches array. Returns { applied, remaining }.
+// Older tranches (earlier advancedDate) get paid back first.
+function applyCapitalRepaymentFIFO(tranches, amount) {
+  if (!Array.isArray(tranches) || amount <= 0) return { applied: 0, remaining: amount || 0 };
+  // Sort by advancedDate ascending — oldest first
+  var ordered = tranches.slice().sort(function(a, b) {
+    return (a.advancedDate || "") < (b.advancedDate || "") ? -1 : 1;
+  });
+  var remaining = amount;
+  var applied = 0;
+  for (var i = 0; i < ordered.length && remaining > 0.005; i++) {
+    var t = ordered[i];
+    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
+    if (outstanding <= 0.005) continue;
+    var take = Math.min(remaining, outstanding);
+    t.capitalRepaid = r2((t.capitalRepaid || 0) + take);
+    remaining -= take;
+    applied += take;
+    if (Math.abs((t.capital || 0) - t.capitalRepaid) < 0.005) t.status = "fully_repaid";
+    else t.status = "partially_repaid";
+  }
+  return { applied: r2(applied), remaining: r2(remaining) };
+}
+
 // ======== Entity ID helpers ========
 // Entity ID format: "SUP-001" (parent) or "SUP-001:BR-001" (branch)
 function parseEntityId(entityId) {
@@ -420,7 +500,7 @@ async function saveInvoice(invId) {
       invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
-      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
+      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
       notes: inv.notes || []
     };
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
@@ -627,7 +707,7 @@ function mapInvoiceRow(row) {
     invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
-    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
     notes: row.notes || [],
     csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
     intendedPaymentDate: row.intended_payment_date || null
@@ -786,7 +866,7 @@ async function loadPersistedData() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
           notes: row.notes || []
         });
       });
@@ -1001,7 +1081,7 @@ async function reloadForSupplier(supplierId) {
       invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
       invoiceStatusHistory: row.invoice_status_history || [],
       adjustments: row.adjustments || [],
-      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
       notes: row.notes || [],
       csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
       intendedPaymentDate: row.intended_payment_date || null
@@ -1120,7 +1200,7 @@ async function reloadInvoices() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
           notes: row.notes || []
         });
       });
@@ -1425,7 +1505,7 @@ async function savePersistedData() {
         invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
         invoice_status_history: inv.invoiceStatusHistory || [],
         adjustments: inv.adjustments || [],
-        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
+        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
         notes: inv.notes || []
       };
     });
@@ -1648,6 +1728,21 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   });
   INVOICES_DB.forEach(function(rawInv) {
     if (rawInv.invoiceDate > viewDate) return;
+    // Backfill tranches array for legacy invoices that pre-date the tranche model.
+    // Idempotent — re-running is safe. Persisted on next save (tranches field roundtrips through Supabase).
+    if ((!Array.isArray(rawInv.tranches) || rawInv.tranches.length === 0) && rawInv.fundedDate && rawInv.capitalDue > 0) {
+      rawInv.tranches = synthesizeTranches(rawInv);
+    }
+    // Derive capitalDue and interestCharged from tranches (tranches are source of truth).
+    // For invoices not yet funded (no tranches), keep the legacy values from the raw record.
+    if (Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
+      rawInv.capitalDue = tranchesActiveCapital(rawInv.tranches);
+      rawInv.interestCharged = tranchesInterestCharged(rawInv.tranches);
+      rawInv.annualRate = tranchesWeightedRate(rawInv.tranches);
+      rawInv.holdback = r2((rawInv.amount || 0) - rawInv.capitalDue);
+      rawInv.deferredPayment = r2(rawInv.holdback - rawInv.interestCharged);
+      rawInv.advanceRate = rawInv.amount > 0 ? rawInv.capitalDue / rawInv.amount : 0;
+    }
     var statusAsOfDate = "Received", histAsOfDate = [];
     for (var hi = 0; hi < rawInv.invoiceStatusHistory.length; hi++) {
       var hh = rawInv.invoiceStatusHistory[hi];
@@ -1673,6 +1768,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     else if (rawInv.dueDate < viewDate) penaltyStartDate = rawInv.dueDate;
     var penaltyDays = penaltyStartDate ? daysBetween(penaltyStartDate, viewDate) : 0;
     function cleanBal() { if (Math.abs(penBal) < 0.01) penBal = 0; if (Math.abs(intBal) < 0.01) intBal = 0; if (Math.abs(capBal) < 0.01) capBal = 0; if (Math.abs(hbBal) < 0.01) hbBal = 0; }
+    // Reset tranche repayment state — viewData recomputes it deterministically from payments
+    if (Array.isArray(rawInv.tranches)) {
+      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
+    }
     function applyPay(pay, allowPen) {
       var rem = pay.amount, toI = 0, toP = 0, toC = 0, toH = 0;
       if (allowPen && rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
@@ -1680,6 +1779,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
       if (rem > 0 && hbBal > 0.005) { var x4 = Math.min(rem, hbBal); hbBal -= x4; rem -= x4; toH = x4; hbRecd += x4; }
       cleanBal();
+      // Apply capital portion to tranches FIFO (oldest first). Updates capitalRepaid and tranche status.
+      if (toC > 0.005 && Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
+        applyCapitalRepaymentFIFO(rawInv.tranches, toC);
+      }
       annotatedPays.push(Object.assign({}, pay, {
         appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH),
         postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal)
@@ -1740,6 +1843,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (rem > 0 && intBal > 0.005) { var x2 = Math.min(rem, intBal); intBal -= x2; rem -= x2; toI = x2; }
       if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
       cleanBal();
+      // Apply capital portion to tranches FIFO (oldest first)
+      if (toC > 0.005 && Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
+        applyCapitalRepaymentFIFO(rawInv.tranches, toC);
+      }
       annotatedHbPays.push(Object.assign({}, hbApp, {
         appliedToPenalty: r2(toP), appliedToInterest: r2(toI), appliedToCapital: r2(toC)
       }));
@@ -3156,23 +3263,31 @@ export default function FactoringDashboard() {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     var progName = prog ? prog.name : raw.fundingProgram;
     if (isTopupFlow) {
-      // Execute top-up: increment capitalDue by pendingTopUpAmount, add to program balance, recompute interest, queue Completed CPQ.
+      // Execute top-up: push a new tranche, queue Completed CPQ.
+      // Capital + rate + interest are derived from tranches by viewData processing — no need to set them directly.
       var deltaCap = r2(raw.pendingTopUpAmount);
-      var topupRate = raw.pendingTopUpRate || raw.annualRate;
+      var topupRate = raw.pendingTopUpRate || 0;
       var topupDate = raw.pendingTopUpDate || viewDate;
-      raw.capitalDue = r2((raw.capitalDue || 0) + deltaCap);
-      raw.holdback = r2(raw.amount - raw.capitalDue);
-      raw.annualRate = topupRate;
-      raw.penaltyRate = topupRate * 1.5;
-      var term2 = daysBetween(topupDate, raw.dueDate);
-      if (term2 < 1) term2 = 1;
-      raw.daysToMaturity = term2;
-      raw.interestCharged = r2(raw.capitalDue * (topupRate / 360) * term2);
-      raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
-      raw.advanceRate = raw.amount > 0 ? raw.capitalDue / raw.amount : 0;
+      var termDays = daysBetween(topupDate, raw.dueDate);
+      if (termDays < 1) termDays = 1;
+      // Add the new tranche to the invoice
+      if (!Array.isArray(raw.tranches)) raw.tranches = [];
+      var nextTrancheNum = raw.tranches.length + 1;
+      raw.tranches.push({
+        trancheId: "T" + nextTrancheNum,
+        capital: deltaCap,
+        capitalRepaid: 0,
+        rate: topupRate,
+        advancedDate: topupDate,
+        term: termDays,
+        status: "active"
+      });
+      raw.penaltyRate = topupRate * 1.5;  // penalty rate tracks newest tranche for now
+      raw.intendedPaymentDate = topupDate;
       raw.pendingTopUpAmount = 0;
       raw.pendingTopUpRate = null;
       raw.pendingTopUpDate = null;
+      // Note: capitalDue, holdback, interestCharged, advanceRate, annualRate are recomputed from tranches in viewData.
       if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + deltaCap);
       var supplierTU = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
       var bankInfoTU = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
@@ -3188,12 +3303,14 @@ export default function FactoringDashboard() {
         createdDisplay: useDispTU,
         executedAt: nowTU.toISOString(),
         executedDisplay: useDispTU,
-        isTopup: true
+        isTopup: true,
+        trancheId: "T" + nextTrancheNum
       });
       saveInvoice(invId);
       if (prog) saveFundingProgram(prog.id);
       saveSPQEntry(cpIdTU);
-      auditLog("Funding Topped Up", invId + " topped up via " + progName + ": +" + money(deltaCap, raw.currency) + " advanced (now " + money(raw.capitalDue, raw.currency) + " total) \u2014 " + raw.supplierName + " (" + cpIdTU + ")", { invoiceId: invId, deltaCapital: deltaCap, newTotalCapital: raw.capitalDue, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpIdTU });
+      var totalCap = tranchesActiveCapital(raw.tranches);
+      auditLog("Funding Topped Up", invId + " topped up via " + progName + ": +" + money(deltaCap, raw.currency) + " advanced as tranche T" + nextTrancheNum + " at " + (topupRate * 100).toFixed(2) + "% (now " + money(totalCap, raw.currency) + " total across " + raw.tranches.length + " tranches) \u2014 " + raw.supplierName + " (" + cpIdTU + ")", { invoiceId: invId, deltaCapital: deltaCap, trancheId: "T" + nextTrancheNum, trancheRate: topupRate, trancheTerm: termDays, totalCapital: totalCap, totalTranches: raw.tranches.length, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpIdTU });
       setDataVer(function(v) { return v + 1; });
       return;
     }
@@ -3201,6 +3318,22 @@ export default function FactoringDashboard() {
     raw.fundingStatus = "funded";
     raw.fundedDate = raw.intendedPaymentDate || viewDate;
     if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + raw.capitalDue);
+    // Push T1 tranche (the initial advance) using the current capital + rate snapshot.
+    // Subsequent top-ups push additional tranches; capital/rate/interest fields become derived from tranches.
+    if (r2(raw.capitalDue) > 0) {
+      var initTerm = daysBetween(raw.fundedDate, raw.dueDate);
+      if (initTerm < 1) initTerm = 1;
+      if (!Array.isArray(raw.tranches)) raw.tranches = [];
+      raw.tranches.push({
+        trancheId: "T1",
+        capital: r2(raw.capitalDue),
+        capitalRepaid: 0,
+        rate: raw.annualRate || 0,
+        advancedDate: raw.fundedDate,
+        term: initTerm,
+        status: "active"
+      });
+    }
     // Zero-capital "funding" (arrears workflow) — transition state only, do NOT queue a £0 supplier payment
     if (r2(raw.capitalDue) <= 0) {
       saveInvoice(invId);
@@ -3395,6 +3528,8 @@ export default function FactoringDashboard() {
     raw.intendedPaymentDate = null;
     // Clear Do Not Advance flag — it only applies to purchased invoices
     raw.doNotAdvance = false;
+    // Clear tranches — invoice goes back to fresh pending state
+    raw.tranches = [];
     // Remove any associated payment queue entries for this invoice
     var removed = [];
     for (var qi = SUPPLIER_PAYMENT_QUEUE.length - 1; qi >= 0; qi--) {
@@ -3706,8 +3841,9 @@ export default function FactoringDashboard() {
             </div>
             <div>
               <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Annual Interest Rate (%)</label>
-              <input type="number" step="0.01" value={fundPopupFields.annualRate || ""} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { annualRate: e.target.value }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 16, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+              <input type="number" step="0.01" value={fundPopupFields.annualRate || ""} onChange={function(e) { setFundPopupFields(function(f) { return Object.assign({}, f, { annualRate: e.target.value }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 16, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} title={fundPopup && fundPopup.isTopup ? "This rate applies only to the new tranche. Existing tranches retain their original rates." : "Annual interest rate for this advance"} />
               {fundPopupFields.minRate > 0 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>Program minimum: {(fundPopupFields.minRate * 100).toFixed(2)}%</div>}
+              {fundPopup && fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ fontSize: 10, color: "var(--accent)", marginTop: 3, fontStyle: "italic" }}>This rate applies only to the new tranche. Existing capital keeps its original rate.</div>}
             </div>
             <div>
               <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Funding Date</label>
@@ -6308,8 +6444,36 @@ export default function FactoringDashboard() {
                                         return <div>
                                           {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
+                                          {Array.isArray(inv.tranches) && inv.tranches.length >= 2 && <div style={{ margin: "4px 0 8px 0", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "rgba(14,165,233,0.04)" }}>
+                                            <div style={{ fontSize: 9, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Tranches ({inv.tranches.length})</div>
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>
+                                              <thead><tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                                <th style={{ textAlign: "left", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>ID</th>
+                                                <th style={{ textAlign: "left", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Advanced</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Capital</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Repaid</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Rate</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Term</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Interest</th>
+                                              </tr></thead>
+                                              <tbody>{inv.tranches.map(function(t) {
+                                                var outst = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
+                                                var trInt = outst * ((t.rate || 0) / 360) * (t.term || 0);
+                                                var fullyPaid = t.status === "fully_repaid" || outst < 0.01;
+                                                return <tr key={t.trancheId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", opacity: fullyPaid ? 0.5 : 1 }}>
+                                                  <td style={{ padding: "3px 4px", color: "var(--accent)" }}>{t.trancheId}</td>
+                                                  <td style={{ padding: "3px 4px", color: "var(--text-secondary)" }}>{fmt(t.advancedDate)}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "var(--text)" }}>{money(t.capital || 0, inv.currency)}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: t.capitalRepaid > 0 ? "#059669" : "var(--muted)" }}>{t.capitalRepaid > 0 ? money(t.capitalRepaid, inv.currency) : "\u2014"}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "#D97706" }}>{((t.rate || 0) * 100).toFixed(2)}%</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "var(--text-secondary)" }}>{t.term}d</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "#D97706" }}>{money(r2(trInt), inv.currency)}</td>
+                                                </tr>;
+                                              })}</tbody>
+                                            </table>
+                                          </div>}
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>{Array.isArray(inv.tranches) && inv.tranches.length >= 2 ? "Initial Interest (all tranches)" : "Initial Interest"}</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
@@ -10335,8 +10499,36 @@ export default function FactoringDashboard() {
                                         return <div>
                                           {invIsFunded ? <>{/* Funded invoice — show actual capital/interest balances */}
                                           <div style={row}><span style={lbl}>Capital</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</span></div>
+                                          {Array.isArray(inv.tranches) && inv.tranches.length >= 2 && <div style={{ margin: "4px 0 8px 0", padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "rgba(14,165,233,0.04)" }}>
+                                            <div style={{ fontSize: 9, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Tranches ({inv.tranches.length})</div>
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>
+                                              <thead><tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                                <th style={{ textAlign: "left", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>ID</th>
+                                                <th style={{ textAlign: "left", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Advanced</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Capital</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Repaid</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Rate</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Term</th>
+                                                <th style={{ textAlign: "right", padding: "3px 4px", color: "var(--muted)", fontWeight: 500 }}>Interest</th>
+                                              </tr></thead>
+                                              <tbody>{inv.tranches.map(function(t) {
+                                                var outst = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
+                                                var trInt = outst * ((t.rate || 0) / 360) * (t.term || 0);
+                                                var fullyPaid = t.status === "fully_repaid" || outst < 0.01;
+                                                return <tr key={t.trancheId} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", opacity: fullyPaid ? 0.5 : 1 }}>
+                                                  <td style={{ padding: "3px 4px", color: "var(--accent)" }}>{t.trancheId}</td>
+                                                  <td style={{ padding: "3px 4px", color: "var(--text-secondary)" }}>{fmt(t.advancedDate)}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "var(--text)" }}>{money(t.capital || 0, inv.currency)}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: t.capitalRepaid > 0 ? "#059669" : "var(--muted)" }}>{t.capitalRepaid > 0 ? money(t.capitalRepaid, inv.currency) : "\u2014"}</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "#D97706" }}>{((t.rate || 0) * 100).toFixed(2)}%</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "var(--text-secondary)" }}>{t.term}d</td>
+                                                  <td style={{ padding: "3px 4px", textAlign: "right", color: "#D97706" }}>{money(r2(trInt), inv.currency)}</td>
+                                                </tr>;
+                                              })}</tbody>
+                                            </table>
+                                          </div>}
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Initial Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
+                                          <div style={row}><span style={lbl}>{Array.isArray(inv.tranches) && inv.tranches.length >= 2 ? "Initial Interest (all tranches)" : "Initial Interest"}</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
@@ -16798,7 +16990,7 @@ export default function FactoringDashboard() {
                     invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
                     invoice_status_history: inv.invoiceStatusHistory || [],
                     adjustments: inv.adjustments || [],
-                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
+                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
                     notes: inv.notes || []
                   };
                 });
