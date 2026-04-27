@@ -13058,7 +13058,7 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><Badge label={status} bg={sc + "14"} color={sc} border={sc + "30"} /></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
+                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); /* Reconstruct payRoutings from existing allocs so the route screen pre-fills on Edit. Group by (supplierId, programId) via the invoice's stored funding program; each group becomes one supplier-type routing. Allocs whose invoice can't be found or has no fundingProgram are skipped (defensive — shouldn't happen for funded invoices). */ var routingMap = {}; existingAllocs.forEach(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); if (!inv || !inv.fundingProgram) return; var key = inv.supplierId + "|" + inv.fundingProgram; if (!routingMap[key]) { var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; }); routingMap[key] = { counterpartyType: "supplier", supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "", amount: 0 }; } routingMap[key].amount += a.amount; }); var reconstructedRoutings = Object.keys(routingMap).map(function(k) { var r = routingMap[k]; r.amount = r2(r.amount); return r; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings(reconstructedRoutings); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -13453,7 +13453,23 @@ export default function FactoringDashboard() {
                     var first = payRoutings[firstSupIdx];
                     setAllocProgFilter(first.programId);
                     setAllocSupFilter(first.supplierName);
-                    setAllocs([]);
+                    // Per-routing preserve: if allocPay has prior allocs for this
+                    // (supplier, program), preload them. Mirrors the supplier-match
+                    // logic on the allocate-phase invoice filter so parent-entity
+                    // fallbacks line up.
+                    var preserved = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                      if (a.remittance) return false;
+                      var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                      if (!inv) return false;
+                      var supMatch = inv.supplierId === first.supplierId
+                        || getParentEntityId(inv.supplierId) === first.supplierId
+                        || inv.supplierName === first.supplierName
+                        || getParentSupplierName(inv.supplierName) === first.supplierName;
+                      if (!supMatch) return false;
+                      if (inv.fundingProgram !== first.programId) return false;
+                      return true;
+                    }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }) : [];
+                    setAllocs(preserved);
                   } else {
                     // All routings were Service Provider — save payment + close
                     if (allocPay) {
@@ -13625,7 +13641,21 @@ export default function FactoringDashboard() {
                   }
                   if (nextIdx < payRoutings.length) {
                     setActiveRouting(nextIdx);
-                    setAllocs([]);
+                    // Per-routing preserve (see route→allocate transition above for rationale).
+                    var nextRouting = payRoutings[nextIdx];
+                    var preservedNext = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                      if (a.remittance) return false;
+                      var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                      if (!inv) return false;
+                      var supMatch = inv.supplierId === nextRouting.supplierId
+                        || getParentEntityId(inv.supplierId) === nextRouting.supplierId
+                        || inv.supplierName === nextRouting.supplierName
+                        || getParentSupplierName(inv.supplierName) === nextRouting.supplierName;
+                      if (!supMatch) return false;
+                      if (inv.fundingProgram !== nextRouting.programId) return false;
+                      return true;
+                    }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }) : [];
+                    setAllocs(preservedNext);
                     setAllocProgFilter(payRoutings[nextIdx].programId);
                     setAllocSupFilter(payRoutings[nextIdx].supplierName);
                   } else {
