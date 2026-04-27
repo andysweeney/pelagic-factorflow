@@ -2872,10 +2872,16 @@ export default function FactoringDashboard() {
     if (!allocPay) return;
     // Filter out zero-amount entries — these are "removed" allocations
     var activeAllocs = allocs.filter(function(a) { return a.amount > 0.001; });
-    // Build affected invoice set from ALL allocs (including zeros) so existing allocations to zeroed invoices get removed
-    var aff = {}; allocs.forEach(function(a) { aff[a.invoiceId] = true; });
-    // Also include any existing payment allocations that aren't in the working set (they should be preserved)
-    // If activeAllocs is empty but there are affected invoices, this is an unallocation
+    // Affected invoice set:
+    //   (a) every invoice in the current working set (including zeroed-out rows), AND
+    //   (b) every invoice that was previously allocated by this payment (so removed rows get cleaned up).
+    // The user's working set IS the desired final state — anything not in it for this payment must be unallocated.
+    var aff = {};
+    allocs.forEach(function(a) { aff[a.invoiceId] = true; });
+    var existingPay = PAYMENTS_DB.find(function(p) { return p.paymentId === allocPay.paymentId; });
+    if (existingPay) {
+      existingPay.allocations.forEach(function(a) { if (!a.remittance) aff[a.invoiceId] = true; });
+    }
     if (activeAllocs.length === 0 && Object.keys(aff).length === 0) return;
     var later = [];
     PAYMENTS_DB.forEach(function(p) { if (p.paymentId === allocPay.paymentId || p.date <= allocPay.date) return; var c = p.allocations.filter(function(a) { return aff[a.invoiceId]; }); if (c.length > 0) later.push({ pid: p.paymentId, invs: c.map(function(a) { return a.invoiceId; }) }); });
