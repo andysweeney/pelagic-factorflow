@@ -13058,7 +13058,7 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><Badge label={status} bg={sc + "14"} color={sc} border={sc + "30"} /></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); /* Reconstruct payRoutings from existing allocs so the route screen pre-fills on Edit. Group by (supplierId, programId) via the invoice's stored funding program; each group becomes one supplier-type routing. Allocs whose invoice can't be found or has no fundingProgram are skipped (defensive — shouldn't happen for funded invoices). */ var routingMap = {}; existingAllocs.forEach(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); if (!inv || !inv.fundingProgram) return; var key = inv.supplierId + "|" + inv.fundingProgram; if (!routingMap[key]) { var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; }); routingMap[key] = { counterpartyType: "supplier", supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "", amount: 0 }; } routingMap[key].amount += a.amount; }); var reconstructedRoutings = Object.keys(routingMap).map(function(k) { var r = routingMap[k]; r.amount = r2(r.amount); return r; }); console.log("[EditAlloc Debug]", { paymentId: pay.paymentId, allAllocations: pay.allocations, filteredAllocs: existingAllocs, sampleInvoiceLookup: existingAllocs[0] ? INVOICES_DB.find(function(x) { return x.id === existingAllocs[0].invoiceId; }) : null, reconstructedRoutings: reconstructedRoutings }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings(reconstructedRoutings); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
+                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); /* Reconstruct payRoutings from existing allocs so the route screen pre-fills on Edit. Group by (supplierId, programId) via the invoice's stored funding program; each group becomes one supplier-type routing. Allocs whose invoice can't be found or has no fundingProgram are skipped (defensive — shouldn't happen for funded invoices). */ var routingMap = {}; existingAllocs.forEach(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); if (!inv || !inv.fundingProgram) return; var key = inv.supplierId + "|" + inv.fundingProgram; if (!routingMap[key]) { var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; }); routingMap[key] = { counterpartyType: "supplier", supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "", amount: 0 }; } routingMap[key].amount += a.amount; }); var reconstructedRoutings = Object.keys(routingMap).map(function(k) { var r = routingMap[k]; r.amount = r2(r.amount); return r; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings(reconstructedRoutings); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -13239,7 +13239,6 @@ export default function FactoringDashboard() {
 
           // PHASE 1: Route payment to Program + Supplier
           if (phase === "route") {
-            console.log("[Route Render Debug]", { payRoutingsLength: payRoutings.length, payRoutings: payRoutings, allocPayId: allocPay && allocPay.paymentId, remaining: remaining });
             return <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div><div style={{ fontSize: 14, fontWeight: 700 }}>Step 1: Allocate Payment to Program & Supplier</div><div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{allocPay.paymentId} — {money(allocPay.amount, allocPay.currency)} received {fmt(allocPay.date)}</div></div>
@@ -13528,7 +13527,7 @@ export default function FactoringDashboard() {
                 <div style={{ maxHeight: 300, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Invoice", "Buyer", "Due Date", "Penalty O/S", "Interest O/S", "Capital O/S", "Total O/S", "Allocate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 6px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).sort(function(a, b) { return (a.dueDate || "") < (b.dueDate || "") ? -1 : 1; }).map(function(inv) {
+                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01 || allocs.some(function(a) { return a.invoiceId === inv.id; }); }).sort(function(a, b) { return (a.dueDate || "") < (b.dueDate || "") ? -1 : 1; }).map(function(inv) {
                       var existing = allocs.find(function(a) { return a.invoiceId === inv.id; });
                       var currentAmt = existing ? existing.amount : 0;
                       var penOS = inv.penaltyInterest || 0;
@@ -13543,17 +13542,17 @@ export default function FactoringDashboard() {
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(capOS, inv.currency)}</td>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{money(inv.totalOutstanding, inv.currency)}</td>
                         <td style={{ padding: "6px 6px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
-                          var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding, routingRemaining + currentAmt));
+                          var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding + currentAmt, routingRemaining + currentAmt));
                           setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val }); return n; });
                         }} step="0.01" placeholder="0.00" style={{ width: 90, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
                         <td style={{ padding: "6px 6px", display: "flex", gap: 3 }}><button onClick={function() {
-                          var maxVal = r2(Math.min(inv.totalOutstanding, routingRemaining + currentAmt));
+                          var maxVal = r2(Math.min(inv.totalOutstanding + currentAmt, routingRemaining + currentAmt));
                           setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal }); return n; });
                         }} style={{ padding: "2px 5px", borderRadius: 3, border: "1px solid #10B98140", background: "#10B98110", color: "#10B981", fontSize: 8, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
                       </tr>;
                     })}</tbody>
                   </table>
-                  {routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices with outstanding balance for this supplier/program</div>}
+                  {routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01 || allocs.some(function(a) { return a.invoiceId === inv.id; }); }).length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices with outstanding balance for this supplier/program</div>}
                 </div>
               </div>
 
@@ -13573,6 +13572,25 @@ export default function FactoringDashboard() {
                   // Apply invoice allocations
                   if (allocs.length > 0 && pay) {
                     var activeAllocs = allocs.filter(function(a) { return a.amount > 0; });
+                    // Remove any existing allocations on this payment that belong to the
+                    // current routing's (supplier, program). Required because the Edit
+                    // Allocations flow preloads existing allocs into the form; without
+                    // this filter, confirming would append on top of them and double-count.
+                    // Per-routing scope leaves other routings' allocs untouched.
+                    pay.allocations = pay.allocations.filter(function(a) {
+                      if (a.remittance) return true;
+                      var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                      if (!inv) return true;
+                      var supMatch = inv.supplierId === routing.supplierId
+                        || getParentEntityId(inv.supplierId) === routing.supplierId
+                        || inv.supplierName === routing.supplierName
+                        || getParentSupplierName(inv.supplierName) === routing.supplierName;
+                      if (!supMatch) return true;
+                      if (inv.fundingProgram !== routing.programId) return true;
+                      // This alloc belongs to the current routing — drop it so the new
+                      // allocs (pushed below) replace rather than duplicate.
+                      return false;
+                    });
                     activeAllocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date }); });
 
                     // Check for holdback returns: if allocation fully repays an invoice, auto-create holdback disbursement
