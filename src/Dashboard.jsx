@@ -565,6 +565,77 @@ async function saveFundingProgram(progId) {
   _isSaving = false;
 }
 
+// Persist derived invoice state (fundingStatus, invoiceStatus, fullyRepaidDate,
+// settledDate, invoiceStatusHistory) back to Supabase after admin actions that
+// change balances. Without this, processForDate's derivations live only on the
+// in-memory processed copy and Supabase drifts away from current truth.
+//
+// This function fires from ADMIN EVENT HANDLERS (payment alloc/unalloc, CN alloc,
+// HB save). It does NOT fire from inside useMemo or render — that creates a
+// save→echo→re-render→save loop. Time-based transitions (funded → overdue across
+// midnight) are NOT caught here; those are handled by a server-side cron job
+// (separate work).
+//
+// CALLER PROVIDES:
+//   invoiceIds — array of IDs the action affected (not the whole book)
+//   viewDate   — date to derive against. In production always today; in test
+//                mode this respects the As-of Date so testing time-shifted
+//                scenarios (e.g. simulating an overdue invoice repayment in the
+//                future) writes the correct as-of-that-date state. A console
+//                warning fires when viewDate is not REF_DATE so accidental
+//                writes against a scrubbed historical date are noticeable.
+async function persistDerivedFieldsForInvoices(invoiceIds, viewDate) {
+  if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) return;
+  if (viewDate && viewDate !== REF_DATE) {
+    console.warn("[Persist] Writing invoice state derived against historical viewDate " + viewDate + " (REF_DATE is " + REF_DATE + "). DB will reflect as-of-that-date state, overwriting current. Affected invoices: " + invoiceIds.join(", "));
+  }
+  // Snapshot mutable raw fields BEFORE processForDate runs — it mutates them as
+  // side effects (fullyRepaidDate at line ~1900, settledDate / invoiceStatusHistory
+  // at line ~1923-25). Without this snapshot we can't tell if those changed.
+  var pre = {};
+  invoiceIds.forEach(function(id) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === id; });
+    if (!raw) return;
+    pre[id] = {
+      fullyRepaidDate: raw.fullyRepaidDate,
+      settledDate: raw.settledDate,
+      invoiceStatusHistoryLen: (raw.invoiceStatusHistory || []).length
+    };
+  });
+  // Re-derive. processForDate is deterministic (post-tranche-fix); calling it
+  // here gives the same answer the in-flight viewData useMemo would.
+  var derived = processForDate(viewDate || REF_DATE, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
+  var derivedById = {};
+  derived.invoices.forEach(function(p) { derivedById[p.id] = p; });
+  for (var i = 0; i < invoiceIds.length; i++) {
+    var id = invoiceIds[i];
+    var raw = INVOICES_DB.find(function(x) { return x.id === id; });
+    var d = derivedById[id];
+    var p = pre[id];
+    if (!raw || !d || !p) continue;
+    var dirty = false;
+    // fundingStatus and invoiceStatus live ONLY on the processed copy — write back.
+    if (raw.fundingStatus !== d.fundingStatus) {
+      raw.fundingStatus = d.fundingStatus;
+      dirty = true;
+    }
+    if (raw.invoiceStatus !== d.invoiceStatus) {
+      raw.invoiceStatus = d.invoiceStatus;
+      dirty = true;
+    }
+    // fullyRepaidDate / settledDate / invoiceStatusHistory were mutated on raw
+    // by processForDate above. Detect change via pre-snapshot comparison.
+    if (raw.fullyRepaidDate !== p.fullyRepaidDate) dirty = true;
+    if (raw.settledDate !== p.settledDate) dirty = true;
+    if ((raw.invoiceStatusHistory || []).length !== p.invoiceStatusHistoryLen) dirty = true;
+    if (dirty) {
+      // Sequential await — relies on _isSaving guard inside saveInvoice and
+      // avoids burst writes that could trip rate limits at scale.
+      await saveInvoice(id);
+    }
+  }
+}
+
 async function savePayment(paymentId) {
   var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === paymentId; });
   if (!pay) return;
@@ -2955,9 +3026,15 @@ export default function FactoringDashboard() {
     });
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
+    // Persist derived state for affected invoices: every invoice in the working
+    // set (including zeroed-out ones, which need cleanup) plus any displaced by
+    // re-allocation. Fire-and-forget — saveInvoice is sequential internally.
+    var affectedIds = Object.keys(aff);
+    later.forEach(function(l) { l.invs.forEach(function(invId) { if (affectedIds.indexOf(invId) < 0) affectedIds.push(invId); }); });
+    persistDerivedFieldsForInvoices(affectedIds, viewDate);
     setTimeout(function() { setSuccessMsg(null); }, 12000);
   }
-  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); } }
+  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); persistDerivedFieldsForInvoices(oldAllocs.map(function(a) { return a.invoiceId; }), viewDate); } }
   function createPayment() {
     if (!newPayAmt || parseFloat(newPayAmt) <= 0) return;
     var payAmt = r2(parseFloat(newPayAmt));
@@ -3757,6 +3834,10 @@ export default function FactoringDashboard() {
     saveHoldbackPayment(hbpId);
     auditLog("Holdback Payment Cancelled", hbpId + " cancelled from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (" + money(hbp.amount, hbp.currency) + " restored to holdback available)", { hbPaymentId: hbpId, sourceInvoiceId: hbp.sourceInvoiceId, amount: hbp.amount, currency: hbp.currency, allocations: hbp.allocations, removedQueueEntries: spqToRemove.length });
     setDataVer(function(v) { return v + 1; });
+    // Affected invoices: source plus any non-disbursement targets (which are invoice IDs).
+    var hbpAffected = [hbp.sourceInvoiceId];
+    hbp.allocations.forEach(function(a) { if (a.type !== "disbursement" && a.targetId && hbpAffected.indexOf(a.targetId) < 0) hbpAffected.push(a.targetId); });
+    persistDerivedFieldsForInvoices(hbpAffected, viewDate);
   }
 
   function cancelQueuedPayment(spqId) {
@@ -3833,6 +3914,7 @@ export default function FactoringDashboard() {
     setHbSuccessMsg({ hbId: hbId, sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: [], currency: hbDisburseInv.currency, total: supAmt });
     setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt("");
     setDataVer(function(v) { return v + 1; });
+    persistDerivedFieldsForInvoices([hbDisburseInv.id], viewDate);
     setTimeout(function() { setHbSuccessMsg(null); }, 12000);
   }
 
@@ -13472,6 +13554,10 @@ export default function FactoringDashboard() {
                     // showing in the bank statement — no separate fund flow entry needed
 
                     auditLog("Payment Allocated", allocPay.paymentId + ": " + money(allocTotal, allocPay.currency) + " applied to " + activeAllocs.length + " invoice(s) for " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, amount: allocTotal, currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, programId: routing.programId, programName: routing.programName, allocations: activeAllocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }) });
+                    // Persist derived state for the invoices this routing affected.
+                    // Includes any invoices that auto-queued HB returns above (they're
+                    // a subset of activeAllocs since HB return only fires for fully-repaid).
+                    persistDerivedFieldsForInvoices(activeAllocs.map(function(a) { return a.invoiceId; }), viewDate);
                   }
 
                   // Pass-through remainder to supplier
@@ -13592,6 +13678,10 @@ export default function FactoringDashboard() {
             if (!allocCN) return;
             var cn = CREDIT_NOTES_DB.find(function(c) { return c.creditNoteId === allocCN.creditNoteId; });
             if (!cn) return;
+            // Capture pre-existing allocations for persistence (these invoices' balances
+            // will change because the CN is being re-allocated away from them).
+            var preAffected = {};
+            cn.allocations.forEach(function(a) { preAffected[a.invoiceId] = true; });
             // Clear existing allocations and re-apply from allocs state
             cn.allocations = [];
             var totalAlloc = 0;
@@ -13599,12 +13689,14 @@ export default function FactoringDashboard() {
               if (a.amount > 0) {
                 cn.allocations.push({ invoiceId: a.invoiceId, amount: a.amount });
                 totalAlloc += a.amount;
+                preAffected[a.invoiceId] = true;
               }
             });
             saveCreditNote(allocCN.creditNoteId);
     auditLog("Credit Note Allocated", cn.creditNoteId + ": " + money(totalAlloc, cn.currency) + " allocated to " + cn.allocations.length + " invoice(s)", { creditNoteId: cn.creditNoteId, amount: totalAlloc, currency: cn.currency, allocations: cn.allocations.slice() });
             setAllocCN(null); setAllocs([]);
             setDataVer(function(v) { return v + 1; });
+            persistDerivedFieldsForInvoices(Object.keys(preAffected), viewDate);
           }
 
           return <div>
@@ -13783,6 +13875,7 @@ export default function FactoringDashboard() {
                                     saveCreditNote(cn.creditNoteId);
     auditLog("Credit Note Unallocated", cn.creditNoteId + ": " + money(removedAmt, cn.currency) + " unallocated from " + removedInvId, { creditNoteId: cn.creditNoteId, invoiceId: removedInvId, amount: removedAmt, currency: cn.currency });
                                     setDataVer(function(v) { return v + 1; });
+                                    persistDerivedFieldsForInvoices([removedInvId], viewDate);
                                   }} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Unallocate</button></td>
                                 </tr>;
                               })}</tbody>
