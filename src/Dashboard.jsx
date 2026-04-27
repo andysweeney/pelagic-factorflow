@@ -643,6 +643,14 @@ async function persistDerivedFieldsForInvoices(invoiceIds, viewDate) {
     if (raw.fullyRepaidDate !== p.fullyRepaidDate) dirty = true;
     if (raw.settledDate !== p.settledDate) dirty = true;
     if ((raw.invoiceStatusHistory || []).length !== p.invoiceStatusHistoryLen) dirty = true;
+    if (id === "INV-0000001" || id === "INV-0000002") {
+      console.log("[Persist Debug]", {
+        id: id,
+        preSettledDate: p.settledDate,
+        rawSettledDateAfterDerive: raw.settledDate,
+        dirty: dirty
+      });
+    }
     if (dirty) {
       // Sequential await — relies on _isSaving guard inside saveInvoice and
       // avoids burst writes that could trip rate limits at scale.
@@ -2010,10 +2018,26 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     // historical case of invoices Settled before saveInvoice persisted the
     // field. Without this, processForDate's existing auto-settle block won't
     // populate it because that block is gated on statusAsOfDate !== "Settled".
+    if (rawInv.id === "INV-0000001" || rawInv.id === "INV-0000002") {
+      console.log("[Settled Backfill Debug]", {
+        id: rawInv.id,
+        statusAsOfDate: statusAsOfDate,
+        rawSettledDate: rawInv.settledDate,
+        rawSettledDateFalsy: !rawInv.settledDate,
+        historyIsArray: Array.isArray(rawInv.invoiceStatusHistory),
+        historyLen: (rawInv.invoiceStatusHistory || []).length,
+        history: rawInv.invoiceStatusHistory,
+        viewDate: viewDate,
+        conditionMatches: statusAsOfDate === "Settled" && !rawInv.settledDate && Array.isArray(rawInv.invoiceStatusHistory)
+      });
+    }
     if (statusAsOfDate === "Settled" && !rawInv.settledDate && Array.isArray(rawInv.invoiceStatusHistory)) {
       for (var sh = 0; sh < rawInv.invoiceStatusHistory.length; sh++) {
         if (rawInv.invoiceStatusHistory[sh].status === "Settled") {
           rawInv.settledDate = rawInv.invoiceStatusHistory[sh].date;
+          if (rawInv.id === "INV-0000001" || rawInv.id === "INV-0000002") {
+            console.log("[Settled Backfill Debug] ASSIGNED", { id: rawInv.id, settledDate: rawInv.settledDate });
+          }
           break;
         }
       }
