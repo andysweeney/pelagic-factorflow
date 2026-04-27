@@ -3630,7 +3630,7 @@ export default function FactoringDashboard() {
   }
   cols.push({ key: "_x", label: "" });
 
-  var rootStyle = { "--bg": "#0B1120", "--card": "#131C2E", "--card-hover": "#1A2540", "--border": "#1C2A42", "--text": "#E2E8F0", "--text-secondary": "#CBD5E1", "--muted": "#64748B", "--accent": "#0EA5E9", "--accent-hover": "#0284C7", "--sidebar-bg": "#0F172A", "--sidebar-text": "#CBD5E1", "--sidebar-active": "#0EA5E9", "--danger": "#EF4444", "--warning": "#F59E0B", "--success": "#10B981", "--purple": "#8B5CF6", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif", fontSize: 14, padding: 0, margin: 0, lineHeight: 1.5 };
+  var rootStyle = { "--bg": "#586076", "--card": "#131C2E", "--card-hover": "#1F2940", "--border": "#3D4760", "--text": "#E2E8F0", "--text-secondary": "#CBD5E1", "--muted": "#94A3B8", "--accent": "#0EA5E9", "--accent-hover": "#0284C7", "--sidebar-bg": "#3A4358", "--sidebar-text": "#CBD5E1", "--sidebar-active": "#0EA5E9", "--danger": "#EF4444", "--warning": "#F59E0B", "--success": "#10B981", "--purple": "#8B5CF6", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif", fontSize: 14, padding: 0, margin: 0, lineHeight: 1.5 };
 
   return (
     <div style={rootStyle}>
@@ -5599,7 +5599,7 @@ export default function FactoringDashboard() {
             })()
             )
           ),
-          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #1C2A42; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #2A3F5F; }\n" } })
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
