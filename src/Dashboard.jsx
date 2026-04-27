@@ -503,6 +503,20 @@ async function saveInvoice(invId) {
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
       do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+      // Derived columns, populated by processForDate via persistDerivedFieldsForInvoices.
+      // Nullable: rows that haven't been re-derived yet write null and the cron skips them.
+      // The cron reads these to evaluate time-based funding status transitions without
+      // re-implementing the balance / history-walk logic in SQL.
+      capital_outstanding: (inv.capitalOutstanding === undefined || inv.capitalOutstanding === null) ? null : inv.capitalOutstanding,
+      interest_outstanding: (inv.interestOutstanding === undefined || inv.interestOutstanding === null) ? null : inv.interestOutstanding,
+      penalty_outstanding: (inv.penaltyOutstanding === undefined || inv.penaltyOutstanding === null) ? null : inv.penaltyOutstanding,
+      holdback_outstanding: (inv.holdbackOutstanding === undefined || inv.holdbackOutstanding === null) ? null : inv.holdbackOutstanding,
+      holdback_overdrawn: (inv.holdbackOverdrawn === undefined || inv.holdbackOverdrawn === null) ? null : inv.holdbackOverdrawn,
+      debt_balance: (inv.debtBalance === undefined || inv.debtBalance === null) ? null : inv.debtBalance,
+      balance_owed: (inv.balanceOwed === undefined || inv.balanceOwed === null) ? null : inv.balanceOwed,
+      amount_post_dilutions: (inv.amountPostDilutions === undefined || inv.amountPostDilutions === null) ? null : inv.amountPostDilutions,
+      current_invoice_status: inv.currentInvoiceStatus || null,
+      disputed_date: inv.disputedDate || null,
       notes: inv.notes || []
     };
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
@@ -2026,6 +2040,23 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       }
     }
     var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
+    // Mutate rawInv with the 10 derived fields that processForDate computes but
+    // that don't otherwise live on raw. Persisted to Supabase by saveInvoice so
+    // the server-side cron (time-based status transitions) can read them without
+    // re-implementing the balance and history-walk logic in SQL.
+    // Mirrors the existing side-effect pattern for fullyRepaidDate / settledDate /
+    // invoiceStatusHistory above. Confined to the persistence path — processForDate's
+    // return shape is unchanged, in-memory consumers still read off the processed copy.
+    rawInv.capitalOutstanding = r2(capBal);
+    rawInv.interestOutstanding = r2(intBal);
+    rawInv.penaltyOutstanding = r2(penBal);
+    rawInv.holdbackOutstanding = r2(hbBal);
+    rawInv.holdbackOverdrawn = r2(holdbackOverdrawn);
+    rawInv.debtBalance = r2(debtBal);
+    rawInv.balanceOwed = r2(balOwed);
+    rawInv.amountPostDilutions = r2(amtPostDil);
+    rawInv.currentInvoiceStatus = statusAsOfDate;
+    rawInv.disputedDate = disputedDate || null;
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
@@ -3262,7 +3293,12 @@ export default function FactoringDashboard() {
     }
 
     if (statusChanges.length > 0) changes.push("Status: " + statusChanges.join(", "));
-    saveInvoice(editInv);
+    // Route through persistDerivedFieldsForInvoices so the derived columns
+    // (current_invoice_status, disputed_date, balances) are recomputed and
+    // persisted alongside the manual edit. Without this, an admin status edit
+    // would leave the new derived columns stale in Supabase until the next
+    // payment / CN / HBP event on this invoice.
+    persistDerivedFieldsForInvoices([editInv], viewDate);
     auditLog("Invoice Edited", editInv + " edited: " + (changes.length > 0 ? changes.join("; ") : "no field changes"), { invoiceId: editInv, changes: changes });
     setEditInv(null); setEditFields({});
     setDataVer(function(v) { return v + 1; });
