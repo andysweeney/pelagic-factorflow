@@ -5858,7 +5858,7 @@ export default function FactoringDashboard() {
           <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 36, filter: "drop-shadow(0 0 6px rgba(14,165,233,0.3)) drop-shadow(0 0 2px rgba(255,255,255,0.6))" }} />
-              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "#64748B", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
+              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
             </div>
             <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
@@ -5868,7 +5868,7 @@ export default function FactoringDashboard() {
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#64748B", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
         </div>
         {sidebarOpen && <div onClick={function() { setSidebarOpen(false); }} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} className="ff-sidebar-overlay" />}
@@ -5884,12 +5884,12 @@ export default function FactoringDashboard() {
           <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#64748B", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
           <div style={{ padding: "12px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
             <div style={{ fontSize: 10, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
-            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "#64748B", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
+            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
           </div>
         </div>
         {/* Main Content */}
@@ -6367,8 +6367,8 @@ export default function FactoringDashboard() {
           return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 22 }}>
             <StatCard label="Invoiced" value={money(r2(supTotal), dc)} sub={filtered.length + " invoice" + (filtered.length === 1 ? "" : "s")} accent="#0EA5E9" />
             <StatCard label="Cash Advanced" value={money(r2(supCapAdv), dc)} sub="to date" accent="#10B981" />
-            <StatCard label="Capital O/S" value={money(r2(supCapOS), dc)} sub={overdueCount > 0 ? overdueCount + " overdue" : "all current"} accent={overdueCount > 0 ? "#F59E0B" : "#64748B"} />
-            <StatCard label="Pending Funding" value={String(pendingCount)} sub={pendingCount > 0 ? "awaiting decision" : "\u2014"} accent={pendingCount > 0 ? "#38BDF8" : "#64748B"} />
+            <StatCard label="Capital O/S" value={money(r2(supCapOS), dc)} sub={overdueCount > 0 ? overdueCount + " overdue" : "all current"} accent={overdueCount > 0 ? "#F59E0B" : "#94A3B8"} />
+            <StatCard label="Pending Funding" value={String(pendingCount)} sub={pendingCount > 0 ? "awaiting decision" : "\u2014"} accent={pendingCount > 0 ? "#38BDF8" : "#94A3B8"} />
           </div>;
         })()}
         {!isM && !isI && !isUI && !isB && !isP && !isCN && !isS && !isF && !isC && <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 22 }}><div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Monthly Volume</div><MiniChart data={viewData.chartData} /></div>}
@@ -7711,8 +7711,8 @@ export default function FactoringDashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
               <StatCard label="Payments Touching Supplier" value={String(allSupPays.length)} sub={supPays.length !== allSupPays.length ? supPays.length + " shown" : "\u2014"} accent="#0EA5E9" />
               <StatCard label="Allocated to Supplier" value={money(r2(totalAllocated), displayCcy)} sub={allSupPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allSupPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent="#10B981" />
-              <StatCard label="Pass-through" value={passthroughCount > 0 ? money(r2(totalPassthrough), displayCcy) : "\u2014"} sub={passthroughCount > 0 ? passthroughCount + " remittance" + (passthroughCount === 1 ? "" : "s") : "none"} accent={passthroughCount > 0 ? "#8B5CF6" : "#64748B"} />
-              <StatCard label="Holdback Returned" value={holdbackCount > 0 ? money(r2(totalHoldbackReturn), displayCcy) : "\u2014"} sub={holdbackCount > 0 ? holdbackCount + " disbursal" + (holdbackCount === 1 ? "" : "s") : "none"} accent={holdbackCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Pass-through" value={passthroughCount > 0 ? money(r2(totalPassthrough), displayCcy) : "\u2014"} sub={passthroughCount > 0 ? passthroughCount + " remittance" + (passthroughCount === 1 ? "" : "s") : "none"} accent={passthroughCount > 0 ? "#8B5CF6" : "#94A3B8"} />
+              <StatCard label="Holdback Returned" value={holdbackCount > 0 ? money(r2(totalHoldbackReturn), displayCcy) : "\u2014"} sub={holdbackCount > 0 ? holdbackCount + " disbursal" + (holdbackCount === 1 ? "" : "s") : "none"} accent={holdbackCount > 0 ? "#D97706" : "#94A3B8"} />
             </div>
 
             {/* Filter bar */}
@@ -7945,9 +7945,9 @@ export default function FactoringDashboard() {
           return <div>
             {/* Stat cards — 4 filter-independent totals for context */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Holdback Payments (HBPs)" value={String(allSupHbps.length)} sub={totalSupReturn > 0 ? money(r2(totalSupReturn), displayCcy) + " to supplier" : "none returned to supplier"} accent={allSupHbps.length > 0 ? "#8B5CF6" : "#64748B"} />
-              <StatCard label="Re-allocated to Invoices" value={totalInvAlloc > 0 ? money(r2(totalInvAlloc), displayCcy) : "\u2014"} sub={totalInvAlloc > 0 ? "from HBP allocations" : "none"} accent={totalInvAlloc > 0 ? "#D97706" : "#64748B"} />
-              <StatCard label="Remittance Payments" value={String(allSupRemittances.length)} sub={allSupRemittances.length > 0 ? money(r2(remTotal), displayCcy) + " total" : "none"} accent={allSupRemittances.length > 0 ? "#0EA5E9" : "#64748B"} />
+              <StatCard label="Holdback Payments (HBPs)" value={String(allSupHbps.length)} sub={totalSupReturn > 0 ? money(r2(totalSupReturn), displayCcy) + " to supplier" : "none returned to supplier"} accent={allSupHbps.length > 0 ? "#8B5CF6" : "#94A3B8"} />
+              <StatCard label="Re-allocated to Invoices" value={totalInvAlloc > 0 ? money(r2(totalInvAlloc), displayCcy) : "\u2014"} sub={totalInvAlloc > 0 ? "from HBP allocations" : "none"} accent={totalInvAlloc > 0 ? "#D97706" : "#94A3B8"} />
+              <StatCard label="Remittance Payments" value={String(allSupRemittances.length)} sub={allSupRemittances.length > 0 ? money(r2(remTotal), displayCcy) + " total" : "none"} accent={allSupRemittances.length > 0 ? "#0EA5E9" : "#94A3B8"} />
               <StatCard label="Remittance Status" value={remFailed > 0 ? String(remFailed) + " failed" : remQueued > 0 ? String(remQueued) + " queued" : "\u2713 all settled"} sub={remFailed > 0 ? "needs attention" : remQueued > 0 ? "awaiting processing" : allSupRemittances.length + " completed"} accent={remFailed > 0 ? "#EF4444" : remQueued > 0 ? "#D97706" : "#10B981"} />
             </div>
 
@@ -8177,10 +8177,10 @@ export default function FactoringDashboard() {
           return <div>
             {/* D: Filter-aware stat cards \u2014 values stay stable as anchors, sub-text adds filtered count when active */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Funding Payments" value={String(allSupFunding.length)} sub={fpHasActive && supFunding.length !== allSupFunding.length ? supFunding.length + " shown" : (allSupFunding.length === 0 ? "none" : "funding only")} accent={allSupFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
-              <StatCard label="Total Funded" value={money(r2(totalFunding), displayCcy)} sub={fpHasActive && supFunding.length !== allSupFunding.length ? money(r2(supFunding.reduce(function(s, fp) { return s + fp.amount; }, 0)), displayCcy) + " shown" : "gross of deductions"} accent={totalFunding > 0 ? "#10B981" : "#64748B"} />
-              <StatCard label="Completed" value={String(completedCount)} sub={fpHasActive ? supFunding.filter(function(fp) { return fp.status === "Completed"; }).length + " shown" : (completedCount > 0 ? "settled" : "\u2014")} accent={completedCount > 0 ? "#10B981" : "#64748B"} />
-              <StatCard label="Pending" value={String(pendingCount)} sub={fpHasActive ? supFunding.filter(function(fp) { return fp.status === "Pending"; }).length + " shown" : (pendingCount > 0 ? "awaiting execution" : "none")} accent={pendingCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Funding Payments" value={String(allSupFunding.length)} sub={fpHasActive && supFunding.length !== allSupFunding.length ? supFunding.length + " shown" : (allSupFunding.length === 0 ? "none" : "funding only")} accent={allSupFunding.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+              <StatCard label="Total Funded" value={money(r2(totalFunding), displayCcy)} sub={fpHasActive && supFunding.length !== allSupFunding.length ? money(r2(supFunding.reduce(function(s, fp) { return s + fp.amount; }, 0)), displayCcy) + " shown" : "gross of deductions"} accent={totalFunding > 0 ? "#10B981" : "#94A3B8"} />
+              <StatCard label="Completed" value={String(completedCount)} sub={fpHasActive ? supFunding.filter(function(fp) { return fp.status === "Completed"; }).length + " shown" : (completedCount > 0 ? "settled" : "\u2014")} accent={completedCount > 0 ? "#10B981" : "#94A3B8"} />
+              <StatCard label="Pending" value={String(pendingCount)} sub={fpHasActive ? supFunding.filter(function(fp) { return fp.status === "Pending"; }).length + " shown" : (pendingCount > 0 ? "awaiting execution" : "none")} accent={pendingCount > 0 ? "#D97706" : "#94A3B8"} />
             </div>
 
             {/* G: Filter bar */}
@@ -8796,10 +8796,10 @@ export default function FactoringDashboard() {
           return <div>
             {/* Filter-aware stat cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Invoices" value={String(allBuyInvs.length)} sub={biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " shown" : (allBuyInvs.length === 0 ? "none" : (disputedCount > 0 ? disputedCount + " disputed" : "all"))} accent={allBuyInvs.length > 0 ? "#0EA5E9" : "#64748B"} />
-              <StatCard label="Invoiced" value={money(r2(totalInv), displayCcy)} sub={biHasActive ? "filtered" : "gross amount"} accent={totalInv > 0 ? "#D97706" : "#64748B"} />
-              <StatCard label="Cash Advanced" value={money(r2(totalCapAdv), displayCcy)} sub="to date" accent={totalCapAdv > 0 ? "#10B981" : "#64748B"} />
-              <StatCard label="Capital O/S" value={money(r2(totalCapOS), displayCcy)} sub={overdueCount > 0 ? overdueCount + " overdue" : "all current"} accent={overdueCount > 0 ? "#F59E0B" : "#64748B"} />
+              <StatCard label="Invoices" value={String(allBuyInvs.length)} sub={biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " shown" : (allBuyInvs.length === 0 ? "none" : (disputedCount > 0 ? disputedCount + " disputed" : "all"))} accent={allBuyInvs.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+              <StatCard label="Invoiced" value={money(r2(totalInv), displayCcy)} sub={biHasActive ? "filtered" : "gross amount"} accent={totalInv > 0 ? "#D97706" : "#94A3B8"} />
+              <StatCard label="Cash Advanced" value={money(r2(totalCapAdv), displayCcy)} sub="to date" accent={totalCapAdv > 0 ? "#10B981" : "#94A3B8"} />
+              <StatCard label="Capital O/S" value={money(r2(totalCapOS), displayCcy)} sub={overdueCount > 0 ? overdueCount + " overdue" : "all current"} accent={overdueCount > 0 ? "#F59E0B" : "#94A3B8"} />
             </div>
 
             {/* Filter bar */}
@@ -8989,9 +8989,9 @@ export default function FactoringDashboard() {
           return <div>
             {/* Filter-aware stat cards — 4 cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Payments from Buyer" value={String(allBuyPays.length)} sub={baHasActive && buyPays.length !== allBuyPays.length ? buyPays.length + " shown" : (allBuyPays.length === 0 ? "none" : "total")} accent={allBuyPays.length > 0 ? "#0EA5E9" : "#64748B"} />
-              <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#64748B"} />
-              <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#64748B"} />
+              <StatCard label="Payments from Buyer" value={String(allBuyPays.length)} sub={baHasActive && buyPays.length !== allBuyPays.length ? buyPays.length + " shown" : (allBuyPays.length === 0 ? "none" : "total")} accent={allBuyPays.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+              <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#94A3B8"} />
+              <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allBuyPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#94A3B8"} />
               <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
             </div>
 
@@ -10053,10 +10053,10 @@ export default function FactoringDashboard() {
               return <div>
                 {/* Filter-aware stat cards (4 cards) */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Invoices" value={String(allProgInvsTab.length)} sub={piHasActive && fInvs.length !== allProgInvsTab.length ? fInvs.length + " shown" : (allProgInvsTab.length === 0 ? "none" : "in this program")} accent={allProgInvsTab.length > 0 ? "#0EA5E9" : "#64748B"} />
-                  <StatCard label="Capital Advanced" value={money(r2(fundedSum), displayCcy)} sub="funded to date" accent={fundedSum > 0 ? "#10B981" : "#64748B"} />
-                  <StatCard label="Awaiting Funding" value={String(approvedCount)} sub={approvedCount > 0 ? money(r2(approvedSum), displayCcy) : "\u2014"} accent={approvedCount > 0 ? "#38BDF8" : "#64748B"} />
-                  <StatCard label="Overdue / Outstanding" value={String(overdueCount)} sub={totalOS > 0 ? money(r2(totalOS), displayCcy) + " O/S" : "none"} accent={overdueCount > 0 ? "#F59E0B" : "#64748B"} />
+                  <StatCard label="Invoices" value={String(allProgInvsTab.length)} sub={piHasActive && fInvs.length !== allProgInvsTab.length ? fInvs.length + " shown" : (allProgInvsTab.length === 0 ? "none" : "in this program")} accent={allProgInvsTab.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                  <StatCard label="Capital Advanced" value={money(r2(fundedSum), displayCcy)} sub="funded to date" accent={fundedSum > 0 ? "#10B981" : "#94A3B8"} />
+                  <StatCard label="Awaiting Funding" value={String(approvedCount)} sub={approvedCount > 0 ? money(r2(approvedSum), displayCcy) : "\u2014"} accent={approvedCount > 0 ? "#38BDF8" : "#94A3B8"} />
+                  <StatCard label="Overdue / Outstanding" value={String(overdueCount)} sub={totalOS > 0 ? money(r2(totalOS), displayCcy) + " O/S" : "none"} accent={overdueCount > 0 ? "#F59E0B" : "#94A3B8"} />
                 </div>
 
                 {/* Filter bar */}
@@ -10684,9 +10684,9 @@ export default function FactoringDashboard() {
               return <div>
                 {/* Filter-aware stat cards */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Payments Touching Program" value={String(allProgPays.length)} sub={paHasActive && progPays.length !== allProgPays.length ? progPays.length + " shown" : (allProgPays.length === 0 ? "none" : "total")} accent={allProgPays.length > 0 ? "#0EA5E9" : "#64748B"} />
-                  <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#64748B"} />
-                  <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#64748B"} />
+                  <StatCard label="Payments Touching Program" value={String(allProgPays.length)} sub={paHasActive && progPays.length !== allProgPays.length ? progPays.length + " shown" : (allProgPays.length === 0 ? "none" : "total")} accent={allProgPays.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                  <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#94A3B8"} />
+                  <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#94A3B8"} />
                   <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
                 </div>
 
@@ -10834,10 +10834,10 @@ export default function FactoringDashboard() {
               return <div>
                 {/* Filter-aware stat cards */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                  <StatCard label="Holdback Payments" value={String(allProgHbps.length)} sub={phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " shown" : (allProgHbps.length === 0 ? "none" : "in this program")} accent={allProgHbps.length > 0 ? "#8B5CF6" : "#64748B"} />
-                  <StatCard label="Total Disbursed" value={money(r2(totalDisbursed2), displayCcy)} sub="holdback amounts released" accent={totalDisbursed2 > 0 ? "#10B981" : "#64748B"} />
-                  <StatCard label="Supplier Returns" value={money(r2(totalSupReturn), displayCcy)} sub={totalSupReturn > 0 ? "returned to supplier" : "none"} accent={totalSupReturn > 0 ? "#34D399" : "#64748B"} />
-                  <StatCard label="Invoice Allocations" value={money(r2(totalInvAlloc), displayCcy)} sub={totalInvAlloc > 0 ? "re-applied to invoices" : "none"} accent={totalInvAlloc > 0 ? "#F59E0B" : "#64748B"} />
+                  <StatCard label="Holdback Payments" value={String(allProgHbps.length)} sub={phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " shown" : (allProgHbps.length === 0 ? "none" : "in this program")} accent={allProgHbps.length > 0 ? "#8B5CF6" : "#94A3B8"} />
+                  <StatCard label="Total Disbursed" value={money(r2(totalDisbursed2), displayCcy)} sub="holdback amounts released" accent={totalDisbursed2 > 0 ? "#10B981" : "#94A3B8"} />
+                  <StatCard label="Supplier Returns" value={money(r2(totalSupReturn), displayCcy)} sub={totalSupReturn > 0 ? "returned to supplier" : "none"} accent={totalSupReturn > 0 ? "#34D399" : "#94A3B8"} />
+                  <StatCard label="Invoice Allocations" value={money(r2(totalInvAlloc), displayCcy)} sub={totalInvAlloc > 0 ? "re-applied to invoices" : "none"} accent={totalInvAlloc > 0 ? "#F59E0B" : "#94A3B8"} />
                 </div>
 
                 {/* Filter bar */}
@@ -11080,10 +11080,10 @@ export default function FactoringDashboard() {
             return <div>
               {/* Filter-aware stat cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label="Funding Payments" value={String(allProgFunding.length)} sub={pfHasActive && filteredFunding.length !== allProgFunding.length ? filteredFunding.length + " shown" : (allProgFunding.length === 0 ? "none" : "in this program")} accent={allProgFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
-                <StatCard label="Total Funded" value={money(r2(totalFunding), prog.currency)} sub="gross of all status" accent={totalFunding > 0 ? "#10B981" : "#64748B"} />
-                <StatCard label="Completed" value={String(completedFunding.length)} sub={completedFunding.length > 0 ? money(r2(completedSum), prog.currency) : "none"} accent={completedFunding.length > 0 ? "#10B981" : "#64748B"} />
-                <StatCard label="Pending" value={String(pendingFunding.length)} sub={pendingFunding.length > 0 ? money(r2(pendingSum), prog.currency) : "none"} accent={pendingFunding.length > 0 ? "#D97706" : "#64748B"} />
+                <StatCard label="Funding Payments" value={String(allProgFunding.length)} sub={pfHasActive && filteredFunding.length !== allProgFunding.length ? filteredFunding.length + " shown" : (allProgFunding.length === 0 ? "none" : "in this program")} accent={allProgFunding.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                <StatCard label="Total Funded" value={money(r2(totalFunding), prog.currency)} sub="gross of all status" accent={totalFunding > 0 ? "#10B981" : "#94A3B8"} />
+                <StatCard label="Completed" value={String(completedFunding.length)} sub={completedFunding.length > 0 ? money(r2(completedSum), prog.currency) : "none"} accent={completedFunding.length > 0 ? "#10B981" : "#94A3B8"} />
+                <StatCard label="Pending" value={String(pendingFunding.length)} sub={pendingFunding.length > 0 ? money(r2(pendingSum), prog.currency) : "none"} accent={pendingFunding.length > 0 ? "#D97706" : "#94A3B8"} />
               </div>
 
               {/* Filter bar */}
@@ -12450,10 +12450,10 @@ export default function FactoringDashboard() {
               return <div>
               {/* Filter-aware stat cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label="Completed Payments" value={String(filteredForStats.length)} sub={ocHasActive && filteredForStats.length !== allCompleted.length ? filteredForStats.length + " of " + allCompleted.length : (allCompleted.length === 0 ? "none" : "all completed")} accent={filteredForStats.length > 0 ? "#10B981" : "#64748B"} />
-                <StatCard label="Total Value" value={ccyLabel.length > 45 ? String(Object.keys(ccyGroups).length) + " CCY" : (Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY")} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#10B981" : "#64748B"} />
-                <StatCard label="Funding" value={String(statFunding.length)} sub={statFunding.length > 0 ? "capital advanced" : "none"} accent={statFunding.length > 0 ? "#0EA5E9" : "#64748B"} />
-                <StatCard label="Holdback / Pass-through" value={String(statHoldback.length + statPassthrough.length)} sub={(statHoldback.length || "0") + " hb \u00b7 " + (statPassthrough.length || "0") + " pt"} accent={(statHoldback.length + statPassthrough.length) > 0 ? "#8B5CF6" : "#64748B"} />
+                <StatCard label="Completed Payments" value={String(filteredForStats.length)} sub={ocHasActive && filteredForStats.length !== allCompleted.length ? filteredForStats.length + " of " + allCompleted.length : (allCompleted.length === 0 ? "none" : "all completed")} accent={filteredForStats.length > 0 ? "#10B981" : "#94A3B8"} />
+                <StatCard label="Total Value" value={ccyLabel.length > 45 ? String(Object.keys(ccyGroups).length) + " CCY" : (Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY")} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#10B981" : "#94A3B8"} />
+                <StatCard label="Funding" value={String(statFunding.length)} sub={statFunding.length > 0 ? "capital advanced" : "none"} accent={statFunding.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                <StatCard label="Holdback / Pass-through" value={String(statHoldback.length + statPassthrough.length)} sub={(statHoldback.length || "0") + " hb \u00b7 " + (statPassthrough.length || "0") + " pt"} accent={(statHoldback.length + statPassthrough.length) > 0 ? "#8B5CF6" : "#94A3B8"} />
               </div>
               {(function() {
                 var filteredOC = applyOcFilters(allCompleted);
@@ -12673,10 +12673,10 @@ export default function FactoringDashboard() {
             return <div style={{ marginTop: 0 }}>
               {/* Filter-aware stat cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label="Outgoing Payments" value={String(filteredOutgoing.length)} sub={ogHasActive && filteredOutgoing.length !== outgoingPays.length ? filteredOutgoing.length + " of " + outgoingPays.length : (outgoingPays.length === 0 ? "none" : "all outgoing")} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#64748B"} />
-                <StatCard label="Total Value" value={Object.keys(ogCcyGroups).length === 1 ? money(r2(ogCcyGroups[Object.keys(ogCcyGroups)[0]]), Object.keys(ogCcyGroups)[0]) : String(Object.keys(ogCcyGroups).length) + " CCY"} sub={ogCcyLabel.length > 45 ? "mixed currencies" : ogCcyLabel} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#64748B"} />
-                <StatCard label="Unrouted" value={String(statUnrouted.length)} sub={statUnrouted.length > 0 ? "needs routing" : "all routed"} accent={statUnrouted.length > 0 ? "#EF4444" : "#64748B"} />
-                <StatCard label="Pending / Partial" value={String(statPending.length)} sub={statCompleted.length > 0 ? statCompleted.length + " completed" : "0 completed"} accent={statPending.length > 0 ? "#D97706" : "#64748B"} />
+                <StatCard label="Outgoing Payments" value={String(filteredOutgoing.length)} sub={ogHasActive && filteredOutgoing.length !== outgoingPays.length ? filteredOutgoing.length + " of " + outgoingPays.length : (outgoingPays.length === 0 ? "none" : "all outgoing")} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#94A3B8"} />
+                <StatCard label="Total Value" value={Object.keys(ogCcyGroups).length === 1 ? money(r2(ogCcyGroups[Object.keys(ogCcyGroups)[0]]), Object.keys(ogCcyGroups)[0]) : String(Object.keys(ogCcyGroups).length) + " CCY"} sub={ogCcyLabel.length > 45 ? "mixed currencies" : ogCcyLabel} accent={filteredOutgoing.length > 0 ? "#7C3AED" : "#94A3B8"} />
+                <StatCard label="Unrouted" value={String(statUnrouted.length)} sub={statUnrouted.length > 0 ? "needs routing" : "all routed"} accent={statUnrouted.length > 0 ? "#EF4444" : "#94A3B8"} />
+                <StatCard label="Pending / Partial" value={String(statPending.length)} sub={statCompleted.length > 0 ? statCompleted.length + " completed" : "0 completed"} accent={statPending.length > 0 ? "#D97706" : "#94A3B8"} />
               </div>
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                 <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -12843,10 +12843,10 @@ export default function FactoringDashboard() {
           </div>}
           {/* Filter-aware stat cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-            <StatCard label="Incoming Payments" value={String(filteredForStats.length)} sub={inHasActive && filteredForStats.length !== allIncoming.length ? filteredForStats.length + " of " + allIncoming.length : (allIncoming.length === 0 ? "none" : "all incoming")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
-            <StatCard label="Total Received" value={Object.keys(inCcyGroups).length === 1 ? money(r2(inCcyGroups[Object.keys(inCcyGroups)[0]]), Object.keys(inCcyGroups)[0]) : String(Object.keys(inCcyGroups).length) + " CCY"} sub={inCcyLabel.length > 45 ? "mixed currencies" : inCcyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
-            <StatCard label="Unallocated" value={String(unallocCount)} sub={unallocCount > 0 ? "needs allocation" : "all allocated"} accent={unallocCount > 0 ? "#D97706" : "#64748B"} />
-            <StatCard label="Allocated / Partial" value={String(allocCount + partialCount)} sub={partialCount > 0 ? partialCount + " partial \u00b7 " + allocCount + " full" : allocCount + " full"} accent={(allocCount + partialCount) > 0 ? "#10B981" : "#64748B"} />
+            <StatCard label="Incoming Payments" value={String(filteredForStats.length)} sub={inHasActive && filteredForStats.length !== allIncoming.length ? filteredForStats.length + " of " + allIncoming.length : (allIncoming.length === 0 ? "none" : "all incoming")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+            <StatCard label="Total Received" value={Object.keys(inCcyGroups).length === 1 ? money(r2(inCcyGroups[Object.keys(inCcyGroups)[0]]), Object.keys(inCcyGroups)[0]) : String(Object.keys(inCcyGroups).length) + " CCY"} sub={inCcyLabel.length > 45 ? "mixed currencies" : inCcyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+            <StatCard label="Unallocated" value={String(unallocCount)} sub={unallocCount > 0 ? "needs allocation" : "all allocated"} accent={unallocCount > 0 ? "#D97706" : "#94A3B8"} />
+            <StatCard label="Allocated / Partial" value={String(allocCount + partialCount)} sub={partialCount > 0 ? partialCount + " partial \u00b7 " + allocCount + " full" : allocCount + " full"} accent={(allocCount + partialCount) > 0 ? "#10B981" : "#94A3B8"} />
           </div>
           <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
             <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -13666,10 +13666,10 @@ export default function FactoringDashboard() {
               return <div>
               {/* Filter-aware stat cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label="Credit Notes" value={String(filteredForStats.length)} sub={cnlHasActive && filteredForStats.length !== CREDIT_NOTES_DB.length ? filteredForStats.length + " of " + CREDIT_NOTES_DB.length : (CREDIT_NOTES_DB.length === 0 ? "none" : "all credit notes")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
-                <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#64748B"} />
-                <StatCard label="Unallocated / Partial" value={String(statUnalloc.length + statPartial.length)} sub={statUnalloc.length + " unalloc \u00b7 " + statPartial.length + " partial"} accent={(statUnalloc.length + statPartial.length) > 0 ? "#D97706" : "#64748B"} />
-                <StatCard label="Fully Allocated" value={String(statAlloc.length)} sub={statAlloc.length > 0 ? "closed" : "none"} accent={statAlloc.length > 0 ? "#10B981" : "#64748B"} />
+                <StatCard label="Credit Notes" value={String(filteredForStats.length)} sub={cnlHasActive && filteredForStats.length !== CREDIT_NOTES_DB.length ? filteredForStats.length + " of " + CREDIT_NOTES_DB.length : (CREDIT_NOTES_DB.length === 0 ? "none" : "all credit notes")} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={filteredForStats.length > 0 ? "#0EA5E9" : "#94A3B8"} />
+                <StatCard label="Unallocated / Partial" value={String(statUnalloc.length + statPartial.length)} sub={statUnalloc.length + " unalloc \u00b7 " + statPartial.length + " partial"} accent={(statUnalloc.length + statPartial.length) > 0 ? "#D97706" : "#94A3B8"} />
+                <StatCard label="Fully Allocated" value={String(statAlloc.length)} sub={statAlloc.length > 0 ? "closed" : "none"} accent={statAlloc.length > 0 ? "#10B981" : "#94A3B8"} />
               </div>
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 18 }}>
               <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -14014,10 +14014,10 @@ export default function FactoringDashboard() {
           return <div>
             {/* Filter-aware stat cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Invoices" value={String(statCount)} sub={invlHasActive && statCount !== INVOICES_DB.length ? statCount + " of " + INVOICES_DB.length : (INVOICES_DB.length === 0 ? "none" : "all invoices")} accent={statCount > 0 ? "#0EA5E9" : "#64748B"} />
-              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#0EA5E9" : "#64748B"} />
-              <StatCard label="Unpurchased" value={String(statPending)} sub={statPurchased > 0 ? statPurchased + " purchased" : (statFunded + " funded")} accent={statPending > 0 ? "#D97706" : "#64748B"} />
-              <StatCard label="Excluded" value={String(statDnf + statDna)} sub={statDnf + statDna > 0 ? statDnf + " DNP \u00b7 " + statDna + " DNA" : "none flagged"} accent={statDnf + statDna > 0 ? "#EF4444" : "#64748B"} />
+              <StatCard label="Invoices" value={String(statCount)} sub={invlHasActive && statCount !== INVOICES_DB.length ? statCount + " of " + INVOICES_DB.length : (INVOICES_DB.length === 0 ? "none" : "all invoices")} accent={statCount > 0 ? "#0EA5E9" : "#94A3B8"} />
+              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#0EA5E9" : "#94A3B8"} />
+              <StatCard label="Unpurchased" value={String(statPending)} sub={statPurchased > 0 ? statPurchased + " purchased" : (statFunded + " funded")} accent={statPending > 0 ? "#D97706" : "#94A3B8"} />
+              <StatCard label="Excluded" value={String(statDnf + statDna)} sub={statDnf + statDna > 0 ? statDnf + " DNP \u00b7 " + statDna + " DNA" : "none flagged"} accent={statDnf + statDna > 0 ? "#EF4444" : "#94A3B8"} />
             </div>
 
             {/* Create Invoice (collapsible) */}
@@ -14447,10 +14447,10 @@ export default function FactoringDashboard() {
           return <div>
             {/* Filter-aware stat cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-              <StatCard label="Awaiting Allocation" value={String(statCount)} sub={upiHasActive && statCount !== unpurchasedActive.length ? statCount + " of " + unpurchasedActive.length : (unpurchasedActive.length === 0 ? "queue empty" : "ready to allocate")} accent={statCount > 0 ? "#D97706" : "#64748B"} />
-              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#D97706" : "#64748B"} />
+              <StatCard label="Awaiting Allocation" value={String(statCount)} sub={upiHasActive && statCount !== unpurchasedActive.length ? statCount + " of " + unpurchasedActive.length : (unpurchasedActive.length === 0 ? "queue empty" : "ready to allocate")} accent={statCount > 0 ? "#D97706" : "#94A3B8"} />
+              <StatCard label="Total Value" value={Object.keys(ccyGroups).length === 1 ? money(r2(ccyGroups[Object.keys(ccyGroups)[0]]), Object.keys(ccyGroups)[0]) : String(Object.keys(ccyGroups).length) + " CCY"} sub={ccyLabel.length > 45 ? "mixed currencies" : ccyLabel} accent={statCount > 0 ? "#D97706" : "#94A3B8"} />
               <StatCard label="Oldest Pending" value={oldestDays > 0 ? oldestDays + "d" : "\u2014"} sub={oldestDate ? "since " + fmt(oldestDate) : "none waiting"} accent={oldestDays > 30 ? "#EF4444" : oldestDays > 7 ? "#D97706" : "#10B981"} />
-              <StatCard label="Do Not Purchase" value={String(statDnpCount)} sub={statDnpCount > 0 ? "flagged out" : (noEligibleCount > 0 ? noEligibleCount + " no eligible program" : "none flagged")} accent={statDnpCount > 0 ? "#EF4444" : (noEligibleCount > 0 ? "#D97706" : "#64748B")} />
+              <StatCard label="Do Not Purchase" value={String(statDnpCount)} sub={statDnpCount > 0 ? "flagged out" : (noEligibleCount > 0 ? noEligibleCount + " no eligible program" : "none flagged")} accent={statDnpCount > 0 ? "#EF4444" : (noEligibleCount > 0 ? "#D97706" : "#94A3B8")} />
             </div>
 
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: selectedInvs.length > 0 ? 90 : 0 }}>
@@ -16118,9 +16118,9 @@ export default function FactoringDashboard() {
               return <div>
               {/* Filter-aware stat cards */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
-                <StatCard label={"Total " + entityLabel + "s"} value={String(statTotal)} sub={mgHasActive && filteredForStats.length !== statTotal ? filteredForStats.length + " of " + statTotal + " shown" : (statTotal === 0 ? "none" : "all " + entityLabel.toLowerCase() + "s")} accent={statTotal > 0 ? "#0EA5E9" : "#64748B"} />
-                <StatCard label="Active" value={String(statActive)} sub={statPaused > 0 ? statPaused + " paused" : "none paused"} accent={statActive > 0 ? "#10B981" : "#64748B"} />
-                <StatCard label="Paused" value={String(statPaused)} sub={statPaused > 0 ? "not funding" : "none"} accent={statPaused > 0 ? "#EF4444" : "#64748B"} />
+                <StatCard label={"Total " + entityLabel + "s"} value={String(statTotal)} sub={mgHasActive && filteredForStats.length !== statTotal ? filteredForStats.length + " of " + statTotal + " shown" : (statTotal === 0 ? "none" : "all " + entityLabel.toLowerCase() + "s")} accent={statTotal > 0 ? "#0EA5E9" : "#94A3B8"} />
+                <StatCard label="Active" value={String(statActive)} sub={statPaused > 0 ? statPaused + " paused" : "none paused"} accent={statActive > 0 ? "#10B981" : "#94A3B8"} />
+                <StatCard label="Paused" value={String(statPaused)} sub={statPaused > 0 ? "not funding" : "none"} accent={statPaused > 0 ? "#EF4444" : "#94A3B8"} />
                 {isSupLike ? <StatCard label="With Bank Info" value={String(statWithBank)} sub={statWithBank < statTotal ? (statTotal - statWithBank) + " missing" : "all complete"} accent={statWithBank === statTotal ? "#10B981" : "#D97706"} /> : <StatCard label="Countries" value={String(countryOpts.length)} sub={countryOpts.length > 0 ? countryOpts.slice(0, 2).join(", ") + (countryOpts.length > 2 ? "\u2026" : "") : "\u2014"} accent="#7C3AED" />}
               </div>
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
