@@ -1735,6 +1735,16 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if ((!Array.isArray(rawInv.tranches) || rawInv.tranches.length === 0) && rawInv.fundedDate && rawInv.capitalDue > 0) {
       rawInv.tranches = synthesizeTranches(rawInv);
     }
+    // Reset tranche repayment state at the START of each per-invoice block.
+    // Tranches are mutated in-place by applyCapitalRepaymentFIFO during the payment
+    // waterfall below; without this reset, a second processForDate call on the same
+    // invoice would see capitalRepaid still at its post-waterfall value, causing
+    // tranchesActiveCapital to return 0, which then corrupts capitalDue, advanceRate,
+    // holdback, etc. This reset MUST run before the tranche-derived field reads
+    // immediately below.
+    if (Array.isArray(rawInv.tranches)) {
+      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
+    }
     // Derive capitalDue and interestCharged from tranches (tranches are source of truth).
     // For invoices not yet funded (no tranches), keep the legacy values from the raw record.
     if (Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
@@ -1770,10 +1780,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     else if (rawInv.dueDate < viewDate) penaltyStartDate = rawInv.dueDate;
     var penaltyDays = penaltyStartDate ? daysBetween(penaltyStartDate, viewDate) : 0;
     function cleanBal() { if (Math.abs(penBal) < 0.01) penBal = 0; if (Math.abs(intBal) < 0.01) intBal = 0; if (Math.abs(capBal) < 0.01) capBal = 0; if (Math.abs(hbBal) < 0.01) hbBal = 0; }
-    // Reset tranche repayment state — viewData recomputes it deterministically from payments
-    if (Array.isArray(rawInv.tranches)) {
-      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
-    }
+    // (Tranche capitalRepaid/status reset has been moved to the top of this per-invoice
+    // block — it must run BEFORE tranchesActiveCapital reads tranche state.)
     function applyPay(pay, allowPen) {
       var rem = pay.amount, toI = 0, toP = 0, toC = 0, toH = 0;
       if (allowPen && rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
@@ -13978,12 +13986,7 @@ export default function FactoringDashboard() {
             return r;
           }
           // Stats (always honour filters)
-          // Read from viewData.invoices (the derived live view) rather than INVOICES_DB
-          // (the raw cached rows). Every other tab in the app reads from viewData; this
-          // tab is now consistent. Note that this means stored funding_status in Supabase
-          // may differ from what's displayed here — the live view shows derived state, the
-          // DB stores last-known state. Reconciling those is a separate piece of work.
-          var filteredForStats = applyInvlFilters(viewData.invoices);
+          var filteredForStats = applyInvlFilters(INVOICES_DB);
           var statCount = filteredForStats.length;
           var statPending = filteredForStats.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
           var statPurchased = filteredForStats.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length;
