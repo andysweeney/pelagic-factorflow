@@ -2402,6 +2402,9 @@ export default function FactoringDashboard() {
   var st1 = useState("overview"), supTab = st1[0], setSupTab = st1[1];
   var pt1 = useState("overview"), progTab = pt1[0], setProgTab = pt1[1];
   var pv1 = useState(""), selectedProgram = pv1[0], setSelectedProgram = pv1[1];
+  var ppurch1 = useState({}), progPurchSelected = ppurch1[0], setProgPurchSelected = ppurch1[1];
+  // Clear bulk DNA selection when switching between programs
+  useEffect(function() { setProgPurchSelected({}); }, [selectedProgram]);
   var psf1 = useState(""), progSupFilter = psf1[0], setProgSupFilter = psf1[1];
   var feqSel1 = useState({}), feqSelected = feqSel1[0], setFeqSelected = feqSel1[1]; // Funding Execution Queue selections
   var deqSel1 = useState({}), deqSelected = deqSel1[0], setDeqSelected = deqSel1[1]; // Service Provider Payments to be Made selections
@@ -3509,6 +3512,110 @@ export default function FactoringDashboard() {
     auditLog(value ? "Do Not Advance Set" : "Do Not Advance Cleared", invId + (value ? " marked Do Not Advance \u2014 capital will not be advanced against this invoice" : " cleared from Do Not Advance \u2014 funding once again permitted"), { invoiceId: invId, supplierId: raw.supplierId, supplier: raw.supplierName, doNotAdvance: !!value });
     setDataVer(function(v) { return v + 1; });
     return true;
+  }
+
+  // Bulk version of toggleDoNotAdvance — applies to multiple invoices, skips ineligible silently,
+  // returns a summary so caller can show one consolidated alert instead of one per row.
+  function bulkSetDoNotAdvance(invIds, value) {
+    var changed = [], skippedNotPurchased = [], skippedHasCapital = [], skippedHasSpq = [], unchanged = [];
+    invIds.forEach(function(invId) {
+      var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+      if (!raw) return;
+      if (!!raw.doNotAdvance === !!value) { unchanged.push(invId); return; }
+      if (value === true) {
+        if (raw.fundingStatus !== "purchased") { skippedNotPurchased.push(invId); return; }
+        if (r2(raw.capitalDue || 0) > 0.01) { skippedHasCapital.push(invId); return; }
+        var hasSpq = SUPPLIER_PAYMENT_QUEUE.some(function(q) { return (q.invoiceId === invId || (q.invoiceIds && q.invoiceIds.indexOf(invId) > -1) || q.sourceInvoiceId === invId); });
+        if (hasSpq) { skippedHasSpq.push(invId); return; }
+      }
+      raw.doNotAdvance = !!value;
+      saveInvoice(invId);
+      changed.push(invId);
+    });
+    if (changed.length > 0) {
+      auditLog(value ? "Do Not Advance Set" : "Do Not Advance Cleared", changed.length + " invoice(s) " + (value ? "marked Do Not Advance (bulk)" : "cleared from Do Not Advance (bulk)") + ": " + changed.join(", "), { invoiceIds: changed, bulk: true, doNotAdvance: !!value });
+    }
+    setDataVer(function(v) { return v + 1; });
+    // Build summary message for caller
+    var msg = changed.length + " invoice(s) " + (value ? "marked Do Not Advance" : "cleared from Do Not Advance") + ".";
+    var skipped = [];
+    if (unchanged.length > 0) skipped.push(unchanged.length + " already in target state");
+    if (skippedNotPurchased.length > 0) skipped.push(skippedNotPurchased.length + " not purchased");
+    if (skippedHasCapital.length > 0) skipped.push(skippedHasCapital.length + " have capital queued");
+    if (skippedHasSpq.length > 0) skipped.push(skippedHasSpq.length + " have payment queue activity");
+    if (skipped.length > 0) msg += "\n\nSkipped: " + skipped.join(", ") + ".";
+    return { changed: changed, message: msg };
+  }
+
+  // Bulk "Fund at Max" — applies to multiple zero-capital purchased invoices in one click.
+  // For each invoice: computes effectiveBase × program.maxAdvanceRate (capped per program available balance),
+  // sets capital figures + intendedPaymentDate (state stays 'purchased' — queue execution will transition to funded).
+  // Walks rows in invoice ID order, fitting as many as possible into program available balance.
+  // Returns { funded: [{id, amount}], skipped: [{id, reason}], totalCapitalQueued }.
+  function bulkFundAtMax(invIds) {
+    var funded = [], skipped = [];
+    // First pass: classify each invoice into eligible/ineligible
+    var eligible = [];
+    invIds.forEach(function(invId) {
+      var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+      if (!raw) { skipped.push({ id: invId, reason: "not found" }); return; }
+      if (raw.fundingStatus !== "purchased") { skipped.push({ id: invId, reason: "not in purchased state" }); return; }
+      if (raw.doNotAdvance) { skipped.push({ id: invId, reason: "marked Do Not Advance" }); return; }
+      if (r2(raw.capitalDue || 0) > 0.01) { skipped.push({ id: invId, reason: "already has capital queued" }); return; }
+      if (!raw.fundingProgram) { skipped.push({ id: invId, reason: "no program allocated" }); return; }
+      var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
+      if (!prog) { skipped.push({ id: invId, reason: "program not found" }); return; }
+      // Compute effective base
+      var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
+      var dilTotal = 0;
+      CREDIT_NOTES_DB.forEach(function(cn) { (cn.allocations || []).forEach(function(a) { if (a.invoiceId === raw.id) dilTotal += a.amount || 0; }); });
+      var postDil = raw.amount - dilTotal;
+      var buyerPaid = (raw.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+      var postCol = raw.amount - buyerPaid;
+      var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
+      if (effectiveBase <= 0.01) { skipped.push({ id: invId, reason: "no fundable base (already paid down or fully diluted)" }); return; }
+      var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+      if (maxCap <= 0.01) { skipped.push({ id: invId, reason: "max cap is zero" }); return; }
+      eligible.push({ raw: raw, prog: prog, maxCap: maxCap, effectiveBase: effectiveBase });
+    });
+    // Sort eligible by invoice ID (deterministic, oldest-allocated first)
+    eligible.sort(function(a, b) { return a.raw.id < b.raw.id ? -1 : 1; });
+    // Walk eligible, fitting each within program available balance
+    var totalCapitalQueued = 0;
+    var perProgramRemaining = {};
+    eligible.forEach(function(e) {
+      var progId = e.prog.id;
+      if (perProgramRemaining[progId] === undefined) perProgramRemaining[progId] = getProgramAvailableBalance(progId);
+      if (perProgramRemaining[progId] < e.maxCap - 0.01) {
+        skipped.push({ id: e.raw.id, reason: "insufficient program balance (need " + money(e.maxCap, e.raw.currency) + ", available " + money(perProgramRemaining[progId], e.raw.currency) + ")" });
+        return;
+      }
+      // Fund at max
+      var supRate = getSupplierRate(e.raw.supplierId || e.raw.supplierName);
+      var rate = supRate.annualRate;
+      if (rate < e.prog.minInterestRate) rate = e.prog.minInterestRate;
+      var fundingDate = viewDate;
+      var term = daysBetween(fundingDate, e.raw.dueDate);
+      if (term < 1) term = 1;
+      e.raw.capitalDue = e.maxCap;
+      e.raw.holdback = r2(e.raw.amount - e.maxCap);
+      e.raw.annualRate = rate;
+      e.raw.penaltyRate = rate * 1.5;
+      e.raw.daysToMaturity = term;
+      e.raw.interestCharged = r2(e.maxCap * (rate / 360) * term);
+      e.raw.deferredPayment = r2(e.raw.holdback - e.raw.interestCharged);
+      e.raw.advanceRate = e.raw.amount > 0 ? e.maxCap / e.raw.amount : 0;
+      e.raw.intendedPaymentDate = fundingDate;
+      saveInvoice(e.raw.id);
+      perProgramRemaining[progId] -= e.maxCap;
+      totalCapitalQueued += e.maxCap;
+      funded.push({ id: e.raw.id, amount: e.maxCap, currency: e.raw.currency });
+    });
+    if (funded.length > 0) {
+      auditLog("Funding Queued (Bulk)", funded.length + " invoice(s) queued for funding at maximum capital: " + funded.map(function(f) { return f.id + " (" + money(f.amount, f.currency) + ")"; }).join(", "), { invoiceIds: funded.map(function(f) { return f.id; }), bulk: true, totalCapitalQueued: r2(totalCapitalQueued) });
+    }
+    setDataVer(function(v) { return v + 1; });
+    return { funded: funded, skipped: skipped, totalCapitalQueued: r2(totalCapitalQueued) };
   }
 
   function cancelApproval(invId) {
@@ -10315,7 +10422,21 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-                        <thead><tr>{["Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2 }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{["", "Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h, hi) { return <th key={"h-" + hi} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, width: hi === 0 ? 30 : undefined }}>{hi === 0 ? (function() {
+                          // Select-all toggle (only checks rows that are eligible to toggle)
+                          var allSelected = approvedInvs.length > 0 && approvedInvs.every(function(inv) { return progPurchSelected[inv.id]; });
+                          var someSelected = approvedInvs.some(function(inv) { return progPurchSelected[inv.id]; });
+                          return <div onClick={function(e) {
+                            e.stopPropagation();
+                            if (allSelected) {
+                              setProgPurchSelected({});
+                            } else {
+                              var newSel = {};
+                              approvedInvs.forEach(function(inv) { newSel[inv.id] = true; });
+                              setProgPurchSelected(newSel);
+                            }
+                          }} style={{ width: 16, height: 16, borderRadius: 3, border: "2px solid " + (allSelected ? "var(--accent)" : "var(--border)"), background: allSelected ? "var(--accent)" : (someSelected ? "var(--accent)44" : "transparent"), display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }} title={allSelected ? "Deselect all" : "Select all"}>{allSelected ? "\u2713" : (someSelected ? "\u2013" : "")}</div>;
+                        })() : h}</th>; })}</tr></thead>
                         {approvedInvs.map(function(inv) {
                           var aIsExp = exp === "appr-" + inv.id;
                           var aIst = IST[inv.invoiceStatus] || IST["Received"];
@@ -10323,7 +10444,17 @@ export default function FactoringDashboard() {
                           var aDp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
                           return (
                             <tbody key={"appr-" + inv.id}>
-                              <tr style={{ borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : "#567EBB04" }}>
+                              <tr style={{ borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : (progPurchSelected[inv.id] ? "#0EA5E914" : "#567EBB04") }}>
+                                <td style={{ padding: "8px 8px", width: 30 }}>
+                                  <div onClick={function(e) {
+                                    e.stopPropagation();
+                                    setProgPurchSelected(function(prev) {
+                                      var next = Object.assign({}, prev);
+                                      if (next[inv.id]) delete next[inv.id]; else next[inv.id] = true;
+                                      return next;
+                                    });
+                                  }} style={{ width: 16, height: 16, borderRadius: 3, border: "2px solid " + (progPurchSelected[inv.id] ? "var(--accent)" : "var(--border)"), background: progPurchSelected[inv.id] ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>{progPurchSelected[inv.id] ? "\u2713" : ""}</div>
+                                </td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                                 <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
@@ -10343,7 +10474,7 @@ export default function FactoringDashboard() {
                                   </div>
                                 </td>
                               </tr>
-                              {aIsExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                              {aIsExp && <tr><td colSpan={12} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
@@ -10394,6 +10525,80 @@ export default function FactoringDashboard() {
                         })}
                       </table>
                     </div>
+                    {/* Bulk DNA action pill — floats at bottom when 1+ rows selected */}
+                    {(function() {
+                      var selectedIds = Object.keys(progPurchSelected).filter(function(id) {
+                        if (!progPurchSelected[id]) return false;
+                        // Only count selections that are still in the visible approvedInvs set
+                        return approvedInvs.some(function(inv) { return inv.id === id; });
+                      });
+                      if (selectedIds.length === 0) return null;
+                      var selectedRows = selectedIds.map(function(id) { return approvedInvs.find(function(inv) { return inv.id === id; }); }).filter(Boolean);
+                      var selDna = selectedRows.filter(function(inv) { return inv.doNotAdvance; });
+                      var selNonDna = selectedRows.filter(function(inv) { return !inv.doNotAdvance; });
+                      var selDnaOnly = selDna.length === selectedRows.length;
+                      var selNonDnaOnly = selNonDna.length === selectedRows.length;
+                      var selMixed = selDna.length > 0 && selNonDna.length > 0;
+                      // Eligibility breakdown for "Mark DNA" action — only purchased + zero capital + no SPQ
+                      var eligibleForMark = selNonDna.filter(function(inv) {
+                        if (inv.fundingStatus !== "purchased") return false;
+                        if (r2(inv.capitalDue || 0) > 0.01) return false;
+                        var hasSpq = SUPPLIER_PAYMENT_QUEUE.some(function(q) { return (q.invoiceId === inv.id || (q.invoiceIds && q.invoiceIds.indexOf(inv.id) > -1) || q.sourceInvoiceId === inv.id); });
+                        if (hasSpq) return false;
+                        return true;
+                      });
+                      // Eligibility for "Fund at Max" — same shape as Mark DNA: purchased, zero capital, has program, effective base > 0
+                      var eligibleForFund = selNonDna.filter(function(inv) {
+                        if (inv.fundingStatus !== "purchased") return false;
+                        if (r2(inv.capitalDue || 0) > 0.01) return false;
+                        if (!inv.fundingProgram) return false;
+                        // Effective base check
+                        var partial = (inv.invoiceStatus === "Approved in Part" && inv.partialApprovedAmount > 0) ? inv.partialApprovedAmount : inv.amount;
+                        var dilTotal = inv.dilutionTotal || 0;
+                        var postDil = inv.amount - dilTotal;
+                        var buyerPaid = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
+                        var postCol = inv.amount - buyerPaid;
+                        var effBase = Math.max(0, Math.min(inv.amount, partial, postDil, postCol));
+                        return effBase > 0.01;
+                      });
+                      return <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 12, boxShadow: "0 8px 32px rgba(14,165,233,0.25)", padding: "12px 20px", display: "flex", alignItems: "center", gap: 14, zIndex: 100, flexWrap: "wrap", maxWidth: "95vw" }}>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{selectedRows.length} selected{selMixed ? " (" + selNonDna.length + " active, " + selDna.length + " DNA)" : selDnaOnly ? " (all DNA)" : ""}</span>
+                          <span style={{ fontSize: 10, color: "var(--muted)" }}>Bulk actions</span>
+                        </div>
+                        <div style={{ width: 1, height: 32, background: "var(--border)" }}></div>
+                        {eligibleForFund.length > 0 && <button onClick={function() {
+                          if (!confirm("Queue " + eligibleForFund.length + " invoice(s) for funding at maximum capital?\n\nEach invoice will receive its program's max advance rate. The capital will be queued for execution via the Outbound Queue.")) return;
+                          var idsToFund = eligibleForFund.map(function(inv) { return inv.id; });
+                          var result = bulkFundAtMax(idsToFund);
+                          var msg = "Funded: " + result.funded.length + " invoice(s)";
+                          if (result.totalCapitalQueued > 0) msg += " (" + money(result.totalCapitalQueued, eligibleForFund[0].currency) + " total queued)";
+                          if (result.skipped.length > 0) {
+                            msg += "\n\nSkipped: " + result.skipped.length + " invoice(s):\n" + result.skipped.map(function(s) { return "  \u2022 " + s.id + " \u2014 " + s.reason; }).join("\n");
+                          }
+                          msg += "\n\nGo to Payments \u2192 Outbound Queue to execute the funding payments.";
+                          alert(msg);
+                          setProgPurchSelected({});
+                        }} style={{ padding: "8px 14px", borderRadius: 7, border: "none", background: "#38BDF8", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title={"Queue " + eligibleForFund.length + " invoice(s) for funding at each program's maximum advance rate. Cash advances must still be executed via the Outbound Queue."}>Fund at Max{selMixed || eligibleForFund.length < selNonDna.length ? " (" + eligibleForFund.length + ")" : ""}</button>}
+                        {selNonDna.length > 0 && <button onClick={function() {
+                          var idsToMark = eligibleForMark.map(function(inv) { return inv.id; });
+                          if (idsToMark.length === 0) {
+                            alert("None of the selected non-DNA invoices are eligible to mark Do Not Advance.\n\nEligibility requires: purchased state, zero capital queued, no payment queue activity.");
+                            return;
+                          }
+                          var result = bulkSetDoNotAdvance(idsToMark, true);
+                          alert(result.message);
+                          setProgPurchSelected({});
+                        }} style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title={"Mark eligible selected invoices as Do Not Advance. " + eligibleForMark.length + " of " + selNonDna.length + " selected non-DNA rows are eligible."}>Mark DNA{selMixed ? " (" + selNonDna.length + ")" : ""} {eligibleForMark.length < selNonDna.length && <span style={{ fontSize: 9, color: "#D97706", marginLeft: 4 }}>{eligibleForMark.length} eligible</span>}</button>}
+                        {selDna.length > 0 && <button onClick={function() {
+                          var idsToClear = selDna.map(function(inv) { return inv.id; });
+                          var result = bulkSetDoNotAdvance(idsToClear, false);
+                          alert(result.message);
+                          setProgPurchSelected({});
+                        }} style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Clear Do Not Advance flag from selected invoices">Clear DNA{selMixed ? " (" + selDna.length + ")" : ""}</button>}
+                        <button onClick={function() { setProgPurchSelected({}); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>
+                      </div>;
+                    })()}
                   </div>;
                 })()}
 
