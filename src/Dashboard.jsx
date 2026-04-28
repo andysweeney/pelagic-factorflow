@@ -264,6 +264,48 @@ function getSupplierRate(entityId, asOfTimestamp) {
   return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
 }
 
+// Programs the given supplier ID participates in (member of eligible_suppliers).
+// Used to populate the program filter dropdown on the Suppliers view (Tweak #1).
+function programsForSupplier(supplierId) {
+  if (!supplierId) return [];
+  var parentId = getParentEntityId(supplierId) || supplierId;
+  return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    var elig = fp.eligibleSuppliers || [];
+    return elig.indexOf(supplierId) > -1 || elig.indexOf(parentId) > -1;
+  });
+}
+
+// Programs the given buyer ID participates in. Used for the Buyers view filter (Tweak #2).
+function programsForBuyer(buyerId) {
+  if (!buyerId) return [];
+  return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    return (fp.eligibleBuyers || []).indexOf(buyerId) > -1;
+  });
+}
+
+// True if the invoice belongs to (or could belong to) the given program. Used by all
+// view filters that previously checked currency match. An invoice belongs to a program
+// scope if it's been funded by that program OR (it's not yet funded but) the program
+// would be eligible to fund it (currency match + supplier/buyer in eligible lists).
+function invInProgramScope(inv, programId) {
+  if (!programId) return true;
+  if (inv.fundingProgram === programId) return true;
+  // Unfunded invoices: include if program currency matches and supplier+buyer are eligible
+  if (!inv.fundingProgram) {
+    var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
+    if (!fp) return false;
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) return false;
+    var supId = inv.supplierId || "";
+    var supParent = getParentEntityId(supId) || supId;
+    var supEligible = (fp.eligibleSuppliers || []).indexOf(supId) > -1 || (fp.eligibleSuppliers || []).indexOf(supParent) > -1;
+    if (!supEligible) return false;
+    var buyEligible = (fp.eligibleBuyers || []).indexOf(inv.buyerId || "") > -1;
+    if (!buyEligible) return false;
+    return true;
+  }
+  return false;
+}
+
 function getEligiblePrograms(inv, supDilRates) {
   var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
   var parentId = getParentEntityId(inv.supplierId || "");
@@ -2762,7 +2804,10 @@ export default function FactoringDashboard() {
   var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].id : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
-  var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
+  // supProgram: the active funding program filter for the Suppliers view. Defaults to the
+  // first program this supplier is eligible for; recomputed in an effect when supplier changes.
+  // No "all" option — UI lists only programs the supplier participates in.
+  var sc1 = useState(""), supProgram = sc1[0], setSupProgram = sc1[1];
   var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
   var hd1 = useState(null), hbDisburseInv = hd1[0], setHbDisburseInv = hd1[1];
   var ha1 = useState([]), hbAllocs = ha1[0], setHbAllocs = ha1[1];
@@ -2894,7 +2939,8 @@ export default function FactoringDashboard() {
   var sb1 = useState(BUYERS_DB.length > 0 ? BUYERS_DB[0].id : ""), selectedBuyer = sb1[0], setSelectedBuyer = sb1[1];
   var mob1 = useState(false), sidebarOpen = mob1[0], setSidebarOpen = mob1[1];
   var bt1 = useState("overview"), buyTab = bt1[0], setBuyTab = bt1[1];
-  var bc1 = useState("all"), buyCurrency = bc1[0], setBuyCurrency = bc1[1];
+  // buyProgram: same pattern as supProgram for the Buyers view.
+  var bc1 = useState(""), buyProgram = bc1[0], setBuyProgram = bc1[1];
   var bas1 = useState(""), baSearch = bas1[0], setBaSearch = bas1[1];
   var baf1 = useState(""), baDateFilter = baf1[0], setBaDateFilter = baf1[1];
   var bae1 = useState(null), baExp = bae1[0], setBaExp = bae1[1];
@@ -3157,7 +3203,8 @@ export default function FactoringDashboard() {
     if (isB && selectedBuyer) {
       d = d.filter(function(x) { return x.buyerId === selectedBuyer || x.buyerName === selectedBuyer; });
     }
-    if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
+    if (isS && supProgram) d = d.filter(function(x) { return invInProgramScope(x, supProgram); });
+    if (isB && buyProgram) d = d.filter(function(x) { return invInProgramScope(x, buyProgram); });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
     if (bf !== "all") d = d.filter(function(x) { return x.buyerName === bf; });
@@ -3165,7 +3212,32 @@ export default function FactoringDashboard() {
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
     return sorted;
-  }, [viewData, isf, fsf, bf, q, sf, sd, isS, isB, selectedSupplier, selectedBuyer, supCurrency]);
+  }, [viewData, isf, fsf, bf, q, sf, sd, isS, isB, selectedSupplier, selectedBuyer, supProgram, buyProgram]);
+
+  // Default supProgram to first eligible program when supplier changes (Tweak #1).
+  // Also clears the selection if the current program is no longer valid for the new supplier.
+  useEffect(function() {
+    if (!isS) return;
+    var progs = programsForSupplier(selectedSupplier);
+    var ids = progs.map(function(p) { return p.id; });
+    if (supProgram && ids.indexOf(supProgram) === -1) {
+      setSupProgram(progs.length > 0 ? progs[0].id : "");
+    } else if (!supProgram && progs.length > 0) {
+      setSupProgram(progs[0].id);
+    }
+  }, [selectedSupplier, isS, dataVer]);
+
+  // Default buyProgram to first eligible program when buyer changes (Tweak #2).
+  useEffect(function() {
+    if (!isB) return;
+    var progs = programsForBuyer(selectedBuyer);
+    var ids = progs.map(function(p) { return p.id; });
+    if (buyProgram && ids.indexOf(buyProgram) === -1) {
+      setBuyProgram(progs.length > 0 ? progs[0].id : "");
+    } else if (!buyProgram && progs.length > 0) {
+      setBuyProgram(progs[0].id);
+    }
+  }, [selectedBuyer, isB, dataVer]);
 
   var paged = filtered.slice(pg * PS, (pg + 1) * PS);
   var tp = Math.ceil(filtered.length / PS) || 1;
@@ -6617,9 +6689,12 @@ export default function FactoringDashboard() {
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSelectedInvs({}); setSaPage(0); setSaExp(null); setShPage(0); setShExp(null); setRemSearch(""); setRemStatusFilter("all"); setSfPage(0); setSfSearch(""); setSfStatusFilter("all"); setSfDateFilter(""); setFundPayExp(null); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label + " (" + se.value + ")"}</option>; })}
             </select>
-            <select value={supCurrency} onChange={function(e) { setSupCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
-              <option value="all">All Currencies</option>
-              {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+            <select value={supProgram} onChange={function(e) { setSupProgram(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+              {(function() {
+                var progs = programsForSupplier(selectedSupplier);
+                if (progs.length === 0) return [<option key="none" value="">No programs</option>];
+                return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
+              })()}
             </select>
           </div>
         </div>}
@@ -6633,9 +6708,12 @@ export default function FactoringDashboard() {
             <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBaPage(0); setBaExp(null); setBaSearch(""); setBaDateFilter(""); setBhPage(0); setBhExp(null); setBhSearch(""); setBhDateFilter(""); setBfPage(0); setBfSearch(""); setBfStatusFilter("all"); setBfDateFilter(""); setFundPayExp(null); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
             </select>
-            <select value={buyCurrency} onChange={function(e) { setBuyCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
-              <option value="all">All Currencies</option>
-              {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+            <select value={buyProgram} onChange={function(e) { setBuyProgram(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+              {(function() {
+                var progs = programsForBuyer(selectedBuyer);
+                if (progs.length === 0) return [<option key="none" value="">No programs</option>];
+                return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
+              })()}
             </select>
           </div>
         </div>}
@@ -7061,7 +7139,7 @@ export default function FactoringDashboard() {
           var supCapOS = filtered.reduce(function(s, inv) { return s + (inv.capitalOutstanding || 0); }, 0);
           var overdueCount = filtered.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.capitalOutstanding > 0.01; }).length;
           var pendingCount = filtered.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
-          var dc = supCurrency !== "all" ? supCurrency : "GBP";
+          var dc = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 22 }}>
             <StatCard label="Invoiced" value={money(r2(supTotal), dc)} sub={filtered.length + " invoice" + (filtered.length === 1 ? "" : "s")} accent="#0EA5E9" />
             <StatCard label="Cash Advanced" value={money(r2(supCapAdv), dc)} sub="to date" accent="#10B981" />
@@ -7492,8 +7570,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Overview Tab */}
         {isS && supTab === "overview" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supplier = getSupplierById(selectedSupplier) || getParentSupplier(selectedSupplier);
 
           // Compute balances (exclude pending)
@@ -8326,8 +8404,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Payment Allocations Tab */}
         {isS && supTab === "allocations" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           var allSupPays = [];
@@ -8525,8 +8603,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Holdback Payments Tab */}
         {isS && supTab === "holdback" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           var allSupHbps = HOLDBACK_PAYMENTS_DB.filter(function(hbp) { return supInvIds[hbp.sourceInvoiceId]; });
@@ -8798,8 +8876,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Funding Payments Tab */}
         {isS && supTab === "funding" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           // A: Scope to funding-only (pass-throughs/holdbacks live on the Pass-through Payments tab)
@@ -9024,9 +9102,9 @@ export default function FactoringDashboard() {
             if (selBranchId) return inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier);
             return getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier);
           });
-          if (supCurrency !== "all") supInvs = supInvs.filter(function(inv) { return inv.currency === supCurrency; });
+          if (supProgram) supInvs = supInvs.filter(function(inv) { return invInProgramScope(inv, supProgram); });
           var stRows = buildSupplierStatement(supInvs);
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supDisplayName = selectedSupplier ? getEntityDisplayName(selectedSupplier) : "";
 
           return <div>
@@ -9066,8 +9144,8 @@ export default function FactoringDashboard() {
 
         {/* Buyer Overview Tab */}
         {isB && buyTab === "overview" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
           var buyer = BUYERS_DB.find(function(b) { return b.id === selectedBuyer; });
 
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
@@ -9420,8 +9498,8 @@ export default function FactoringDashboard() {
 
         {/* Buyer Invoices Tab */}
         {isB && buyTab === "invoices" && (function() {
-          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
 
           // Filter
           var buyInvs = allBuyInvs.slice();
@@ -9622,8 +9700,8 @@ export default function FactoringDashboard() {
 
         {/* Buyer Payment Allocations Tab */}
         {isB && buyTab === "allocations" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
           var allBuyPays = [];
@@ -16731,7 +16809,14 @@ export default function FactoringDashboard() {
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
                   </tr></thead>
-                  <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
+                  <tbody>{(function() {
+                    // Tweak #3: Only show programs this supplier participates in.
+                    // New entities (manageEdit null) show nothing — programs aren't assigned yet.
+                    var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                    if (eligibleProgs.length === 0) {
+                      return <tr><td colSpan="4" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure limits." : "Save the supplier first, then add to programs to configure limits."}</td></tr>;
+                    }
+                    return eligibleProgs.map(function(fp) {
                     var cl = (f.creditLimits || {})[fp.id];
                     var sil = (f.singleInvoiceLimits || {})[fp.id];
                     return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -16740,12 +16825,19 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
                       <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
                     </tr>;
-                  })}</tbody>
+                    });
+                  })()}</tbody>
                 </table>
               </div>}
               {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Bank Accounts by Program</div>
-                {FUNDING_PROGRAMS_DB.map(function(fp) {
+                {(function() {
+                  // Tweak #3: Only show programs this supplier participates in.
+                  var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                  if (eligibleProgs.length === 0) {
+                    return <div style={{ padding: "16px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic", background: "var(--card-hover)", borderRadius: 10, border: "1px solid var(--border)" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure bank accounts." : "Save the supplier first, then add to programs to configure bank accounts."}</div>;
+                  }
+                  return eligibleProgs.map(function(fp) {
                   var pba = (f.programBankAccounts || {})[fp.id] || {};
                   var outgoing = pba.outgoing || {};
                   var incoming = pba.incoming || {};
@@ -16806,7 +16898,8 @@ export default function FactoringDashboard() {
                       </div>
                     </div>
                   </div>;
-                })}
+                });
+                })()}
               </div>}
               {/* Directors Section */}
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
