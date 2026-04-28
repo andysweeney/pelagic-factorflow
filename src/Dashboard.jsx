@@ -4514,15 +4514,15 @@ export default function FactoringDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
-              <input type="number" step="1" value={addToProgramModal.advanceRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <input type="number" step="1" value={addToProgramModal.advanceRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
-              <input type="number" step="0.1" value={addToProgramModal.annualRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <input type="number" step="0.1" value={addToProgramModal.annualRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
-              <input type="number" step="0.1" value={addToProgramModal.penaltyRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <input type="number" step="0.1" value={addToProgramModal.penaltyRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           </div>
 
@@ -4530,11 +4530,11 @@ export default function FactoringDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Credit Limit</label>
-              <input type="number" step="0.01" value={addToProgramModal.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <input type="number" step="0.01" value={addToProgramModal.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Single Invoice Limit</label>
-              <input type="number" step="0.01" value={addToProgramModal.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+              <input type="number" step="0.01" value={addToProgramModal.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           </div>
 
@@ -4587,10 +4587,11 @@ export default function FactoringDashboard() {
                   return next;
                 });
               }
-              // Add to eligible list in program edit form. Only relevant when modal opened
-              // from the program edit page; harmless no-op from supplier edit (progFields is for whichever program is in edit, but this call only matters when we're actually editing that program).
+              // Add to eligible list in program edit form. Updates progFields' eligible_suppliers
+              // so the program-edit UI immediately reflects the addition. Has no observable effect
+              // when the modal was opened from supplier edit (program form isn't visible).
               setProgFields(function(p) {
-                if (!p || p.id !== m.programId) return p;
+                if (!p) return p;
                 var arr = (p.eligibleSuppliers || []).slice();
                 if (m.isBranch) {
                   if (arr.indexOf(m.supplierId) === -1) arr.push(m.supplierId);
@@ -17459,15 +17460,18 @@ export default function FactoringDashboard() {
                                 return Object.assign({}, p, { eligibleSuppliers: arr });
                               });
                             } else {
-                              // Select: open modal to capture rates + limits before adding to eligible list
+                              // Select: open modal to capture rates + limits before adding to eligible list.
+                              // pf.maxAdvanceRate / pf.minInterestRate are stored in form state as percent strings (e.g. "90", "15.0"), not decimals.
+                              var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
+                              var fpMinInt = parseFloat(pf.minInterestRate) || 15;
+                              var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                               setAddToProgramModal({
                                 supplierId: s.id, supplierName: s.name,
-                                programId: pf.id || (manageEdit || ""), programName: pf.name || "",
+                                programId: editingProgramObj ? editingProgramObj.id : "", programName: pf.name || "",
                                 programCcy: pf.currency || "GBP",
                                 isBranch: false,
-                                // Pre-fill rates from program min/max (sensible defaults)
-                                advanceRate: String(((pf.maxAdvanceRate - 0.05) * 100).toFixed(0)),
-                                annualRate: String(((pf.minInterestRate + 0.01) * 100).toFixed(1)),
+                                advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
+                                annualRate: String((fpMinInt + 1).toFixed(1)),
                                 penaltyRate: "20.0",
                                 creditLimit: "",
                                 singleInvoiceLimit: ""
@@ -17483,13 +17487,16 @@ export default function FactoringDashboard() {
                                 if (brSel) {
                                   setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
                                 } else {
+                                  var fpMaxAdvB = parseFloat(pf.maxAdvanceRate) || 90;
+                                  var fpMinIntB = parseFloat(pf.minInterestRate) || 15;
+                                  var editingProgramObjB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                                   setAddToProgramModal({
                                     supplierId: brEntityId, supplierName: s.name + " \u2014 " + br.branchName,
-                                    programId: pf.id || (manageEdit || ""), programName: pf.name || "",
+                                    programId: editingProgramObjB ? editingProgramObjB.id : "", programName: pf.name || "",
                                     programCcy: pf.currency || "GBP",
                                     isBranch: true,
-                                    advanceRate: String(((pf.maxAdvanceRate - 0.05) * 100).toFixed(0)),
-                                    annualRate: String(((pf.minInterestRate + 0.01) * 100).toFixed(1)),
+                                    advanceRate: String(Math.max(0, fpMaxAdvB - 5).toFixed(0)),
+                                    annualRate: String((fpMinIntB + 1).toFixed(1)),
                                     penaltyRate: "20.0",
                                     creditLimit: "",
                                     singleInvoiceLimit: ""
