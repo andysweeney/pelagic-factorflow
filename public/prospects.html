@@ -3446,6 +3446,7 @@ function renderBuyerMapping() {
         if (!sel) return;
         if (res.error) {
             sel.innerHTML = '<option value="">Error loading buyers</option>';
+            updateConvertButtonState();
             return;
         }
         var opts = '<option value="">— Select buyer —</option>';
@@ -3458,6 +3459,8 @@ function renderBuyerMapping() {
             sel.value = prospect.mapped_buyer_id;
         }
         sel.onchange = updateConvertButtonState;
+        // Re-evaluate gate now that the dropdown is populated and any prior selection restored
+        updateConvertButtonState();
     });
 }
 
