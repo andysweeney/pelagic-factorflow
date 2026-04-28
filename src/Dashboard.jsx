@@ -949,7 +949,7 @@ async function loadPersistedData() {
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
           programRates: row.program_rates || {},
-          rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
+          rates: row.rates || [],
           branches: row.branches || [],
           paused: row.paused || false
         });
@@ -4569,6 +4569,21 @@ export default function FactoringDashboard() {
                 sup.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
               }
               await saveSupplier(parentId);
+              // Also mutate the in-memory program record + persist, so eligible_suppliers
+              // is saved to Supabase atomically with the rates. User doesn't need a separate
+              // "Save Program" click — the modal completes the whole add operation.
+              var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+              if (fp) {
+                var fpArr = (fp.eligibleSuppliers || []).slice();
+                if (m.isBranch) {
+                  if (fpArr.indexOf(m.supplierId) === -1) fpArr.push(m.supplierId);
+                } else {
+                  fpArr = fpArr.filter(function(n) { return !n.startsWith(m.supplierId + ":"); });
+                  if (fpArr.indexOf(m.supplierId) === -1) fpArr.push(m.supplierId);
+                }
+                fp.eligibleSuppliers = fpArr;
+                await saveFundingProgram(fp.id);
+              }
               // If we're currently editing this supplier in the manage form, mirror the changes
               // into manageFields so the form's display refreshes without needing a reload.
               if (manageEdit === parentId) {
@@ -17459,6 +17474,12 @@ export default function FactoringDashboard() {
                                 arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
                                 return Object.assign({}, p, { eligibleSuppliers: arr });
                               });
+                              // Also persist to Supabase immediately so refresh shows correct state
+                              var dpEditingProg = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (dpEditingProg) {
+                                dpEditingProg.eligibleSuppliers = (dpEditingProg.eligibleSuppliers || []).filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
+                                saveFundingProgram(dpEditingProg.id);
+                              }
                             } else {
                               // Select: open modal to capture rates + limits before adding to eligible list.
                               // pf.maxAdvanceRate / pf.minInterestRate are stored in form state as percent strings (e.g. "90", "15.0"), not decimals.
@@ -17486,6 +17507,11 @@ export default function FactoringDashboard() {
                               items.push(React.createElement("span", { key: brEntityId, onClick: function() {
                                 if (brSel) {
                                   setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
+                                  var dpEditingProgB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (dpEditingProgB) {
+                                    dpEditingProgB.eligibleSuppliers = (dpEditingProgB.eligibleSuppliers || []).filter(function(n) { return n !== brEntityId; });
+                                    saveFundingProgram(dpEditingProgB.id);
+                                  }
                                 } else {
                                   var fpMaxAdvB = parseFloat(pf.maxAdvanceRate) || 90;
                                   var fpMinIntB = parseFloat(pf.minInterestRate) || 15;
@@ -18803,7 +18829,7 @@ export default function FactoringDashboard() {
                           if (d.holdbackPayments) { HOLDBACK_PAYMENTS_DB.length = 0; d.holdbackPayments.forEach(function(x) { HOLDBACK_PAYMENTS_DB.push(x); }); }
                           if (d.auditLog) { AUDIT_LOG.length = 0; d.auditLog.forEach(function(x) { AUDIT_LOG.push(x); }); }
                           if (d.supplierPaymentQueue) { SUPPLIER_PAYMENT_QUEUE.length = 0; d.supplierPaymentQueue.forEach(function(x) { SUPPLIER_PAYMENT_QUEUE.push(x); }); }
-                          if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) { if (!x.rates) x.rates = [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }]; SUPPLIERS_DB.push(x); }); }
+                          if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) { if (!x.rates) x.rates = []; SUPPLIERS_DB.push(x); }); }
                           if (d.buyers) { BUYERS_DB.length = 0; d.buyers.forEach(function(x) { BUYERS_DB.push(x); }); BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
                           if (d.fundingPrograms) { FUNDING_PROGRAMS_DB.length = 0; d.fundingPrograms.forEach(function(x) { FUNDING_PROGRAMS_DB.push(x); }); }
                           if (d.serviceProviders) { SERVICE_PROVIDERS_DB.length = 0; d.serviceProviders.forEach(function(x) { SERVICE_PROVIDERS_DB.push(x); }); }
