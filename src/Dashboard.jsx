@@ -4247,12 +4247,12 @@ export default function FactoringDashboard() {
         var spPortalTab = view;
         var spFont = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         var spMono = "'JetBrains Mono', monospace";
-        var spBg = "#0B1120";
+        var spBg = "#586076";
 
         var spCard = "#131C2E";
-        var spBorder = "#1C2A42";
+        var spBorder = "#3D4760";
         var spText = "#E2E8F0";
-        var spMuted = "#64748B";
+        var spMuted = "#94A3B8";
         var spAccent = "#0EA5E9";
         var spGreen = "#10B981";
         var spRed = "#EF4444";
@@ -4558,7 +4558,7 @@ export default function FactoringDashboard() {
 
         return React.createElement("div", { style: { minHeight: "100vh", background: spBg, color: spText, fontFamily: spFont, display: "flex" } },
           /* Sidebar */
-          React.createElement("div", { style: { width: 220, background: "#0D1526", borderRight: "1px solid " + spBorder, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
+          React.createElement("div", { style: { width: 220, background: "#3A4358", borderRight: "1px solid " + spBorder, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
             React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spBorder } },
               React.createElement("img", { src: LOGO_URL, alt: "Pelagic Solutions", style: { height: 32, filter: "drop-shadow(0 0 8px rgba(14,165,233,0.3))" } }),
               React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
@@ -4566,7 +4566,7 @@ export default function FactoringDashboard() {
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
             React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
@@ -4578,7 +4578,7 @@ export default function FactoringDashboard() {
           /* Main content */
           React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "0", maxWidth: 1200 } },
             /* Top bar with date picker */
-            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
+            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#3A4358", position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
                 React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
                 spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
@@ -6283,7 +6283,7 @@ export default function FactoringDashboard() {
             })()
             )
           ),
-          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #1F2940 !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
