@@ -2326,13 +2326,50 @@ export default function FactoringDashboard() {
                 source: "prospect"
               });
             }
+
+            // Derive invoice_status from prospect dates. Priority: terminal states first.
+            var amt = p.invoice_amount || 0;
+            var apprAmt = p.approved_amount || 0;
+            var amountPaid = p.amount_paid_to_date != null ? parseFloat(p.amount_paid_to_date) : null;
+            var invStatus;
+            if (p.settled_date) invStatus = "Settled";
+            else if (p.cancelled_date) invStatus = "Cancelled";
+            else if (p.declined_date) invStatus = "Declined";
+            else if (p.disputed_date) invStatus = "Disputed";
+            else if (p.approval_date && apprAmt > 0 && apprAmt < amt - 0.01) invStatus = "Approved in Part";
+            else if (p.approval_date) invStatus = "Approved in Full";
+            else invStatus = "Received";
+
+            // Determine if invoice should be marked historic. Mirrors the CSV import rules
+            // (line ~17504): any terminal status, past due date, or fully paid by buyer.
+            // historic short-circuits processForDate's derivation (line ~1975) so the
+            // saved status sticks rather than being re-derived to fully_repaid etc.
+            var nowStr = new Date().toISOString().split("T")[0];
+            var isHistoric = false;
+            if (p.cancelled_date || p.declined_date || p.disputed_date || p.settled_date) isHistoric = true;
+            if (p.due_date && p.due_date < nowStr) isHistoric = true;
+            if (amountPaid !== null && amt > 0 && amountPaid >= amt - 0.01) isHistoric = true;
+
+            // Reconstruct invoice_status_history from populated dates, sorted chronologically.
+            var historyEvents = [];
+            if (p.invoice_date) historyEvents.push({ status: "Received", date: p.invoice_date });
+            if (p.approval_date) {
+              var apprStatus = (apprAmt > 0 && apprAmt < amt - 0.01) ? "Approved in Part" : "Approved in Full";
+              historyEvents.push({ status: apprStatus, date: p.approval_date });
+            }
+            if (p.declined_date) historyEvents.push({ status: "Declined", date: p.declined_date });
+            if (p.disputed_date) historyEvents.push({ status: "Disputed", date: p.disputed_date });
+            if (p.cancelled_date) historyEvents.push({ status: "Cancelled", date: p.cancelled_date });
+            if (p.settled_date) historyEvents.push({ status: "Settled", date: p.settled_date });
+            historyEvents.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+
             return {
               id: "INV-" + p.id.substring(0, 8).toUpperCase() + "-" + p.reference_number,
               supplier_id: newSupplierId,
               supplier_name: newSupplierName,
               buyer_id: ps.mapped_buyer_id,
               buyer_name: buyerName,
-              amount: p.invoice_amount,
+              amount: amt,
               currency: p.currency || "GBP",
               advance_rate: 0, annual_rate: 0, penalty_rate: 0,
               invoice_date: p.invoice_date,
@@ -2340,18 +2377,18 @@ export default function FactoringDashboard() {
               funded_date: null,
               created_date: p.invoice_date,
               approved_date: p.approval_date,
-              fully_repaid_date: p.settled_date,
-              settled_date: p.settled_date,
-              invoice_status: p.cancelled_date ? "Cancelled" : (p.disputed_date ? "Disputed" : (p.settled_date ? "Settled" : (p.approval_date ? "Approved" : "Pending"))),
-              funding_status: "Not Funded",
+              fully_repaid_date: p.settled_date || null,
+              settled_date: p.settled_date || null,
+              invoice_status: invStatus,
+              funding_status: isHistoric ? "historic" : "pending",
               funding_program: null,
-              partial_approved_amount: p.approved_amount || 0,
+              partial_approved_amount: apprAmt,
               invoice_reference: p.reference_number,
               purchase_order: p.purchase_order,
               buyer_ref: p.buyer_invoice_ref,
               supplier_ref: p.supplier_invoice_ref,
               buyer_received_date: p.buyer_received_date,
-              invoice_status_history: [],
+              invoice_status_history: historyEvents,
               adjustments: [],
               do_not_fund: false, do_not_advance: false,
               pending_top_up_amount: 0, pending_top_up_rate: null, pending_top_up_date: null,
