@@ -247,21 +247,45 @@ function getSupplierBankDetails(entityId, programId) {
   return { bankName: sup.bankName || "", bankDetails: sup.bankDetails || "", bankVerified: sup.bankVerified || false };
 }
 
-function getSupplierRate(entityId, asOfTimestamp) {
+// Look up a supplier's rate for a specific program at a given point in time.
+// Returns null if the supplier has no rates set for that program.
+// History is stored as supplier.programRates[programId] = [{annualRate, advanceRate, penaltyRate, effectiveDate, effectiveTimestamp}, ...].
+// We pick the most recent entry whose effectiveTimestamp <= asOfTimestamp (or now if not provided).
+function getSupplierRateForProgram(entityId, programId, asOfTimestamp) {
+  if (!programId) return null;
   var supplier = getSupplierById(entityId);
-  if (!supplier) {
-    // Backward compat: try by name
-    supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
-  }
-  if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
+  if (!supplier) supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
+  if (!supplier) return null;
+  var pr = supplier.programRates || {};
+  var arr = pr[programId];
+  if (!arr || arr.length === 0) return null;
   var ts = asOfTimestamp || new Date().toISOString();
-  var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
-  var rate = sorted[0];
+  var sorted = arr.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
+  var rate = null;
   for (var i = 0; i < sorted.length; i++) {
     var rts = sorted[i].effectiveTimestamp || sorted[i].effectiveDate;
     if (rts <= ts) rate = sorted[i];
   }
+  // If asOfTimestamp is before any rate's effectiveTimestamp, no rate was in effect → null.
+  // (For invoices funded before any rate was set, we shouldn't be funding them anyway.)
+  if (!rate) return null;
   return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
+}
+
+// Backward-compat: returns the rate of the first program the supplier has rates for, or
+// system defaults. Used by display code (cards, forms, summaries) where program context
+// may not be available. Eligibility checks should always use getSupplierRateForProgram.
+function getSupplierRate(entityId, asOfTimestamp) {
+  var supplier = getSupplierById(entityId);
+  if (!supplier) supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
+  if (!supplier) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
+  var pr = supplier.programRates || {};
+  var keys = Object.keys(pr);
+  for (var i = 0; i < keys.length; i++) {
+    var r = getSupplierRateForProgram(entityId, keys[i], asOfTimestamp);
+    if (r) return r;
+  }
+  return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
 }
 
 // Programs the given supplier ID participates in (member of eligible_suppliers).
@@ -307,7 +331,7 @@ function invInProgramScope(inv, programId) {
 }
 
 function getEligiblePrograms(inv, supDilRates) {
-  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
+  var entityIdForRate = inv.supplierId || inv.supplierName;
   var parentId = getParentEntityId(inv.supplierId || "");
   var parentSup = getParentSupplierName(inv.supplierName);
   var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
@@ -329,6 +353,10 @@ function getEligiblePrograms(inv, supDilRates) {
       var buyerId = inv.buyerId || "";
       if (fp.eligibleBuyers.indexOf(buyerId) === -1) return false;
     }
+    // Per-program rate lookup. No rate = supplier hasn't been commercially configured for this
+    // program yet → ineligible. Falls through the gate at program-add time.
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    if (!supRate) return false;
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
     if (term > fp.maxInvoiceTerm) return false;
@@ -733,6 +761,7 @@ async function saveSupplier(supId) {
       bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
       account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
       credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {},
+      program_rates: s.programRates || {},
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
     };
@@ -919,6 +948,7 @@ async function loadPersistedData() {
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
+          programRates: row.program_rates || {},
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
           branches: row.branches || [],
           paused: row.paused || false
@@ -1470,6 +1500,7 @@ async function reloadSuppliers() {
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
+          programRates: row.program_rates || {},
           rates: row.rates || [], branches: row.branches || [],
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
           incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null,
@@ -1567,6 +1598,7 @@ async function savePersistedData() {
         bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
         account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
         credit_limits: s.creditLimits || {},
+        program_rates: s.programRates || {},
         single_invoice_limits: s.singleInvoiceLimits || {},
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
@@ -2823,6 +2855,9 @@ export default function FactoringDashboard() {
   var fpe1 = useState(null), fundPayExp = fpe1[0], setFundPayExp = fpe1[1];
   var bnd1 = useState(null), bundleDialog = bnd1[0], setBundleDialog = bnd1[1];
   var rc1 = useState(false), showRateChange = rc1[0], setShowRateChange = rc1[1];
+  // Modal for adding supplier to program with required commercial terms (Tweak: rate gate at program assignment).
+  // null = closed; otherwise { supplierId, supplierName, programId, programName, programCcy, advanceRate, annualRate, penaltyRate, creditLimit, singleInvoiceLimit }
+  var atpm1 = useState(null), addToProgramModal = atpm1[0], setAddToProgramModal = atpm1[1];
   var rn1 = useState(""), newRateAnnual = rn1[0], setNewRateAnnual = rn1[1];
   var rp1 = useState(""), newRatePenalty = rp1[0], setNewRatePenalty = rp1[1];
   var ra1 = useState(""), newRateAdvance = ra1[0], setNewRateAdvance = ra1[1];
@@ -4468,6 +4503,111 @@ export default function FactoringDashboard() {
       </div>
       <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
       {/* GLOBAL Fund Popup Modal — renders regardless of view */}
+      {/* Add Supplier to Program — modal captures rates + limits before adding to eligibleSuppliers */}
+      {addToProgramModal && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
+        <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add to Program</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 16 }}><strong>{addToProgramModal.supplierName}</strong> &rarr; <strong>{addToProgramModal.programName || "this program"}</strong> ({addToProgramModal.programCcy})</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>Set commercial terms for this supplier on this program. Rates are required; limits are optional (blank means no limit).</div>
+
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Rates</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
+              <input type="number" step="1" value={addToProgramModal.advanceRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
+              <input type="number" step="0.1" value={addToProgramModal.annualRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
+              <input type="number" step="0.1" value={addToProgramModal.penaltyRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            </div>
+          </div>
+
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Limits (optional)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Credit Limit</label>
+              <input type="number" step="0.01" value={addToProgramModal.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Single Invoice Limit</label>
+              <input type="number" step="0.01" value={addToProgramModal.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button onClick={function() { setAddToProgramModal(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button onClick={async function() {
+              var m = addToProgramModal;
+              if (!m.advanceRate || !m.annualRate || !m.penaltyRate) { alert("Rates are required."); return; }
+              // Resolve the supplier record. For branch entities, write to the parent supplier (rates/limits are parent-level).
+              var parentId = getParentEntityId(m.supplierId) || m.supplierId;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
+              if (!sup) { alert("Supplier not found."); return; }
+              // Set rate
+              if (!sup.programRates) sup.programRates = {};
+              if (!sup.programRates[m.programId]) sup.programRates[m.programId] = [];
+              var now = new Date();
+              sup.programRates[m.programId].push({
+                effectiveDate: now.toISOString().split("T")[0],
+                effectiveTimestamp: now.toISOString(),
+                effectiveDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+                advanceRate: parseFloat(m.advanceRate) / 100,
+                annualRate: parseFloat(m.annualRate) / 100,
+                penaltyRate: parseFloat(m.penaltyRate) / 100
+              });
+              // Set limits if provided
+              if (m.creditLimit) {
+                if (!sup.creditLimits) sup.creditLimits = {};
+                sup.creditLimits[m.programId] = parseFloat(m.creditLimit);
+              }
+              if (m.singleInvoiceLimit) {
+                if (!sup.singleInvoiceLimits) sup.singleInvoiceLimits = {};
+                sup.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+              }
+              await saveSupplier(parentId);
+              // If we're currently editing this supplier in the manage form, mirror the changes
+              // into manageFields so the form's display refreshes without needing a reload.
+              if (manageEdit === parentId) {
+                setManageFields(function(prev) {
+                  var nextPR = Object.assign({}, prev.programRates || {});
+                  nextPR[m.programId] = (sup.programRates[m.programId] || []).slice();
+                  var next = Object.assign({}, prev, { programRates: nextPR });
+                  if (m.creditLimit) {
+                    next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                    next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                  }
+                  if (m.singleInvoiceLimit) {
+                    next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                    next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                  }
+                  return next;
+                });
+              }
+              // Add to eligible list in program edit form. Only relevant when modal opened
+              // from the program edit page; harmless no-op from supplier edit (progFields is for whichever program is in edit, but this call only matters when we're actually editing that program).
+              setProgFields(function(p) {
+                if (!p || p.id !== m.programId) return p;
+                var arr = (p.eligibleSuppliers || []).slice();
+                if (m.isBranch) {
+                  if (arr.indexOf(m.supplierId) === -1) arr.push(m.supplierId);
+                } else {
+                  arr = arr.filter(function(n) { return !n.startsWith(m.supplierId + ":"); });
+                  if (arr.indexOf(m.supplierId) === -1) arr.push(m.supplierId);
+                }
+                return Object.assign({}, p, { eligibleSuppliers: arr });
+              });
+              auditLog("Supplier Added to Program", m.supplierName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%", { supplierId: m.supplierId, supplier: m.supplierName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
+              setAddToProgramModal(null);
+              setDataVer(function(v) { return v + 1; });
+            }} disabled={!addToProgramModal.advanceRate || !addToProgramModal.annualRate || !addToProgramModal.penaltyRate} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "var(--accent)" : "var(--border)", color: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "pointer" : "default" }}>Add to Program</button>
+          </div>
+        </div>
+      </div>}
+
       {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>{fundPopup.isTopup ? "Fund Purchased Invoice" : "Fund Invoice"}: {fundPopup.inv.id}</div>
@@ -8082,31 +8222,38 @@ export default function FactoringDashboard() {
                 </div>
               </div>
 
-              {/* Rates & Balances */}
+              {/* Rates & Balances — scoped to the currently-selected program (supProgram) */}
               {(function() {
-                var curRate = getSupplierRate(selectedSupplier);
-                var rateHistory = supplier && supplier.rates ? supplier.rates.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); }) : [];
+                var curRate = getSupplierRateForProgram(selectedSupplier, supProgram);
+                var pr = (supplier && supplier.programRates) || {};
+                var rateHistory = pr[supProgram] ? pr[supProgram].slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); }) : [];
+                var selectedProgramObj = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; });
+                var selectedProgramName = selectedProgramObj ? selectedProgramObj.name : "this program";
 
                 function addRate() {
-                  if (!newRateAdvance || !newRateAnnual || !newRatePenalty) return;
-                  if (!supplier.rates) supplier.rates = [];
+                  if (!newRateAdvance || !newRateAnnual || !newRatePenalty || !supProgram) return;
+                  if (!supplier.programRates) supplier.programRates = {};
+                  if (!supplier.programRates[supProgram]) supplier.programRates[supProgram] = [];
                   var now = new Date();
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                  supplier.rates.push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
+                  supplier.programRates[supProgram].push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
                   saveSupplier(selectedSupplier);
-                    auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
+                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
                   setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
                 }
 
                 return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid #C08B30" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Rates & Current Balances</div>
-                  <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Rates & Current Balances <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>({selectedProgramName})</span></div>
+                  {curRate && <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>}
                 </div>
-                {showRateChange && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>New Rate for {getEntityDisplayName(selectedSupplier)}</div>
+                {!curRate && <div style={{ padding: "16px 18px", borderRadius: 10, background: "#C0392B14", border: "1px solid #DC262630", marginBottom: 14, fontSize: 12, color: "#EF4444" }}>
+                  No rates set for {selectedProgramName}. Add this supplier to the program (or use Manage to configure) to set rates.
+                </div>}
+                {showRateChange && curRate && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>New Rate for {getEntityDisplayName(selectedSupplier)} on {selectedProgramName}</div>
                   <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
@@ -8127,7 +8274,7 @@ export default function FactoringDashboard() {
                     <button onClick={addRate} disabled={!newRateAdvance || !newRateAnnual || !newRatePenalty} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: newRateAdvance && newRateAnnual && newRatePenalty ? "var(--accent)" : "var(--border)", color: newRateAdvance && newRateAnnual && newRatePenalty ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: newRateAdvance && newRateAnnual && newRatePenalty ? "pointer" : "default" }}>Save Rate</button>
                   </div>
                 </div>}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
+                {curRate && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
                   <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Advance Rate</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{(curRate.advanceRate * 100).toFixed(0)}%</div>
@@ -8144,7 +8291,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Holdback Rate</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{((1 - curRate.advanceRate) * 100).toFixed(0)}%</div>
                   </div>
-                </div>
+                </div>}
                 <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   <div style={{ textAlign: "center", padding: "12px 8px", borderRadius: 10, border: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Capital O/S</div>
@@ -8160,7 +8307,7 @@ export default function FactoringDashboard() {
                   </div>
                 </div>
                 {rateHistory.length > 0 && <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Rate History</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Rate History &mdash; {selectedProgramName}</div>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Effective From", "Advance Rate", "Interest Rate", "Penalty Rate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{rateHistory.map(function(r, ri) {
@@ -16801,6 +16948,54 @@ export default function FactoringDashboard() {
                 </div>
               </div>
               {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Rates</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Program</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Advance</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Interest p.a.</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Penalty p.a.</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Effective From</th>
+                    <th style={{ padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}></th>
+                  </tr></thead>
+                  <tbody>{(function() {
+                    var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                    if (eligibleProgs.length === 0) {
+                      return <tr><td colSpan="6" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to set rates." : "Save the supplier first, then add to programs to set rates."}</td></tr>;
+                    }
+                    return eligibleProgs.map(function(fp) {
+                      var rate = getSupplierRateForProgram(manageEdit, fp.id);
+                      return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name} <span style={{ color: "var(--muted)", fontWeight: 400 }}>({fp.currency})</span></td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#0EA5E9" : "var(--muted)" }}>{rate ? (rate.advanceRate * 100).toFixed(0) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#D97706" : "var(--muted)" }}>{rate ? (rate.annualRate * 100).toFixed(1) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#DC2626" : "var(--muted)" }}>{rate ? (rate.penaltyRate * 100).toFixed(1) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{(function() {
+                          var pr = (f.programRates || {})[fp.id];
+                          if (!pr || pr.length === 0) return "—";
+                          var sorted = pr.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+                          return sorted[0].effectiveDisplay || sorted[0].effectiveDate || "—";
+                        })()}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                          <button onClick={function() {
+                            setAddToProgramModal({
+                              supplierId: manageEdit, supplierName: f.name || manageEdit,
+                              programId: fp.id, programName: fp.name, programCcy: fp.currency || "GBP",
+                              isBranch: false,
+                              advanceRate: rate ? String((rate.advanceRate * 100).toFixed(0)) : String(((fp.maxAdvanceRate - 0.05) * 100).toFixed(0)),
+                              annualRate: rate ? String((rate.annualRate * 100).toFixed(1)) : String(((fp.minInterestRate + 0.01) * 100).toFixed(1)),
+                              penaltyRate: rate ? String((rate.penaltyRate * 100).toFixed(1)) : "20.0",
+                              creditLimit: ((f.creditLimits || {})[fp.id] !== undefined) ? String((f.creditLimits || {})[fp.id]) : "",
+                              singleInvoiceLimit: ((f.singleInvoiceLimits || {})[fp.id] !== undefined) ? String((f.singleInvoiceLimits || {})[fp.id]) : ""
+                            });
+                          }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{rate ? "Edit" : "Set"}</button>
+                        </td>
+                      </tr>;
+                    });
+                  })()}</tbody>
+                </table>
+              </div>}
+              {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
                   <thead><tr>
@@ -17256,18 +17451,28 @@ export default function FactoringDashboard() {
                         SUPPLIERS_DB.forEach(function(s) {
                           var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
                           items.push(React.createElement("span", { key: s.id, onClick: function() {
-                            setProgFields(function(p) {
-                              var arr = (p.eligibleSuppliers || []).slice();
-                              if (parentSel) {
-                                // Deselect parent and all its branches
+                            if (parentSel) {
+                              // Deselect: remove from eligible list (keeps existing rates/limits as historic record)
+                              setProgFields(function(p) {
+                                var arr = (p.eligibleSuppliers || []).slice();
                                 arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
-                              } else {
-                                // Select parent (which means all branches eligible)
-                                arr = arr.filter(function(n) { return !n.startsWith(s.id + ":"); });
-                                arr.push(s.id);
-                              }
-                              return Object.assign({}, p, { eligibleSuppliers: arr });
-                            });
+                                return Object.assign({}, p, { eligibleSuppliers: arr });
+                              });
+                            } else {
+                              // Select: open modal to capture rates + limits before adding to eligible list
+                              setAddToProgramModal({
+                                supplierId: s.id, supplierName: s.name,
+                                programId: pf.id || (manageEdit || ""), programName: pf.name || "",
+                                programCcy: pf.currency || "GBP",
+                                isBranch: false,
+                                // Pre-fill rates from program min/max (sensible defaults)
+                                advanceRate: String(((pf.maxAdvanceRate - 0.05) * 100).toFixed(0)),
+                                annualRate: String(((pf.minInterestRate + 0.01) * 100).toFixed(1)),
+                                penaltyRate: "20.0",
+                                creditLimit: "",
+                                singleInvoiceLimit: ""
+                              });
+                            }
                           }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#0EA5E920" : "transparent", color: parentSel ? "#E2E8F0" : "var(--muted)", borderColor: parentSel ? "#E2E8F0" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
                           // Show branches indented if parent is NOT selected (individual branch selection)
                           if (s.branches && s.branches.length > 0 && !parentSel) {
@@ -17275,7 +17480,21 @@ export default function FactoringDashboard() {
                               var brEntityId = makeEntityId(s.id, br.branchId);
                               var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
                               items.push(React.createElement("span", { key: brEntityId, onClick: function() {
-                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
+                                if (brSel) {
+                                  setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
+                                } else {
+                                  setAddToProgramModal({
+                                    supplierId: brEntityId, supplierName: s.name + " \u2014 " + br.branchName,
+                                    programId: pf.id || (manageEdit || ""), programName: pf.name || "",
+                                    programCcy: pf.currency || "GBP",
+                                    isBranch: true,
+                                    advanceRate: String(((pf.maxAdvanceRate - 0.05) * 100).toFixed(0)),
+                                    annualRate: String(((pf.minInterestRate + 0.01) * 100).toFixed(1)),
+                                    penaltyRate: "20.0",
+                                    creditLimit: "",
+                                    singleInvoiceLimit: ""
+                                  });
+                                }
                               }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
                             });
                           }
