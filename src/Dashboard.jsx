@@ -2136,6 +2136,11 @@ export default function FactoringDashboard() {
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
   var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
   var sppgS = useState(0), spPage = sppgS[0], setSpPage = sppgS[1];
+  // Funding Balance / Statement view
+  var spStPS = useState("MTD"), spStPreset = spStPS[0], setSpStPreset = spStPS[1]; // "MTD" | "QTD" | "YTD" | "ALL" | "CUSTOM"
+  var spStFS = useState(""), spStFrom = spStFS[0], setSpStFrom = spStFS[1];        // YYYY-MM-DD (Custom only)
+  var spStTS = useState(""), spStTo = spStTS[0], setSpStTo = spStTS[1];            // YYYY-MM-DD (Custom only)
+  var spStQS = useState(""), spStQuery = spStQS[0], setSpStQuery = spStQS[1];      // search filter
 
   // Toast subscriber — pulls from module-level TOAST_QUEUE so any save function can push
   var toastS = useState([]), toasts = toastS[0], setToasts = toastS[1];
@@ -2949,7 +2954,16 @@ export default function FactoringDashboard() {
     return rows;
   }
 
-  function buildSupplierStatement(invoices) {
+  function buildSupplierStatement(invoices, opts) {
+    // opts: { from: "YYYY-MM-DD", to: "YYYY-MM-DD" } — both optional
+    // If `opts` is undefined: legacy mode — returns rows array (no Previous Balance).
+    // If `opts` is an object (even {}): structured mode — returns
+    //   { rows, openingBalance, fundingInPeriod, paymentsInPeriod, closingBalance, currentPosition }.
+    var structured = !!opts;
+    opts = opts || {};
+    var from = opts.from || null;
+    var to = opts.to || null;
+
     var entries = [];
     invoices.forEach(function(inv) {
       if (!inv.fundedDate) return;
@@ -2962,32 +2976,83 @@ export default function FactoringDashboard() {
     });
     // Sort chronologically
     entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
-    // Build statement with running balances
-    // Track per-invoice balances so we can sum accurately
+
+    // Build statement with running balances. Track per-invoice balances so we can sum accurately.
     var invBals = {};
-    var rows = [];
+    var allRows = [];
     function totalBals() { var c = 0, i = 0, p = 0, h = 0; Object.keys(invBals).forEach(function(k) { var b = invBals[k]; c += b.cap; i += b.int; p += b.pen; h += b.hb; }); return { cap: r2(c), int: r2(i), pen: r2(p), hb: r2(h) }; }
+
+    // Track period aggregates while iterating
+    var openingBalance = { cap: 0, int: 0, pen: 0, hb: 0, total: 0 };
+    var openingCaptured = !from; // if no `from`, opening = zero (start of history)
+    var fundingInPeriod = 0;
+    var paymentsInPeriod = 0; // sum of |cap+int+pen| applied during period (positive number representing reductions)
+    // Closing balance: snapshot of running totals taken at the *end* of the period.
+    // Captured the moment we first encounter an entry strictly after the period; if no such
+    // entry exists, closing = final running totals (handled after the loop).
+    var closingBalance = null;
+
+    function inPeriod(dateStr) {
+      if (from && dateStr < from) return false;
+      if (to && dateStr > to) return false;
+      return true;
+    }
+    function afterPeriod(dateStr) {
+      return !!(to && dateStr > to);
+    }
+
     entries.forEach(function(e) {
+      // Capture opening balance the first time we hit an entry on/after `from`
+      if (!openingCaptured && from && e.date >= from) {
+        var t0 = totalBals();
+        openingBalance = { cap: t0.cap, int: t0.int, pen: t0.pen, hb: t0.hb, total: r2(t0.cap + t0.int + t0.pen) };
+        openingCaptured = true;
+      }
+      // Capture closing balance the moment we step past the period (only once)
+      if (closingBalance === null && afterPeriod(e.date)) {
+        var tC = totalBals();
+        closingBalance = { cap: tC.cap, int: tC.int, pen: tC.pen, hb: tC.hb, total: r2(tC.cap + tC.int + tC.pen) };
+      }
+
       if (e.type === "funding") {
         if (!invBals[e.invoiceId]) invBals[e.invoiceId] = { cap: 0, int: 0, pen: 0, hb: 0 };
         invBals[e.invoiceId].cap = r2(invBals[e.invoiceId].cap + e.cap);
         invBals[e.invoiceId].int = r2(invBals[e.invoiceId].int + e.int);
         invBals[e.invoiceId].hb = r2(invBals[e.invoiceId].hb + e.hb);
         var t = totalBals();
-        rows.push({ date: e.date, event: e.event, cap: t.cap, int: t.int, pen: t.pen, hb: t.hb, type: "funding" });
+        var total = r2(t.cap + t.int + t.pen);
+        if (inPeriod(e.date)) {
+          allRows.push({ date: e.date, event: e.event, cap: t.cap, int: t.int, pen: t.pen, hb: t.hb, total: total, type: "funding", invoiceId: e.invoiceId });
+          fundingInPeriod = r2(fundingInPeriod + (e.cap || 0));
+        }
       } else {
-        // Previous balance
-        var prevT = totalBals();
-        rows.push({ date: e.date, event: "Previous Balance", cap: prevT.cap, int: prevT.int, pen: prevT.pen, hb: prevT.hb, type: "balance" });
         // Update per-invoice balances from snapshot
         invBals[e.invoiceId] = { cap: e.postCapBal, int: e.postIntBal, pen: e.postPenBal, hb: e.postHbBal };
-        // Payment applied row
-        rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "payment" });
-        // Closing balance
-        var closeT = totalBals();
-        rows.push({ date: e.date, event: "Closing Balance", cap: closeT.cap, int: closeT.int, pen: closeT.pen, hb: closeT.hb, type: "closing" });
+        if (inPeriod(e.date)) {
+          // Payment applied row
+          allRows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, total: r2(e.cap + e.int + e.pen), type: "payment", invoiceId: e.invoiceId });
+          // Closing balance after this payment
+          var closeT = totalBals();
+          allRows.push({ date: e.date, event: "Closing Balance", cap: closeT.cap, int: closeT.int, pen: closeT.pen, hb: closeT.hb, total: r2(closeT.cap + closeT.int + closeT.pen), type: "closing" });
+          // Track payment magnitude (cap+int+pen reductions; e.cap/int/pen are negative for payments)
+          paymentsInPeriod = r2(paymentsInPeriod + Math.abs((e.cap || 0) + (e.int || 0) + (e.pen || 0)));
+        }
       }
     });
+
+    // If `from` was set but no entries fell on/after it, opening = current totals (everything happened before period)
+    if (!openingCaptured && from) {
+      var tEnd = totalBals();
+      openingBalance = { cap: tEnd.cap, int: tEnd.int, pen: tEnd.pen, hb: tEnd.hb, total: r2(tEnd.cap + tEnd.int + tEnd.pen) };
+      openingCaptured = true;
+    }
+
+    // If we never crossed past the period (no entries after `to`), closing = final running balance
+    if (closingBalance === null) {
+      var finalT = totalBals();
+      closingBalance = { cap: finalT.cap, int: finalT.int, pen: finalT.pen, hb: finalT.hb, total: r2(finalT.cap + finalT.int + finalT.pen) };
+    }
+
     // Current position as of viewDate — sum actual outstanding from all invoices
     var curCap = 0, curInt = 0, curPen = 0, curHb = 0;
     invoices.forEach(function(inv) {
@@ -2997,8 +3062,22 @@ export default function FactoringDashboard() {
       curPen += inv.penaltyInterest || 0;
       curHb += inv.holdbackOutstanding || 0;
     });
-    rows.push({ date: viewDate, event: "Current Position", cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), type: "current" });
-    return rows;
+    var curTotal = r2(curCap + curInt + curPen);
+
+    // Always append the Current Position row at end (regardless of period — pinned summary)
+    allRows.push({ date: viewDate, event: "Current Position", cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), total: curTotal, type: "current" });
+
+    // Backward-compat: legacy callers (no opts) get just the rows array
+    if (!structured) return allRows;
+
+    return {
+      rows: allRows,
+      openingBalance: openingBalance,
+      fundingInPeriod: fundingInPeriod,
+      paymentsInPeriod: paymentsInPeriod,
+      closingBalance: closingBalance,
+      currentPosition: { cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), total: curTotal }
+    };
   }
 
   function confirmAllocation() {
@@ -5893,6 +5972,56 @@ export default function FactoringDashboard() {
               // Merge audit log with payment events, sorted newest first
               var mergedHist = displayAuditLog.concat(payAllocEvents);
               mergedHist.sort(function(a, b) { return (a.timestamp || "") > (b.timestamp || "") ? -1 : 1; });
+
+              // Program filter — respect the top-bar program selector.
+              // Build an invoiceId -> program lookup across ALL of this supplier's invoices
+              // (not just the program-filtered ones, so we can correctly classify events).
+              var invToProg = {};
+              spAllInvs.forEach(function(inv) { invToProg[inv.id] = inv.fundingProgram || ""; });
+              // Resolve an event to a program ID. Returns:
+              //   - the program id if the event is invoice-linked OR has explicit program info
+              //   - "_unassigned" if invoice-linked but the invoice has no fundingProgram
+              //   - "" (empty) if no program link at all (supplier-level event — e.g. bank update)
+              function eventProgramId(e) {
+                var c = e.context || {};
+                // Direct invoice link
+                var iid = c.invoiceId || c.sourceInvoiceId;
+                if (iid && invToProg.hasOwnProperty(iid)) {
+                  return invToProg[iid] || "_unassigned";
+                }
+                // Allocation list — multi-invoice payment event
+                if (c.allocations && Array.isArray(c.allocations)) {
+                  for (var ai = 0; ai < c.allocations.length; ai++) {
+                    var aiid = c.allocations[ai].invoiceId;
+                    if (aiid && invToProg.hasOwnProperty(aiid)) {
+                      // Take the first matching invoice's program — payments rarely span programs
+                      return invToProg[aiid] || "_unassigned";
+                    }
+                  }
+                }
+                // Synthetic Payments-to-You events carry a program *name* in their details string
+                // (and sometimes ctx). Try to match by name against the active program object.
+                if (e._synthetic && activeProg && (e.details || "").indexOf("(" + activeProg.name + ")") > -1) {
+                  return activeProg.id;
+                }
+                // Synthetic events for OTHER programs — try to detect and exclude
+                if (e._synthetic) {
+                  for (var pi = 0; pi < FUNDING_PROGRAMS_DB.length; pi++) {
+                    var fp = FUNDING_PROGRAMS_DB[pi];
+                    if ((e.details || "").indexOf("(" + fp.name + ")") > -1) return fp.id;
+                  }
+                }
+                // No determinable program link — treat as supplier-level
+                return "";
+              }
+              if (activeProgId) {
+                mergedHist = mergedHist.filter(function(e) {
+                  var ep = eventProgramId(e);
+                  if (ep === "") return true;        // supplier-level events always show
+                  return ep === activeProgId;        // program-tagged events must match
+                });
+              }
+
               // Collect unique actions
               var histActions = [];
               var seenActions = {};
@@ -5956,38 +6085,194 @@ export default function FactoringDashboard() {
               )
             ); })(),
             spPortalTab === "statement" && (function() {
-              var stRows = buildSupplierStatement(spInvs);
-              return React.createElement("div", { style: { padding: "28px 36px" } },
-                stRows.length === 0 ? React.createElement("div", { style: { padding: "40px 28px", textAlign: "center", color: spMuted, fontSize: 14 } }, "No funded invoices yet. Your statement will appear here once invoices are funded.") :
-                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
-                  React.createElement("div", { style: { padding: "16px 22px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
-                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText } }, "Combined Position Statement"),
-                    React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spMono } }, stRows.length + " entries")
+              // ---- Period from preset ----
+              var vDate = new Date(viewDate + "T12:00:00");
+              var ymd = function(d) { return d.toISOString().split("T")[0]; };
+              var periodFrom = "", periodTo = "";
+              if (spStPreset === "MTD") {
+                periodFrom = ymd(new Date(vDate.getFullYear(), vDate.getMonth(), 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "QTD") {
+                var qStart = Math.floor(vDate.getMonth() / 3) * 3;
+                periodFrom = ymd(new Date(vDate.getFullYear(), qStart, 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "YTD") {
+                periodFrom = ymd(new Date(vDate.getFullYear(), 0, 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "CUSTOM") {
+                periodFrom = spStFrom || "";
+                periodTo = spStTo || "";
+              } // ALL: leave both empty
+
+              var stResult = buildSupplierStatement(spInvs, { from: periodFrom, to: periodTo });
+              var allRows = stResult.rows;
+              var hasPeriod = spStPreset !== "ALL";
+
+              // ---- Apply search filter ----
+              var displayRows = allRows;
+              if (spStQuery) {
+                var sq = spStQuery.toLowerCase();
+                displayRows = allRows.filter(function(r) {
+                  if (r.type === "current") return true; // always keep the pinned current row
+                  return (r.event || "").toLowerCase().indexOf(sq) > -1 || (r.date || "").indexOf(sq) > -1;
+                });
+              }
+
+              // ---- CSV export ----
+              function csvEsc(v) {
+                if (v === null || v === undefined) return "";
+                var s = String(v);
+                if (s.indexOf(",") > -1 || s.indexOf('"') > -1 || s.indexOf("\n") > -1) return '"' + s.replace(/"/g, '""') + '"';
+                return s;
+              }
+              function exportCsv() {
+                var lines = [];
+                lines.push(["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S", "Total Owed", "Currency"].map(csvEsc).join(","));
+                allRows.forEach(function(r) {
+                  if (r.type === "current") return; // skip the live current-position row from the period export
+                  lines.push([
+                    r.date,
+                    r.event,
+                    (r.cap || 0).toFixed(2),
+                    (r.int || 0).toFixed(2),
+                    (r.pen || 0).toFixed(2),
+                    (r.hb || 0).toFixed(2),
+                    (r.total || 0).toFixed(2),
+                    spDisplayCcy
+                  ].map(csvEsc).join(","));
+                });
+                var csv = lines.join("\n");
+                var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url;
+                var fnFrom = periodFrom || "all";
+                var fnTo = periodTo || ymd(vDate);
+                a.download = "statement_" + (spDisplayIdentity || "supplier").replace(/[^A-Za-z0-9]+/g, "_") + "_" + fnFrom + "_to_" + fnTo + ".csv";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }
+
+              // ---- Styles ----
+              var presetBtnStyle = function(active) {
+                return { padding: "6px 12px", borderRadius: 6, border: "1px solid " + (active ? spAccent : spBorder), background: active ? spAccent + "18" : "transparent", color: active ? spAccent : spMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: spFont, transition: "all 0.15s" };
+              };
+              var dateInputStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, fontFamily: spMono, outline: "none", cursor: "pointer" };
+
+              // ---- Summary card builder ----
+              function SumCard(label, value, color, sub) {
+                return React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "16px 20px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+                  React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: color } }),
+                  React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: spMuted, letterSpacing: "0.06em", marginBottom: 8, fontFamily: spFont, textTransform: "uppercase" } }, label),
+                  React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.01em", lineHeight: 1.1 } }, value),
+                  sub ? React.createElement("div", { style: { fontSize: 10, color: spMuted, marginTop: 6, fontFamily: spFont } }, sub) : null
+                );
+              }
+
+              // ---- Period label for header ----
+              var periodLabel;
+              if (spStPreset === "ALL") periodLabel = "All time";
+              else if (spStPreset === "CUSTOM") periodLabel = (periodFrom ? fmt(periodFrom) : "—") + " to " + (periodTo ? fmt(periodTo) : "—");
+              else periodLabel = ({ MTD: "Month to date", QTD: "Quarter to date", YTD: "Year to date" }[spStPreset]) + " (" + (periodFrom ? fmt(periodFrom) : "") + " – " + fmt(periodTo) + ")";
+
+              return React.createElement("div", null,
+                /* Title + period label */
+                React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 } },
+                  React.createElement("div", null,
+                    React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Funding Balance"),
+                    React.createElement("div", { style: { fontSize: 11, color: spMuted, marginTop: 4, fontFamily: spFont } }, periodLabel)
+                  )
+                ),
+
+                /* Period summary strip */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 } },
+                  SumCard("Opening Balance", money(stResult.openingBalance.total, spDisplayCcy), spMuted, "At start of period"),
+                  SumCard("Funding Advanced", money(stResult.fundingInPeriod, spDisplayCcy), spAccent, "Capital advanced in period"),
+                  SumCard("Payments Received", money(stResult.paymentsInPeriod, spDisplayCcy), spGreen, "Reductions during period"),
+                  SumCard("Closing Balance", money(stResult.closingBalance.total, spDisplayCcy), spAmber, "At end of period")
+                ),
+
+                /* Current position card — always shows live as-of-viewDate */
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spAccent + "60", padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 } },
+                  React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: spAccent, letterSpacing: "0.06em", marginBottom: 4, fontFamily: spFont, textTransform: "uppercase" } }, "Current Position \u2014 as of " + fmt(viewDate)),
+                    React.createElement("div", { style: { display: "flex", gap: 18, flexWrap: "wrap", fontFamily: spMono } },
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Capital "), React.createElement("span", { style: { color: spText, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.cap, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Interest "), React.createElement("span", { style: { color: spAmber, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.int, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Penalty "), React.createElement("span", { style: { color: spRed, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.pen, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Holdback "), React.createElement("span", { style: { color: "#8B5CF6", fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.hb, spDisplayCcy)))
+                    )
                   ),
-                  React.createElement("div", { style: { overflowX: "auto" } },
+                  React.createElement("div", { style: { textAlign: "right" } },
+                    React.createElement("div", { style: { fontSize: 10, color: spMuted, letterSpacing: "0.06em", fontFamily: spFont, textTransform: "uppercase", marginBottom: 4 } }, "Total Owed"),
+                    React.createElement("div", { style: { fontSize: 22, color: spText, fontFamily: spMono, fontWeight: 700, letterSpacing: "-0.02em" } }, money(stResult.currentPosition.total, spDisplayCcy))
+                  )
+                ),
+
+                /* Controls */
+                React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+                    ["MTD", "QTD", "YTD", "ALL", "CUSTOM"].map(function(p) {
+                      return React.createElement("button", { key: p, onClick: function() { setSpStPreset(p); }, style: presetBtnStyle(spStPreset === p) }, p === "CUSTOM" ? "Custom" : p);
+                    }),
+                    spStPreset === "CUSTOM" ? React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginLeft: 8 } },
+                      React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spFont } }, "From"),
+                      React.createElement("input", { type: "date", value: spStFrom, onChange: function(e) { setSpStFrom(e.target.value); }, style: dateInputStyle }),
+                      React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spFont } }, "to"),
+                      React.createElement("input", { type: "date", value: spStTo, onChange: function(e) { setSpStTo(e.target.value); }, style: dateInputStyle })
+                    ) : null
+                  ),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("input", { type: "text", value: spStQuery, onChange: function(e) { setSpStQuery(e.target.value); }, placeholder: "Filter rows...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 180, fontFamily: spFont } }),
+                    React.createElement("button", { onClick: exportCsv, disabled: allRows.length <= 1, style: { padding: "7px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: allRows.length <= 1 ? spMuted : spAccent, fontSize: 11, fontWeight: 600, cursor: allRows.length <= 1 ? "not-allowed" : "pointer", fontFamily: spFont, opacity: allRows.length <= 1 ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 } },
+                      React.createElement(Download, { size: 13 }), "Export CSV"
+                    )
+                  )
+                ),
+
+                /* Table */
+                displayRows.length === 0 || (displayRows.length === 1 && displayRows[0].type === "current") ? React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "40px 28px", textAlign: "center" } },
+                  React.createElement("div", { style: { fontSize: 14, color: spText, fontWeight: 600, marginBottom: 6 } }, hasPeriod ? "No activity in this period" : "No funded invoices yet"),
+                  React.createElement("div", { style: { fontSize: 12, color: spMuted, lineHeight: 1.6 } }, hasPeriod ? "Try a wider period or switch to All to see your full history." : "Your statement will populate here as invoices are funded and payments are applied.")
+                ) :
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                  React.createElement("div", { style: { padding: "14px 22px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                    React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText } }, "Combined Position Statement"),
+                    React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spMono } }, displayRows.length + " " + (displayRows.length === 1 ? "entry" : "entries"))
+                  ),
+                  React.createElement("div", { style: { overflowX: "auto", maxHeight: "60vh", overflowY: "auto" } },
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
-                          ["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) {
-                            return React.createElement("th", { key: h, style: { textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "2px solid " + spBorder } }, h);
+                          [["Date", "left"], ["Event", "left"], ["Capital O/S", "right"], ["Interest O/S", "right"], ["Penalty O/S", "right"], ["Holdback O/S", "right"], ["Total Owed", "right"]].map(function(h) {
+                            return React.createElement("th", { key: h[0], style: { textAlign: h[1], padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "2px solid " + spBorder, position: "sticky", top: 0, background: spCard, zIndex: 1, whiteSpace: "nowrap" } }, h[0]);
                           })
                         )
                       ),
                       React.createElement("tbody", null,
-                        stRows.map(function(r, ri) {
-                          var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing" || r.type === "current";
+                        displayRows.map(function(r, ri) {
                           var isPay = r.type === "payment";
                           var isClose = r.type === "closing" || r.type === "current";
                           var isFunding = r.type === "funding";
-                          var borderStyle = r.type === "current" ? "none" : ri < stRows.length - 1 && stRows[ri + 1] && (stRows[ri + 1].type === "balance" || stRows[ri + 1].type === "funding") && r.type !== "funding" ? "2px solid " + spBorder : "1px solid " + spBorder + "60";
-                          function valStyle(v) { return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : isFunding ? spAccent : (v > 0.01 ? spText : spMuted) }; }
-                          return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, borderTop: r.type === "current" ? "3px solid " + spAccent : "none", background: r.type === "current" ? "#0EA5E910" : isClose ? "#1A274440" : isBal ? spCard : "transparent" } },
-                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: spText, whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 } }, fmt(r.date)),
-                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? spAccent : isFunding ? "#10B981" : spText, fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 } }, r.event),
-                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), spDisplayCcy) : money(Math.abs(r.cap), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), spDisplayCcy) : money(Math.abs(r.int), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), spDisplayCcy) : money(Math.abs(r.pen), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), spDisplayCcy) : money(Math.abs(r.hb), spDisplayCcy))
+                          var isCurrent = r.type === "current";
+                          var borderStyle = isCurrent ? "none" : "1px solid " + spBorder + "60";
+                          function valStyle(v) {
+                            return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : (isFunding ? 600 : 400), color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : isFunding ? spAccent : (Math.abs(v) > 0.01 ? spText : spMuted), whiteSpace: "nowrap" };
+                          }
+                          function fmtVal(v) {
+                            if (isPay && v !== 0) return (v < 0 ? "\u2212" : "+") + money(Math.abs(v), spDisplayCcy);
+                            return money(Math.abs(v), spDisplayCcy);
+                          }
+                          return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, borderTop: isCurrent ? "3px solid " + spAccent : "none", background: isCurrent ? "#0EA5E910" : isClose ? "#1A274440" : isFunding ? spCard : "transparent" } },
+                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: spText, whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400, fontFamily: spFont } }, fmt(r.date)),
+                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? spAccent : isFunding ? spGreen : spText, fontWeight: isClose ? 700 : (isFunding ? 600 : 400), fontFamily: spFont } }, r.event),
+                            React.createElement("td", { style: valStyle(r.cap) }, fmtVal(r.cap)),
+                            React.createElement("td", { style: valStyle(r.int) }, fmtVal(r.int)),
+                            React.createElement("td", { style: valStyle(r.pen) }, fmtVal(r.pen)),
+                            React.createElement("td", { style: valStyle(r.hb) }, fmtVal(r.hb)),
+                            React.createElement("td", { style: Object.assign({}, valStyle(r.total || 0), { fontWeight: 700, color: isPay ? ((r.total || 0) < -0.001 ? spGreen : (r.total || 0) > 0.001 ? spRed : spMuted) : isCurrent ? spAccent : (Math.abs(r.total || 0) > 0.01 ? spText : spMuted) }) }, fmtVal(r.total || 0))
                           );
                         })
                       )
@@ -8490,7 +8775,7 @@ export default function FactoringDashboard() {
               {stRows.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No funded invoices for this supplier.</div> :
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                  <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S", "Total Owed"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
                   <tbody>{stRows.map(function(r, ri) {
                     var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing" || r.type === "current";
                     var isPay = r.type === "payment";
@@ -8505,6 +8790,7 @@ export default function FactoringDashboard() {
                       <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), displayCcy) : money(Math.abs(r.int), displayCcy)}</td>
                       <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), displayCcy) : money(Math.abs(r.pen), displayCcy)}</td>
                       <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), displayCcy) : money(Math.abs(r.hb), displayCcy)}</td>
+                      <td style={Object.assign({}, vs(r.total || 0), { fontWeight: 700, color: isPay ? ((r.total || 0) < -0.001 ? "#059669" : (r.total || 0) > 0.001 ? "#DC2626" : "var(--muted)") : r.type === "current" ? "var(--accent)" : (Math.abs(r.total || 0) > 0.01 ? "var(--text)" : "var(--muted)") })}>{isPay && (r.total || 0) !== 0 ? ((r.total || 0) < 0 ? "-" : "+") + money(Math.abs(r.total || 0), displayCcy) : money(Math.abs(r.total || 0), displayCcy)}</td>
                     </tr>;
                   })}</tbody>
                 </table>
