@@ -600,7 +600,7 @@
             <div id="detail-tab-verify" class="detail-tab-content hidden">
                 <div style="max-width:720px;">
                     <div style="margin-bottom:16px; color:var(--text-secondary); font-size:12px;">
-                        Verify the supplier's legal identity via Companies House. Required before onboarding.
+                        Verify the supplier's legal identity via Companies House. <strong style="color:var(--text);">Required before onboarding.</strong>
                     </div>
                     <div class="form-row" style="margin-bottom:16px;">
                         <div class="form-group" style="min-width:240px;">
@@ -723,16 +723,22 @@
                 <div class="card" style="background:var(--bg); border:2px solid var(--gold);">
                     <div class="card-title" style="margin-bottom:16px;">Convert to Live Supplier</div>
                     <p style="font-size:13px; color:var(--text-mid); margin-bottom:20px; line-height:1.6;">
-                        This will open FactorFlow's Admin Portal with the supplier creation form pre-filled with the information collected during prospecting.
-                        Create the supplier in FactorFlow, then return here to confirm the conversion.
+                        Opens FactorFlow's Admin Portal pre-filled with the verified supplier identity. The supplier and its invoices will be created automatically using the Companies House number as the handshake key.
                     </p>
-                    <div class="form-row">
-                        <div class="form-group" style="min-width:300px;">
-                            <label>Company Name (Real Name)</label>
-                            <input type="text" id="convertCompanyName" placeholder="Enter real company name">
-                        </div>
+
+                    <div id="convertVerifiedBlock" class="hidden" style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px;">
+                        <div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">CH-Verified Identity</div>
+                        <div id="convertVerifiedBody"></div>
                     </div>
+
+                    <div id="convertVerifyMissing" class="hidden" style="background:#d9775714; border:1px solid #d97757; border-radius:8px; padding:12px; margin-bottom:16px; color:#d97757; font-size:12px;">
+                        Companies House verification missing. Complete the Verify tab before converting.
+                    </div>
+
+                    <div id="convertBuyerMap" style="margin-bottom:16px;"></div>
+
                     <div id="convertSummary" style="margin:16px 0; font-size:13px; color:var(--text-mid);"></div>
+
                     <div style="display:flex; gap:12px; flex-wrap:wrap;">
                         <button class="btn btn-gold" id="convertBtn">Open FactorFlow & Create Supplier →</button>
                         <button class="btn btn-primary hidden" id="confirmConvertBtn">Confirm Conversion Complete</button>
@@ -3300,8 +3306,19 @@ function saveDetailInfo() {
     var prospect = state.selectedProspect;
     if (!prospect) return;
 
+    var newStatus = document.getElementById('detailStatus').value;
+
+    // Step B gate: cannot move to onboarding without CH verification
+    if (newStatus === 'onboarding' && prospect.status !== 'onboarding') {
+        if (!prospect.company_number || !prospect.ch_verified_at) {
+            alert('Companies House verification required before moving to Onboarding. Please complete the Verify tab first.');
+            document.getElementById('detailStatus').value = prospect.status;
+            return;
+        }
+    }
+
     var updates = {
-        status: document.getElementById('detailStatus').value,
+        status: newStatus,
         contact_name: document.getElementById('detailContactName').value.trim() || null,
         contact_email: document.getElementById('detailContactEmail').value.trim() || null,
         contact_phone: document.getElementById('detailContactPhone').value.trim() || null
@@ -3366,18 +3383,33 @@ function renderConvertTab() {
     var prospect = state.selectedProspect;
     if (!prospect) return;
 
+    // Verified identity block
+    var verifiedBlock = document.getElementById('convertVerifiedBlock');
+    var missingBlock = document.getElementById('convertVerifyMissing');
+    var convertBtn = document.getElementById('convertBtn');
+
+    if (prospect.company_number && prospect.ch_verified_at) {
+        verifiedBlock.classList.remove('hidden');
+        missingBlock.classList.add('hidden');
+        document.getElementById('convertVerifiedBody').innerHTML = renderVerificationBody(prospect);
+    } else {
+        verifiedBlock.classList.add('hidden');
+        missingBlock.classList.remove('hidden');
+    }
+
+    // Buyer mapping — load FactorFlow buyers and render dropdown
+    renderBuyerMapping();
+
+    // Volume summary
     var stats = state.computedStats[prospect.id] || {};
     var totalInvoices = 0;
     var notDueCount = 0;
     var today = todayStr();
-
     var invoices = state.prospectInvoices[prospect.id] || [];
     invoices.forEach(function(inv) {
         totalInvoices++;
         if (inv.due_date && inv.due_date >= today) notDueCount++;
     });
-
-    document.getElementById('convertCompanyName').value = prospect.company_name || '';
 
     var summaryLines = [];
     summaryLines.push('<strong>' + totalInvoices + '</strong> total invoices will be imported into FactorFlow');
@@ -3385,105 +3417,292 @@ function renderConvertTab() {
     Object.keys(stats).forEach(function(ccy) {
         summaryLines.push(ccy + ': ' + formatCurrencyWithCode(stats[ccy].total_volume, ccy) + ' total volume, ' + ((stats[ccy].current_dilution || 0) * 100).toFixed(2) + '% current dilution');
     });
-
     document.getElementById('convertSummary').innerHTML = summaryLines.join('<br>');
+
+    updateConvertButtonState();
+}
+
+function renderBuyerMapping() {
+    var prospect = state.selectedProspect;
+    var container = document.getElementById('convertBuyerMap');
+    if (!prospect) { container.innerHTML = ''; return; }
+
+    var buyerLabel = prospect.buyer_label || 'Unknown';
+    container.innerHTML =
+        '<div style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px;">' +
+            '<div style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Map Buyer to FactorFlow</div>' +
+            '<div style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">This prospect\'s invoices belong to buyer <strong style="color:var(--text);">' + escHTML(buyerLabel) + '</strong>. Select the matching buyer in FactorFlow.</div>' +
+            '<div class="form-row">' +
+                '<div class="form-group" style="min-width:320px;">' +
+                    '<label>FactorFlow Buyer</label>' +
+                    '<select id="convertBuyerSelect"><option value="">Loading buyers…</option></select>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    // Load FactorFlow buyers
+    sbClient.from('buyers').select('id,name').order('name', { ascending: true }).then(function(res) {
+        var sel = document.getElementById('convertBuyerSelect');
+        if (!sel) return;
+        if (res.error) {
+            sel.innerHTML = '<option value="">Error loading buyers</option>';
+            return;
+        }
+        var opts = '<option value="">— Select buyer —</option>';
+        (res.data || []).forEach(function(b) {
+            opts += '<option value="' + b.id + '">' + escHTML(b.name) + '</option>';
+        });
+        sel.innerHTML = opts;
+        // Restore prior selection if already set on prospect
+        if (prospect.mapped_buyer_id) {
+            sel.value = prospect.mapped_buyer_id;
+        }
+        sel.onchange = updateConvertButtonState;
+    });
+}
+
+function updateConvertButtonState() {
+    var prospect = state.selectedProspect;
+    var convertBtn = document.getElementById('convertBtn');
+    if (!convertBtn) return;
+    var verified = prospect && prospect.company_number && prospect.ch_verified_at;
+    var buyerSel = document.getElementById('convertBuyerSelect');
+    var buyerMapped = buyerSel && buyerSel.value;
+    var ready = verified && buyerMapped;
+    convertBtn.disabled = !ready;
+    convertBtn.style.opacity = ready ? '1' : '0.5';
+    convertBtn.style.cursor = ready ? 'pointer' : 'not-allowed';
 }
 
 function convertProspect() {
     var prospect = state.selectedProspect;
     if (!prospect) return;
 
-    var companyName = document.getElementById('convertCompanyName').value.trim();
-    if (!companyName) { alert('Please enter the real company name'); return; }
+    if (!prospect.company_number || !prospect.ch_verified_at) {
+        alert('Companies House verification required before converting.');
+        return;
+    }
 
-    // Build deep link URL with pre-filled data
-    var params = new URLSearchParams();
-    params.set('action', 'create-supplier');
-    params.set('name', companyName);
-    if (prospect.contact_name) params.set('contact_name', prospect.contact_name);
-    if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
-    if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
-    params.set('prospect_id', prospect.id);
-    params.set('upload_id', prospect.upload_id || '');
+    var buyerSel = document.getElementById('convertBuyerSelect');
+    var mappedBuyerId = buyerSel ? buyerSel.value : '';
+    if (!mappedBuyerId) {
+        alert('Select the FactorFlow buyer this prospect maps to.');
+        return;
+    }
 
-    var url = FACTORFLOW_URL + '?' + params.toString();
+    // Persist the mapping so we can use it when invoices migrate (Step F)
+    sbClient.from('prospect_suppliers').update({ mapped_buyer_id: mappedBuyerId }).eq('id', prospect.id).then(function() {
+        prospect.mapped_buyer_id = mappedBuyerId;
 
-    // Open FactorFlow in new tab
-    window.open(url, '_blank');
+        // Build deep link — company_number is the handshake key
+        var params = new URLSearchParams();
+        params.set('action', 'create-supplier');
+        params.set('company_number', prospect.company_number);
+        if (prospect.contact_name) params.set('contact_name', prospect.contact_name);
+        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+        params.set('prospect_id', prospect.id);
+        params.set('upload_id', prospect.upload_id || '');
 
-    // Show the confirm button
-    document.getElementById('confirmConvertBtn').classList.remove('hidden');
+        var url = FACTORFLOW_URL + '?' + params.toString();
+        window.open(url, '_blank');
+
+        // Show the confirm button as a fallback (Step E will auto-update via UUID round-trip)
+        document.getElementById('confirmConvertBtn').classList.remove('hidden');
+    });
 }
 
 function confirmConversion() {
     var prospect = state.selectedProspect;
     if (!prospect) return;
 
-    var companyName = document.getElementById('convertCompanyName').value.trim();
-    if (!companyName) { alert('Please enter the company name'); return; }
+    if (!prospect.company_number) { alert('No Companies House number on this prospect.'); return; }
 
-    if (!confirm('Confirm that "' + companyName + '" has been created in FactorFlow?\n\nThis will mark this prospect as converted and transfer all notes.')) return;
+    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.company_number) + '" has been created in FactorFlow?\n\nThis will mark this prospect as converted and transfer all notes and invoices.')) return;
 
     if (sbClient) {
-        // First, look up the newly created supplier in FactorFlow by name
-        sbClient.from('suppliers').select('id').eq('name', companyName).then(function(supRes) {
-            var factorflowSupplierId = (supRes.data && supRes.data.length > 0) ? supRes.data[0].id : null;
+        // Look up the new supplier by company_number — the resilient handshake
+        sbClient.from('suppliers').select('id,name').eq('company_number', prospect.company_number).then(function(supRes) {
+            var ffSupplier = (supRes.data && supRes.data.length > 0) ? supRes.data[0] : null;
+            var factorflowSupplierId = ffSupplier ? ffSupplier.id : null;
+            var resolvedName = ffSupplier ? ffSupplier.name : (prospect.legal_name || '');
 
-            // Update prospect status
+            if (!factorflowSupplierId) {
+                alert('Could not find a supplier with company number ' + prospect.company_number + ' in FactorFlow. Make sure you completed the supplier creation in Admin before confirming.');
+                return;
+            }
+
             var updateData = {
                 status: 'converted',
-                company_name: companyName,
-                converted_at: new Date().toISOString()
+                company_name: resolvedName,
+                converted_at: new Date().toISOString(),
+                converted_supplier_id: factorflowSupplierId
             };
-            if (factorflowSupplierId) {
-                updateData.converted_supplier_id = factorflowSupplierId;
-            }
 
             sbClient.from('prospect_suppliers').update(updateData).eq('id', prospect.id).then(function() {
                 prospect.status = 'converted';
-                prospect.company_name = companyName;
+                prospect.company_name = resolvedName;
+                prospect.converted_supplier_id = factorflowSupplierId;
 
-                // Add system note to prospect
                 sbClient.from('prospect_notes').insert({
                     prospect_supplier_id: prospect.id,
                     note_type: 'system',
-                    content: 'Supplier converted to FactorFlow as "' + companyName + '"' + (factorflowSupplierId ? ' (ID: ' + factorflowSupplierId + ')' : '')
+                    content: 'Supplier converted to FactorFlow as "' + resolvedName + '" (CH: ' + prospect.company_number + ', ID: ' + factorflowSupplierId + ')'
                 }).then(function() {
-                    // Transfer all prospect notes to entity_notes if we found the supplier
-                    if (factorflowSupplierId) {
-                        transferNotesToFactorFlow(prospect.id, factorflowSupplierId, companyName);
-                    }
+                    transferNotesToFactorFlow(prospect.id, factorflowSupplierId, resolvedName);
+                    migrateProspectInvoices(prospect, factorflowSupplierId);
 
                     renderDetailNotes();
                     renderPipeline();
 
-                    // Update detail panel to show converted state
                     var statusSelect = document.getElementById('detailStatus');
                     statusSelect.innerHTML = '<option value="converted">Converted</option>';
                     statusSelect.value = 'converted';
                     statusSelect.disabled = true;
                     document.getElementById('detailSaveInfo').disabled = true;
                     document.getElementById('detailSaveInfo').textContent = 'Converted';
-                    document.getElementById('detailTitle').textContent = 'Supplier: ' + prospect.supplier_identifier + ' (' + companyName + ')';
+                    document.getElementById('detailTitle').textContent = 'Supplier: ' + prospect.supplier_identifier + ' (' + resolvedName + ')';
 
-                    // Hide convert tab
                     var convertTabBtn = document.querySelector('[data-detail-tab="convert"]');
                     convertTabBtn.classList.add('hidden');
-                    // Switch to overview
                     document.querySelector('[data-detail-tab="overview"]').click();
-
-                    if (!factorflowSupplierId) {
-                        alert('Marked as converted, but could not find supplier "' + companyName + '" in FactorFlow to transfer notes. Please check the supplier was created with this exact name.');
-                    }
                 });
             });
         });
     } else {
         prospect.status = 'converted';
-        prospect.company_name = companyName;
         renderPipeline();
         alert('Marked as converted (local mode)');
     }
+}
+
+function migrateProspectInvoices(prospect, factorflowSupplierId) {
+    // Reads prospect_invoices (excluded=false), inserts into FactorFlow invoices table.
+    // Idempotent: relies on prospect_supplier.converted_at being set to gate re-runs at caller.
+    if (!sbClient) return;
+    if (!prospect.mapped_buyer_id) {
+        console.warn('[Migration] No mapped_buyer_id on prospect; skipping invoice migration.');
+        return;
+    }
+
+    sbClient.from('prospect_invoices').select('*').eq('prospect_supplier_id', prospect.id).eq('excluded', false).then(function(res) {
+        if (res.error) { console.error('[Migration] Failed to load prospect invoices:', res.error); return; }
+        var rows = res.data || [];
+        if (rows.length === 0) { migrateProspectCreditNotes(prospect, factorflowSupplierId); return; }
+
+        // Resolve buyer name once
+        sbClient.from('buyers').select('name').eq('id', prospect.mapped_buyer_id).then(function(buyerRes) {
+            var buyerName = (buyerRes.data && buyerRes.data[0]) ? buyerRes.data[0].name : '';
+
+            var ffInvoices = rows.map(function(p) {
+                var preservedNotes = [];
+                if (p.payments_to_invoice) preservedNotes.push('Payments to invoice (from prospect): ' + p.payments_to_invoice);
+                if (p.amount_paid_to_date) preservedNotes.push('Amount paid to date (from prospect): ' + p.amount_paid_to_date);
+
+                var notesArr = [];
+                if (preservedNotes.length > 0) {
+                    notesArr.push({
+                        id: 'note-mig-' + p.id,
+                        text: preservedNotes.join('. '),
+                        author: 'system',
+                        timestamp: new Date().toISOString(),
+                        source: 'prospect'
+                    });
+                }
+
+                var inv = {
+                    id: 'INV-' + p.id.substring(0, 8).toUpperCase() + '-' + p.reference_number,
+                    supplier_id: factorflowSupplierId,
+                    supplier_name: prospect.legal_name || prospect.company_name,
+                    buyer_id: prospect.mapped_buyer_id,
+                    buyer_name: buyerName,
+                    amount: p.invoice_amount,
+                    currency: p.currency || 'GBP',
+                    advance_rate: 0,
+                    annual_rate: 0,
+                    penalty_rate: 0,
+                    invoice_date: p.invoice_date,
+                    due_date: p.due_date,
+                    funded_date: null,
+                    created_date: p.invoice_date,
+                    approved_date: p.approval_date,
+                    fully_repaid_date: p.settled_date,
+                    settled_date: p.settled_date,
+                    invoice_status: p.cancelled_date ? 'Cancelled' : (p.disputed_date ? 'Disputed' : (p.settled_date ? 'Settled' : (p.approval_date ? 'Approved' : 'Pending'))),
+                    funding_status: 'Not Funded',
+                    funding_program: null,
+                    partial_approved_amount: p.approved_amount || 0,
+                    invoice_reference: p.reference_number,
+                    purchase_order: p.purchase_order,
+                    buyer_ref: p.buyer_invoice_ref,
+                    supplier_ref: p.supplier_invoice_ref,
+                    buyer_received_date: p.buyer_received_date,
+                    invoice_status_history: [],
+                    adjustments: [],
+                    do_not_fund: false,
+                    do_not_advance: false,
+                    pending_top_up_amount: 0,
+                    pending_top_up_rate: null,
+                    pending_top_up_date: null,
+                    tranches: [],
+                    notes: notesArr
+                };
+                return inv;
+            });
+
+            sbClient.from('invoices').upsert(ffInvoices, { onConflict: 'id' }).then(function(insRes) {
+                if (insRes.error) {
+                    console.error('[Migration] Invoice insert failed:', insRes.error);
+                    alert('Invoice migration failed: ' + insRes.error.message);
+                    return;
+                }
+                // Audit note on the FF supplier
+                sbClient.from('entity_notes').insert({
+                    entity_id: factorflowSupplierId,
+                    entity_type: 'supplier',
+                    note_type: 'system',
+                    content: 'Migrated ' + ffInvoices.length + ' invoice(s) from Prospect upload ' + (prospect.upload_id || '') + '.'
+                }).then(function() {
+                    migrateProspectCreditNotes(prospect, factorflowSupplierId);
+                });
+            });
+        });
+    });
+}
+
+function migrateProspectCreditNotes(prospect, factorflowSupplierId) {
+    if (!sbClient) return;
+    sbClient.from('prospect_credit_notes').select('*').eq('prospect_supplier_id', prospect.id).then(function(res) {
+        if (res.error) { console.error('[Migration] Failed to load prospect CNs:', res.error); return; }
+        var rows = res.data || [];
+        if (rows.length === 0) return;
+
+        sbClient.from('buyers').select('name').eq('id', prospect.mapped_buyer_id).then(function(buyerRes) {
+            var buyerName = (buyerRes.data && buyerRes.data[0]) ? buyerRes.data[0].name : '';
+
+            var ffCns = rows.map(function(p) {
+                return {
+                    credit_note_id: 'CN-' + p.id.substring(0, 8).toUpperCase() + '-' + (p.reference_number || ''),
+                    amount: p.credit_note_amount || 0,
+                    date: p.cn_date || p.invoice_date,
+                    currency: p.currency || 'GBP',
+                    reference: p.reference_number || '',
+                    supplier_name: prospect.legal_name || prospect.company_name || '',
+                    supplier_id: factorflowSupplierId,
+                    buyer_name: buyerName,
+                    buyer_id: prospect.mapped_buyer_id,
+                    allocations: [],
+                    notes: []
+                };
+            });
+
+            sbClient.from('credit_notes').upsert(ffCns, { onConflict: 'credit_note_id' }).then(function(insRes) {
+                if (insRes.error) {
+                    console.error('[Migration] Credit note insert failed:', insRes.error);
+                }
+            });
+        });
+    });
 }
 
 function transferNotesToFactorFlow(prospectSupplierId, factorflowSupplierId, companyName) {
