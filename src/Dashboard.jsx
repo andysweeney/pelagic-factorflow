@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 var LOGO_URL = "data:image/jpeg;base64,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";
 var FAVICON_SVG = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#2B4C7E"/><path d="M16 28 Q24 24 32 28 Q40 32 48 28" stroke="#B8C7DB" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 34 Q24 30 32 34 Q40 38 48 34" stroke="#CBD5E1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 40 Q24 36 32 40 Q40 44 48 40" stroke="#E2E8F0" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>');
 var COUNTRIES = ["United Kingdom","United States","Germany","France","Netherlands","Ireland","Spain","Italy","Belgium","Switzerland","Canada","Australia","Japan","Singapore","Hong Kong","UAE","Other"];
-var EMPTY_ADDR = { street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
+var EMPTY_ADDR = { addressLine1: "", addressLine2: "", city: "", county: "", country: "United Kingdom", postcode: "", primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
 
 var SUPPLIERS_DB = [];
 
@@ -219,6 +219,314 @@ function isBuyerPaused(buyerId) {
   if (!buyerId) return false;
   var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
   return b ? !!b.paused : false;
+}
+
+// ======== Schema mapping helpers (Stage 3) ========
+// All Supabase rows use ID-based columns: supplier_id (parent only), supplier_entity_id
+// (parent or composite "SUP-001:BR-001"). supplier_name / buyer_name no longer exist.
+// In-memory keeps supplierName / buyerName as denormalised display fields, populated
+// from SUPPLIERS_DB / BUYERS_DB at load time.
+
+// Resolve a (parent supplier ID, entity ID) tuple from a supplier_id-shaped value
+// that might be either a parent ID or a composite. Returns { supplierId, entityId }.
+function resolveSupplierIds(rowSupplierId, rowSupplierEntityId) {
+  // Prefer the explicit entity_id column when present; fall back to supplier_id when
+  // the entity column is missing (legacy data, optional columns).
+  var entityId = rowSupplierEntityId || rowSupplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  return { supplierId: parentId, entityId: entityId };
+}
+function resolveBuyerIds(rowBuyerId, rowBuyerEntityId) {
+  var entityId = rowBuyerEntityId || rowBuyerId || "";
+  var parentId = entityId.indexOf(":") > -1 ? entityId.split(":")[0] : (entityId || "");
+  return { buyerId: parentId, entityId: entityId };
+}
+
+// Format an audit log timestamp for display, mirroring the formatter used by
+// _auditLog at write time. If the row's context carries an asOfDate (entries
+// recorded under a scrubbed As-Of date), the display uses that instead, with
+// a " (as of)" suffix — preserving the legacy displayTime semantics.
+function formatAuditDisplayTime(createdAt, ctx) {
+  ctx = ctx || {};
+  if (ctx.asOfDate) {
+    var asOf = new Date(ctx.asOfDate + "T12:00:00");
+    return asOf.toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    }) + " (as of)";
+  }
+  if (!createdAt) return "";
+  var d = new Date(createdAt);
+  return d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  });
+}
+
+// Build an audit_log INSERT row from an in-memory entry. Pulls explicit ID columns
+// out of the JSONB context so RLS can match them directly. The DB fills created_at
+// itself (DEFAULT now()), so we only override it for As-Of entries that need to
+// carry their original recording moment if present.
+function auditEntryToDbRow(entry) {
+  var ctx = entry.context || {};
+  var row = {
+    event_type: entry.action,
+    details: entry.details,
+    context: ctx,
+    actor: ctx.userEmail || ctx.actor || null
+  };
+  // Entity scope columns (all nullable in the schema)
+  if (ctx.supplierId) {
+    var s = resolveSupplierIds(null, ctx.supplierId);
+    row.supplier_id = s.supplierId || null;
+    row.supplier_entity_id = s.entityId || null;
+  }
+  if (ctx.buyerId) {
+    var b = resolveBuyerIds(null, ctx.buyerId);
+    row.buyer_id = b.buyerId || null;
+    row.buyer_entity_id = b.entityId || null;
+  }
+  if (ctx.invoiceId) row.invoice_id = ctx.invoiceId;
+  return row;
+}
+
+// Build an in-memory audit entry from a DB row. The shape matches the legacy
+// in-memory format exactly — { timestamp, displayTime, action, details, context }
+// — so the seven UI render sites need no changes.
+function auditDbRowToEntry(row) {
+  var ctx = row.context || {};
+  return {
+    timestamp: row.created_at,
+    displayTime: formatAuditDisplayTime(row.created_at, ctx),
+    action: row.event_type,
+    details: row.details,
+    context: ctx
+  };
+}
+
+// Pack an in-memory SPQ entry into the new schema shape: 14 explicit columns
+// plus a metadata JSONB carrying every legacy field. Inverse of unpackSpqRow.
+function packSpqRow(item) {
+  // Compute the parent + entity IDs from whatever the in-memory entry has.
+  // After Stage 3, item.supplierId is always parent (no colon); item.entityId
+  // (if present) is parent-or-composite. During the transition, supplierId may
+  // still hold a composite — handle both.
+  var entityId = item.supplierEntityId || item.entityId || item.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  return {
+    id: item.id,
+    type: item.type,
+    status: item.status || "Pending",
+    amount: item.amount,
+    currency: item.currency,
+    date: item.date || null,
+    supplier_id: parentId || null,
+    supplier_entity_id: entityId || null,
+    invoice_id: item.invoiceId || null,
+    invoice_ids: item.invoiceIds || [],
+    source_invoice_id: item.sourceInvoiceId || null,
+    source_payment_id: item.sourcePaymentId || null,
+    funding_program: item.programId || item.fundingProgram || null,
+    metadata: {
+      programName: item.programName || null,
+      bankName: item.bankName || null,
+      bankDetails: item.bankDetails || null,
+      hbPaymentId: item.hbPaymentId || null,
+      isBundle: !!item.isBundle,
+      holdbackIds: item.holdbackIds || [],
+      grossAmount: item.grossAmount != null ? item.grossAmount : null,
+      deductions: item.deductions || [],
+      deductionTotal: item.deductionTotal || 0,
+      notes: item.notes || [],
+      createdDisplay: item.createdDisplay || null,
+      executedAt: item.executedAt || null,
+      executedDisplay: item.executedDisplay || null,
+      cancelledAt: item.cancelledAt || null,
+      cancelledDisplay: item.cancelledDisplay || null,
+      failedAt: item.failedAt || null,
+      failedDisplay: item.failedDisplay || null
+    }
+  };
+}
+
+// Inverse of packSpqRow. Reconstructs the in-memory entry from a DB row,
+// pulling stuffed fields back out of the metadata JSONB. Resolves the
+// supplier display name from SUPPLIERS_DB.
+function unpackSpqRow(row) {
+  var meta = row.metadata || {};
+  var ids = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  return {
+    id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+    supplierName: getEntityDisplayName(ids.entityId),
+    supplierId: ids.entityId,            // composite when branch, parent when not — preserves prior in-memory shape
+    supplierEntityId: ids.entityId,
+    supplierParentId: ids.supplierId,
+    bankName: meta.bankName || null,
+    bankDetails: meta.bankDetails || null,
+    amount: parseFloat(row.amount) || 0,
+    currency: row.currency,
+    status: row.status,
+    programId: row.funding_program,
+    programName: meta.programName || null,
+    hbPaymentId: meta.hbPaymentId || null,
+    sourceInvoiceId: row.source_invoice_id || null,
+    isBundle: !!meta.isBundle,
+    holdbackIds: meta.holdbackIds || [],
+    grossAmount: meta.grossAmount != null ? parseFloat(meta.grossAmount) : null,
+    deductions: meta.deductions || [],
+    deductionTotal: parseFloat(meta.deductionTotal) || 0,
+    notes: meta.notes || [],
+    createdAt: row.created_at,
+    createdDisplay: meta.createdDisplay || null,
+    executedAt: meta.executedAt || null,
+    executedDisplay: meta.executedDisplay || null,
+    sourcePaymentId: row.source_payment_id || null,
+    cancelledAt: meta.cancelledAt || null,
+    cancelledDisplay: meta.cancelledDisplay || null,
+    failedAt: meta.failedAt || null,
+    failedDisplay: meta.failedDisplay || null,
+    date: row.date || null
+  };
+}
+
+// Map an invoices DB row into in-memory shape. supplier_name/buyer_name no longer
+// exist in the schema; resolve display names via SUPPLIERS_DB / BUYERS_DB.
+// Used by both the bulk loader and reloadInvoices and reloadForSupplier.
+function unpackInvoiceRow(row) {
+  var sIds = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  var bIds = resolveBuyerIds(row.buyer_id, row.buyer_entity_id);
+  return {
+    id: row.id,
+    supplierName: getEntityDisplayName(sIds.entityId),
+    supplierId: sIds.entityId,
+    supplierEntityId: sIds.entityId,
+    supplierParentId: sIds.supplierId,
+    buyerName: buyName(bIds.buyerId),
+    buyerId: bIds.buyerId,
+    buyerEntityId: bIds.entityId,
+    amount: parseFloat(row.amount) || 0, currency: row.currency,
+    capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+    interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+    daysToMaturity: row.days_to_maturity || 0,
+    advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
+    invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+    createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    settledDate: row.settled_date,
+    invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+    fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+    buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
+    invoiceStatusHistory: row.invoice_status_history || [],
+    adjustments: row.adjustments || [],
+    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+    pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+    tranches: row.tranches || [],
+    voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
+    notes: row.notes || [],
+    csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
+    intendedPaymentDate: row.intended_payment_date || null
+  };
+}
+
+// Pack an in-memory invoice into a DB row — drops supplier_name/buyer_name, adds
+// *_entity_id columns. Used by saveInvoice and the bulk savePersistedData path.
+function packInvoiceRow(inv) {
+  var entityId = inv.supplierEntityId || inv.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  var bEntity = inv.buyerEntityId || inv.buyerId || "";
+  var bParent = bEntity.indexOf(":") > -1 ? bEntity.split(":")[0] : (bEntity || "");
+  return {
+    id: inv.id,
+    supplier_id: parentId,
+    supplier_entity_id: entityId,
+    buyer_id: bParent,
+    buyer_entity_id: bEntity,
+    amount: inv.amount, currency: inv.currency,
+    capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
+    interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
+    days_to_maturity: inv.daysToMaturity || 0,
+    advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
+    invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
+    created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+    settled_date: inv.settledDate || null,
+    invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
+    funding_program: inv.fundingProgram || null,
+    partial_approved_amount: inv.partialApprovedAmount || 0,
+    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+    buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null, buyer_received_date: inv.buyerReceivedDate || null,
+    invoice_status_history: inv.invoiceStatusHistory || [],
+    adjustments: inv.adjustments || [],
+    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+    pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
+    tranches: inv.tranches || [],
+    voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
+    current_invoice_status: inv.currentInvoiceStatus || null,
+    disputed_date: inv.disputedDate || null,
+    notes: inv.notes || []
+  };
+}
+
+// Pack derived persisted fields onto an invoice row dictionary in-place.
+// Used by saveInvoice (inline) — kept separate so persistDerivedFieldsForInvoices
+// can reuse the same logic if it ever calls a row-builder.
+function attachDerivedFieldsToRow(row, inv) {
+  row.capital_outstanding = (inv.capitalOutstanding === undefined || inv.capitalOutstanding === null) ? null : inv.capitalOutstanding;
+  row.interest_outstanding = (inv.interestOutstanding === undefined || inv.interestOutstanding === null) ? null : inv.interestOutstanding;
+  row.penalty_outstanding = (inv.penaltyOutstanding === undefined || inv.penaltyOutstanding === null) ? null : inv.penaltyOutstanding;
+  row.holdback_outstanding = (inv.holdbackOutstanding === undefined || inv.holdbackOutstanding === null) ? null : inv.holdbackOutstanding;
+  row.holdback_overdrawn = (inv.holdbackOverdrawn === undefined || inv.holdbackOverdrawn === null) ? null : inv.holdbackOverdrawn;
+  row.debt_balance = (inv.debtBalance === undefined || inv.debtBalance === null) ? null : inv.debtBalance;
+  row.balance_owed = (inv.balanceOwed === undefined || inv.balanceOwed === null) ? null : inv.balanceOwed;
+  row.amount_post_dilutions = (inv.amountPostDilutions === undefined || inv.amountPostDilutions === null) ? null : inv.amountPostDilutions;
+}
+
+// Pack a credit note in-memory entry into a DB row.
+function packCreditNoteRow(cn) {
+  var entityId = cn.supplierEntityId || cn.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  var bEntity = cn.buyerEntityId || cn.buyerId || "";
+  var bParent = bEntity.indexOf(":") > -1 ? bEntity.split(":")[0] : (bEntity || "");
+  return {
+    credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
+    date: cn.date, reference: cn.reference || "",
+    supplier_id: parentId, supplier_entity_id: entityId,
+    buyer_id: bParent, buyer_entity_id: bEntity,
+    allocations: cn.allocations || [], notes: cn.notes || [],
+    voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null,
+    created_display: cn.createdDisplay || null
+  };
+}
+
+// Unpack a credit_notes DB row into in-memory shape.
+function unpackCreditNoteRow(row) {
+  var sIds = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  var bIds = resolveBuyerIds(row.buyer_id, row.buyer_entity_id);
+  return {
+    creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
+    currency: row.currency, date: row.date, reference: row.reference || "",
+    supplierName: getEntityDisplayName(sIds.entityId),
+    supplierId: sIds.entityId,
+    supplierEntityId: sIds.entityId,
+    supplierParentId: sIds.supplierId,
+    buyerName: buyName(bIds.buyerId),
+    buyerId: bIds.buyerId,
+    buyerEntityId: bIds.entityId,
+    createdDisplay: row.created_display, allocations: row.allocations || [],
+    notes: row.notes || [],
+    voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
+  };
+}
+
+// Resolve the parent + entity ID for a given invoice ID, looking up INVOICES_DB.
+// Used to populate the denormalised supplier_id / supplier_entity_id columns
+// on payment_allocations and holdback_payment_allocations rows.
+function getSupplierIdsForInvoice(invoiceId) {
+  if (!invoiceId) return { supplierId: null, entityId: null };
+  var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+  if (!inv) return { supplierId: null, entityId: null };
+  var entityId = inv.supplierEntityId || inv.supplierId || "";
+  var parentId = inv.supplierParentId || parseEntityId(entityId).supplierId || entityId || "";
+  return { supplierId: parentId, entityId: entityId };
 }
 
 function getSupplierBankDetails(entityId, programId) {
@@ -562,41 +870,12 @@ async function saveInvoice(invId) {
   if (!inv) return;
   _isSaving = true;
   try {
-    var row = {
-      id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-      amount: inv.amount, currency: inv.currency,
-      capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-      interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-      days_to_maturity: inv.daysToMaturity || 0,
-      advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-      invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-      created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-      settled_date: inv.settledDate || null,
-      invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-      funding_program: inv.fundingProgram || null,
-      partial_approved_amount: inv.partialApprovedAmount || 0,
-      invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-      buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null, buyer_received_date: inv.buyerReceivedDate || null,
-      invoice_status_history: inv.invoiceStatusHistory || [],
-      adjustments: inv.adjustments || [],
-      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
-      // Derived columns, populated by processForDate via persistDerivedFieldsForInvoices.
-      // Nullable: rows that haven't been re-derived yet write null and the cron skips them.
-      // The cron reads these to evaluate time-based funding status transitions without
-      // re-implementing the balance / history-walk logic in SQL.
-      capital_outstanding: (inv.capitalOutstanding === undefined || inv.capitalOutstanding === null) ? null : inv.capitalOutstanding,
-      interest_outstanding: (inv.interestOutstanding === undefined || inv.interestOutstanding === null) ? null : inv.interestOutstanding,
-      penalty_outstanding: (inv.penaltyOutstanding === undefined || inv.penaltyOutstanding === null) ? null : inv.penaltyOutstanding,
-      holdback_outstanding: (inv.holdbackOutstanding === undefined || inv.holdbackOutstanding === null) ? null : inv.holdbackOutstanding,
-      holdback_overdrawn: (inv.holdbackOverdrawn === undefined || inv.holdbackOverdrawn === null) ? null : inv.holdbackOverdrawn,
-      debt_balance: (inv.debtBalance === undefined || inv.debtBalance === null) ? null : inv.debtBalance,
-      balance_owed: (inv.balanceOwed === undefined || inv.balanceOwed === null) ? null : inv.balanceOwed,
-      amount_post_dilutions: (inv.amountPostDilutions === undefined || inv.amountPostDilutions === null) ? null : inv.amountPostDilutions,
-      current_invoice_status: inv.currentInvoiceStatus || null,
-      disputed_date: inv.disputedDate || null,
-      notes: inv.notes || []
-    };
+    var row = packInvoiceRow(inv);
+    // Derived columns, populated by processForDate via persistDerivedFieldsForInvoices.
+    // Nullable: rows that haven't been re-derived yet write null and the cron skips them.
+    // The cron reads these to evaluate time-based funding status transitions without
+    // re-implementing the balance / history-walk logic in SQL.
+    attachDerivedFieldsToRow(row, inv);
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
     if (upRes && upRes.error) { console.error("[SaveInvoice] Supabase error:", upRes.error); toast.error("Invoice save failed", upRes.error.message || "Database rejected the invoice record."); }
   } catch (e) { console.error("[SaveInvoice] Error:", e); toast.error("Invoice save error", e.message || String(e)); }
@@ -608,22 +887,7 @@ async function saveSPQEntry(spqId) {
   if (!item) { console.error("[SaveSPQ] Item not found:", spqId); toast.error("Payment queue save failed", "Item " + spqId + " not found locally."); return; }
   _isSaving = true;
   try {
-    var row = {
-      id: item.id, type: item.type, invoice_id: item.invoiceId || null, invoice_ids: item.invoiceIds || [],
-      supplier_name: item.supplierName, supplier_id: item.supplierId || null,
-      bank_name: item.bankName || null, bank_details: item.bankDetails || null,
-      amount: item.amount, currency: item.currency, status: item.status || "Pending",
-      program_id: item.programId || null, program_name: item.programName || null,
-      created_at: item.createdAt || null, created_display: item.createdDisplay || null,
-      executed_at: item.executedAt || null, executed_display: item.executedDisplay || null,
-      source_payment_id: item.sourcePaymentId || null, source_invoice_id: item.sourceInvoiceId || null,
-      hb_payment_id: item.hbPaymentId || null, is_bundle: item.isBundle || false,
-      holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount || null,
-      deductions: item.deductions || [], deduction_total: item.deductionTotal || 0,
-      notes: item.notes || [],
-      cancelled_at: item.cancelledAt || null, cancelled_display: item.cancelledDisplay || null,
-      failed_at: item.failedAt || null, failed_display: item.failedDisplay || null
-    };
+    var row = packSpqRow(item);
     var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
     if (result.error) { console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue save failed", result.error.message || "Database rejected the queue entry."); }
   } catch (e) { console.error("[SaveSPQ] Error:", e); toast.error("Payment queue save error", e.message || String(e)); }
@@ -734,13 +998,31 @@ async function savePayment(paymentId) {
   _isSaving = true;
   try {
     var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
+    // Optional payment-level supplier/buyer scope (set for outbound or remittance source pairs)
+    if (pay.buyerId) {
+      var bIds = resolveBuyerIds(pay.buyerId, pay.buyerEntityId);
+      row.buyer_id = bIds.buyerId || null;
+      row.buyer_entity_id = bIds.entityId || null;
+    }
+    if (pay.supplierId) {
+      var sIds = resolveSupplierIds(pay.supplierId, pay.supplierEntityId);
+      row.supplier_id = sIds.supplierId || null;
+      row.supplier_entity_id = sIds.entityId || null;
+    }
     var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
     if (upRes.error) { console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row); toast.error("Payment save failed", upRes.error.message || "Database rejected the payment record."); }
-    // Save allocations
+    // Save allocations — denormalise supplier_id + supplier_entity_id from each invoice
     var delRes = await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
     if (delRes.error) { console.error("[SavePayment] allocations delete error:", delRes.error); toast.error("Payment allocations save failed", delRes.error.message || "Could not clear existing allocations."); }
     if (pay.allocations.length > 0) {
-      var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
+      var allocRows = pay.allocations.map(function(a) {
+        var supIds = getSupplierIdsForInvoice(a.invoiceId);
+        return {
+          payment_id: pay.paymentId, invoice_id: a.invoiceId,
+          amount: a.amount, alloc_date: a.allocDate || null,
+          supplier_id: supIds.supplierId, supplier_entity_id: supIds.entityId
+        };
+      });
       var insRes = await supabase.from("payment_allocations").insert(allocRows);
       if (insRes.error) { console.error("[SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocation insert failed", insRes.error.message || "Could not write allocations."); }
     }
@@ -757,8 +1039,8 @@ async function saveSupplier(supId) {
       id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
       jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
       onboarding_date: s.onboardingDate || null, notes: s.notes || null,
-      street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
-      country: s.country || "United Kingdom", zip: s.zip || null,
+      address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
+      country: s.country || "United Kingdom", postcode: s.postcode || null,
       primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
       secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
       contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
@@ -786,8 +1068,8 @@ async function saveBuyer(buyId) {
       id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
       jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
       onboarding_date: b.onboardingDate || null, notes: b.notes || null,
-      street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
-      country: b.country || "United Kingdom", zip: b.zip || null,
+      address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
+      country: b.country || "United Kingdom", postcode: b.postcode || null,
       primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
       secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
       contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
@@ -812,8 +1094,8 @@ async function saveServiceProvider(spId) {
       id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
       jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
       role: sp.role || null, notes: sp.notes || null,
-      street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
-      country: sp.country || "United Kingdom", zip: sp.zip || null,
+      address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
+      country: sp.country || "United Kingdom", postcode: sp.postcode || null,
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
       secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
     };
@@ -828,13 +1110,7 @@ async function saveCreditNote(cnId) {
   if (!cn) return;
   _isSaving = true;
   try {
-    var row = {
-      credit_note_id: cn.creditNoteId, amount: cn.amount, date: cn.date, currency: cn.currency,
-      reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: cn.supplierId || "",
-      buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-      allocations: cn.allocations || [], notes: cn.notes || [],
-      voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null
-    };
+    var row = packCreditNoteRow(cn);
     var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
   } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
@@ -846,14 +1122,28 @@ async function saveHoldbackPayment(hbpId) {
   if (!hbp) return;
   _isSaving = true;
   try {
-    var row = { hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId, amount: hbp.amount, date: hbp.date, currency: hbp.currency };
+    // Resolve denormalised supplier IDs from the source invoice (the only authoritative
+    // entity link we have on a holdback payment). This is what RLS uses.
+    var hbSup = getSupplierIdsForInvoice(hbp.sourceInvoiceId);
+    var row = {
+      hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId,
+      amount: hbp.amount, date: hbp.date, currency: hbp.currency,
+      supplier_id: hbSup.supplierId, supplier_entity_id: hbSup.entityId,
+      notes: hbp.notes || []
+    };
     var hbRes = await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
     if (hbRes && hbRes.error) { console.error("[SaveHBP] upsert error:", hbRes.error); toast.error("Holdback payment save failed", hbRes.error.message || "Database error."); }
-    // Save allocations
+    // Save allocations — denormalise supplier_id + supplier_entity_id from the source
+    // invoice (allocations on holdback payments share the parent's supplier scope).
     var hbDelRes = await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
     if (hbDelRes && hbDelRes.error) { console.error("[SaveHBP] allocations delete error:", hbDelRes.error); toast.error("Holdback allocation clear failed", hbDelRes.error.message || "Could not clear prior allocations."); }
     if (hbp.allocations && hbp.allocations.length > 0) {
-      var aRows = hbp.allocations.map(function(a) { return { hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount }; });
+      var aRows = hbp.allocations.map(function(a) {
+        return {
+          hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount,
+          supplier_id: hbSup.supplierId, supplier_entity_id: hbSup.entityId
+        };
+      });
       var hbInsRes = await supabase.from("holdback_payment_allocations").insert(aRows);
       if (hbInsRes && hbInsRes.error) { console.error("[SaveHBP] allocations insert error:", hbInsRes.error); toast.error("Holdback allocation write failed", hbInsRes.error.message || "Could not insert allocations."); }
     }
@@ -862,28 +1152,7 @@ async function saveHoldbackPayment(hbpId) {
 }
 
 function mapInvoiceRow(row) {
-  return {
-    id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-    amount: parseFloat(row.amount) || 0, currency: row.currency,
-    capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-    interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-    daysToMaturity: row.days_to_maturity || 0,
-    advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-    invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-    createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-    settledDate: row.settled_date,
-    invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-    fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-    buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
-    invoiceStatusHistory: row.invoice_status_history || [],
-    adjustments: row.adjustments || [],
-    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
-    notes: row.notes || [],
-    csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
-    intendedPaymentDate: row.intended_payment_date || null
-  };
+  return unpackInvoiceRow(row);
 }
 
 async function loadPersistedData() {
@@ -945,8 +1214,8 @@ async function loadPersistedData() {
         SUPPLIERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
@@ -972,8 +1241,8 @@ async function loadPersistedData() {
         BUYERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
@@ -993,8 +1262,8 @@ async function loadPersistedData() {
         SERVICE_PROVIDERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, role: row.role, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false
         });
@@ -1027,26 +1296,7 @@ async function loadPersistedData() {
     if (invData.length > 0) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
-        INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          amount: parseFloat(row.amount) || 0, currency: row.currency,
-          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-          daysToMaturity: row.days_to_maturity || 0,
-          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-          settledDate: row.settled_date,
-          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
-          invoiceStatusHistory: row.invoice_status_history || [],
-          adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
-          notes: row.notes || []
-        });
+        INVOICES_DB.push(unpackInvoiceRow(row));
       });
     }
     // Process payments + group allocations in memory (no more N+1 per-payment queries)
@@ -1063,7 +1313,13 @@ async function loadPersistedData() {
           paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
           date: prow.date, currency: prow.currency, reference: prow.reference || "",
           allocations: allocsByPayment[prow.payment_id] || [],
-          direction: prow.direction || "inbound"
+          direction: prow.direction || "inbound",
+          // Optional payment-level entity scope (set for outbound or remittance source pairs)
+          buyerId: prow.buyer_id || null,
+          buyerEntityId: prow.buyer_entity_id || null,
+          supplierId: prow.supplier_id || null,
+          supplierEntityId: prow.supplier_entity_id || null,
+          notes: prow.notes || []
         });
       });
     }
@@ -1080,54 +1336,32 @@ async function loadPersistedData() {
         HOLDBACK_PAYMENTS_DB.push({
           hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
           amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency,
-          allocations: hbAllocsByHbp[hrow.hb_payment_id] || []
+          allocations: hbAllocsByHbp[hrow.hb_payment_id] || [],
+          supplierId: hrow.supplier_id || null,
+          supplierEntityId: hrow.supplier_entity_id || null,
+          notes: hrow.notes || []
         });
       });
     }
-    // Process supplier payment queue
+    // Process supplier payment queue (Stage 3 schema: 14 cols + metadata JSONB)
     if (spqRes.data && spqRes.data.length > 0) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
-          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
-          bankName: row.bank_name, bankDetails: row.bank_details,
-          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-          programId: row.program_id, programName: row.program_name,
-          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-          notes: row.notes || [],
-          createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display,
-          sourcePaymentId: row.source_payment_id || null,
-          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-        });
+        SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
       });
     }
     // Process credit notes
     if (cnRes.data && cnRes.data.length > 0) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
-          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
-          currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
-        });
+        CREDIT_NOTES_DB.push(unpackCreditNoteRow(row));
       });
     }
     // Process audit log
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
-        AUDIT_LOG.push({
-          timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
-        });
+        AUDIT_LOG.push(auditDbRowToEntry(row));
       });
     }
     _lastSavedAuditIndex = AUDIT_LOG.length;
@@ -1236,38 +1470,17 @@ async function reloadForSupplier(supplierId) {
   SUPPLIERS_DB.forEach(function(s) { if (s.id === parentId) supplierName = s.name; });
   if (!supplierName) { _supplierLoaded = false; return; }
   
-  // Load only this supplier's invoices
-  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName });
-  // Also load by supplier_id for branch matching
-  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId });
+  // Load only this supplier's invoices. Stage 3: filter by supplier_id (parent) and
+  // by supplier_entity_id (composite for branch users). supplier_name no longer exists.
+  var invDataParent = await fetchAllRows("invoices", { column: "supplier_id", value: parentId });
+  var invDataEntity = supplierId !== parentId ? await fetchAllRows("invoices", { column: "supplier_entity_id", value: supplierId }) : [];
   // Merge and deduplicate
   var seen = {};
   INVOICES_DB.length = 0;
-  invData.concat(invDataById).forEach(function(row) {
+  invDataParent.concat(invDataEntity).forEach(function(row) {
     if (seen[row.id]) return;
     seen[row.id] = true;
-    INVOICES_DB.push({
-      id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-      amount: parseFloat(row.amount) || 0, currency: row.currency,
-      capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-      interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-      daysToMaturity: row.days_to_maturity || 0,
-      advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-      invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-      createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-      settledDate: row.settled_date,
-      invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-      fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-      invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-      buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
-      invoiceStatusHistory: row.invoice_status_history || [],
-      adjustments: row.adjustments || [],
-      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
-      notes: row.notes || [],
-      csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
-      intendedPaymentDate: row.intended_payment_date || null
-    });
+    INVOICES_DB.push(unpackInvoiceRow(row));
   });
   var invIdSet = {};
   INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
@@ -1277,27 +1490,12 @@ async function reloadForSupplier(supplierId) {
   // Load SPQ entries for this supplier FIRST so we can use them to decide
   // which payments to load (pass-through source payments might not have any
   // allocation to this supplier's invoices but are still relevant).
-  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName });
+  // Stage 3: filter by supplier_id (parent); branch users will be further scoped by RLS.
+  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_id", value: parentId });
   SUPPLIER_PAYMENT_QUEUE.length = 0;
   var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
-    SUPPLIER_PAYMENT_QUEUE.push({
-      id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-      supplierName: row.supplier_name, supplierId: row.supplier_id,
-      bankName: row.bank_name, bankDetails: row.bank_details,
-      amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-      programId: row.program_id, programName: row.program_name,
-      hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-      isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-      grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-      deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-      notes: row.notes || [],
-      createdAt: row.created_at, createdDisplay: row.created_display,
-      executedAt: row.executed_at, executedDisplay: row.executed_display,
-      sourcePaymentId: row.source_payment_id || null,
-      cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-      failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-    });
+    SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
     if (row.type === "remittance" && row.source_payment_id) passThroughSourcePayIds[row.source_payment_id] = true;
   });
   console.log("[Supplier Load] " + supplierName + ": " + SUPPLIER_PAYMENT_QUEUE.length + " SPQ entries loaded");
@@ -1321,7 +1519,9 @@ async function reloadForSupplier(supplierId) {
         paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
         date: prow.date, currency: prow.currency, reference: prow.reference || "",
         allocations: allocs, notes: prow.notes || [],
-        direction: prow.direction || "inbound"
+        direction: prow.direction || "inbound",
+        buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
+        supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null
       });
     }
   }
@@ -1340,7 +1540,9 @@ async function reloadForSupplier(supplierId) {
     HOLDBACK_PAYMENTS_DB.push({
       hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
       amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency,
-      allocations: hbAllocs
+      allocations: hbAllocs,
+      supplierId: hrow.supplier_id || null, supplierEntityId: hrow.supplier_entity_id || null,
+      notes: hrow.notes || []
     });
   }
   console.log("[Supplier Load] " + supplierName + ": " + HOLDBACK_PAYMENTS_DB.length + " holdback payments loaded");
@@ -1352,11 +1554,20 @@ async function reloadForSupplier(supplierId) {
   AUDIT_LOG.length = 0;
   auditData.forEach(function(row) {
     var ctx = row.context || {};
-    var relevant = ctx.supplierName === supplierName || ctx.supplier === supplierName ||
-      (ctx.supplierId && (ctx.supplierId === supplierId || parseEntityId(ctx.supplierId).supplierId === parentId)) ||
-      (ctx.invoiceId && invIdSet[ctx.invoiceId]);
+    // Stage 3: prefer the new explicit ID columns; fall back to legacy JSONB context
+    // for any rows still on the old shape (none after stage 1, but cheap to keep).
+    var rowSupId = row.supplier_id || ctx.supplierId || null;
+    var rowSupEntity = row.supplier_entity_id || ctx.supplierEntityId || null;
+    var rowParent = rowSupId ? parseEntityId(rowSupId).supplierId : (rowSupEntity ? parseEntityId(rowSupEntity).supplierId : null);
+    var rowInvoice = row.invoice_id || ctx.invoiceId || null;
+    var relevant =
+      (rowSupEntity && rowSupEntity === supplierId) ||
+      (rowParent && rowParent === parentId) ||
+      (rowInvoice && invIdSet[rowInvoice]) ||
+      // Legacy context-only matches (transitional)
+      (ctx.supplierName === supplierName) || (ctx.supplier === supplierName);
     if (relevant) {
-      AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+      AUDIT_LOG.push(auditDbRowToEntry(row));
     }
   });
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
@@ -1368,26 +1579,7 @@ async function reloadInvoices() {
     if (invData) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
-        INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          amount: parseFloat(row.amount) || 0, currency: row.currency,
-          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-          daysToMaturity: row.days_to_maturity || 0,
-          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-          settledDate: row.settled_date,
-          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
-          invoiceStatusHistory: row.invoice_status_history || [],
-          adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
-          notes: row.notes || []
-        });
+        INVOICES_DB.push(unpackInvoiceRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload invoices error:", e); }
@@ -1411,7 +1603,10 @@ async function reloadPayments() {
           newList.push({
             paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
             date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
-            direction: prow.direction || "inbound"
+            direction: prow.direction || "inbound",
+            buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
+            supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null,
+            notes: prow.notes || []
           });
         }
         // Swap atomically after all data is gathered
@@ -1439,7 +1634,9 @@ async function reloadHoldbackPayments() {
           });
           newList.push({
             hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
-            amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs
+            amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs,
+            supplierId: hrow.supplier_id || null, supplierEntityId: hrow.supplier_entity_id || null,
+            notes: hrow.notes || []
           });
         }
         // Swap atomically after all data is gathered
@@ -1457,23 +1654,7 @@ async function reloadSPQ() {
     if (spqRes.data) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
-          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
-          bankName: row.bank_name, bankDetails: row.bank_details,
-          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-          programId: row.program_id, programName: row.program_name,
-          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-          notes: row.notes || [],
-          createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display,
-          sourcePaymentId: row.source_payment_id || null,
-          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-        });
+        SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload SPQ error:", e); }
@@ -1485,10 +1666,7 @@ async function reloadAuditLog() {
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
-        AUDIT_LOG.push({
-          timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
-        });
+        AUDIT_LOG.push(auditDbRowToEntry(row));
       });
       _lastSavedAuditIndex = AUDIT_LOG.length;
     }
@@ -1504,8 +1682,8 @@ async function reloadSuppliers() {
         SUPPLIERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
@@ -1536,8 +1714,8 @@ async function reloadBuyers() {
         BUYERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
@@ -1586,13 +1764,7 @@ async function reloadCreditNotes() {
     if (cnRes.data) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
-          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
-          currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || [],
-          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
-        });
+        CREDIT_NOTES_DB.push(unpackCreditNoteRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload credit notes error:", e); }
@@ -1607,8 +1779,8 @@ async function savePersistedData() {
         id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
         jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
         onboarding_date: s.onboardingDate || null, notes: s.notes || null,
-        street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
-        country: s.country || "United Kingdom", zip: s.zip || null,
+        address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
+        country: s.country || "United Kingdom", postcode: s.postcode || null,
         primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
         secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
         contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
@@ -1632,8 +1804,8 @@ async function savePersistedData() {
         id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
         jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
         onboarding_date: b.onboardingDate || null, notes: b.notes || null,
-        street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
-        country: b.country || "United Kingdom", zip: b.zip || null,
+        address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
+        country: b.country || "United Kingdom", postcode: b.postcode || null,
         primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
         secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
@@ -1651,8 +1823,8 @@ async function savePersistedData() {
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
         jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
-        street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
-        country: sp.country || "United Kingdom", zip: sp.zip || null,
+        address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
+        country: sp.country || "United Kingdom", postcode: sp.postcode || null,
         primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
         secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
       };
@@ -1682,26 +1854,9 @@ async function savePersistedData() {
 
     // Save invoices
     var invRows = INVOICES_DB.map(function(inv) {
-      return {
-        id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-        amount: inv.amount, currency: inv.currency,
-        capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-        interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-        days_to_maturity: inv.daysToMaturity || 0,
-        advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-        invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-        created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-        invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-        funding_program: inv.fundingProgram || null,
-        partial_approved_amount: inv.partialApprovedAmount || 0,
-        invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-        buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null, buyer_received_date: inv.buyerReceivedDate || null,
-        invoice_status_history: inv.invoiceStatusHistory || [],
-        adjustments: inv.adjustments || [],
-        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
-        notes: inv.notes || []
-      };
+      var row = packInvoiceRow(inv);
+      attachDerivedFieldsToRow(row, inv);
+      return row;
     });
     if (invRows.length > 0) {
       // Batch upsert in groups of 50 to avoid Supabase payload limits
@@ -1720,11 +1875,24 @@ async function savePersistedData() {
 
     // Save payments — delete and re-insert allocations
     var payRows = PAYMENTS_DB.map(function(p) {
-      return {
+      var row = {
         payment_id: p.paymentId, amount: p.amount, date: p.date,
         currency: p.currency, reference: p.reference || "",
-        direction: p.direction || "inbound"
+        direction: p.direction || "inbound",
+        notes: p.notes || []
       };
+      // Optional payment-level entity scope (set for outbound or remittance source pairs)
+      if (p.buyerId) {
+        var pbIds = resolveBuyerIds(p.buyerId, p.buyerEntityId);
+        row.buyer_id = pbIds.buyerId || null;
+        row.buyer_entity_id = pbIds.entityId || null;
+      }
+      if (p.supplierId) {
+        var psIds = resolveSupplierIds(p.supplierId, p.supplierEntityId);
+        row.supplier_id = psIds.supplierId || null;
+        row.supplier_entity_id = psIds.entityId || null;
+      }
+      return row;
     });
     if (payRows.length > 0) {
       var payUpRes = await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
@@ -1732,8 +1900,10 @@ async function savePersistedData() {
       var payAllocRows = [];
       PAYMENTS_DB.forEach(function(p) {
         p.allocations.forEach(function(a) {
+          var sIds = getSupplierIdsForInvoice(a.invoiceId);
           payAllocRows.push({
-            payment_id: p.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null
+            payment_id: p.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null,
+            supplier_id: sIds.supplierId, supplier_entity_id: sIds.entityId
           });
         });
       });
@@ -1748,18 +1918,23 @@ async function savePersistedData() {
 
     // Save holdback payments — delete and re-insert allocations
     var hbRows = HOLDBACK_PAYMENTS_DB.map(function(h) {
+      var hsIds = getSupplierIdsForInvoice(h.sourceInvoiceId);
       return {
         hb_payment_id: h.hbPaymentId, source_invoice_id: h.sourceInvoiceId,
-        amount: h.amount, date: h.date, currency: h.currency
+        amount: h.amount, date: h.date, currency: h.currency,
+        supplier_id: hsIds.supplierId, supplier_entity_id: hsIds.entityId,
+        notes: h.notes || []
       };
     });
     if (hbRows.length > 0) {
       await supabase.from("holdback_payments").upsert(hbRows, { onConflict: "hb_payment_id" });
       var hbAllocRows = [];
       HOLDBACK_PAYMENTS_DB.forEach(function(h) {
+        var hsIds = getSupplierIdsForInvoice(h.sourceInvoiceId);
         (h.allocations || []).forEach(function(a) {
           hbAllocRows.push({
-            hb_payment_id: h.hbPaymentId, target_id: a.targetId, amount: a.amount, type: a.type || "interest"
+            hb_payment_id: h.hbPaymentId, target_id: a.targetId, amount: a.amount, type: a.type || "interest",
+            supplier_id: hsIds.supplierId, supplier_entity_id: hsIds.entityId
           });
         });
       });
@@ -1768,38 +1943,12 @@ async function savePersistedData() {
       if (hbAllocRows.length > 0) await supabase.from("holdback_payment_allocations").insert(hbAllocRows);
     }
 
-    // Save supplier payment queue
-    var spqRows = SUPPLIER_PAYMENT_QUEUE.map(function(q) {
-      return {
-        id: q.id, type: q.type, invoice_id: q.invoiceId || null, invoice_ids: q.invoiceIds || [],
-        supplier_name: q.supplierName, supplier_id: q.supplierId || null,
-        bank_name: q.bankName || null, bank_details: q.bankDetails || null,
-        amount: q.amount, currency: q.currency, status: q.status || "Pending",
-        program_id: q.programId || null, program_name: q.programName || null,
-        hb_payment_id: q.hbPaymentId || null, source_invoice_id: q.sourceInvoiceId || null,
-        is_bundle: q.isBundle || false, holdback_ids: q.holdbackIds || [],
-        gross_amount: q.grossAmount || null, deductions: q.deductions || [],
-        deduction_total: q.deductionTotal || 0,
-        notes: q.notes || [],
-        created_at: q.createdAt || null,
-        created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null,
-        source_payment_id: q.sourcePaymentId || null,
-        cancelled_at: q.cancelledAt || null, cancelled_display: q.cancelledDisplay || null,
-        failed_at: q.failedAt || null, failed_display: q.failedDisplay || null
-      };
-    });
+    // Save supplier payment queue (Stage 3 schema: 14 cols + metadata JSONB)
+    var spqRows = SUPPLIER_PAYMENT_QUEUE.map(packSpqRow);
     if (spqRows.length > 0) await supabase.from("supplier_payment_queue").upsert(spqRows, { onConflict: "id" });
 
     // Save credit notes
-    var cnRows = CREDIT_NOTES_DB.map(function(cn) {
-      return {
-        credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
-        date: cn.date, reference: cn.reference || "",
-        supplier_name: cn.supplierName, supplier_id: cn.supplierId || "", buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-        created_display: cn.createdDisplay || null, allocations: cn.allocations || [],
-        voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null
-      };
-    });
+    var cnRows = CREDIT_NOTES_DB.map(packCreditNoteRow);
     if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
 
     // Save entity notes — full upsert
@@ -1817,12 +1966,7 @@ async function savePersistedData() {
 
     // Save audit log — append only (insert entries added since last save)
     if (AUDIT_LOG.length > _lastSavedAuditIndex) {
-      var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(function(a) {
-        return {
-          timestamp: a.timestamp, display_time: a.displayTime,
-          action: a.action, details: a.details, context: a.context || {}
-        };
-      });
+      var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(auditEntryToDbRow);
       if (newAuditRows.length > 0) {
         var auditOk = true;
         var firstAuditErr = null;
@@ -1857,11 +2001,8 @@ function _auditLog(action, details, context, dateOverride) {
     context: ctx
   };
   AUDIT_LOG.push(entry);
-  // Save directly to Supabase
-  supabase.from("audit_log").insert([{
-    timestamp: entry.timestamp, display_time: entry.displayTime,
-    action: entry.action, details: entry.details, context: entry.context
-  }]).then(function(result) {
+  // Save directly to Supabase using Stage 3 schema (event_type, explicit ID columns)
+  supabase.from("audit_log").insert([auditEntryToDbRow(entry)]).then(function(result) {
     if (result.error) console.error("[AuditSave] Error:", result.error.message, result.error.details);
   });
 }
@@ -2281,16 +2422,22 @@ export default function FactoringDashboard() {
         setUserProfile(result.data);
         // If data is already loaded, bump dataVer to re-render with new profile context
         if (_dataLoaded) setDataVer(function(v) { return v + 1; });
-        // If supplier user and suppliers not loaded yet, force a reload
+        // If supplier user and suppliers not loaded yet, force a reload.
+        // Stage 2 split user_profiles.supplier_id into supplier_id (parent) + branch_id
+        // (suffix). Compose them back into the composite entity ID that reloadForSupplier
+        // expects and that downstream scoping uses.
         if (result.data.role === "supplier") {
+          var rdSup = result.data.supplier_id || "";
+          var rdBranch = result.data.branch_id || "";
+          var entityIdForReload = rdBranch ? (rdSup + ":" + rdBranch) : rdSup;
           if (SUPPLIERS_DB.length === 0) {
             loadPersistedData().then(function() {
-              reloadForSupplier(result.data.supplier_id).then(function() {
+              reloadForSupplier(entityIdForReload).then(function() {
                 setDataVer(function(v) { return v + 1; });
               });
             });
           } else {
-            reloadForSupplier(result.data.supplier_id).then(function() {
+            reloadForSupplier(entityIdForReload).then(function() {
               setDataVer(function(v) { return v + 1; });
             });
           }
@@ -2472,9 +2619,9 @@ export default function FactoringDashboard() {
             return {
               id: "INV-" + p.id.substring(0, 8).toUpperCase() + "-" + p.reference_number,
               supplier_id: newSupplierId,
-              supplier_name: newSupplierName,
+              supplier_entity_id: newSupplierId,
               buyer_id: ps.mapped_buyer_id,
-              buyer_name: buyerName,
+              buyer_entity_id: ps.mapped_buyer_id,
               amount: amt,
               currency: p.currency || "GBP",
               advance_rate: 0, annual_rate: 0, penalty_rate: 0,
@@ -2523,10 +2670,10 @@ export default function FactoringDashboard() {
               date: p.cn_date || p.invoice_date,
               currency: p.currency || "GBP",
               reference: p.reference_number || "",
-              supplier_name: newSupplierName,
               supplier_id: newSupplierId,
-              buyer_name: buyerName2,
+              supplier_entity_id: newSupplierId,
               buyer_id: ps.mapped_buyer_id,
+              buyer_entity_id: ps.mapped_buyer_id,
               allocations: [],
               notes: []
             };
@@ -2658,8 +2805,12 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var row = payload.new || payload.old;
           if (row) {
-            var matchesSup = row.supplier_name === sf.supplierName ||
-              (row.supplier_id && (row.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(row.supplier_id).supplierId === sf.parentId)));
+            // Stage 3: name column is gone; match on supplier_id (parent) and supplier_entity_id (composite)
+            var rowEntity = row.supplier_entity_id || row.supplier_id || "";
+            var rowParent = rowEntity ? parseEntityId(rowEntity).supplierId : "";
+            var matchesSup =
+              (rowEntity && rowEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId);
             if (!matchesSup) return;
             // Keep supplier invoice-id set in sync so later audit-log realtime
             // relevance checks find invoices that arrived after the initial load
@@ -2677,55 +2828,50 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var spqRow = payload.new || payload.old;
           if (spqRow) {
-            var matches = spqRow.supplier_name === sf.supplierName ||
-              (spqRow.supplier_id && (spqRow.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(spqRow.supplier_id).supplierId === sf.parentId)));
+            // Stage 3: name column is gone; match on supplier_id (parent) and supplier_entity_id
+            var rowEntity = spqRow.supplier_entity_id || spqRow.supplier_id || "";
+            var rowParent = rowEntity ? parseEntityId(rowEntity).supplierId : "";
+            var matches =
+              (rowEntity && rowEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId);
             if (!matches) return;
           }
         }
-        if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
-          return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-            supplierName: row.supplier_name, supplierId: row.supplier_id || "",
-            bankName: row.bank_name, bankDetails: row.bank_details,
-            amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-            programId: row.program_id, programName: row.program_name,
-            hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-            isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-            grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-            deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-            notes: row.notes || [],
-            createdAt: row.created_at, createdDisplay: row.created_display,
-            executedAt: row.executed_at, executedDisplay: row.executed_display,
-            sourcePaymentId: row.source_payment_id || null,
-            cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-            failedAt: row.failed_at || null, failedDisplay: row.failed_display || null };
-        })) scheduleRender();
+        if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", unpackSpqRow)) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function(payload) {
         if (payload.eventType === "INSERT" && payload.new && !_isSaving) {
           var row = payload.new;
           var ctx = row.context || {};
-          // If running as a supplier, only accept entries relevant to that supplier
+          // If running as a supplier, only accept entries relevant to that supplier.
+          // Stage 3: prefer explicit ID columns; legacy ctx.supplierId/Name fallback for any
+          // pre-stage-3 rows that linger.
           if (_supplierFilter) {
             var sf = _supplierFilter;
-            var relevant = ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName ||
-              (ctx.supplierId && (ctx.supplierId === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(ctx.supplierId).supplierId === sf.parentId))) ||
-              (ctx.invoiceId && sf.invIds && sf.invIds[ctx.invoiceId]);
+            var rowSupId = row.supplier_id || ctx.supplierId || null;
+            var rowSupEntity = row.supplier_entity_id || ctx.supplierEntityId || null;
+            var rowParent = rowSupId ? parseEntityId(rowSupId).supplierId : (rowSupEntity ? parseEntityId(rowSupEntity).supplierId : null);
+            var rowInvoice = row.invoice_id || ctx.invoiceId || null;
+            var relevant =
+              (rowSupEntity && rowSupEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId) ||
+              (rowInvoice && sf.invIds && sf.invIds[rowInvoice]) ||
+              ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName;
             if (!relevant) return;
           }
-          // Time-tolerant dedupe: Supabase timestamptz returns strings with microsecond
-          // precision and a "+00:00" offset, while in-memory entries use millisecond
-          // toISOString() with a "Z" suffix, so string === comparison fails and the
-          // entry gets added twice. Normalise to epoch ms (and tolerate 1ms skew from
-          // precision truncation) and also match on action+details as a secondary key.
-          var rowMs = Date.parse(row.timestamp);
+          // Time-tolerant dedupe. Stage 3: read created_at instead of timestamp,
+          // event_type instead of action.
+          var rowTs = row.created_at || row.timestamp;
+          var rowEvent = row.event_type || row.action;
+          var rowMs = Date.parse(rowTs);
           var exists = AUDIT_LOG.some(function(a) {
-            if (a.action !== row.action) return false;
+            if (a.action !== rowEvent) return false;
             if (a.details !== row.details) return false;
             var aMs = Date.parse(a.timestamp);
             return Math.abs(aMs - rowMs) < 2;
           });
           if (!exists) {
-            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+            AUDIT_LOG.push(auditDbRowToEntry(row));
             scheduleRender();
           }
         }
@@ -5135,8 +5281,11 @@ export default function FactoringDashboard() {
         var spRed = "#EF4444";
         var spAmber = "#F59E0B";
 
-        // Entity ID from user profile: "SUP-001" = parent user, "SUP-001:BR-001" = branch user
-        var spRawId = userProfile.supplier_id || "";
+        // Entity ID from user profile: stage 2 split composite into supplier_id (parent only)
+        // + branch_id (suffix or null). Compose them for the in-memory entity ID.
+        var spParentIdRaw = userProfile.supplier_id || "";
+        var spBranchIdRaw = userProfile.branch_id || "";
+        var spRawId = spBranchIdRaw ? (spParentIdRaw + ":" + spBranchIdRaw) : spParentIdRaw;
         var spParsed = parseEntityId(spRawId);
         var spParentId = spParsed.supplierId || "";
         var spIsBranchUser = !!spParsed.branchId;
@@ -6599,7 +6748,7 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 12, color: spMuted, marginBottom: 4 } }, "Address"),
                     React.createElement("div", { style: { fontSize: 13, color: spText, lineHeight: 1.6 } }, (function() {
                       var src = (spIsBranchUser && spBranchObj) ? spBranchObj : spSupplier;
-                      return [src.street1, src.street2, src.city, src.state, src.zip, src.country].filter(Boolean).join(", ") || "\u2014";
+                      return [src.addressLine1, src.addressLine2, src.city, src.county, src.postcode, src.country].filter(Boolean).join(", ") || "\u2014";
                     })())
                   )
                 ),
@@ -8719,7 +8868,7 @@ export default function FactoringDashboard() {
                 {/* ADDRESS section */}
                 <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 10, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Address</div>
                 <div style={{ marginBottom: 22 }}>
-                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{supplier ? ([supplier.street1, supplier.street2, supplier.city, supplier.state, supplier.zip, supplier.country].filter(Boolean).join(", ") || "\u2014") : "\u2014"}</div>
+                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{supplier ? ([supplier.addressLine1, supplier.addressLine2, supplier.city, supplier.county, supplier.postcode, supplier.country].filter(Boolean).join(", ") || "\u2014") : "\u2014"}</div>
                 </div>
 
                 {/* BANKING section */}
@@ -10078,10 +10227,10 @@ export default function FactoringDashboard() {
                     </>}
 
                     {/* ADDRESS section */}
-                    {(buyer.street1 || buyer.city) && <>
+                    {(buyer.addressLine1 || buyer.city) && <>
                       <div style={sectionHeader}>Address</div>
                       <div style={{ marginBottom: 22 }}>
-                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{[buyer.street1, buyer.street2, buyer.city, buyer.state, buyer.zip, buyer.country].filter(Boolean).join(", ")}</div>
+                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{[buyer.addressLine1, buyer.addressLine2, buyer.city, buyer.county, buyer.postcode, buyer.country].filter(Boolean).join(", ")}</div>
                       </div>
                     </>}
 
@@ -10119,7 +10268,7 @@ export default function FactoringDashboard() {
                   var inpS = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
                   var lblS = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 };
                   function bFld(label, key, type) { return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>{label}</label><input type={type || "text"} value={f[key] || ""} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={inpS} /></div>; }
-                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
+                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
                   return <div>
                     {/* Floating edit-mode bar */}
                     <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(14,165,233,0.15)" }}>
@@ -10137,12 +10286,12 @@ export default function FactoringDashboard() {
                       {bFld("Company Number", "companyNumber")}
                       {bFld("Company Status", "companyStatus")}
                       {bFld("Incorporation Date", "incorporationDate", "date")}
-                      {bFld("Street Address 1", "street1")}
-                      {bFld("Street Address 2", "street2")}
+                      {bFld("Address Line 1", "addressLine1")}
+                      {bFld("Address Line 2", "addressLine2")}
                       {bFld("City", "city")}
-                      {bFld("State / County", "state")}
+                      {bFld("County", "county")}
                       {bFld("Country", "country")}
-                      {bFld("ZIP / Postal Code", "zip")}
+                      {bFld("Postcode", "postcode")}
                       {bFld("Primary Contact", "primaryContact")}
                       {bFld("Primary Email", "primaryEmail", "email")}
                       {bFld("Primary Phone", "primaryPhone", "tel")}
@@ -16233,11 +16382,11 @@ export default function FactoringDashboard() {
                 companyNumber: data.company_number || num,
                 incorporationDate: data.date_of_creation || entObj.incorporationDate || "",
                 companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : entObj.companyStatus || "",
-                street1: addr.address_line_1 || entObj.street1 || "",
-                street2: addr.address_line_2 || entObj.street2 || "",
+                addressLine1: addr.address_line_1 || entObj.addressLine1 || "",
+                addressLine2: addr.address_line_2 || entObj.addressLine2 || "",
                 city: addr.locality || entObj.city || "",
-                state: addr.region || entObj.state || "",
-                zip: addr.postal_code || entObj.zip || "",
+                county: addr.region || entObj.county || "",
+                postcode: addr.postal_code || entObj.postcode || "",
                 country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : entObj.country || "United Kingdom",
                 directors: merged
               });
@@ -16261,7 +16410,7 @@ export default function FactoringDashboard() {
                 var newCoNum = (f.companyNumber || "").trim();
                 // Build field-level change log
                 var changes = [];
-                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
+                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
                 Object.keys(trackFields).forEach(function(k) {
                   var oldVal = ent[k] !== undefined && ent[k] !== null ? String(ent[k]) : "";
                   var newVal = f[k] !== undefined && f[k] !== null ? String(f[k]) : "";
@@ -16416,11 +16565,11 @@ export default function FactoringDashboard() {
                   companyNumber: data.company_number || num,
                   incorporationDate: data.date_of_creation || "",
                   companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                  street1: addr.address_line_1 || "",
-                  street2: addr.address_line_2 || "",
+                  addressLine1: addr.address_line_1 || "",
+                  addressLine2: addr.address_line_2 || "",
                   city: addr.locality || "",
-                  state: addr.region || "",
-                  zip: addr.postal_code || "",
+                  county: addr.region || "",
+                  postcode: addr.postal_code || "",
                   country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                   directors: directors,
                   entitySource: "ch"
@@ -16631,7 +16780,7 @@ export default function FactoringDashboard() {
                       {det.companyNumber && <div><div style={fieldLabel}>Company Number</div><div style={fieldMono}>{det.companyNumber}</div></div>}
                       {det.companyStatus && <div><div style={fieldLabel}>Company Status</div><div style={fieldValue}>{det.companyStatus}</div></div>}
                       {det.incorporationDate && <div><div style={fieldLabel}>Incorporated</div><div style={fieldValue}>{fmt(det.incorporationDate)}</div></div>}
-                      {det.street1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</div></div>}
+                      {det.addressLine1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.addressLine1, det.addressLine2, det.city, det.county, det.postcode, det.country].filter(Boolean).join(", ")}</div></div>}
                     </div>
                     {/* Contacts */}
                     {(det.primaryContact || det.primaryEmail || det.primaryPhone) && (function() {
@@ -16982,7 +17131,7 @@ export default function FactoringDashboard() {
                   var ebData = editingBranch ? editingBranch.data : null;
 
                   function startBranchEdit(idx) {
-                    var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
+                    var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", addressLine1: "", addressLine2: "", city: "", county: "", country: "United Kingdom", postcode: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
                     setManagePopup({ type: "branchEdit", idx: idx, data: br });
                   }
                   function saveBranch() {
@@ -16991,7 +17140,7 @@ export default function FactoringDashboard() {
                     if (ebIdx >= 0) {
                       // Track changes for audit log
                       var oldBr = branches[ebIdx];
-                      var brTrack = { branchName: "Branch Name", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
+                      var brTrack = { branchName: "Branch Name", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
                       var brChanges = [];
                       Object.keys(brTrack).forEach(function(k) { var ov = oldBr[k] !== undefined && oldBr[k] !== null ? String(oldBr[k]) : ""; var nv = ebData[k] !== undefined && ebData[k] !== null ? String(ebData[k]) : ""; if (ov !== nv) brChanges.push(brTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); });
                       // Track program bank account changes on branch
@@ -17087,12 +17236,12 @@ export default function FactoringDashboard() {
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px", marginBottom: 14 }}>
                           <div style={{ gridColumn: "1 / -1" }}>{bfld("Branch Name", "branchName")}</div>
-                          {bfld("Street Address 1", "street1")}
-                          {bfld("Street Address 2", "street2")}
+                          {bfld("Address Line 1", "addressLine1")}
+                          {bfld("Address Line 2", "addressLine2")}
                           {bfld("City", "city")}
-                          {bfld("State / County", "state")}
+                          {bfld("County", "county")}
                           {bfld("Country", "country", "country")}
-                          {bfld("ZIP / Postal Code", "zip")}
+                          {bfld("Postcode", "postcode")}
                         </div>
                         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
                           {bfld("Primary Contact", "primaryContact")}
@@ -17404,7 +17553,7 @@ export default function FactoringDashboard() {
               {/* Main form — shown when: not supplier new, or skip, or done, or editing existing */}
               {((!isSupTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
               var isCh = f.entitySource === "ch";
-              var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, street1: true, street2: true, city: true, state: true, country: true, zip: true };
+              var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, addressLine1: true, addressLine2: true, city: true, county: true, country: true, postcode: true };
               function chRefreshEntity() {
                 var num = (f.companyNumber || "").trim();
                 if (!num) return;
@@ -17429,11 +17578,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || prev.incorporationDate,
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : prev.companyStatus,
-                      street1: addr.address_line_1 || prev.street1,
-                      street2: addr.address_line_2 || prev.street2,
+                      addressLine1: addr.address_line_1 || prev.addressLine1,
+                      addressLine2: addr.address_line_2 || prev.addressLine2,
                       city: addr.locality || prev.city,
-                      state: addr.region || prev.state,
-                      zip: addr.postal_code || prev.zip,
+                      county: addr.region || prev.county,
+                      postcode: addr.postal_code || prev.postcode,
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : prev.country,
                       directors: directors.concat(manualDirs)
                     });
@@ -17485,11 +17634,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || "",
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                      street1: addr.address_line_1 || "",
-                      street2: addr.address_line_2 || "",
+                      addressLine1: addr.address_line_1 || "",
+                      addressLine2: addr.address_line_2 || "",
                       city: addr.locality || "",
-                      state: addr.region || "",
-                      zip: addr.postal_code || "",
+                      county: addr.region || "",
+                      postcode: addr.postal_code || "",
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                       directors: directors
                     });
@@ -17504,11 +17653,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || "",
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                      street1: addr.address_line_1 || "",
-                      street2: addr.address_line_2 || "",
+                      addressLine1: addr.address_line_1 || "",
+                      addressLine2: addr.address_line_2 || "",
                       city: addr.locality || "",
-                      state: addr.region || "",
-                      zip: addr.postal_code || "",
+                      county: addr.region || "",
+                      postcode: addr.postal_code || "",
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                       directors: directors
                     });
@@ -17540,12 +17689,12 @@ export default function FactoringDashboard() {
                 {fld("Company Number", "companyNumber", null, isCh && manageEdit)}
                 {fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
                 {fld("Company Status", "companyStatus", null, isCh && manageEdit)}
-                {fld("Street Address 1", "street1", null, isCh && manageEdit)}
-                {fld("Street Address 2", "street2", null, isCh && manageEdit)}
+                {fld("Address Line 1", "addressLine1", null, isCh && manageEdit)}
+                {fld("Address Line 2", "addressLine2", null, isCh && manageEdit)}
                 {fld("City", "city", null, isCh && manageEdit)}
-                {fld("State / County", "state", null, isCh && manageEdit)}
+                {fld("County", "county", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
-                {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
+                {fld("Postcode", "postcode", null, isCh && manageEdit)}
 
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
@@ -18615,28 +18764,7 @@ export default function FactoringDashboard() {
                 }
 
                 // Write new/updated invoices directly to Supabase in batches
-                var invToSave = INVOICES_DB.map(function(inv) {
-                  return {
-                    id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-                    amount: inv.amount, currency: inv.currency,
-                    capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-                    interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-                    days_to_maturity: inv.daysToMaturity || 0,
-                    advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-                    invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-                    created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-                    invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-                    funding_program: inv.fundingProgram || null,
-                    partial_approved_amount: inv.partialApprovedAmount || 0,
-                    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-                    buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null, buyer_received_date: inv.buyerReceivedDate || null,
-                    invoice_status_history: inv.invoiceStatusHistory || [],
-                    adjustments: inv.adjustments || [],
-                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
-                    notes: inv.notes || []
-                  };
-                });
+                var invToSave = INVOICES_DB.map(packInvoiceRow);
                 console.log("[CSV Import] Saving " + invToSave.length + " invoices to Supabase...");
                 setCsvImportProgress("Saving to database... 0/" + invToSave.length);
                 var saveErrors = 0;
@@ -18924,9 +19052,12 @@ export default function FactoringDashboard() {
 
               function openEditUser(user) {
                 var role = user.role;
-                // Map stored role: if role is "supplier" but supplier_id has ":", it's a branch user
-                if (role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) role = "supplier_branch";
-                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: user.supplier_id || "", status: user.status || "active" });
+                // Stage 2: branch_id is now a separate column. supplier_id always holds the
+                // parent only. Branch users are detected by the presence of branch_id.
+                var compositeId = user.supplier_id || "";
+                if (compositeId && user.branch_id) compositeId = compositeId + ":" + user.branch_id;
+                if (role === "supplier" && user.branch_id) role = "supplier_branch";
+                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: compositeId, status: user.status || "active" });
                 setUserEdit(user);
                 setUserSaveMsg("");
               }
@@ -18944,9 +19075,14 @@ export default function FactoringDashboard() {
                 if ((f.role === "supplier" || f.role === "supplier_branch") && !f.supplier_id) { setUserSaveMsg("Supplier/Branch must be selected for this role."); return; }
                 if (userEdit === "new" && (!f.password || f.password.length < 8)) { setUserSaveMsg("Password must be at least 8 characters."); return; }
 
-                // Determine the stored role and supplier_id
+                // Determine the stored role and split the composite entity ID into
+                // supplier_id (parent only) + branch_id (suffix or null) for DB write.
+                // Stage 2 stores them as separate columns.
                 var storedRole = f.role === "supplier_branch" ? "supplier" : f.role;
-                var storedSupplierId = (f.role === "supplier" || f.role === "supplier_branch") ? f.supplier_id : null;
+                var composite = (f.role === "supplier" || f.role === "supplier_branch") ? (f.supplier_id || "") : "";
+                var parsedComposite = parseEntityId(composite);
+                var storedSupplierId = composite ? (parsedComposite.supplierId || null) : null;
+                var storedBranchId = composite ? (parsedComposite.branchId || null) : null;
 
                 setUserSaveMsg("Saving...");
 
@@ -18966,11 +19102,11 @@ export default function FactoringDashboard() {
                     restoreAndUpsert.then(function() {
                       return supabase.from("user_profiles").upsert({
                         id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
-                        supplier_id: storedSupplierId, status: f.status || "active"
+                        supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active"
                       });
                     }).then(function(r2) {
                       if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
-                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedSupplierId ? " — " + getEntityDisplayName(storedSupplierId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
+                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (composite ? " — " + getEntityDisplayName(composite) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId });
                       setUserSaveMsg("");
                       setUserEdit(null);
                       loadUsers();
@@ -18978,10 +19114,10 @@ export default function FactoringDashboard() {
                   });
                 } else {
                   // Update existing user profile
-                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, status: f.status || "active" };
+                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active" };
                   supabase.from("user_profiles").update(updates).eq("id", userEdit.id).then(function(r2) {
                     if (r2.error) { setUserSaveMsg("Error: " + r2.error.message); return; }
-                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedSupplierId ? ", entity: " + getEntityDisplayName(storedSupplierId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
+                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (composite ? ", entity: " + getEntityDisplayName(composite) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status });
                     setUserSaveMsg("");
                     setUserEdit(null);
                     loadUsers();
@@ -19088,17 +19224,23 @@ export default function FactoringDashboard() {
                 </div>
                 {(function() {
                   var muHasActive = !!(mgUsrSearch || mgUsrRoleFilter || mgUsrStatusFilter);
-                  // Effective display role (handles supplier_branch derivation)
+                  // Effective display role: branch users are stored as role='supplier' with
+                  // branch_id set; surface "supplier_branch" for filter/sort purposes.
                   function effectiveRole(user) {
-                    if (user.role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) return "supplier_branch";
+                    if (user.role === "supplier" && user.branch_id) return "supplier_branch";
                     return user.role;
+                  }
+                  // Compose entity ID from supplier_id + branch_id for display lookup.
+                  function userEntityId(user) {
+                    var sid = user.supplier_id || "";
+                    return user.branch_id ? (sid + ":" + user.branch_id) : sid;
                   }
                   function applyMuFilters(list) {
                     var r = list;
                     if (mgUsrRoleFilter) r = r.filter(function(u) { return effectiveRole(u) === mgUsrRoleFilter; });
                     if (mgUsrStatusFilter === "active") r = r.filter(function(u) { return u.status !== "deactivated"; });
                     if (mgUsrStatusFilter === "deactivated") r = r.filter(function(u) { return u.status === "deactivated"; });
-                    if (mgUsrSearch) { var q = mgUsrSearch.toLowerCase(); r = r.filter(function(u) { var entN = u.supplier_id ? (getEntityDisplayName(u.supplier_id) || u.supplier_id) : ""; return (u.full_name || "").toLowerCase().indexOf(q) > -1 || (u.email || "").toLowerCase().indexOf(q) > -1 || String(entN).toLowerCase().indexOf(q) > -1; }); }
+                    if (mgUsrSearch) { var q = mgUsrSearch.toLowerCase(); r = r.filter(function(u) { var eid = userEntityId(u); var entN = eid ? (getEntityDisplayName(eid) || eid) : ""; return (u.full_name || "").toLowerCase().indexOf(q) > -1 || (u.email || "").toLowerCase().indexOf(q) > -1 || String(entN).toLowerCase().indexOf(q) > -1; }); }
                     return r;
                   }
                   var filteredForStats = applyMuFilters(usersList);
@@ -19107,7 +19249,7 @@ export default function FactoringDashboard() {
                     if (mgUsrSort === "name") return (u.full_name || "").toLowerCase();
                     if (mgUsrSort === "email") return (u.email || "").toLowerCase();
                     if (mgUsrSort === "role") return effectiveRole(u) || "";
-                    if (mgUsrSort === "entity") return u.supplier_id ? (getEntityDisplayName(u.supplier_id) || u.supplier_id).toLowerCase() : "";
+                    if (mgUsrSort === "entity") { var ueid = userEntityId(u); return ueid ? (getEntityDisplayName(ueid) || ueid).toLowerCase() : ""; }
                     if (mgUsrSort === "status") return u.status || "active";
                     return "";
                   }
@@ -19145,7 +19287,8 @@ export default function FactoringDashboard() {
                           var displayRole = effectiveRole(user);
                           var rc = roleColors[displayRole] || "#6B7280";
                           var isDeactivated = user.status === "deactivated";
-                          var entityName = user.supplier_id ? getEntityDisplayName(user.supplier_id) || user.supplier_id : "\u2014";
+                          var rowEntId = userEntityId(user);
+                          var entityName = rowEntId ? getEntityDisplayName(rowEntId) || rowEntId : "\u2014";
                           return <tr key={user.id} style={{ borderBottom: "1px solid var(--border)", opacity: isDeactivated ? 0.5 : 1 }}>
                             <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{user.full_name || "\u2014"}</td>
                             <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{user.email}</td>
