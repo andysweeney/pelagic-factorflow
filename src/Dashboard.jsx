@@ -580,6 +580,7 @@ async function saveInvoice(invId) {
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
       do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
       // Derived columns, populated by processForDate via persistDerivedFieldsForInvoices.
       // Nullable: rows that haven't been re-derived yet write null and the cron skips them.
       // The cron reads these to evaluate time-based funding status transitions without
@@ -831,7 +832,8 @@ async function saveCreditNote(cnId) {
       credit_note_id: cn.creditNoteId, amount: cn.amount, date: cn.date, currency: cn.currency,
       reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: cn.supplierId || "",
       buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-      allocations: cn.allocations || [], notes: cn.notes || []
+      allocations: cn.allocations || [], notes: cn.notes || [],
+      voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null
     };
     var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
@@ -877,6 +879,7 @@ function mapInvoiceRow(row) {
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
     doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
     notes: row.notes || [],
     csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
     intendedPaymentDate: row.intended_payment_date || null
@@ -1041,6 +1044,7 @@ async function loadPersistedData() {
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
           doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
           notes: row.notes || []
         });
       });
@@ -1111,7 +1115,8 @@ async function loadPersistedData() {
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
           supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || []
+          createdDisplay: row.created_display, allocations: row.allocations || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
         });
       });
     }
@@ -1258,6 +1263,7 @@ async function reloadForSupplier(supplierId) {
       invoiceStatusHistory: row.invoice_status_history || [],
       adjustments: row.adjustments || [],
       doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
       notes: row.notes || [],
       csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
       intendedPaymentDate: row.intended_payment_date || null
@@ -1379,6 +1385,7 @@ async function reloadInvoices() {
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
           doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
           notes: row.notes || []
         });
       });
@@ -1583,7 +1590,8 @@ async function reloadCreditNotes() {
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
           supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || []
+          createdDisplay: row.created_display, allocations: row.allocations || [],
+          voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
         });
       });
     }
@@ -1691,6 +1699,7 @@ async function savePersistedData() {
         invoice_status_history: inv.invoiceStatusHistory || [],
         adjustments: inv.adjustments || [],
         do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
         notes: inv.notes || []
       };
     });
@@ -1787,7 +1796,8 @@ async function savePersistedData() {
         credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
         date: cn.date, reference: cn.reference || "",
         supplier_name: cn.supplierName, supplier_id: cn.supplierId || "", buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-        created_display: cn.createdDisplay || null, allocations: cn.allocations || []
+        created_display: cn.createdDisplay || null, allocations: cn.allocations || [],
+        voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null
       };
     });
     if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
@@ -1876,6 +1886,11 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   var cnUnallocByBuyer = new Map(); // buyer -> unallocated CN total
   CREDIT_NOTES_DB.forEach(function(cn) {
     if (cn.date > viewDate) return;
+    // Voided credit notes are kept in CREDIT_NOTES_DB for audit but disregarded everywhere
+    // calculations are done. (Voiding requires unallocated state, so dilution maps wouldn't
+    // pick this CN up anyway — but the early return makes the contract explicit and protects
+    // against any future change that allowed voiding allocated CNs.)
+    if (cn.voided) return;
     var allocated = 0;
     if (cn.allocations) cn.allocations.forEach(function(a) {
       cnDilutionByInvoice.set(a.invoiceId, (cnDilutionByInvoice.get(a.invoiceId) || 0) + a.amount);
@@ -1913,6 +1928,10 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   });
   INVOICES_DB.forEach(function(rawInv) {
     if (rawInv.invoiceDate > viewDate) return;
+    // Voided invoices are kept in INVOICES_DB for audit but disregarded everywhere
+    // calculations / gates / dashboards read from viewData. Voiding is restricted to
+    // never-funded invoices (gated in voidInvoice), so there's no exposure to unwind.
+    if (rawInv.voided) return;
     // Backfill tranches array for legacy invoices that pre-date the tranche model.
     // Idempotent — re-running is safe. Persisted on next save (tranches field roundtrips through Supabase).
     if ((!Array.isArray(rawInv.tranches) || rawInv.tranches.length === 0) && rawInv.fundedDate && rawInv.capitalDue > 0) {
@@ -2813,6 +2832,8 @@ export default function FactoringDashboard() {
   var ilfund1 = useState(""), invlFundStFilter = ilfund1[0], setInvlFundStFilter = ilfund1[1];
   var ildnf1 = useState(""), invlDnfFilter = ildnf1[0], setInvlDnfFilter = ildnf1[1];
   var ildna1 = useState(""), invlDnaFilter = ildna1[0], setInvlDnaFilter = ildna1[1];
+  // Voided filter for top-level Invoices view: "" = hide voided (default), "yes" = show only voided, "all" = show both
+  var ilvoid1 = useState(""), invlVoidedFilter = ilvoid1[0], setInvlVoidedFilter = ilvoid1[1];
   var ildf1 = useState(""), invlDateFrom = ildf1[0], setInvlDateFrom = ildf1[1];
   var ildt1 = useState(""), invlDateTo = ildt1[0], setInvlDateTo = ildt1[1];
   var ilpg1 = useState(0), invlPage = ilpg1[0], setInvlPage = ilpg1[1];
@@ -2871,6 +2892,9 @@ export default function FactoringDashboard() {
   // Modal for adding supplier to program with required commercial terms (Tweak: rate gate at program assignment).
   // null = closed; otherwise { supplierId, supplierName, programId, programName, programCcy, advanceRate, annualRate, penaltyRate, creditLimit, singleInvoiceLimit }
   var atpm1 = useState(null), addToProgramModal = atpm1[0], setAddToProgramModal = atpm1[1];
+  // Shared void/un-void prompt: { kind: "invoice"|"creditNote", action: "void"|"unvoid", id: <id>, name: <display>, amount, currency }
+  var vp1 = useState(null), voidPrompt = vp1[0], setVoidPrompt = vp1[1];
+  var vpr1 = useState(""), voidPromptReason = vpr1[0], setVoidPromptReason = vpr1[1];
   var rn1 = useState(""), newRateAnnual = rn1[0], setNewRateAnnual = rn1[1];
   var rp1 = useState(""), newRatePenalty = rp1[0], setNewRatePenalty = rp1[1];
   var ra1 = useState(""), newRateAdvance = ra1[0], setNewRateAdvance = ra1[1];
@@ -2899,6 +2923,8 @@ export default function FactoringDashboard() {
   var cnlsup1 = useState(""), cnlSupFilter = cnlsup1[0], setCnlSupFilter = cnlsup1[1];
   var cnlbuy1 = useState(""), cnlBuyFilter = cnlbuy1[0], setCnlBuyFilter = cnlbuy1[1];
   var cnlst1 = useState(""), cnlStatusFilter = cnlst1[0], setCnlStatusFilter = cnlst1[1];
+  // Voided filter for top-level Credit Notes view: "" = hide voided (default), "yes" = show only voided, "all" = show both
+  var cnlvoid1 = useState(""), cnlVoidedFilter = cnlvoid1[0], setCnlVoidedFilter = cnlvoid1[1];
   var cnldf1 = useState(""), cnlDateFrom = cnldf1[0], setCnlDateFrom = cnldf1[1];
   var cnldt1 = useState(""), cnlDateTo = cnldt1[0], setCnlDateTo = cnldt1[1];
   var cnlpg1 = useState(0), cnlPage = cnlpg1[0], setCnlPage = cnlpg1[1];
@@ -4408,6 +4434,97 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
+  // Void an invoice. The row remains for audit but is filtered out of viewData.invoices
+  // (which is what every calculation, gate, and dashboard reads). Voiding is restricted to
+  // never-funded invoices (fundingStatus === "pending", no fundedDate, no payments) to
+  // guarantee no unwind work is needed. Reason text is required.
+  function voidInvoice(invId, reason) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+    if (!raw) return false;
+    if (raw.voided) { alert("Invoice " + invId + " is already voided."); return false; }
+    // Strict gate: only invoices that have no operational footprint can be voided.
+    if (raw.fundingStatus !== "pending") {
+      alert("Cannot void " + invId + ": funding status is " + (FST[raw.fundingStatus] && FST[raw.fundingStatus].label || raw.fundingStatus) + ". Voiding is only permitted on invoices that have never been allocated to a funding program.");
+      return false;
+    }
+    if (raw.fundedDate) { alert("Cannot void " + invId + ": this invoice has been funded. Voiding is not permitted on funded invoices."); return false; }
+    var payCount = (raw.payments && raw.payments.length) || 0;
+    if (payCount > 0) { alert("Cannot void " + invId + ": " + payCount + " buyer payment(s) recorded against this invoice. Voiding is not permitted once any economic activity has occurred."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to void " + invId + "."); return false; }
+    var nowIso = new Date().toISOString();
+    raw.voided = true;
+    raw.voidedAt = nowIso;
+    raw.voidedBy = (typeof currentUser !== "undefined" && currentUser && currentUser.email) ? currentUser.email : "admin";
+    raw.voidReason = trimmedReason;
+    saveInvoice(invId);
+    auditLog("Invoice Voided", invId + " voided. Reason: " + trimmedReason, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, voidReason: trimmedReason, voidedAt: nowIso, voidedBy: raw.voidedBy });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  // Un-void an invoice. Restores the row to active state. Audit log captures who/when.
+  // Reason text is required (e.g. "voided in error").
+  function unvoidInvoice(invId, reason) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+    if (!raw) return false;
+    if (!raw.voided) { alert("Invoice " + invId + " is not voided."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to un-void " + invId + "."); return false; }
+    var prevVoid = { voidedAt: raw.voidedAt, voidedBy: raw.voidedBy, voidReason: raw.voidReason };
+    raw.voided = false;
+    raw.voidedAt = null;
+    raw.voidedBy = null;
+    raw.voidReason = null;
+    saveInvoice(invId);
+    auditLog("Invoice Un-voided", invId + " un-voided. Reason: " + trimmedReason, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, unvoidReason: trimmedReason, previousVoid: prevVoid });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  // Void a credit note. Same audit-vs-disregarded model as invoices. Allocated CNs
+  // must be unallocated first — voiding doesn't auto-unwind, the user has to do that
+  // explicitly so the audit trail of un-allocation is clean.
+  function voidCreditNote(cnId, reason) {
+    var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
+    if (!cn) return false;
+    if (cn.voided) { alert("Credit note " + cnId + " is already voided."); return false; }
+    var allocCount = (cn.allocations || []).filter(function(a) { return (a.amount || 0) > 0.01; }).length;
+    if (allocCount > 0) {
+      var allocList = (cn.allocations || []).filter(function(a) { return (a.amount || 0) > 0.01; }).map(function(a) { return a.invoiceId; }).join(", ");
+      alert("Cannot void " + cnId + ": still allocated to " + allocCount + " invoice(s) (" + allocList + "). Unallocate first, then void.");
+      return false;
+    }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to void " + cnId + "."); return false; }
+    var nowIso = new Date().toISOString();
+    cn.voided = true;
+    cn.voidedAt = nowIso;
+    cn.voidedBy = (typeof currentUser !== "undefined" && currentUser && currentUser.email) ? currentUser.email : "admin";
+    cn.voidReason = trimmedReason;
+    saveCreditNote(cnId);
+    auditLog("Credit Note Voided", cnId + " voided. Reason: " + trimmedReason, { creditNoteId: cnId, amount: cn.amount, currency: cn.currency, supplierId: cn.supplierId, supplierName: cn.supplierName, supplier: cn.supplierName, buyerId: cn.buyerId, buyer: cn.buyerName, voidReason: trimmedReason, voidedAt: nowIso, voidedBy: cn.voidedBy });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  function unvoidCreditNote(cnId, reason) {
+    var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
+    if (!cn) return false;
+    if (!cn.voided) { alert("Credit note " + cnId + " is not voided."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to un-void " + cnId + "."); return false; }
+    var prevVoid = { voidedAt: cn.voidedAt, voidedBy: cn.voidedBy, voidReason: cn.voidReason };
+    cn.voided = false;
+    cn.voidedAt = null;
+    cn.voidedBy = null;
+    cn.voidReason = null;
+    saveCreditNote(cnId);
+    auditLog("Credit Note Un-voided", cnId + " un-voided. Reason: " + trimmedReason, { creditNoteId: cnId, amount: cn.amount, currency: cn.currency, supplierId: cn.supplierId, supplierName: cn.supplierName, supplier: cn.supplierName, buyerId: cn.buyerId, buyer: cn.buyerName, unvoidReason: trimmedReason, previousVoid: prevVoid });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
   function executeAdjustment(invId, type) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw) return;
@@ -4839,6 +4956,29 @@ export default function FactoringDashboard() {
         </div>
       </div>;
       })()}
+
+      {/* Void / Un-void prompt — shared modal for invoices and credit notes. Reason is required.
+          Only opened from detail panels by buttons that are themselves gated to safe states. */}
+      {voidPrompt && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setVoidPrompt(null); setVoidPromptReason(""); }}>
+        <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 480, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: voidPrompt.action === "void" ? "#DC2626" : "var(--accent)", marginBottom: 4 }}>{voidPrompt.action === "void" ? "Void" : "Un-void"} {voidPrompt.kind === "invoice" ? "Invoice" : "Credit Note"}</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 12 }}><strong>{voidPrompt.id}</strong>{voidPrompt.name ? " \u2014 " + voidPrompt.name : ""}{voidPrompt.amount ? " \u2014 " + money(voidPrompt.amount, voidPrompt.currency) : ""}</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{voidPrompt.action === "void" ? "Voided records remain in the system for audit but are disregarded in calculations, balances, dilution, and credit-limit gates. Use this for data-entry mistakes." : "Un-voiding restores this record so it counts in calculations again."}</div>
+          <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Reason (required)</label>
+          <textarea value={voidPromptReason} onChange={function(e) { setVoidPromptReason(e.target.value); }} placeholder={voidPrompt.action === "void" ? "e.g. Duplicate entry; wrong supplier; keyed against wrong buyer" : "e.g. Voided in error"} rows={3} style={{ marginTop: 4, marginBottom: 16, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button onClick={function() { setVoidPrompt(null); setVoidPromptReason(""); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button onClick={function() {
+              var ok = false;
+              if (voidPrompt.kind === "invoice" && voidPrompt.action === "void") ok = voidInvoice(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "invoice" && voidPrompt.action === "unvoid") ok = unvoidInvoice(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "creditNote" && voidPrompt.action === "void") ok = voidCreditNote(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "creditNote" && voidPrompt.action === "unvoid") ok = unvoidCreditNote(voidPrompt.id, voidPromptReason);
+              if (ok) { setVoidPrompt(null); setVoidPromptReason(""); }
+            }} disabled={!voidPromptReason.trim()} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: !voidPromptReason.trim() ? "var(--border)" : (voidPrompt.action === "void" ? "#DC2626" : "var(--accent)"), color: !voidPromptReason.trim() ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 700, cursor: !voidPromptReason.trim() ? "default" : "pointer" }}>{voidPrompt.action === "void" ? "Void" : "Un-void"}</button>
+          </div>
+        </div>
+      </div>}
 
       {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
@@ -5450,6 +5590,7 @@ export default function FactoringDashboard() {
                   });
                   // Unallocated credit notes
                   CREDIT_NOTES_DB.filter(function(cn) {
+                    if (cn.voided) return false; // voided CNs are admin-audit only; supplier portal hides them
                     return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
                   }).forEach(function(cn) {
                     var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
@@ -5694,6 +5835,7 @@ export default function FactoringDashboard() {
               var pageInvs = filteredSpInvs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
               // Credit Notes for this supplier
               var spCreditNotes = CREDIT_NOTES_DB.filter(function(cn) {
+                if (cn.voided) return false; // voided CNs are admin-audit only; supplier portal hides them
                 return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
               });
               if (activeProgId && !isShowAllTab) {
@@ -7861,6 +8003,9 @@ export default function FactoringDashboard() {
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
                                     {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {/* Void: only when invoice has no operational footprint (pending, no funded date, no payments). Hidden on funded invoices per spec. */}
+                                    {!inv.voided && inv.fundingStatus === "pending" && !inv.fundedDate && !((inv.payments || []).length > 0) && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "void", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this invoice as voided. It remains for audit but is disregarded everywhere else.">Void Invoice</button>}
+                                    {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
@@ -11737,6 +11882,9 @@ export default function FactoringDashboard() {
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
                                     {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {/* Void: only when invoice has no operational footprint (pending, no funded date, no payments). Hidden on funded invoices per spec. */}
+                                    {!inv.voided && inv.fundingStatus === "pending" && !inv.fundedDate && !((inv.payments || []).length > 0) && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "void", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this invoice as voided. It remains for audit but is disregarded everywhere else.">Void Invoice</button>}
+                                    {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
@@ -14994,7 +15142,7 @@ export default function FactoringDashboard() {
 
             {/* Credit Notes List */}
             {(function() {
-              var cnlHasActive = !!(cnlSearch || cnlCcyFilter || cnlSupFilter || cnlBuyFilter || cnlStatusFilter || cnlDateFrom || cnlDateTo);
+              var cnlHasActive = !!(cnlSearch || cnlCcyFilter || cnlSupFilter || cnlBuyFilter || cnlStatusFilter || cnlVoidedFilter || cnlDateFrom || cnlDateTo);
               function cnStatus(cn) {
                 var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
                 var remaining = r2(cn.amount - allocated);
@@ -15002,6 +15150,11 @@ export default function FactoringDashboard() {
               }
               function applyCnlFilters(list) {
                 var r = list;
+                // Voided default: hide. "yes" = show only voided. "all" = show both. Voided rows are
+                // visible-for-audit only; they're disregarded in calculations (filtered at processForDate).
+                if (cnlVoidedFilter === "yes") r = r.filter(function(cn) { return !!cn.voided; });
+                else if (cnlVoidedFilter === "all") { /* no filter */ }
+                else r = r.filter(function(cn) { return !cn.voided; });
                 if (cnlCcyFilter) r = r.filter(function(cn) { return cn.currency === cnlCcyFilter; });
                 if (cnlSupFilter) r = r.filter(function(cn) { return cn.supplierName === cnlSupFilter; });
                 if (cnlBuyFilter) r = r.filter(function(cn) { return cn.buyerName === cnlBuyFilter; });
@@ -15079,9 +15232,14 @@ export default function FactoringDashboard() {
                   <option value="partial">Partial</option>
                   <option value="allocated">Allocated</option>
                 </select>
+                <select value={cnlVoidedFilter} onChange={function(e) { setCnlVoidedFilter(e.target.value); setCnlPage(0); }} title="Voided credit notes are kept for audit but disregarded in calculations." style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlVoidedFilter ? "var(--accent)" : "var(--border)"), background: cnlVoidedFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">Hide voided</option>
+                  <option value="all">Show voided</option>
+                  <option value="yes">Voided only</option>
+                </select>
                 <input type="date" value={cnlDateFrom} onChange={function(e) { setCnlDateFrom(e.target.value); setCnlPage(0); }} title="Date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateFrom ? "var(--accent)" : "var(--border)"), background: cnlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={cnlDateTo} onChange={function(e) { setCnlDateTo(e.target.value); setCnlPage(0); }} title="Date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateTo ? "var(--accent)" : "var(--border)"), background: cnlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {cnlHasActive && <button onClick={function() { setCnlSearch(""); setCnlCcyFilter(""); setCnlSupFilter(""); setCnlBuyFilter(""); setCnlStatusFilter(""); setCnlDateFrom(""); setCnlDateTo(""); setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {cnlHasActive && <button onClick={function() { setCnlSearch(""); setCnlCcyFilter(""); setCnlSupFilter(""); setCnlBuyFilter(""); setCnlStatusFilter(""); setCnlVoidedFilter(""); setCnlDateFrom(""); setCnlDateTo(""); setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
               {CREDIT_NOTES_DB.length === 0 && <div style={{ padding: "20px 28px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No credit notes created yet.</div>}
               {CREDIT_NOTES_DB.length > 0 && filteredCn.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No credit notes match your filters.</div>}
@@ -15096,8 +15254,8 @@ export default function FactoringDashboard() {
                     // Get audit entries for this CN
                     var cnAudit = AUDIT_LOG.filter(function(log) { var c = log.context || {}; return c.creditNoteId === cn.creditNoteId || (log.details || "").indexOf(cn.creditNoteId) >= 0; }).slice().reverse();
                     return <tbody key={cn.creditNoteId}>
-                      <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
-                      <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}</td>
+                      <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent", opacity: cn.voided ? 0.5 : 1, textDecoration: cn.voided ? "line-through" : "none" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
+                      <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}{cn.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (cn.voidedAt ? "on " + new Date(cn.voidedAt).toLocaleString("en-GB") : "") + (cn.voidedBy ? " by " + cn.voidedBy : "") + (cn.voidReason ? "\nReason: " + cn.voidReason : "")}>VOIDED</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
@@ -15128,9 +15286,16 @@ export default function FactoringDashboard() {
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Created</div><div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{cn.createdDisplay}</div></div>
                             </div>
                             {/* Allocate button for non-fully-allocated */}
-                            {status !== "allocated" && <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                            {status !== "allocated" && !cn.voided && <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
                               <button onClick={function(e) { e.stopPropagation(); setAllocCN(cn); setAllocs([]); setCnSearch(""); setCnProgFilter(""); setCnSupFilter(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Allocate to Invoices</button>
                             </div>}
+                            {/* Void / Un-void. Voiding requires zero allocations (enforced in voidCreditNote helper). */}
+                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              {!cn.voided && status === "unallocated" && <button onClick={function(e) { e.stopPropagation(); setVoidPromptReason(""); setVoidPrompt({ kind: "creditNote", action: "void", id: cn.creditNoteId, name: cn.supplierName + " \u2192 " + cn.buyerName, amount: cn.amount, currency: cn.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this credit note as voided. It remains for audit but is disregarded everywhere else.">Void Credit Note</button>}
+                              {!cn.voided && status !== "unallocated" && <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }} title="Unallocate first to enable voiding.">Cannot void while allocated</span>}
+                              {cn.voided && <button onClick={function(e) { e.stopPropagation(); setVoidPromptReason(""); setVoidPrompt({ kind: "creditNote", action: "unvoid", id: cn.creditNoteId, name: cn.supplierName + " \u2192 " + cn.buyerName, amount: cn.amount, currency: cn.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this credit note — it will count in calculations again.">Un-void Credit Note</button>}
+                              {cn.voided && cn.voidReason && <span style={{ fontSize: 11, color: "var(--muted)" }}>Voided: <em style={{ color: "var(--text-secondary)" }}>{cn.voidReason}</em>{cn.voidedBy ? " \u2014 " + cn.voidedBy : ""}{cn.voidedAt ? " on " + new Date(cn.voidedAt).toLocaleString("en-GB") : ""}</span>}
+                            </div>
                           </div>
 
                           {/* Allocations */}
@@ -15335,9 +15500,14 @@ export default function FactoringDashboard() {
             setDataVer(function(v) { return v + 1; });
           }
           // Build filtered list
-          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlDateFrom || invlDateTo);
+          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlVoidedFilter || invlDateFrom || invlDateTo);
           function applyInvlFilters(list) {
             var r = list;
+            // Voided default: hide. "yes" = show only voided. "all" = show both. Voided rows are
+            // visible-for-audit only; they're disregarded everywhere else (filtered out at processForDate).
+            if (invlVoidedFilter === "yes") r = r.filter(function(inv) { return !!inv.voided; });
+            else if (invlVoidedFilter === "all") { /* no filter */ }
+            else r = r.filter(function(inv) { return !inv.voided; });
             if (invlCcyFilter) r = r.filter(function(inv) { return inv.currency === invlCcyFilter; });
             if (invlSupFilter) r = r.filter(function(inv) { return (inv.supplierName === invlSupFilter) || (inv.supplierId === invlSupFilter); });
             if (invlBuyFilter) r = r.filter(function(inv) { return (inv.buyerName === invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
@@ -15518,9 +15688,14 @@ export default function FactoringDashboard() {
                   <option value="yes">Do Not Advance only</option>
                   <option value="no">Exclude DNA</option>
                 </select>
+                <select value={invlVoidedFilter} onChange={function(e) { setInvlVoidedFilter(e.target.value); setInvlPage(0); }} title="Voided invoices are kept for audit but disregarded in calculations." style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlVoidedFilter ? "var(--accent)" : "var(--border)"), background: invlVoidedFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">Hide voided</option>
+                  <option value="all">Show voided</option>
+                  <option value="yes">Voided only</option>
+                </select>
                 <input type="date" value={invlDateFrom} onChange={function(e) { setInvlDateFrom(e.target.value); setInvlPage(0); }} title="Invoice date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateFrom ? "var(--accent)" : "var(--border)"), background: invlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={invlDateTo} onChange={function(e) { setInvlDateTo(e.target.value); setInvlPage(0); }} title="Invoice date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateTo ? "var(--accent)" : "var(--border)"), background: invlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlVoidedFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
 
               {INVOICES_DB.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices yet. Expand "Create New Invoice" above to add one.</div>}
@@ -15533,8 +15708,8 @@ export default function FactoringDashboard() {
                     var fst = FST[inv.fundingStatus] || FST.pending;
                     var progName = "";
                     if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
-                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", opacity: inv.doNotFund ? 0.7 : 1 }} onClick={function() { drillToInvoice(inv.id); }}>
-                      <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
+                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", opacity: inv.voided ? 0.5 : (inv.doNotFund ? 0.7 : 1), textDecoration: inv.voided ? "line-through" : "none" }} onClick={function() { drillToInvoice(inv.id); }}>
+                      <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (inv.voidedAt ? "on " + new Date(inv.voidedAt).toLocaleString("en-GB") : "") + (inv.voidedBy ? " by " + inv.voidedBy : "") + (inv.voidReason ? "\nReason: " + inv.voidReason : "")}>VOIDED</span>}{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
@@ -18434,6 +18609,7 @@ export default function FactoringDashboard() {
                     invoice_status_history: inv.invoiceStatusHistory || [],
                     adjustments: inv.adjustments || [],
                     do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+      voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
                     notes: inv.notes || []
                   };
                 });
