@@ -4822,14 +4822,24 @@ export default function FactoringDashboard() {
           spPrograms = spPrograms.concat([{ id: "_unassigned", name: "Unassigned", currency: spUnassignedInvs[0].currency || "GBP", _synthetic: true }]);
         }
 
-        // Auto-select first program if none selected
-        var activeProgId = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        // Auto-select first program if none selected. On Funding Balance tab, _all and _unassigned
+        // aren't valid selections; fall back to the first real program in that case.
+        var rawProgFilter = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        var isFundingBalanceTab = spPortalTab === "statement";
+        var firstRealProg = spPrograms.find(function(fp) { return !fp._synthetic; });
+        var activeProgId = rawProgFilter;
+        if (isFundingBalanceTab && (activeProgId === "_all" || activeProgId === "_unassigned")) {
+          activeProgId = firstRealProg ? firstRealProg.id : "";
+        }
         var activeProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === activeProgId; });
         var isUnassignedTab = activeProgId === "_unassigned";
+        var isShowAllTab = activeProgId === "_all";
 
         // Filter invoices by selected program
         var spInvs = spAllInvs;
-        if (isUnassignedTab) {
+        if (isShowAllTab) {
+          spInvs = spAllInvs; // no filter — show everything (assigned + unassigned)
+        } else if (isUnassignedTab) {
           spInvs = spUnassignedInvs;
         } else if (activeProgId) {
           spInvs = spAllInvs.filter(function(inv) {
@@ -5074,9 +5084,20 @@ export default function FactoringDashboard() {
             React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#3A4358", position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
                 React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
-                spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
-                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp._synthetic ? fp.name : fp.name + " (" + fp.currency + ")"); })
-                ) : null
+                spPrograms.length > 0 ? (function() {
+                  // Funding Balance tab requires a specific program (balances are program-scoped).
+                  // All other tabs offer Show All + Unassigned + each eligible program.
+                  var isFundingBalance = spPortalTab === "statement";
+                  var dropdownPrograms = isFundingBalance
+                    ? spPrograms.filter(function(fp) { return !fp._synthetic; })
+                    : spPrograms;
+                  return React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
+                    [].concat(
+                      isFundingBalance ? [] : [React.createElement("option", { key: "_all", value: "_all" }, "Show All")],
+                      dropdownPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp._synthetic ? fp.name : fp.name + " (" + fp.currency + ")"); })
+                    )
+                  );
+                })() : null
               ),
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
                 React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "View as of"),
@@ -5246,7 +5267,7 @@ export default function FactoringDashboard() {
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
                     if (inv.supplierId ? !spMatchesScope(inv.supplierId) : !spMatchesScopeByName(inv.supplierName)) return false;
-                    if (!activeProgId) return true; // all-programs view
+                    if (!activeProgId || isShowAllTab) return true; // all-programs view
                     if (isUnassignedTab) return inv.fundingStatus === "pending" || !inv.fundingProgram;
                     return inv.fundingProgram === activeProgId;
                   }).forEach(function(inv) {
@@ -5435,7 +5456,7 @@ export default function FactoringDashboard() {
               var spCreditNotes = CREDIT_NOTES_DB.filter(function(cn) {
                 return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
               });
-              if (activeProgId) {
+              if (activeProgId && !isShowAllTab) {
                 spCreditNotes = spCreditNotes.filter(function(cn) {
                   // Filter CNs that have allocations to invoices on this program, or unallocated ones
                   if (!cn.allocations || cn.allocations.length === 0) return true;
@@ -6507,7 +6528,7 @@ export default function FactoringDashboard() {
                 // No determinable program link — treat as supplier-level
                 return "";
               }
-              if (activeProgId) {
+              if (activeProgId && !isShowAllTab) {
                 mergedHist = mergedHist.filter(function(e) {
                   var ep = eventProgramId(e);
                   if (ep === "") return true;        // supplier-level events always show
@@ -15547,8 +15568,8 @@ export default function FactoringDashboard() {
                       </td>
                       <td style={{ padding: "8px 8px" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          {canAllocate && <button onClick={function() { openRowFundPopup(inv); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #38BDF8", background: "transparent", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Allocate & Fund</button>}
-                          <button onClick={toggleRowDnp} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (isDnp ? "var(--accent)" : "#6B7280"), background: isDnp ? "transparent" : "#6B728010", color: isDnp ? "var(--accent)" : "#94A3B8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: 1 }} title={isDnp ? "Clear Do Not Purchase \u2014 return to allocation queue" : "Mark this invoice Do Not Purchase \u2014 exclude from allocation"}>{isDnp ? "Clear DNP" : "Mark DNP"}</button>
+                          {isDnp && <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", whiteSpace: "nowrap" }}>DNP</span>}
+                          {!isDnp && noElig && <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)", whiteSpace: "nowrap" }} title="No program is eligible for this invoice">Not eligible</span>}
                         </div>
                       </td>
                     </tr>;
