@@ -7320,6 +7320,34 @@ export default function FactoringDashboard() {
                 return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
               })()}
             </select>
+            {/* Diagnostic: shown only when no programs are matched. Helps isolate whether
+                the buyer is genuinely not on any program, or if there's an ID-shape mismatch. */}
+            {(function() {
+              if (!selectedBuyer) return null;
+              if (programsForBuyer(selectedBuyer).length > 0) return null;
+              var matchingByName = FUNDING_PROGRAMS_DB.filter(function(fp) {
+                return (fp.eligibleBuyers || []).some(function(b) { return b === selectedBuyer; });
+              });
+              var allProgsWithBuyer = FUNDING_PROGRAMS_DB.filter(function(fp) { return (fp.eligibleBuyers || []).length > 0; });
+              return <button onClick={function() {
+                var lines = [];
+                lines.push("Selected buyer ID: " + selectedBuyer);
+                lines.push("");
+                lines.push("Programs that list this exact ID in eligibleBuyers: " + matchingByName.length);
+                if (matchingByName.length > 0) {
+                  matchingByName.forEach(function(p) { lines.push("  \u2022 " + p.id + " — " + p.name); });
+                }
+                lines.push("");
+                lines.push("All programs with any buyer assigned: " + allProgsWithBuyer.length);
+                allProgsWithBuyer.forEach(function(p) {
+                  lines.push("  \u2022 " + p.id + " — " + p.name + " — eligibleBuyers: [" + (p.eligibleBuyers || []).join(", ") + "]");
+                });
+                lines.push("");
+                lines.push("All buyers in BUYERS_DB:");
+                BUYERS_DB.forEach(function(b) { lines.push("  \u2022 " + b.id + " — " + b.name); });
+                alert(lines.join("\n"));
+              }} title="Diagnostic: shows buyer/program eligibility data" style={{ padding: "8px 10px", borderRadius: 8, border: "1px dashed var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Why no programs?</button>;
+            })()}
           </div>
         </div>}
 
@@ -8417,29 +8445,22 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
-                {/* Credit limit row — program-scoped, shows limit / used / remaining if a limit is set */}
+                {/* Limits sub-row — Credit Limit + Max Invoice Size for the active program.
+                    Always shown so "no limit" is visible (informative, distinct from "unknown").
+                    Same visual style as the 3x2 stat grid above. */}
                 {(function() {
                   if (!supProgram || !selectedSupplier) return null;
                   var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
-                  if (!sup || !sup.creditLimits || !sup.creditLimits[supProgram] || sup.creditLimits[supProgram] <= 0) return null;
-                  var limit = sup.creditLimits[supProgram];
-                  var exposure = getSupplierProgramExposure(selectedSupplier, supProgram, null);
-                  var headroom = r2(Math.max(0, limit - exposure));
-                  var pct = limit > 0 ? (exposure / limit) * 100 : 0;
-                  var fillPct = Math.min(100, pct);
-                  var color = pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#059669";
-                  return <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Credit Limit Utilisation</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color }}>{pct.toFixed(1)}%</div>
+                  var clVal = sup && sup.creditLimits && sup.creditLimits[supProgram] > 0 ? sup.creditLimits[supProgram] : null;
+                  var silVal = sup && sup.singleInvoiceLimits && sup.singleInvoiceLimits[supProgram] > 0 ? sup.singleInvoiceLimits[supProgram] : null;
+                  return <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px" }}>
+                    <div style={{ borderLeft: "3px solid #059669", paddingLeft: 12 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Credit Limit</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: clVal != null ? "var(--text)" : "var(--muted)" }}>{clVal != null ? money(clVal, displayCcy) : "\u2014"}</div>
                     </div>
-                    <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 6 }}>
-                      <div style={{ width: fillPct + "%", height: "100%", background: color, transition: "width 0.25s ease" }}></div>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(limit, displayCcy)}</span>
-                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(exposure, displayCcy)}</span>
-                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: color }}>{money(headroom, displayCcy)}</strong></span>
+                    <div style={{ borderLeft: "3px solid #0EA5E9", paddingLeft: 12 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Max Invoice Size</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: silVal != null ? "var(--text)" : "var(--muted)" }}>{silVal != null ? money(silVal, displayCcy) : "\u2014"}</div>
                     </div>
                   </div>;
                 })()}
@@ -8474,6 +8495,34 @@ export default function FactoringDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Credit Limit Utilisation — full-width row below the top section.
+                Only shown when an active program with a credit limit exists. */}
+            {(function() {
+              if (!supProgram || !selectedSupplier) return null;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
+              if (!sup || !sup.creditLimits || !sup.creditLimits[supProgram] || sup.creditLimits[supProgram] <= 0) return null;
+              var limit = sup.creditLimits[supProgram];
+              var exposure = getSupplierProgramExposure(selectedSupplier, supProgram, null);
+              var headroom = r2(Math.max(0, limit - exposure));
+              var pct = limit > 0 ? (exposure / limit) * 100 : 0;
+              var fillPct = Math.min(100, pct);
+              var color = pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#059669";
+              return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "16px 22px", marginBottom: 22 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)" }}>Credit Limit Utilisation</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color }}>{pct.toFixed(1)}%</div>
+                </div>
+                <div style={{ position: "relative", height: 8, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ width: fillPct + "%", height: "100%", background: color, transition: "width 0.25s ease" }}></div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                  <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(limit, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(exposure, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: color }}>{money(headroom, displayCcy)}</strong></span>
+                </div>
+              </div>;
+            })()}
 
             {/* Action row: Pending Invoices + Approved Awaiting + Holdback Available */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
