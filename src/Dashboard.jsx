@@ -3778,6 +3778,49 @@ export default function FactoringDashboard() {
   }
   function cancelEdit() { setEditInv(null); setEditFields({}); }
 
+  // Compute current credit limit exposure for a supplier on a program.
+  // Exposure = sum of (capitalOutstanding + interestOutstanding + penaltyInterest)
+  // for live invoices, plus pendingTopUpAmount for queued top-ups, plus capitalDue
+  // for purchased invoices (capital queued but not yet deployed). Excluding the
+  // invoice currently being funded (excludeInvoiceId) lets the caller compute
+  // headroom without double-counting that invoice's existing exposure.
+  function getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return 0;
+    var parentId = getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId;
+    var exposure = 0;
+    viewData.invoices.forEach(function(inv) {
+      if (inv.fundingProgram !== programId) return;
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
+      // Match supplier — accept either an exact entity-id match (branch-level) or
+      // a parent-level match so credit limits set on the parent supplier roll up
+      // exposure across all branches.
+      var invSupId = inv.supplierEntityId || inv.supplierId;
+      if (!invSupId) return;
+      var invParentId = getParentEntityId ? getParentEntityId(invSupId) : invSupId;
+      if (invSupId !== supplierEntityId && invParentId !== parentId) return;
+      // Skip pending invoices (no exposure committed yet — they go through the popup which gates them)
+      if (inv.fundingStatus === "pending") return;
+      // Live exposure: capital + interest + penalty outstanding
+      exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
+      // Queued capital that hasn't yet executed (purchased state OR top-up pending)
+      if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
+      exposure += inv.pendingTopUpAmount || 0;
+    });
+    return r2(exposure);
+  }
+
+  // Returns headroom under credit limit, or Infinity if no limit set.
+  // limit value of 0 / undefined / null = no limit (not "zero allowed").
+  function getSupplierProgramCreditHeadroom(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return Infinity;
+    var sup = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId); });
+    if (!sup || !sup.creditLimits) return Infinity;
+    var limit = sup.creditLimits[programId];
+    if (!limit || limit <= 0) return Infinity;
+    var exposure = getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId);
+    return r2(Math.max(0, limit - exposure));
+  }
+
   function getProgramAvailableBalance(programId) {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     if (!prog) return 0;
@@ -4084,11 +4127,25 @@ export default function FactoringDashboard() {
     // Committed = executed capital + any queued top-up not yet executed
     var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
+    // Credit limit gate — supplier-level cap on total exposure for this program.
+    // Compute headroom excluding this invoice (its existing exposure is captured by currentCap).
+    var creditHeadroom = getSupplierProgramCreditHeadroom(raw.supplierEntityId || raw.supplierId, prog.id, raw.id);
+    var creditLimitApplied = 0;
+    var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId(raw.supplierEntityId || raw.supplierId)); });
+    if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[prog.id] > 0) {
+      creditLimitApplied = supForLimit.creditLimits[prog.id];
+      if (creditHeadroom <= 0.01) {
+        alert("Cannot fund " + raw.id + ".\n\nCredit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + ".\n\nLimit: " + money(creditLimitApplied, raw.currency) + "\nCurrent exposure: " + money(creditLimitApplied - creditHeadroom, raw.currency) + "\n\nReduce outstanding exposure or raise the limit before funding more.");
+        return;
+      }
+      // Cap headroom to the lower of program maxAdvance headroom and credit-limit headroom
+      if (creditHeadroom < headroom) headroom = creditHeadroom;
+    }
     if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready committed: " + money(currentCap, raw.currency)); return; }
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -4174,14 +4231,29 @@ export default function FactoringDashboard() {
     });
     // Sort eligible by invoice ID (deterministic, oldest-allocated first)
     eligible.sort(function(a, b) { return a.raw.id < b.raw.id ? -1 : 1; });
-    // Walk eligible, fitting each within program available balance
+    // Walk eligible, fitting each within program available balance AND supplier credit limit headroom.
+    // Track per-supplier-per-program credit headroom across the bulk run so multiple invoices
+    // sharing a credit limit consume it cumulatively rather than each seeing the starting headroom.
     var totalCapitalQueued = 0;
     var perProgramRemaining = {};
+    var creditHeadroomMap = {}; // key = supplierParentId + ":" + programId
     eligible.forEach(function(e) {
       var progId = e.prog.id;
       if (perProgramRemaining[progId] === undefined) perProgramRemaining[progId] = getProgramAvailableBalance(progId);
       if (perProgramRemaining[progId] < e.maxCap - 0.01) {
         skipped.push({ id: e.raw.id, reason: "insufficient program balance (need " + money(e.maxCap, e.raw.currency) + ", available " + money(perProgramRemaining[progId], e.raw.currency) + ")" });
+        return;
+      }
+      // Credit-limit gate
+      var supEntId = e.raw.supplierEntityId || e.raw.supplierId;
+      var supParent = getParentEntityId(supEntId);
+      var clKey = supParent + ":" + progId;
+      if (creditHeadroomMap[clKey] === undefined) {
+        creditHeadroomMap[clKey] = getSupplierProgramCreditHeadroom(supEntId, progId, null);
+      }
+      var clHeadroom = creditHeadroomMap[clKey];
+      if (clHeadroom !== Infinity && clHeadroom < e.maxCap - 0.01) {
+        skipped.push({ id: e.raw.id, reason: "supplier credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (clHeadroom <= 0.01 ? "no headroom" : "only " + money(clHeadroom, e.raw.currency) + " available") + ")" });
         return;
       }
       // Fund at max
@@ -4202,6 +4274,7 @@ export default function FactoringDashboard() {
       e.raw.intendedPaymentDate = fundingDate;
       saveInvoice(e.raw.id);
       perProgramRemaining[progId] -= e.maxCap;
+      if (clHeadroom !== Infinity) creditHeadroomMap[clKey] -= e.maxCap;
       totalCapitalQueued += e.maxCap;
       funded.push({ id: e.raw.id, amount: e.maxCap, currency: e.raw.currency });
     });
@@ -15396,7 +15469,9 @@ export default function FactoringDashboard() {
             if (!selectedBulkOpt || selectedInvs.length === 0) return;
             var fp = selectedBulkOpt.fp;
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
-            var allocated = [], funded = [];
+            var allocated = [], funded = [], creditSkipped = [];
+            // Track per-supplier credit-limit headroom across the bulk run for the "& Fund" branch.
+            var creditHeadroomMap = {}; // key = supplierParentId
             var now = new Date();
             var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
             selectedInvs.forEach(function(invProc) {
@@ -15410,6 +15485,17 @@ export default function FactoringDashboard() {
                 var postCol = raw.amount - buyerCollected;
                 var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
                 var cap = r2(effectiveBase * fp.maxAdvanceRate);
+                // Credit-limit gate (applies only when funding, not allocate-only)
+                var supEntId = raw.supplierEntityId || raw.supplierId;
+                var supParent = getParentEntityId(supEntId);
+                if (creditHeadroomMap[supParent] === undefined) {
+                  creditHeadroomMap[supParent] = getSupplierProgramCreditHeadroom(supEntId, fp.id, null);
+                }
+                var clHeadroom = creditHeadroomMap[supParent];
+                if (clHeadroom !== Infinity && clHeadroom < cap - 0.01) {
+                  creditSkipped.push(raw.id);
+                  return; // skip this invoice — credit limit reached
+                }
                 raw.capitalDue = cap;
                 raw.holdback = r2(raw.amount - cap);
                 raw.annualRate = fp.minInterestRate;
@@ -15422,6 +15508,7 @@ export default function FactoringDashboard() {
                 raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                 raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                 raw.intendedPaymentDate = fundingDate;
+                if (clHeadroom !== Infinity) creditHeadroomMap[supParent] -= cap;
                 funded.push(raw.id);
               } else {
                 // Allocate only — stay at capitalDue=0
@@ -15449,6 +15536,10 @@ export default function FactoringDashboard() {
             }
             if (funded.length > 0) {
               auditLog("Invoices Allocated & Funded", funded.length + " invoice(s) allocated to " + fp.name + " and funded at max: " + funded.join(", "), { invoiceIds: funded, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_and_fund" });
+            }
+            if (creditSkipped.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkipped.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier credit limit reached): " + creditSkipped.join(", "), { invoiceIds: creditSkipped, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "credit_limit" });
+              alert(creditSkipped.length + " invoice(s) were skipped during Allocate & Fund because the supplier's credit limit on " + fp.name + " has been reached:\n\n" + creditSkipped.join(", ") + "\n\nThese invoices remain pending. Reduce outstanding exposure or raise the credit limit, then retry.");
             }
             setUpiSelected({});
             setUpiBulkProg("");
