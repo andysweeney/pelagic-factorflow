@@ -1038,7 +1038,7 @@ async function saveSupplier(supId) {
     var row = {
       id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
       jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-      onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+      onboarding_date: s.onboardingDate || null, notes: s.notes || [],
       address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
       country: s.country || "United Kingdom", postcode: s.postcode || null,
       primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
@@ -1067,7 +1067,7 @@ async function saveBuyer(buyId) {
     var row = {
       id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
       jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-      onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+      onboarding_date: b.onboardingDate || null, notes: b.notes || [],
       address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
       country: b.country || "United Kingdom", postcode: b.postcode || null,
       primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
@@ -1093,7 +1093,7 @@ async function saveServiceProvider(spId) {
     var row = {
       id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
       jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
-      role: sp.role || null, notes: sp.notes || null,
+      role: sp.role || null, notes: sp.notes || [],
       address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
       country: sp.country || "United Kingdom", postcode: sp.postcode || null,
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
@@ -1778,7 +1778,7 @@ async function savePersistedData() {
       return {
         id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
         jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-        onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+        onboarding_date: s.onboardingDate || null, notes: s.notes || [],
         address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
         country: s.country || "United Kingdom", postcode: s.postcode || null,
         primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
@@ -1803,7 +1803,7 @@ async function savePersistedData() {
       return {
         id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
         jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-        onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+        onboarding_date: b.onboardingDate || null, notes: b.notes || [],
         address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
         country: b.country || "United Kingdom", postcode: b.postcode || null,
         primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
@@ -1822,7 +1822,7 @@ async function savePersistedData() {
     var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
-        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
+        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || [],
         address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
         country: sp.country || "United Kingdom", postcode: sp.postcode || null,
         primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
