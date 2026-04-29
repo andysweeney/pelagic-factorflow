@@ -373,6 +373,11 @@ function getEligiblePrograms(inv, supDilRates) {
     if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
       if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
     }
+    // Single invoice limit per buyer per program (mirrors supplier rule). Lower of the two prevails by virtue of both being checked.
+    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
+    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) return false;
+    }
     return true;
   });
 }
@@ -787,7 +792,9 @@ async function saveBuyer(buyId) {
       contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
       contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
       contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-      paused: b.paused || false
+      paused: b.paused || false,
+      credit_limits: b.creditLimits || {},
+      single_invoice_limits: b.singleInvoiceLimits || {}
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -969,7 +976,9 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {}
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1527,7 +1536,9 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {}
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1620,7 +1631,9 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-        paused: b.paused || false
+        paused: b.paused || false,
+        credit_limits: b.creditLimits || {},
+        single_invoice_limits: b.singleInvoiceLimits || {}
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -3821,6 +3834,39 @@ export default function FactoringDashboard() {
     return r2(Math.max(0, limit - exposure));
   }
 
+  // Buyer-side exposure/headroom — mirrors getSupplierProgramExposure but
+  // matches inv.buyerId. Buyers don't have branches so no parent rollup.
+  // Same "live exposure" semantics: cap+int+pen O/S, plus queued capital, plus pending top-up.
+  function getBuyerProgramExposure(buyerId, programId, excludeInvoiceId) {
+    if (!buyerId || !programId) return 0;
+    var exposure = 0;
+    viewData.invoices.forEach(function(inv) {
+      if (inv.fundingProgram !== programId) return;
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
+      if (inv.buyerId !== buyerId) return;
+      // Skip pending invoices (no exposure committed yet — gated via popup)
+      if (inv.fundingStatus === "pending") return;
+      // Live exposure: capital + interest + penalty outstanding
+      exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
+      // Queued capital that hasn't yet executed
+      if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
+      exposure += inv.pendingTopUpAmount || 0;
+    });
+    return r2(exposure);
+  }
+
+  // Returns headroom under buyer credit limit, or Infinity if no limit set.
+  // limit value of 0 / undefined / null = no limit (not "zero allowed").
+  function getBuyerProgramCreditHeadroom(buyerId, programId, excludeInvoiceId) {
+    if (!buyerId || !programId) return Infinity;
+    var buy = BUYERS_DB.find(function(b) { return b.id === buyerId; });
+    if (!buy || !buy.creditLimits) return Infinity;
+    var limit = buy.creditLimits[programId];
+    if (!limit || limit <= 0) return Infinity;
+    var exposure = getBuyerProgramExposure(buyerId, programId, excludeInvoiceId);
+    return r2(Math.max(0, limit - exposure));
+  }
+
   function getProgramAvailableBalance(programId) {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
     if (!prog) return 0;
@@ -4127,25 +4173,50 @@ export default function FactoringDashboard() {
     // Committed = executed capital + any queued top-up not yet executed
     var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
-    // Credit limit gate — supplier-level cap on total exposure for this program.
-    // Compute headroom excluding this invoice (its existing exposure is captured by currentCap).
+    // Credit limit gate — both supplier-side and buyer-side caps on total exposure for this program.
+    // Compute each headroom excluding this invoice (its existing exposure is captured by currentCap).
+    // Spec: when both apply, the LOWER remaining limit prevails — i.e. take the min of both headrooms.
     var creditHeadroom = getSupplierProgramCreditHeadroom(raw.supplierEntityId || raw.supplierId, prog.id, raw.id);
     var creditLimitApplied = 0;
     var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId(raw.supplierEntityId || raw.supplierId)); });
     if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[prog.id] > 0) {
       creditLimitApplied = supForLimit.creditLimits[prog.id];
-      if (creditHeadroom <= 0.01) {
-        alert("Cannot fund " + raw.id + ".\n\nCredit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + ".\n\nLimit: " + money(creditLimitApplied, raw.currency) + "\nCurrent exposure: " + money(creditLimitApplied - creditHeadroom, raw.currency) + "\n\nReduce outstanding exposure or raise the limit before funding more.");
-        return;
-      }
-      // Cap headroom to the lower of program maxAdvance headroom and credit-limit headroom
-      if (creditHeadroom < headroom) headroom = creditHeadroom;
     }
+    var buyerCreditHeadroom = getBuyerProgramCreditHeadroom(raw.buyerId, prog.id, raw.id);
+    var buyerCreditLimitApplied = 0;
+    var buyForLimit = BUYERS_DB.find(function(b) { return b.id === raw.buyerId; });
+    if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[prog.id] > 0) {
+      buyerCreditLimitApplied = buyForLimit.creditLimits[prog.id];
+    }
+    var supBlocked = creditLimitApplied > 0 && creditHeadroom <= 0.01;
+    var buyBlocked = buyerCreditLimitApplied > 0 && buyerCreditHeadroom <= 0.01;
+    if (supBlocked || buyBlocked) {
+      var msgParts = ["Cannot fund " + raw.id + "."];
+      if (supBlocked && buyBlocked) {
+        msgParts.push("\nBoth supplier and buyer credit limits are fully consumed on " + prog.name + ".");
+      } else if (supBlocked) {
+        msgParts.push("\nSupplier credit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + ".");
+      } else {
+        msgParts.push("\nBuyer credit limit fully consumed for " + (raw.buyerName || raw.buyerId) + " on " + prog.name + ".");
+      }
+      if (creditLimitApplied > 0) {
+        msgParts.push("\nSupplier limit: " + money(creditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(creditLimitApplied - creditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, creditHeadroom), raw.currency));
+      }
+      if (buyerCreditLimitApplied > 0) {
+        msgParts.push("\nBuyer limit: " + money(buyerCreditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(buyerCreditLimitApplied - buyerCreditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, buyerCreditHeadroom), raw.currency));
+      }
+      msgParts.push("\n\nReduce outstanding exposure or raise the limit before funding more.");
+      alert(msgParts.join(""));
+      return;
+    }
+    // Cap headroom to the lower of program maxAdvance headroom, supplier credit-limit headroom, and buyer credit-limit headroom.
+    if (creditLimitApplied > 0 && creditHeadroom < headroom) headroom = creditHeadroom;
+    if (buyerCreditLimitApplied > 0 && buyerCreditHeadroom < headroom) headroom = buyerCreditHeadroom;
     if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready committed: " + money(currentCap, raw.currency)); return; }
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied, creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0, creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0 });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied, creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0, creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0, buyerCreditLimitApplied: buyerCreditLimitApplied, buyerCreditExposure: buyerCreditLimitApplied > 0 ? r2(buyerCreditLimitApplied - buyerCreditHeadroom) : 0, buyerCreditHeadroom: buyerCreditLimitApplied > 0 ? buyerCreditHeadroom : 0 });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -4231,12 +4302,13 @@ export default function FactoringDashboard() {
     });
     // Sort eligible by invoice ID (deterministic, oldest-allocated first)
     eligible.sort(function(a, b) { return a.raw.id < b.raw.id ? -1 : 1; });
-    // Walk eligible, fitting each within program available balance AND supplier credit limit headroom.
-    // Track per-supplier-per-program credit headroom across the bulk run so multiple invoices
+    // Walk eligible, fitting each within program available balance AND BOTH supplier and buyer credit limit headroom.
+    // Track per-supplier-per-program AND per-buyer-per-program credit headroom across the bulk run so multiple invoices
     // sharing a credit limit consume it cumulatively rather than each seeing the starting headroom.
     var totalCapitalQueued = 0;
     var perProgramRemaining = {};
     var creditHeadroomMap = {}; // key = supplierParentId + ":" + programId
+    var buyerCreditHeadroomMap = {}; // key = buyerId + ":" + programId
     eligible.forEach(function(e) {
       var progId = e.prog.id;
       if (perProgramRemaining[progId] === undefined) perProgramRemaining[progId] = getProgramAvailableBalance(progId);
@@ -4244,7 +4316,7 @@ export default function FactoringDashboard() {
         skipped.push({ id: e.raw.id, reason: "insufficient program balance (need " + money(e.maxCap, e.raw.currency) + ", available " + money(perProgramRemaining[progId], e.raw.currency) + ")" });
         return;
       }
-      // Credit-limit gate
+      // Supplier credit-limit gate
       var supEntId = e.raw.supplierEntityId || e.raw.supplierId;
       var supParent = getParentEntityId(supEntId);
       var clKey = supParent + ":" + progId;
@@ -4254,6 +4326,16 @@ export default function FactoringDashboard() {
       var clHeadroom = creditHeadroomMap[clKey];
       if (clHeadroom !== Infinity && clHeadroom < e.maxCap - 0.01) {
         skipped.push({ id: e.raw.id, reason: "supplier credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (clHeadroom <= 0.01 ? "no headroom" : "only " + money(clHeadroom, e.raw.currency) + " available") + ")" });
+        return;
+      }
+      // Buyer credit-limit gate (mirrors supplier; lower of the two prevails by virtue of both being checked)
+      var buyKey = e.raw.buyerId + ":" + progId;
+      if (buyerCreditHeadroomMap[buyKey] === undefined) {
+        buyerCreditHeadroomMap[buyKey] = getBuyerProgramCreditHeadroom(e.raw.buyerId, progId, null);
+      }
+      var buyHeadroom = buyerCreditHeadroomMap[buyKey];
+      if (buyHeadroom !== Infinity && buyHeadroom < e.maxCap - 0.01) {
+        skipped.push({ id: e.raw.id, reason: "buyer credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (buyHeadroom <= 0.01 ? "no headroom" : "only " + money(buyHeadroom, e.raw.currency) + " available") + ")" });
         return;
       }
       // Fund at max
@@ -4275,6 +4357,7 @@ export default function FactoringDashboard() {
       saveInvoice(e.raw.id);
       perProgramRemaining[progId] -= e.maxCap;
       if (clHeadroom !== Infinity) creditHeadroomMap[clKey] -= e.maxCap;
+      if (buyHeadroom !== Infinity) buyerCreditHeadroomMap[buyKey] -= e.maxCap;
       totalCapitalQueued += e.maxCap;
       funded.push({ id: e.raw.id, amount: e.maxCap, currency: e.raw.currency });
     });
@@ -4576,48 +4659,107 @@ export default function FactoringDashboard() {
       </div>
       <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
       {/* GLOBAL Fund Popup Modal — renders regardless of view */}
-      {/* Add Supplier to Program — modal captures rates + limits before adding to eligibleSuppliers */}
-      {addToProgramModal && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
+      {/* Add Entity to Program — modal captures rates (suppliers) + limits before adding to eligibleSuppliers/eligibleBuyers.
+          Backwards compatible: callers without `entityKind` are treated as supplier (legacy `supplierId`/`supplierName` props). */}
+      {addToProgramModal && (function() {
+        var m = addToProgramModal;
+        var entityKind = m.entityKind || "supplier";
+        var isBuyer = entityKind === "buyer";
+        var entityId = m.entityId || m.supplierId;
+        var entityName = m.entityName || m.supplierName;
+        var entityLabel = isBuyer ? "Buyer" : "Supplier";
+        // Suppliers require rates; buyers don't have a rate model so the button enables on entity+program presence.
+        var canSubmit = isBuyer ? !!(entityId && m.programId) : !!(m.advanceRate && m.annualRate && m.penaltyRate);
+        return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add to Program</div>
-          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 16 }}><strong>{addToProgramModal.supplierName}</strong> &rarr; <strong>{addToProgramModal.programName || "this program"}</strong> ({addToProgramModal.programCcy})</div>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>Set commercial terms for this supplier on this program. Rates are required; limits are optional (blank means no limit).</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add {entityLabel} to Program</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 16 }}><strong>{entityName}</strong> &rarr; <strong>{m.programName || "this program"}</strong> ({m.programCcy})</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{isBuyer ? "Set credit limits for this buyer on this program. Limits are optional (blank means no limit)." : "Set commercial terms for this supplier on this program. Rates are required; limits are optional (blank means no limit)."}</div>
 
+          {!isBuyer && <>
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Rates</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
-              <input type="number" step="1" value={addToProgramModal.advanceRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input type="number" step="1" value={m.advanceRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
-              <input type="number" step="0.1" value={addToProgramModal.annualRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input type="number" step="0.1" value={m.annualRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
-              <input type="number" step="0.1" value={addToProgramModal.penaltyRate} onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input type="number" step="0.1" value={m.penaltyRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           </div>
+          </>}
 
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Limits (optional)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Credit Limit</label>
-              <input type="number" step="0.01" value={addToProgramModal.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input type="number" step="0.01" value={m.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Single Invoice Limit</label>
-              <input type="number" step="0.01" value={addToProgramModal.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(m) { return Object.assign({}, m, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <input type="number" step="0.01" value={m.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
             <button onClick={function() { setAddToProgramModal(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             <button onClick={async function() {
-              var m = addToProgramModal;
+              if (isBuyer) {
+                // Buyer flow: no rates, just limits + add to fp.eligibleBuyers.
+                var buy = BUYERS_DB.find(function(b) { return b.id === entityId; });
+                if (!buy) { alert("Buyer not found."); return; }
+                if (m.creditLimit) {
+                  if (!buy.creditLimits) buy.creditLimits = {};
+                  buy.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                }
+                if (m.singleInvoiceLimit) {
+                  if (!buy.singleInvoiceLimits) buy.singleInvoiceLimits = {};
+                  buy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                }
+                await saveBuyer(entityId);
+                var fpB = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+                if (fpB) {
+                  var fpArrB = (fpB.eligibleBuyers || []).slice();
+                  if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
+                  fpB.eligibleBuyers = fpArrB;
+                  await saveFundingProgram(fpB.id);
+                }
+                // Mirror into manageFields if currently editing this buyer
+                if (manageEdit === entityId) {
+                  setManageFields(function(prev) {
+                    var next = Object.assign({}, prev);
+                    if (m.creditLimit) {
+                      next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                      next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                    }
+                    if (m.singleInvoiceLimit) {
+                      next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                      next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                    }
+                    return next;
+                  });
+                }
+                // Reflect in program edit form if visible
+                setProgFields(function(p) {
+                  if (!p) return p;
+                  var arr = (p.eligibleBuyers || []).slice();
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                  return Object.assign({}, p, { eligibleBuyers: arr });
+                });
+                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program"), { buyerId: entityId, buyer: entityName, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
+                setAddToProgramModal(null);
+                setDataVer(function(v) { return v + 1; });
+                return;
+              }
+              // Supplier flow (unchanged)
               if (!m.advanceRate || !m.annualRate || !m.penaltyRate) { alert("Rates are required."); return; }
               // Resolve the supplier record. For branch entities, write to the parent supplier (rates/limits are parent-level).
-              var parentId = getParentEntityId(m.supplierId) || m.supplierId;
+              var parentId = getParentEntityId(entityId) || entityId;
               var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
               if (!sup) { alert("Supplier not found."); return; }
               // Set rate
@@ -4649,10 +4791,10 @@ export default function FactoringDashboard() {
               if (fp) {
                 var fpArr = (fp.eligibleSuppliers || []).slice();
                 if (m.isBranch) {
-                  if (fpArr.indexOf(m.supplierId) === -1) fpArr.push(m.supplierId);
+                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
                 } else {
-                  fpArr = fpArr.filter(function(n) { return !n.startsWith(m.supplierId + ":"); });
-                  if (fpArr.indexOf(m.supplierId) === -1) fpArr.push(m.supplierId);
+                  fpArr = fpArr.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
                 }
                 fp.eligibleSuppliers = fpArr;
                 await saveFundingProgram(fp.id);
@@ -4682,20 +4824,21 @@ export default function FactoringDashboard() {
                 if (!p) return p;
                 var arr = (p.eligibleSuppliers || []).slice();
                 if (m.isBranch) {
-                  if (arr.indexOf(m.supplierId) === -1) arr.push(m.supplierId);
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
                 } else {
-                  arr = arr.filter(function(n) { return !n.startsWith(m.supplierId + ":"); });
-                  if (arr.indexOf(m.supplierId) === -1) arr.push(m.supplierId);
+                  arr = arr.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
                 }
                 return Object.assign({}, p, { eligibleSuppliers: arr });
               });
-              auditLog("Supplier Added to Program", m.supplierName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%", { supplierId: m.supplierId, supplier: m.supplierName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
+              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%", { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
               setAddToProgramModal(null);
               setDataVer(function(v) { return v + 1; });
-            }} disabled={!addToProgramModal.advanceRate || !addToProgramModal.annualRate || !addToProgramModal.penaltyRate} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "var(--accent)" : "var(--border)", color: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: addToProgramModal.advanceRate && addToProgramModal.annualRate && addToProgramModal.penaltyRate ? "pointer" : "default" }}>Add to Program</button>
+            }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>Add to Program</button>
           </div>
         </div>
-      </div>}
+      </div>;
+      })()}
 
       {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
@@ -4718,7 +4861,7 @@ export default function FactoringDashboard() {
                 var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
                 var currentCap = fundPopup.currentCapital || 0;
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
-                // Re-apply credit-limit gate for new program
+                // Re-apply credit-limit gate for new program (both supplier and buyer)
                 var newCreditHeadroom = getSupplierProgramCreditHeadroom(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId, newProgId, fundPopup.inv.id);
                 var newCreditLimitApplied = 0;
                 var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId); });
@@ -4726,11 +4869,18 @@ export default function FactoringDashboard() {
                   newCreditLimitApplied = supForLimit.creditLimits[newProgId];
                   if (newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
                 }
+                var newBuyerCreditHeadroom = getBuyerProgramCreditHeadroom(fundPopup.inv.buyerId, newProgId, fundPopup.inv.id);
+                var newBuyerCreditLimitApplied = 0;
+                var buyForLimit = BUYERS_DB.find(function(b) { return b.id === fundPopup.inv.buyerId; });
+                if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[newProgId] > 0) {
+                  newBuyerCreditLimitApplied = buyForLimit.creditLimits[newProgId];
+                  if (newBuyerCreditHeadroom < newHeadroom) newHeadroom = newBuyerCreditHeadroom;
+                }
                 var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
-                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), creditLimitApplied: newCreditLimitApplied, creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0, creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0 }); });
+                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), creditLimitApplied: newCreditLimitApplied, creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0, creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0, buyerCreditLimitApplied: newBuyerCreditLimitApplied, buyerCreditExposure: newBuyerCreditLimitApplied > 0 ? r2(newBuyerCreditLimitApplied - newBuyerCreditHeadroom) : 0, buyerCreditHeadroom: newBuyerCreditLimitApplied > 0 ? newBuyerCreditHeadroom : 0 }); });
               }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
                 {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
               </select>
@@ -4739,10 +4889,16 @@ export default function FactoringDashboard() {
           })()}
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
-          {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>
-            <div style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
-            <div style={{ marginTop: 3 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong></div>
+          {(fundPopupFields.creditLimitApplied > 0 || fundPopupFields.buyerCreditLimitApplied > 0) && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>
+            {fundPopupFields.creditLimitApplied > 0 && <>
+              <div style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
+            </>}
+            {fundPopupFields.buyerCreditLimitApplied > 0 && <>
+              <div style={{ fontWeight: 700, marginTop: fundPopupFields.creditLimitApplied > 0 ? 6 : 0, marginBottom: 3 }}>Buyer credit limit applies on this program</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.buyerCreditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.buyerCreditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.buyerCreditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
+            </>}
+            <div style={{ marginTop: 6 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong>{fundPopupFields.creditLimitApplied > 0 && fundPopupFields.buyerCreditLimitApplied > 0 ? <span style={{ fontSize: 10, opacity: 0.85 }}>{" \u2014 capped by the lower of the two limits"}</span> : null}</div>
           </div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
@@ -9628,6 +9784,31 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
+                {/* Buyer credit limit row — program-scoped, shows limit / used / remaining if a limit is set. Mirrors supplier overview. */}
+                {(function() {
+                  if (!buyProgram || !selectedBuyer) return null;
+                  if (!buyer || !buyer.creditLimits || !buyer.creditLimits[buyProgram] || buyer.creditLimits[buyProgram] <= 0) return null;
+                  var blimit = buyer.creditLimits[buyProgram];
+                  var bexposure = getBuyerProgramExposure(selectedBuyer, buyProgram, null);
+                  var bheadroom = r2(Math.max(0, blimit - bexposure));
+                  var bpct = blimit > 0 ? (bexposure / blimit) * 100 : 0;
+                  var bfillPct = Math.min(100, bpct);
+                  var bcolor = bpct >= 100 ? "#DC2626" : bpct >= 80 ? "#D97706" : "#059669";
+                  return <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Credit Limit Utilisation</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bcolor }}>{bpct.toFixed(1)}%</div>
+                    </div>
+                    <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ width: bfillPct + "%", height: "100%", background: bcolor, transition: "width 0.25s ease" }}></div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(blimit, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(bexposure, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: bcolor }}>{money(bheadroom, displayCcy)}</strong></span>
+                    </div>
+                  </div>;
+                })()}
               </div>
               {/* Right: 2 dilution cards */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -15552,9 +15733,10 @@ export default function FactoringDashboard() {
             if (!selectedBulkOpt || selectedInvs.length === 0) return;
             var fp = selectedBulkOpt.fp;
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
-            var allocated = [], funded = [], creditSkipped = [];
-            // Track per-supplier credit-limit headroom across the bulk run for the "& Fund" branch.
+            var allocated = [], funded = [], creditSkippedSup = [], creditSkippedBuy = [], creditSkippedBoth = [];
+            // Track per-supplier and per-buyer credit-limit headroom across the bulk run for the "& Fund" branch.
             var creditHeadroomMap = {}; // key = supplierParentId
+            var buyerCreditHeadroomMap = {}; // key = buyerId
             var now = new Date();
             var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
             selectedInvs.forEach(function(invProc) {
@@ -15568,17 +15750,22 @@ export default function FactoringDashboard() {
                 var postCol = raw.amount - buyerCollected;
                 var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
                 var cap = r2(effectiveBase * fp.maxAdvanceRate);
-                // Credit-limit gate (applies only when funding, not allocate-only)
+                // Credit-limit gates (apply only when funding, not allocate-only). Both supplier-side and buyer-side.
                 var supEntId = raw.supplierEntityId || raw.supplierId;
                 var supParent = getParentEntityId(supEntId);
                 if (creditHeadroomMap[supParent] === undefined) {
                   creditHeadroomMap[supParent] = getSupplierProgramCreditHeadroom(supEntId, fp.id, null);
                 }
-                var clHeadroom = creditHeadroomMap[supParent];
-                if (clHeadroom !== Infinity && clHeadroom < cap - 0.01) {
-                  creditSkipped.push(raw.id);
-                  return; // skip this invoice — credit limit reached
+                if (buyerCreditHeadroomMap[raw.buyerId] === undefined) {
+                  buyerCreditHeadroomMap[raw.buyerId] = getBuyerProgramCreditHeadroom(raw.buyerId, fp.id, null);
                 }
+                var clHeadroom = creditHeadroomMap[supParent];
+                var buyHeadroom = buyerCreditHeadroomMap[raw.buyerId];
+                var supBlk = clHeadroom !== Infinity && clHeadroom < cap - 0.01;
+                var buyBlk = buyHeadroom !== Infinity && buyHeadroom < cap - 0.01;
+                if (supBlk && buyBlk) { creditSkippedBoth.push(raw.id); return; }
+                if (supBlk) { creditSkippedSup.push(raw.id); return; }
+                if (buyBlk) { creditSkippedBuy.push(raw.id); return; }
                 raw.capitalDue = cap;
                 raw.holdback = r2(raw.amount - cap);
                 raw.annualRate = fp.minInterestRate;
@@ -15592,6 +15779,7 @@ export default function FactoringDashboard() {
                 raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                 raw.intendedPaymentDate = fundingDate;
                 if (clHeadroom !== Infinity) creditHeadroomMap[supParent] -= cap;
+                if (buyHeadroom !== Infinity) buyerCreditHeadroomMap[raw.buyerId] -= cap;
                 funded.push(raw.id);
               } else {
                 // Allocate only — stay at capitalDue=0
@@ -15620,9 +15808,23 @@ export default function FactoringDashboard() {
             if (funded.length > 0) {
               auditLog("Invoices Allocated & Funded", funded.length + " invoice(s) allocated to " + fp.name + " and funded at max: " + funded.join(", "), { invoiceIds: funded, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_and_fund" });
             }
-            if (creditSkipped.length > 0) {
-              auditLog("Funding Skipped \u2014 Credit Limit", creditSkipped.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier credit limit reached): " + creditSkipped.join(", "), { invoiceIds: creditSkipped, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "credit_limit" });
-              alert(creditSkipped.length + " invoice(s) were skipped during Allocate & Fund because the supplier's credit limit on " + fp.name + " has been reached:\n\n" + creditSkipped.join(", ") + "\n\nThese invoices remain pending. Reduce outstanding exposure or raise the credit limit, then retry.");
+            if (creditSkippedSup.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedSup.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier credit limit reached): " + creditSkippedSup.join(", "), { invoiceIds: creditSkippedSup, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "supplier_credit_limit" });
+            }
+            if (creditSkippedBuy.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedBuy.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (buyer credit limit reached): " + creditSkippedBuy.join(", "), { invoiceIds: creditSkippedBuy, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "buyer_credit_limit" });
+            }
+            if (creditSkippedBoth.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedBoth.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (both supplier and buyer credit limits reached): " + creditSkippedBoth.join(", "), { invoiceIds: creditSkippedBoth, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "both_credit_limits" });
+            }
+            var totalSkipped = creditSkippedSup.length + creditSkippedBuy.length + creditSkippedBoth.length;
+            if (totalSkipped > 0) {
+              var alertParts = [totalSkipped + " invoice(s) were skipped during Allocate & Fund on " + fp.name + " due to credit limits:\n"];
+              if (creditSkippedSup.length > 0) alertParts.push("\nSupplier limit reached (" + creditSkippedSup.length + "): " + creditSkippedSup.join(", "));
+              if (creditSkippedBuy.length > 0) alertParts.push("\nBuyer limit reached (" + creditSkippedBuy.length + "): " + creditSkippedBuy.join(", "));
+              if (creditSkippedBoth.length > 0) alertParts.push("\nBoth limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
+              alertParts.push("\n\nThese invoices remain pending. Reduce outstanding exposure or raise the limits, then retry.");
+              alert(alertParts.join(""));
             }
             setUpiSelected({});
             setUpiBulkProg("");
@@ -15933,6 +16135,11 @@ export default function FactoringDashboard() {
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
                 Object.assign(ent, f);
+                // Persist to Supabase. Without this, credit-limit and other manage-panel edits
+                // would only live in memory until the next bulk save. Applies to suppliers, buyers, and SPs.
+                if (manageTab === "suppliers") saveSupplier(manageEdit);
+                else if (manageTab === "service_providers") saveServiceProvider(manageEdit);
+                else if (manageTab === "buyers") saveBuyer(manageEdit);
                 // If company number was added or changed, auto-fetch from CH
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
@@ -17209,7 +17416,7 @@ export default function FactoringDashboard() {
                   })()}</tbody>
                 </table>
               </div>}
-              {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+              {(isSupLike || manageTab === "buyers") && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
                   <thead><tr>
@@ -17219,11 +17426,13 @@ export default function FactoringDashboard() {
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
                   </tr></thead>
                   <tbody>{(function() {
-                    // Tweak #3: Only show programs this supplier participates in.
-                    // New entities (manageEdit null) show nothing — programs aren't assigned yet.
-                    var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                    // Only show programs this entity participates in. Suppliers and buyers each have
+                    // their own membership helper. New entities (manageEdit null) show nothing.
+                    var isBuyerEntity = manageTab === "buyers";
+                    var entityWord = isBuyerEntity ? "buyer" : "supplier";
+                    var eligibleProgs = manageEdit ? (isBuyerEntity ? programsForBuyer(manageEdit) : programsForSupplier(manageEdit)) : [];
                     if (eligibleProgs.length === 0) {
-                      return <tr><td colSpan="4" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure limits." : "Save the supplier first, then add to programs to configure limits."}</td></tr>;
+                      return <tr><td colSpan="4" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure limits." : "Save the " + entityWord + " first, then add to programs to configure limits."}</td></tr>;
                     }
                     return eligibleProgs.map(function(fp) {
                     var cl = (f.creditLimits || {})[fp.id];
@@ -17656,7 +17865,31 @@ export default function FactoringDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() {
+                        if (sel) {
+                          // Deselect: remove from eligibleBuyers and persist (mirrors supplier-side semantics).
+                          // Existing limits on the buyer object are intentionally left in place (so re-adding restores them);
+                          // the funding gate only consults limits when the buyer is in eligibleBuyers anyway.
+                          setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); });
+                          var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                          if (dpEditingProgBuy) {
+                            dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id; });
+                            saveFundingProgram(dpEditingProgBuy.id);
+                          }
+                        } else {
+                          // Select: open generalised add-to-program modal in buyer mode (no rates, just limits).
+                          var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                          setAddToProgramModal({
+                            entityKind: "buyer",
+                            entityId: b.id, entityName: b.name,
+                            programId: editingProgramObjBuy ? editingProgramObjBuy.id : "", programName: pf.name || "",
+                            programCcy: pf.currency || "GBP",
+                            // Pre-populate with any limits already set on the buyer for this program (re-add convenience).
+                            creditLimit: (editingProgramObjBuy && b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
+                            singleInvoiceLimit: (editingProgramObjBuy && b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
+                          });
+                        }
+                      }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Suppliers</label>
