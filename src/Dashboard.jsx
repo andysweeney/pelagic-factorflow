@@ -2582,9 +2582,12 @@ export default function FactoringDashboard() {
     loadPersistedData().then(function() {
       _dataLoaded = true;
       setStorageLoading(false);
-      // Re-sync state with loaded data
-      if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
-      if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].name);
+      // Re-sync state with loaded data. selectedSupplier / selectedBuyer hold IDs
+      // (every onChange/setter elsewhere writes IDs); writing names here was a latent
+      // bug — programsForSupplier / programsForBuyer match by ID, so a name-valued
+      // selection silently breaks program filtering.
+      if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].id);
+      if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].id);
       setDataVer(function(v) { return v + 1; });
       if (CSV_REVIEW_QUEUE_DB.length > 0) setCsvReviewQueue(CSV_REVIEW_QUEUE_DB);
     });
@@ -7320,34 +7323,6 @@ export default function FactoringDashboard() {
                 return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
               })()}
             </select>
-            {/* Diagnostic: shown only when no programs are matched. Helps isolate whether
-                the buyer is genuinely not on any program, or if there's an ID-shape mismatch. */}
-            {(function() {
-              if (!selectedBuyer) return null;
-              if (programsForBuyer(selectedBuyer).length > 0) return null;
-              var matchingByName = FUNDING_PROGRAMS_DB.filter(function(fp) {
-                return (fp.eligibleBuyers || []).some(function(b) { return b === selectedBuyer; });
-              });
-              var allProgsWithBuyer = FUNDING_PROGRAMS_DB.filter(function(fp) { return (fp.eligibleBuyers || []).length > 0; });
-              return <button onClick={function() {
-                var lines = [];
-                lines.push("Selected buyer ID: " + selectedBuyer);
-                lines.push("");
-                lines.push("Programs that list this exact ID in eligibleBuyers: " + matchingByName.length);
-                if (matchingByName.length > 0) {
-                  matchingByName.forEach(function(p) { lines.push("  \u2022 " + p.id + " — " + p.name); });
-                }
-                lines.push("");
-                lines.push("All programs with any buyer assigned: " + allProgsWithBuyer.length);
-                allProgsWithBuyer.forEach(function(p) {
-                  lines.push("  \u2022 " + p.id + " — " + p.name + " — eligibleBuyers: [" + (p.eligibleBuyers || []).join(", ") + "]");
-                });
-                lines.push("");
-                lines.push("All buyers in BUYERS_DB:");
-                BUYERS_DB.forEach(function(b) { lines.push("  \u2022 " + b.id + " — " + b.name); });
-                alert(lines.join("\n"));
-              }} title="Diagnostic: shows buyer/program eligibility data" style={{ padding: "8px 10px", borderRadius: 8, border: "1px dashed var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Why no programs?</button>;
-            })()}
           </div>
         </div>}
 
@@ -19490,8 +19465,8 @@ export default function FactoringDashboard() {
                           if (d.fundingPrograms) { FUNDING_PROGRAMS_DB.length = 0; d.fundingPrograms.forEach(function(x) { FUNDING_PROGRAMS_DB.push(x); }); }
                           if (d.serviceProviders) { SERVICE_PROVIDERS_DB.length = 0; d.serviceProviders.forEach(function(x) { SERVICE_PROVIDERS_DB.push(x); }); }
                           if (d.creditNotes) { CREDIT_NOTES_DB.length = 0; d.creditNotes.forEach(function(x) { CREDIT_NOTES_DB.push(x); }); }
-                          if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
-                          if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].name);
+                          if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].id);
+                          if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].id);
                           setDataVer(function(v) { return v + 1; });
                           savePersistedData();
                           auditLog("Data Imported", "Backup imported: " + (d.invoices ? d.invoices.length : 0) + " invoices, " + (d.suppliers ? d.suppliers.length : 0) + " suppliers, " + (d.fundingPrograms ? d.fundingPrograms.length : 0) + " programs" + (d.exportDate ? " (exported " + d.exportDate.split("T")[0] + ")" : ""), { source: "import" });
