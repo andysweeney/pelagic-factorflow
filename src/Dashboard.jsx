@@ -4145,7 +4145,7 @@ export default function FactoringDashboard() {
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied, creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0, creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0 });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -4718,11 +4718,19 @@ export default function FactoringDashboard() {
                 var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
                 var currentCap = fundPopup.currentCapital || 0;
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
+                // Re-apply credit-limit gate for new program
+                var newCreditHeadroom = getSupplierProgramCreditHeadroom(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId, newProgId, fundPopup.inv.id);
+                var newCreditLimitApplied = 0;
+                var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId); });
+                if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[newProgId] > 0) {
+                  newCreditLimitApplied = supForLimit.creditLimits[newProgId];
+                  if (newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
+                }
                 var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
-                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault) }); });
+                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), creditLimitApplied: newCreditLimitApplied, creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0, creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0 }); });
               }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
                 {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
               </select>
@@ -4731,7 +4739,11 @@ export default function FactoringDashboard() {
           })()}
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
-          {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies {"\u2014"} max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
+          {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>
+            <div style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
+            <div style={{ marginTop: 3 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong></div>
+          </div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
               <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
@@ -4941,17 +4953,12 @@ export default function FactoringDashboard() {
         // Credit limit for active program
         var spCreditLimit = spSupplier && spSupplier.creditLimits && spSupplier.creditLimits[activeProgId] ? spSupplier.creditLimits[activeProgId] : 0;
 
-        // Parent-level outstanding balance for this program (credit limits are at parent level)
+        // Parent-level credit limit exposure for this program — must match the gating logic
+        // (capital + interest + penalty outstanding, plus queued capital). Computed via the
+        // shared helper so the displayed "used" figure can never drift from the gate's view.
         var spParentBalForProg = 0;
         if (spCreditLimit > 0 && activeProgId) {
-          viewData.invoices.forEach(function(inv) {
-            if (inv.fundingProgram !== activeProgId) return;
-            if (inv.fundingStatus === "pending") return;
-            var invParent = getParentEntityId(inv.supplierId || "");
-            if (invParent === spParentId || inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName) {
-              spParentBalForProg += inv.balanceOwed || 0;
-            }
-          });
+          spParentBalForProg = getSupplierProgramExposure(spParentId, activeProgId, null);
         }
 
         // Dilution rates for this supplier on this program
@@ -5204,12 +5211,16 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
                     (spCreditLimit > 0 || spSingleInvLimit > 0) ? React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 3 } },
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Company Limit"),
+                        React.createElement("span", { style: { color: spMuted } }, "Credit Limit"),
                         React.createElement("span", { style: { color: spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy))
                       ) : null,
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Company Balance"),
+                        React.createElement("span", { style: { color: spMuted } }, "Currently Used"),
                         React.createElement("span", { style: { color: r2(spParentBalForProg) > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(r2(spParentBalForProg), spDisplayCcy))
+                      ) : null,
+                      spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Remaining"),
+                        React.createElement("span", { style: { color: r2(spCreditLimit - spParentBalForProg) <= 0.01 ? spRed : spGreen, fontFamily: spMono, fontWeight: 700 } }, money(r2(Math.max(0, spCreditLimit - spParentBalForProg)), spDisplayCcy))
                       ) : null,
                       spSingleInvLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
                         React.createElement("span", { style: { color: spMuted } }, "Max Invoice Size"),
@@ -6356,20 +6367,30 @@ export default function FactoringDashboard() {
                           React.createElement("div", { style: { fontSize: 12, color: spText, fontFamily: spMono } }, val)
                         );
                       }
+                      // Mask sensitive bank identifiers: show only last 4 chars, mask the rest with bullets.
+                      // Applied only to the supplier's own (outgoing) details, not Pelagic's incoming
+                      // account — suppliers need full Pelagic details to send funds.
+                      function mask(val) {
+                        if (!val) return val;
+                        var s = String(val).replace(/\s+/g, "");
+                        if (s.length <= 4) return s;
+                        return "\u2022".repeat(Math.min(s.length - 4, 12)) + s.slice(-4);
+                      }
                       return React.createElement("div", { key: fpId, style: { marginBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, paddingBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, borderBottom: progIds.indexOf(fpId) < progIds.length - 1 ? "1px solid " + spBorder : "none" } },
                         React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
                         outgoing.bankName ? React.createElement("div", { style: { marginBottom: 16 } },
                           React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
                             React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spAccent, fontFamily: spFont } }, spDisplayIdentity + " Bank Account Details"),
-                            outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified")
+                            outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified"),
+                            React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spFont, fontStyle: "italic" } }, "\u2014 last 4 digits shown for security")
                           ),
                           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
                             bankRow("Bank Name", outgoing.bankName),
-                            isGBP ? bankRow("Sort Code", outgoing.sortCode) : null,
-                            bankRow("Account Number", outgoing.accountNumber),
-                            isUSD ? bankRow("ABA/Routing", outgoing.aba) : null,
-                            bankRow("BIC/SWIFT", outgoing.bic),
-                            !isUSD ? bankRow("IBAN", outgoing.iban) : null
+                            isGBP ? bankRow("Sort Code", mask(outgoing.sortCode)) : null,
+                            bankRow("Account Number", mask(outgoing.accountNumber)),
+                            isUSD ? bankRow("ABA/Routing", mask(outgoing.aba)) : null,
+                            bankRow("BIC/SWIFT", mask(outgoing.bic)),
+                            !isUSD ? bankRow("IBAN", mask(outgoing.iban)) : null
                           )
                         ) : null,
                         incoming.bankName ? React.createElement("div", null,
@@ -6401,24 +6422,18 @@ export default function FactoringDashboard() {
                     return true;
                   });
                   if (entries.length === 0) return null;
-                  // Calculate outstanding balance per program across all parent invoices
-                  var parentAllInvs = viewData.invoices.filter(function(inv) {
-                    return inv.supplierId ? getParentEntityId(inv.supplierId) === spParentId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName);
-                  });
+                  // Calculate exposure per program — must match the gating logic so the
+                  // displayed "used" figure can never drift from what the gate enforces.
                   var balByProg = {};
-                  parentAllInvs.forEach(function(inv) {
-                    var fpId = inv.fundingProgram;
-                    if (fpId && inv.fundingStatus !== "pending") {
-                      if (!balByProg[fpId]) balByProg[fpId] = 0;
-                      balByProg[fpId] += inv.balanceOwed || 0;
-                    }
+                  entries.forEach(function(fpId) {
+                    balByProg[fpId] = getSupplierProgramExposure(spParentId, fpId, null);
                   });
                   return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
                     React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Program Limits"),
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
-                          ["Program", "Currency", "Company Credit Limit", "Max Invoice Size"].map(function(h) {
+                          ["Program", "Currency", "Credit Limit", "Used", "Remaining", "Max Invoice Size"].map(function(h) {
                             return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
                           })
                         )
@@ -6427,13 +6442,55 @@ export default function FactoringDashboard() {
                         entries.map(function(fpId) {
                           var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
                           var ccy = prog ? prog.currency : "GBP";
-                          var progBal = r2(balByProg[fpId] || 0);
-                          var clDisplay = cl[fpId] > 0 ? money(cl[fpId], ccy) + " (Outstanding Balance for " + spSupName + " " + money(progBal, ccy) + ")" : "No limit";
+                          var limit = cl[fpId] || 0;
+                          var used = r2(balByProg[fpId] || 0);
+                          var rem = r2(Math.max(0, limit - used));
+                          var pct = limit > 0 ? (used / limit) * 100 : 0;
+                          var remColor = limit <= 0 ? spMuted : (pct >= 100 ? spRed : pct >= 80 ? "#D97706" : spGreen);
                           return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, ccy),
-                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: cl[fpId] > 0 ? spAccent : spMuted, fontWeight: cl[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, clDisplay),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: limit > 0 ? spAccent : spMuted, fontWeight: limit > 0 ? 600 : 400, fontFamily: spMono } }, limit > 0 ? money(limit, ccy) : "No limit"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spMono } }, limit > 0 ? money(used, ccy) : "\u2014"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: remColor, fontWeight: 700, fontFamily: spMono } }, limit > 0 ? money(rem, ccy) : "\u2014"),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: sil[fpId] > 0 ? spAccent : spMuted, fontWeight: sil[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, sil[fpId] > 0 ? money(sil[fpId], ccy) : "No limit")
+                          );
+                        })
+                      )
+                    )
+                  );
+                })(),
+                /* Current Rates — per program */
+                (function() {
+                  if (!spSupplier) return null;
+                  var pr = spSupplier.programRates || {};
+                  var rateProgIds = Object.keys(pr).filter(function(k) {
+                    if (!pr[k] || pr[k].length === 0) return false;
+                    if (spIsBranchUser) return seenProgs[k];
+                    return true;
+                  });
+                  if (rateProgIds.length === 0) return null;
+                  return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Current Rates"),
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                      React.createElement("thead", null,
+                        React.createElement("tr", null,
+                          ["Program", "Advance Rate", "Interest Rate (p.a.)", "Penalty Rate (p.a.)", "Effective From"].map(function(h) {
+                            return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
+                          })
+                        )
+                      ),
+                      React.createElement("tbody", null,
+                        rateProgIds.map(function(fpId) {
+                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                          var rate = getSupplierRateForProgram(spParentId, fpId);
+                          if (!rate) return null;
+                          return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spAccent, fontWeight: 600, fontFamily: spMono } }, (rate.advanceRate * 100).toFixed(0) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spAmber, fontWeight: 600, fontFamily: spMono } }, (rate.annualRate * 100).toFixed(2) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spRed, fontWeight: 600, fontFamily: spMono } }, (rate.penaltyRate * 100).toFixed(2) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, rate.effectiveDate ? fmt(rate.effectiveDate) : "\u2014")
                           );
                         })
                       )
@@ -8059,6 +8116,32 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
+                {/* Credit limit row — program-scoped, shows limit / used / remaining if a limit is set */}
+                {(function() {
+                  if (!supProgram || !selectedSupplier) return null;
+                  var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
+                  if (!sup || !sup.creditLimits || !sup.creditLimits[supProgram] || sup.creditLimits[supProgram] <= 0) return null;
+                  var limit = sup.creditLimits[supProgram];
+                  var exposure = getSupplierProgramExposure(selectedSupplier, supProgram, null);
+                  var headroom = r2(Math.max(0, limit - exposure));
+                  var pct = limit > 0 ? (exposure / limit) * 100 : 0;
+                  var fillPct = Math.min(100, pct);
+                  var color = pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#059669";
+                  return <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Credit Limit Utilisation</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color }}>{pct.toFixed(1)}%</div>
+                    </div>
+                    <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ width: fillPct + "%", height: "100%", background: color, transition: "width 0.25s ease" }}></div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(limit, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(exposure, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: color }}>{money(headroom, displayCcy)}</strong></span>
+                    </div>
+                  </div>;
+                })()}
               </div>
               {/* Right: 2 dilution cards side by side */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
