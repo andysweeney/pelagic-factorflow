@@ -15440,6 +15440,9 @@ export default function FactoringDashboard() {
               raw.approvedDate = viewDate;
               raw.fundingProgram = fp.id;
               saveInvoice(raw.id);
+              // Per-invoice audit so the entry appears in the invoice's own trail
+              // and propagates to the supplier portal (which filters by supplierId).
+              auditLog("Invoice Approved", raw.id + " approved for funding via " + fp.name + ": " + money(raw.amount, raw.currency) + " \u2014 " + raw.supplierName, { invoiceId: raw.id, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: fp.id, fundingProgramName: fp.name });
             });
             if (allocated.length > 0) {
               auditLog("Invoices Allocated to Program", allocated.length + " invoice(s) allocated to " + fp.name + " at \u00a30 capital: " + allocated.join(", "), { invoiceIds: allocated, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_only" });
