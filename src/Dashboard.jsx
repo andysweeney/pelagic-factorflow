@@ -690,6 +690,80 @@ function getEligiblePrograms(inv, supDilRates) {
   });
 }
 
+// Diagnostic counterpart of getEligiblePrograms — walks the same checks but
+// accumulates a human-readable reason for each rejection. Used by the
+// "Not eligible" tooltip on Unpurchased Invoices and the supplier portal.
+// Returns { eligibleCount, rejections: [{ programName, programId, reasons: [string] }] }.
+function getEligibilityReasons(inv, supDilRates) {
+  var entityIdForRate = inv.supplierId || inv.supplierName;
+  var parentId = getParentEntityId(inv.supplierId || "");
+  var parentSup = getParentSupplierName(inv.supplierName);
+  var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
+  var badInvStatuses = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
+  // Invoice-level rejection (applies to all programs at once)
+  if (badInvStatuses[inv.invoiceStatus]) {
+    return { eligibleCount: 0, invoiceLevelReason: "Invoice status \"" + inv.invoiceStatus + "\" is ineligible for funding", rejections: [] };
+  }
+  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
+  var eligibleCount = 0;
+  var rejections = [];
+  FUNDING_PROGRAMS_DB.forEach(function(fp) {
+    var reasons = [];
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) {
+      reasons.push("Currency mismatch (program is " + fp.currency + ", invoice is " + inv.currency + ")");
+    }
+    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
+      var entityId = inv.supplierId || "";
+      var idMatch = fp.eligibleSuppliers.indexOf(entityId) > -1 || fp.eligibleSuppliers.indexOf(parentId) > -1;
+      if (!idMatch) reasons.push("Supplier not on program's eligible list");
+    }
+    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
+      var buyerId = inv.buyerId || "";
+      if (fp.eligibleBuyers.indexOf(buyerId) === -1) reasons.push("Buyer not on program's eligible list");
+    }
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    if (!supRate) {
+      reasons.push("No commercial rate configured for this supplier on this program");
+    } else {
+      if (supRate.annualRate < fp.minInterestRate - 0.0001) {
+        reasons.push("Supplier rate " + (supRate.annualRate * 100).toFixed(2) + "% is below program minimum " + (fp.minInterestRate * 100).toFixed(2) + "%");
+      }
+      if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) {
+        reasons.push("Supplier advance rate " + (supRate.advanceRate * 100).toFixed(1) + "% exceeds program maximum " + (fp.maxAdvanceRate * 100).toFixed(1) + "%");
+      }
+    }
+    if (term > fp.maxInvoiceTerm) reasons.push("Invoice term " + term + "d exceeds program max " + fp.maxInvoiceTerm + "d");
+    if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) reasons.push("Invoice term " + term + "d below program min " + fp.minInvoiceTenor + "d");
+    if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) {
+      reasons.push("Invoice amount " + money(inv.amount, inv.currency) + " below program min " + money(fp.minInvoiceSize, fp.currency));
+    }
+    if (fp.maxSupDilLive && dr.dilRate > fp.maxSupDilLive) reasons.push("Supplier live dilution exceeds program limit");
+    if (fp.maxSupDil30 && dr.dil30 > fp.maxSupDil30) reasons.push("Supplier 30-day dilution exceeds program limit");
+    if (fp.maxSupDil90 && dr.dil90 > fp.maxSupDil90) reasons.push("Supplier 90-day dilution exceeds program limit");
+    if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) reasons.push("Funded live dilution exceeds program limit");
+    if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) reasons.push("Funded 30-day dilution exceeds program limit");
+    if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) reasons.push("Funded 90-day dilution exceeds program limit");
+    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
+    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) {
+        reasons.push("Invoice exceeds supplier's single-invoice limit (" + money(parentSupObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
+      }
+    }
+    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
+    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) {
+        reasons.push("Invoice exceeds buyer's single-invoice limit (" + money(buyerObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
+      }
+    }
+    if (reasons.length === 0) {
+      eligibleCount += 1;
+    } else {
+      rejections.push({ programId: fp.id, programName: fp.name, reasons: reasons });
+    }
+  });
+  return { eligibleCount: eligibleCount, rejections: rejections };
+}
+
 // Compute the maximum capital any eligible program could offer for this invoice
 function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected) {
   var eligible = getEligiblePrograms(inv, supDilRates);
@@ -1051,7 +1125,14 @@ async function saveSupplier(supId) {
       credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {},
       program_rates: s.programRates || {},
       program_bank_accounts: s.programBankAccounts || {},
-      rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
+      rates: s.rates || [], branches: s.branches || [], paused: s.paused || false,
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: s.entitySource || "manual",
+      directors: s.directors || [],
+      company_status: s.companyStatus || null,
+      incorporation_date: s.incorporationDate || null,
+      sic_codes: s.sicCodes || [],
+      ch_last_updated: s.chLastUpdated || null
     };
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
@@ -1077,7 +1158,14 @@ async function saveBuyer(buyId) {
       contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
       paused: b.paused || false,
       credit_limits: b.creditLimits || {},
-      single_invoice_limits: b.singleInvoiceLimits || {}
+      single_invoice_limits: b.singleInvoiceLimits || {},
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: b.entitySource || "manual",
+      directors: b.directors || [],
+      company_status: b.companyStatus || null,
+      incorporation_date: b.incorporationDate || null,
+      sic_codes: b.sicCodes || [],
+      ch_last_updated: b.chLastUpdated || null
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -1093,11 +1181,24 @@ async function saveServiceProvider(spId) {
     var row = {
       id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
       jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
-      role: sp.role || null, notes: sp.notes || [],
+      role: sp.role || null, onboarding_date: sp.onboardingDate || null, notes: sp.notes || [],
       address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
       country: sp.country || "United Kingdom", postcode: sp.postcode || null,
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
-      secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
+      secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false,
+      contact3_name: sp.contact3Name || null, contact3_email: sp.contact3Email || null, contact3_phone: sp.contact3Phone || null, contact3_signatory: sp.contact3Signatory || false,
+      contact4_name: sp.contact4Name || null, contact4_email: sp.contact4Email || null, contact4_phone: sp.contact4Phone || null, contact4_signatory: sp.contact4Signatory || false,
+      contact5_name: sp.contact5Name || null, contact5_email: sp.contact5Email || null, contact5_phone: sp.contact5Phone || null, contact5_signatory: sp.contact5Signatory || false,
+      bank_name: sp.bankName || null, account_name: sp.accountName || null, sort_code: sp.sortCode || null,
+      account_number: sp.accountNumber || null, iban: sp.iban || null, bic: sp.bic || null,
+      paused: sp.paused || false,
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: sp.entitySource || "manual",
+      directors: sp.directors || [],
+      company_status: sp.companyStatus || null,
+      incorporation_date: sp.incorporationDate || null,
+      sic_codes: sp.sicCodes || [],
+      ch_last_updated: sp.chLastUpdated || null
     };
     var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
@@ -1230,7 +1331,14 @@ async function loadPersistedData() {
           programRates: row.program_rates || {},
           rates: row.rates || [],
           branches: row.branches || [],
-          paused: row.paused || false
+          paused: row.paused || false,
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null
         });
       });
     }
@@ -1250,7 +1358,14 @@ async function loadPersistedData() {
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
           paused: row.paused || false,
           creditLimits: row.credit_limits || {},
-          singleInvoiceLimits: row.single_invoice_limits || {}
+          singleInvoiceLimits: row.single_invoice_limits || {},
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1261,11 +1376,25 @@ async function loadPersistedData() {
       spRes.data.forEach(function(row) {
         SERVICE_PROVIDERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
-          jurisdiction: row.jurisdiction, status: row.status, role: row.role, notes: row.notes,
+          jurisdiction: row.jurisdiction, status: row.status, role: row.role,
+          onboardingDate: row.onboarding_date, notes: row.notes || [],
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
           country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
-          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
+          accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
+          paused: row.paused || false,
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null
         });
       });
     }
@@ -1689,7 +1818,7 @@ async function reloadSuppliers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          bank_name: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
+          bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
           accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
@@ -1723,7 +1852,14 @@ async function reloadBuyers() {
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
           paused: row.paused || false,
           creditLimits: row.credit_limits || {},
-          singleInvoiceLimits: row.single_invoice_limits || {}
+          singleInvoiceLimits: row.single_invoice_limits || {},
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1793,7 +1929,14 @@ async function savePersistedData() {
         single_invoice_limits: s.singleInvoiceLimits || {},
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
-        paused: s.paused || false
+        paused: s.paused || false,
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: s.entitySource || "manual",
+        directors: s.directors || [],
+        company_status: s.companyStatus || null,
+        incorporation_date: s.incorporationDate || null,
+        sic_codes: s.sicCodes || [],
+        ch_last_updated: s.chLastUpdated || null
       };
     });
     if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
@@ -1813,7 +1956,14 @@ async function savePersistedData() {
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
         paused: b.paused || false,
         credit_limits: b.creditLimits || {},
-        single_invoice_limits: b.singleInvoiceLimits || {}
+        single_invoice_limits: b.singleInvoiceLimits || {},
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: b.entitySource || "manual",
+        directors: b.directors || [],
+        company_status: b.companyStatus || null,
+        incorporation_date: b.incorporationDate || null,
+        sic_codes: b.sicCodes || [],
+        ch_last_updated: b.chLastUpdated || null
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -1822,11 +1972,25 @@ async function savePersistedData() {
     var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
-        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || [],
+        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
+        role: sp.role || null, onboarding_date: sp.onboardingDate || null, notes: sp.notes || [],
         address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
         country: sp.country || "United Kingdom", postcode: sp.postcode || null,
         primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
-        secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
+        secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false,
+        contact3_name: sp.contact3Name || null, contact3_email: sp.contact3Email || null, contact3_phone: sp.contact3Phone || null, contact3_signatory: sp.contact3Signatory || false,
+        contact4_name: sp.contact4Name || null, contact4_email: sp.contact4Email || null, contact4_phone: sp.contact4Phone || null, contact4_signatory: sp.contact4Signatory || false,
+        contact5_name: sp.contact5Name || null, contact5_email: sp.contact5Email || null, contact5_phone: sp.contact5Phone || null, contact5_signatory: sp.contact5Signatory || false,
+        bank_name: sp.bankName || null, account_name: sp.accountName || null, sort_code: sp.sortCode || null,
+        account_number: sp.accountNumber || null, iban: sp.iban || null, bic: sp.bic || null,
+        paused: sp.paused || false,
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: sp.entitySource || "manual",
+        directors: sp.directors || [],
+        company_status: sp.companyStatus || null,
+        incorporation_date: sp.incorporationDate || null,
+        sic_codes: sp.sicCodes || [],
+        ch_last_updated: sp.chLastUpdated || null
       };
     });
     if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
@@ -2369,7 +2533,66 @@ var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", bord
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
 var FUND_STATUSES = ["pending", "purchased", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
 
-function Badge(p) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
+function Badge(p) { return <span title={p.title || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace", cursor: p.title ? "help" : undefined }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
+
+// Hover tooltip explaining why an invoice is ineligible for funding. Renders an
+// Info icon next to the label; on hover the tooltip card appears immediately
+// (no native title-attribute lag) with the rejection reasons grouped by program.
+// Props:
+//   diag: { eligibleCount, invoiceLevelReason?, rejections: [{ programName, reasons: [string] }] }
+//   label: optional string to render alongside the icon (default: just icon)
+//   placement: "right" (default) | "left"
+function IneligibilityIndicator(p) {
+  var diag = p.diag || { rejections: [] };
+  var hov = useState(false), hovered = hov[0], setHovered = hov[1];
+  // Build the tooltip content
+  var tooltipBody;
+  if (diag.invoiceLevelReason) {
+    tooltipBody = <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{diag.invoiceLevelReason}</div>;
+  } else if (!diag.rejections || diag.rejections.length === 0) {
+    tooltipBody = <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>No funding programs are configured.</div>;
+  } else {
+    tooltipBody = <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {diag.rejections.map(function(r, ri) {
+        return <div key={ri}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{r.programName}</div>
+          <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc", display: "flex", flexDirection: "column", gap: 2 }}>
+            {r.reasons.map(function(reason, idx) {
+              return <li key={idx} style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.4 }}>{reason}</li>;
+            })}
+          </ul>
+        </div>;
+      })}
+    </div>;
+  }
+  var placement = p.placement || "right";
+  var tooltipPosition = placement === "left"
+    ? { right: "calc(100% + 8px)", left: "auto" }
+    : { left: "calc(100% + 8px)", right: "auto" };
+  return <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }} onMouseEnter={function() { setHovered(true); }} onMouseLeave={function() { setHovered(false); }}>
+    {p.label && <span>{p.label}</span>}
+    <Info size={13} style={{ color: "#EF4444", cursor: "help", flexShrink: 0 }} />
+    {hovered && <div style={Object.assign({
+      position: "absolute",
+      top: "50%",
+      transform: "translateY(-50%)",
+      zIndex: 1000,
+      background: "var(--card)",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+      padding: "12px 14px",
+      minWidth: 280,
+      maxWidth: 380,
+      whiteSpace: "normal",
+      pointerEvents: "none"
+    }, tooltipPosition)}>
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#EF4444", marginBottom: 8 }}>Ineligibility reasons</div>
+      {tooltipBody}
+    </div>}
+  </span>;
+}
+
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28,  color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
 function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" }} labelStyle={{ color: "#94A3B8" }} /></AreaChart></ResponsiveContainer></div>); }
 
@@ -8667,7 +8890,7 @@ export default function FactoringDashboard() {
                         <td style={Object.assign({}, mc, { padding: "6px 8px", color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                         <td style={Object.assign({}, mc, { padding: "6px 8px", fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : <span style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic" }}>No eligible programs</span>}</td>
+                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : (function() { var diag = getEligibilityReasons(inv, supDilRates); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic" }}>No eligible programs</span><IneligibilityIndicator diag={diag} placement="left" /></span>; })()}</td>
                         <td style={{ padding: "6px 8px" }}><button onClick={function() { fundInvoice(inv.id, selProg); }} disabled={!selProg} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: selProg ? "#38BDF8" : "var(--border)", color: selProg ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 600, cursor: selProg ? "pointer" : "default" }}>Approve</button></td>
                       </tr>;
                     })}</tbody>
@@ -16291,12 +16514,25 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11 }}>
-                        {isDnp ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Excluded</span> : (noElig ? <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>)}
+                        {isDnp ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Excluded</span> : (noElig ? (function() {
+                          // Diagnose ineligibility for tooltip rendering
+                          var diag = getEligibilityReasons(inv, supDilRates);
+                          return <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" />
+                            <IneligibilityIndicator diag={diag} placement="left" />
+                          </span>;
+                        })() : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>)}
                       </td>
                       <td style={{ padding: "8px 8px" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           {isDnp && <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", whiteSpace: "nowrap" }}>DNP</span>}
-                          {!isDnp && noElig && <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)", whiteSpace: "nowrap" }} title="No program is eligible for this invoice">Not eligible</span>}
+                          {!isDnp && noElig && (function() {
+                            var diag = getEligibilityReasons(inv, supDilRates);
+                            return <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>Not eligible</span>
+                              <IneligibilityIndicator diag={diag} placement="left" />
+                            </span>;
+                          })()}
                         </div>
                       </td>
                     </tr>;
@@ -16391,9 +16627,10 @@ export default function FactoringDashboard() {
                 directors: merged
               });
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
-              saveBuyer(b.id);
-              if (entObj.id.startsWith("SUP")) saveSupplier(entObj.id);
-              else if (entObj.id.startsWith("SP-")) saveServiceProvider(entObj.id);
+              // Dispatch to the correct table based on the entity ID prefix.
+              // IDs are: SUP-### for suppliers, SVC-### for service providers, BUY-### for buyers.
+              if (entObj.id.indexOf("SUP-") === 0) saveSupplier(entObj.id);
+              else if (entObj.id.indexOf("SVC-") === 0) saveServiceProvider(entObj.id);
               else saveBuyer(entObj.id);
     auditLog("CH Auto-Update", "Updated " + entObj.id + " (" + entObj.name + ") from Companies House. " + directors.length + " officers imported.", { entityId: entObj.id, companyNumber: num, officerCount: directors.length });
               setDataVer(function(v) { return v + 1; });
@@ -16523,7 +16760,7 @@ export default function FactoringDashboard() {
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
             setShowNewEntity(true);
             // Show CH import step for suppliers and buyers
-            if (isSupTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
+            if (isSupTab || isSPTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
             else { setChImportStep(null); }
           }
           function chLookup() {
@@ -16822,7 +17059,7 @@ export default function FactoringDashboard() {
                         })}
                       </div> : <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>; })()}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
+                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : isSp ? "service_provider" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
                     auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
                         <button onClick={function() { if (!noteText.trim() || !detEntity) return; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
                       </div>
@@ -17533,7 +17770,7 @@ export default function FactoringDashboard() {
                 <span style={{ fontSize: 12, color: "var(--text)" }}>Converting prospect from upload <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{prospectDeepLink.uploadId || "—"}</span>. Notes and invoices will migrate after save.</span>
               </div>}
               {/* Companies House Import Step (suppliers only, new entity only) */}
-              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
+              {(isSupTab || isSPTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>New {entityLabel}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Import company details from Companies House or enter manually.</div>
                 <div style={{ display: "flex", gap: 10, alignItems: "end", marginBottom: 12 }}>
@@ -17547,11 +17784,11 @@ export default function FactoringDashboard() {
                 </div>
                 {chError && <div style={{ fontSize: 11, color: "#DC2626", marginTop: 4 }}>{chError}</div>}
               </div>}
-              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
+              {(isSupTab || isSPTab || manageTab === "buyers") && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Looking up company {chCompanyNo.trim().padStart(8, "0")}...</div>
               </div>}
               {/* Main form — shown when: not supplier new, or skip, or done, or editing existing */}
-              {((!isSupTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
+              {((!isSupTab && !isSPTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
               var isCh = f.entitySource === "ch";
               var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, addressLine1: true, addressLine2: true, city: true, county: true, country: true, postcode: true };
               function chRefreshEntity() {
