@@ -239,6 +239,87 @@ function isFundedInvoice(inv) {
   return false;
 }
 
+// ======== Entity files (Supabase Storage) ========
+// Files for suppliers/buyers/service_providers live in the entity-files
+// bucket (private, signed URLs only). Each entity row stores metadata
+// only — fileName, label, notes, storagePath, uploadedAt, size, uploadedBy.
+// The storagePath is the bucket-relative path; we hand it to signed-URL
+// generation when the user wants to download.
+
+var ENTITY_FILES_BUCKET = "entity-files";
+var ENTITY_FILES_MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
+
+// Sanitise a filename for use in a storage path. Strips characters that
+// confuse signed-URL generation or the Storage API (slashes, control
+// chars, leading dots) and trims to a sensible length. Preserves the
+// extension where possible.
+function sanitiseFileName(name) {
+  if (!name) return "file";
+  // Strip path separators, control chars, and other weirdness.
+  var cleaned = String(name).replace(/[\\/\x00-\x1f\x7f]/g, "_").replace(/^\.+/, "");
+  // Collapse runs of whitespace; replace spaces with underscores for URL friendliness.
+  cleaned = cleaned.replace(/\s+/g, "_");
+  // Cap length so the full path stays comfortably under any backend limit.
+  if (cleaned.length > 120) {
+    var dot = cleaned.lastIndexOf(".");
+    if (dot > 0 && dot > cleaned.length - 12) {
+      var ext = cleaned.slice(dot);
+      cleaned = cleaned.slice(0, 120 - ext.length) + ext;
+    } else {
+      cleaned = cleaned.slice(0, 120);
+    }
+  }
+  return cleaned || "file";
+}
+
+// Build the storage path for a new entity file. The UUID prefix prevents
+// collisions when the same filename gets uploaded twice. Path shape:
+//   {entity_type}/{entity_id}/{uuid}-{filename}
+function makeEntityFilePath(entityType, entityId, fileName) {
+  // Tiny v4-ish UUID; not crypto-grade, just unique enough for filename collisions
+  var uid = "xxxxxxxx-xxxx".replace(/[x]/g, function() { return ((Math.random() * 16) | 0).toString(16); });
+  return entityType + "/" + entityId + "/" + uid + "-" + sanitiseFileName(fileName);
+}
+
+// Upload a file to the entity-files bucket. Returns a promise that
+// resolves to the storage path on success or rejects with a clear error.
+async function uploadEntityFile(entityType, entityId, file) {
+  if (!file) throw new Error("No file provided");
+  if (file.size > ENTITY_FILES_MAX_BYTES) {
+    throw new Error("File exceeds " + Math.floor(ENTITY_FILES_MAX_BYTES / (1024 * 1024)) + " MB limit");
+  }
+  var path = makeEntityFilePath(entityType, entityId, file.name);
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+    contentType: file.type || "application/octet-stream"
+  });
+  if (res.error) throw new Error(res.error.message || "Upload failed");
+  return path;
+}
+
+// Generate a short-lived signed URL for downloading a stored file. Default
+// expiry 60 minutes — long enough to click-and-fetch but not lingering.
+async function getEntityFileSignedUrl(storagePath, expirySeconds) {
+  if (!storagePath) throw new Error("No storage path");
+  var ttl = expirySeconds || 3600;
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).createSignedUrl(storagePath, ttl);
+  if (res.error) throw new Error(res.error.message || "Could not generate download link");
+  return res.data.signedUrl;
+}
+
+// Delete a stored file. Idempotent — non-existent paths return success.
+async function deleteEntityFile(storagePath) {
+  if (!storagePath) return;
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).remove([storagePath]);
+  if (res.error) {
+    // Don't throw — caller still wants to remove the metadata row even
+    // if the storage object is already gone (manual cleanup, retention
+    // expiry, etc.). Just log so it shows up in console.
+    console.warn("[deleteEntityFile] Storage delete failed:", res.error.message, "path:", storagePath);
+  }
+}
+
 // ======== Schema mapping helpers (Stage 3) ========
 // All Supabase rows use ID-based columns: supplier_id (parent only), supplier_entity_id
 // (parent or composite "SUP-001:BR-001"). supplier_name / buyer_name no longer exist.
@@ -1154,7 +1235,8 @@ async function saveSupplier(supId) {
       company_status: s.companyStatus || null,
       incorporation_date: s.incorporationDate || null,
       sic_codes: s.sicCodes || [],
-      ch_last_updated: s.chLastUpdated || null
+      ch_last_updated: s.chLastUpdated || null,
+      entity_files: s.entityFiles || []
     };
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
@@ -1187,7 +1269,8 @@ async function saveBuyer(buyId) {
       company_status: b.companyStatus || null,
       incorporation_date: b.incorporationDate || null,
       sic_codes: b.sicCodes || [],
-      ch_last_updated: b.chLastUpdated || null
+      ch_last_updated: b.chLastUpdated || null,
+      entity_files: b.entityFiles || []
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -1220,7 +1303,8 @@ async function saveServiceProvider(spId) {
       company_status: sp.companyStatus || null,
       incorporation_date: sp.incorporationDate || null,
       sic_codes: sp.sicCodes || [],
-      ch_last_updated: sp.chLastUpdated || null
+      ch_last_updated: sp.chLastUpdated || null,
+      entity_files: sp.entityFiles || []
     };
     var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
@@ -1360,7 +1444,8 @@ async function loadPersistedData() {
           companyStatus: row.company_status || null,
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
-          chLastUpdated: row.ch_last_updated || null
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || []
         });
       });
     }
@@ -1387,7 +1472,8 @@ async function loadPersistedData() {
           companyStatus: row.company_status || null,
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
-          chLastUpdated: row.ch_last_updated || null
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || []
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1416,7 +1502,8 @@ async function loadPersistedData() {
           companyStatus: row.company_status || null,
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
-          chLastUpdated: row.ch_last_updated || null
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || []
         });
       });
     }
@@ -1849,6 +1936,7 @@ async function reloadSuppliers() {
           rates: row.rates || [], branches: row.branches || [],
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
           incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
           paused: row.paused || false
         });
       });
@@ -1881,7 +1969,8 @@ async function reloadBuyers() {
           companyStatus: row.company_status || null,
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
-          chLastUpdated: row.ch_last_updated || null
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || []
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1958,7 +2047,8 @@ async function savePersistedData() {
         company_status: s.companyStatus || null,
         incorporation_date: s.incorporationDate || null,
         sic_codes: s.sicCodes || [],
-        ch_last_updated: s.chLastUpdated || null
+        ch_last_updated: s.chLastUpdated || null,
+      entity_files: s.entityFiles || []
       };
     });
     if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
@@ -1985,7 +2075,8 @@ async function savePersistedData() {
         company_status: b.companyStatus || null,
         incorporation_date: b.incorporationDate || null,
         sic_codes: b.sicCodes || [],
-        ch_last_updated: b.chLastUpdated || null
+        ch_last_updated: b.chLastUpdated || null,
+      entity_files: b.entityFiles || []
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -2012,7 +2103,8 @@ async function savePersistedData() {
         company_status: sp.companyStatus || null,
         incorporation_date: sp.incorporationDate || null,
         sic_codes: sp.sicCodes || [],
-        ch_last_updated: sp.chLastUpdated || null
+        ch_last_updated: sp.chLastUpdated || null,
+      entity_files: sp.entityFiles || []
       };
     });
     if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
@@ -17622,17 +17714,59 @@ export default function FactoringDashboard() {
                       <div style={sectionTitle}>Files {det.entityFiles && det.entityFiles.length > 0 ? "(" + det.entityFiles.length + ")" : ""}</div>
                       {det.entityFiles && det.entityFiles.length > 0 && <div style={{ maxHeight: 160, overflowY: "auto", marginBottom: 12 }}>
                         {det.entityFiles.map(function(fl, fi) {
+                          // Click handler — fetch a signed URL on demand and open in new tab.
+                          // We don't pre-fetch URLs at render time because (a) there may be
+                          // many files, (b) signed URLs are time-limited, (c) we want each
+                          // download to be a discrete audited action.
+                          function downloadFile() {
+                            if (fl.dataUrl) {
+                              // Legacy entry from before Storage migration — use embedded data URL.
+                              var a = document.createElement("a");
+                              a.href = fl.dataUrl; a.download = fl.fileName;
+                              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                              return;
+                            }
+                            if (!fl.storagePath) {
+                              toast.error("Cannot download", "File metadata is missing storage path. The file may not have uploaded successfully.");
+                              return;
+                            }
+                            getEntityFileSignedUrl(fl.storagePath).then(function(url) {
+                              window.open(url, "_blank", "noopener,noreferrer");
+                            }).catch(function(err) {
+                              console.error("[Entity Files] Download error:", err);
+                              toast.error("Download failed", err.message || String(err));
+                            });
+                          }
                           return <div key={fi} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
                             <div>
-                              <a href={fl.dataUrl} download={fl.fileName} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 }}>{fl.fileName}</a>
+                              <span onClick={downloadFile} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2, cursor: "pointer" }}>{fl.fileName}</span>
                               {fl.label && <span style={{ fontSize: 11, color: "var(--text-secondary)", marginLeft: 10 }}>{fl.label}</span>}
                               {fl.notes && <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 8 }}>{"\u2014"} {fl.notes}</span>}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ fontSize: 9, color: "var(--muted)" }}>{fl.uploadedAt}</span>
-                              <button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id);
-                    auditLog("File Removed", "File \"" + fl.fileName + "\" removed from " + det.id, { entityId: det.id, fileName: fl.fileName }); setDataVer(function(v) { return v + 1; }); } }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
+                              <button onClick={function() {
+                                if (!detEntity || !detEntity.entityFiles) return;
+                                if (!confirm("Delete \"" + fl.fileName + "\"? This cannot be undone.")) return;
+                                // Remove from storage first; on completion (success or
+                                // storage-not-found), strip the metadata row and persist.
+                                // Silent storage failures don't block the metadata removal —
+                                // a "ghost" storage object is preferable to a stuck metadata row.
+                                var storagePath = fl.storagePath;
+                                function finishMetaRemoval() {
+                                  detEntity.entityFiles.splice(fi, 1);
+                                  if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                  else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                  else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                  auditLog("File Removed", "\"" + fl.fileName + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, entityName: det.name, fileName: fl.fileName, storagePath: storagePath || null });
+                                  setDataVer(function(v) { return v + 1; });
+                                }
+                                if (storagePath) {
+                                  deleteEntityFile(storagePath).then(finishMetaRemoval, finishMetaRemoval);
+                                } else {
+                                  finishMetaRemoval();
+                                }
+                              }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
                             </div>
                           </div>;
                         })}
@@ -17657,20 +17791,50 @@ export default function FactoringDashboard() {
                           var notesInput = document.getElementById("entityFileNotes");
                           if (!fileInput || !fileInput.files || !fileInput.files[0] || !detEntity) return;
                           var file = fileInput.files[0];
-                          var reader = new FileReader();
-                          reader.onload = function(e) {
+                          // Determine entity_type for the storage path. The det.id prefix is
+                          // authoritative (SUP-/BUY-/SP-) but we use manageTab as the source
+                          // of truth since it's what saveSupplier/saveBuyer/saveServiceProvider
+                          // already key off.
+                          var entityType =
+                            manageTab === "suppliers"         ? "suppliers" :
+                            manageTab === "buyers"            ? "buyers" :
+                            manageTab === "service_providers" ? "service_providers" : null;
+                          if (!entityType) {
+                            toast.error("Upload failed", "Cannot determine entity type for upload.");
+                            return;
+                          }
+                          // Pre-flight size check so the user gets a fast clear error rather
+                          // than waiting for a network round trip.
+                          if (file.size > ENTITY_FILES_MAX_BYTES) {
+                            toast.error("File too large", "Maximum file size is " + Math.floor(ENTITY_FILES_MAX_BYTES / (1024 * 1024)) + " MB. \"" + file.name + "\" is " + (file.size / (1024 * 1024)).toFixed(1) + " MB.");
+                            return;
+                          }
+                          var labelVal = labelInput ? labelInput.value : "";
+                          var notesVal = notesInput ? notesInput.value : "";
+                          uploadEntityFile(entityType, detEntity.id, file).then(function(storagePath) {
                             if (!detEntity.entityFiles) detEntity.entityFiles = [];
                             var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-                            detEntity.entityFiles.push({ fileName: file.name, label: labelInput ? labelInput.value : "", notes: notesInput ? notesInput.value : "", dataUrl: e.target.result, uploadedAt: nd, size: file.size });
-                            if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(det.id); else if (manageTab === "service_providers") saveServiceProvider(det.id); else if (manageTab === "buyers") saveBuyer(det.id);
-                      auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, fileName: file.name, label: labelInput ? labelInput.value : "" });
+                            detEntity.entityFiles.push({
+                              fileName: file.name,
+                              label: labelVal,
+                              notes: notesVal,
+                              storagePath: storagePath,
+                              uploadedAt: nd,
+                              size: file.size,
+                              uploadedBy: (userProfile && userProfile.email) || null
+                            });
+                            if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                            else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                            else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                            auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, entityName: det.name, fileName: file.name, label: labelVal, size: file.size, storagePath: storagePath });
                             if (fileInput) fileInput.value = "";
                             if (labelInput) labelInput.value = "";
                             if (notesInput) notesInput.value = "";
                             setDataVer(function(v) { return v + 1; });
-                          };
-                          reader.readAsDataURL(file);
+                          }).catch(function(err) {
+                            console.error("[Entity Files] Upload error:", err);
+                            toast.error("Upload failed", err.message || String(err));
+                          });
                         }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Upload</button>
                       </div>
                     </div>
