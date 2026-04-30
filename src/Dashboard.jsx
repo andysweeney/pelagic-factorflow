@@ -239,6 +239,15 @@ function isFundedInvoice(inv) {
   return false;
 }
 
+// Returns true if the given entity has KYC marked passed. Null-safe across
+// entity shapes. Suppliers and buyers gate unpause on this; service providers
+// carry the same field but don't gate. Branch entities don't have their own
+// KYC — they inherit the parent supplier's KYC state.
+function kycIsPassed(entity) {
+  if (!entity) return false;
+  return !!(entity.kyc && entity.kyc.passed);
+}
+
 // ======== Entity files (Supabase Storage) ========
 // Files for suppliers/buyers/service_providers live in the entity-files
 // bucket (private, signed URLs only). Each entity row stores metadata
@@ -1236,7 +1245,8 @@ async function saveSupplier(supId) {
       incorporation_date: s.incorporationDate || null,
       sic_codes: s.sicCodes || [],
       ch_last_updated: s.chLastUpdated || null,
-      entity_files: s.entityFiles || []
+      entity_files: s.entityFiles || [],
+      kyc: s.kyc || { passed: false }
     };
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
@@ -1270,7 +1280,8 @@ async function saveBuyer(buyId) {
       incorporation_date: b.incorporationDate || null,
       sic_codes: b.sicCodes || [],
       ch_last_updated: b.chLastUpdated || null,
-      entity_files: b.entityFiles || []
+      entity_files: b.entityFiles || [],
+      kyc: b.kyc || { passed: false }
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -1304,7 +1315,8 @@ async function saveServiceProvider(spId) {
       incorporation_date: sp.incorporationDate || null,
       sic_codes: sp.sicCodes || [],
       ch_last_updated: sp.chLastUpdated || null,
-      entity_files: sp.entityFiles || []
+      entity_files: sp.entityFiles || [],
+      kyc: sp.kyc || { passed: false }
     };
     var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
@@ -1445,7 +1457,8 @@ async function loadPersistedData() {
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
           chLastUpdated: row.ch_last_updated || null,
-          entityFiles: row.entity_files || []
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
     }
@@ -1473,7 +1486,8 @@ async function loadPersistedData() {
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
           chLastUpdated: row.ch_last_updated || null,
-          entityFiles: row.entity_files || []
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1503,7 +1517,8 @@ async function loadPersistedData() {
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
           chLastUpdated: row.ch_last_updated || null,
-          entityFiles: row.entity_files || []
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
     }
@@ -1937,6 +1952,7 @@ async function reloadSuppliers() {
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
           incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null,
           entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false },
           paused: row.paused || false
         });
       });
@@ -1970,7 +1986,8 @@ async function reloadBuyers() {
           incorporationDate: row.incorporation_date || null,
           sicCodes: row.sic_codes || [],
           chLastUpdated: row.ch_last_updated || null,
-          entityFiles: row.entity_files || []
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -2048,7 +2065,8 @@ async function savePersistedData() {
         incorporation_date: s.incorporationDate || null,
         sic_codes: s.sicCodes || [],
         ch_last_updated: s.chLastUpdated || null,
-      entity_files: s.entityFiles || []
+      entity_files: s.entityFiles || [],
+      kyc: s.kyc || { passed: false }
       };
     });
     if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
@@ -2076,7 +2094,8 @@ async function savePersistedData() {
         incorporation_date: b.incorporationDate || null,
         sic_codes: b.sicCodes || [],
         ch_last_updated: b.chLastUpdated || null,
-      entity_files: b.entityFiles || []
+      entity_files: b.entityFiles || [],
+      kyc: b.kyc || { passed: false }
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -2104,7 +2123,8 @@ async function savePersistedData() {
         incorporation_date: sp.incorporationDate || null,
         sic_codes: sp.sicCodes || [],
         ch_last_updated: sp.chLastUpdated || null,
-      entity_files: sp.entityFiles || []
+      entity_files: sp.entityFiles || [],
+      kyc: sp.kyc || { passed: false }
       };
     });
     if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
@@ -5396,6 +5416,16 @@ export default function FactoringDashboard() {
                   if (!buy.singleInvoiceLimits) buy.singleInvoiceLimits = {};
                   buy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
                 }
+                // Stage 1.9: force-pause buyers when they transition from "on zero
+                // programs" to "on at least one program". This is the onboarding
+                // moment — Admin must KYC them before they can be unpaused.
+                // Subsequent program additions don't re-pause an already-active buyer.
+                var buyerWasOnNoPrograms = programsForBuyer(entityId).length === 0;
+                var buyerForcePaused = false;
+                if (buyerWasOnNoPrograms && !buy.paused) {
+                  buy.paused = true;
+                  buyerForcePaused = true;
+                }
                 await saveBuyer(entityId);
                 var fpB = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
                 if (fpB) {
@@ -5426,7 +5456,7 @@ export default function FactoringDashboard() {
                   if (arr.indexOf(entityId) === -1) arr.push(entityId);
                   return Object.assign({}, p, { eligibleBuyers: arr });
                 });
-                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program"), { buyerId: entityId, buyer: entityName, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
+                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program") + (buyerForcePaused ? " \u2014 paused pending KYC" : ""), { buyerId: entityId, buyer: entityName, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: buyerForcePaused });
                 setAddToProgramModal(null);
                 setDataVer(function(v) { return v + 1; });
                 return;
@@ -5457,6 +5487,16 @@ export default function FactoringDashboard() {
               if (m.singleInvoiceLimit) {
                 if (!sup.singleInvoiceLimits) sup.singleInvoiceLimits = {};
                 sup.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+              }
+              // Stage 1.9: force-pause suppliers transitioning from "on zero programs"
+              // to "on at least one program". Parent-level pause (branches inherit).
+              // KYC tick required to unpause. Subsequent program additions don't re-pause
+              // an already-active supplier.
+              var supWasOnNoPrograms = programsForSupplier(parentId).length === 0;
+              var supForcePaused = false;
+              if (supWasOnNoPrograms && !sup.paused) {
+                sup.paused = true;
+                supForcePaused = true;
               }
               await saveSupplier(parentId);
               // Also mutate the in-memory program record + persist, so eligible_suppliers
@@ -5506,7 +5546,7 @@ export default function FactoringDashboard() {
                 }
                 return Object.assign({}, p, { eligibleSuppliers: arr });
               });
-              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%", { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null });
+              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
               setAddToProgramModal(null);
               setDataVer(function(v) { return v + 1; });
             }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>Add to Program</button>
@@ -17617,7 +17657,23 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
-                  {detEntity && <button onClick={function() { detEntity.paused = !detEntity.paused; if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id); auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
+                  {detEntity && <button onClick={function() {
+                    // Stage 1.9: KYC gating. Suppliers and buyers cannot be unpaused
+                    // until KYC is marked Passed. Service providers carry the KYC
+                    // checkbox for completeness but do not have unpause gating.
+                    var attemptingUnpause = !!detEntity.paused; // current value true means clicking will unpause
+                    var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                    if (attemptingUnpause && kycRequired && !kycIsPassed(detEntity)) {
+                      toast.error("KYC required", "Mark KYC as Passed below before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                      return;
+                    }
+                    detEntity.paused = !detEntity.paused;
+                    if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                    else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                    else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                    auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused });
+                    setDataVer(function(v) { return v + 1; });
+                  }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
                 </div>
 
                 {/* Detail Sub-Tabs */}
@@ -17837,6 +17893,53 @@ export default function FactoringDashboard() {
                           });
                         }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Upload</button>
                       </div>
+
+                      {/* KYC checkbox (Stage 1.9). Located beneath the file upload area
+                          per spec — file uploads typically include KYC supporting documents,
+                          so the visual proximity matches the workflow. Suppliers and buyers
+                          must have this ticked before they can be unpaused (force-paused on
+                          first program addition). Service providers see the checkbox but
+                          have no gating. Disabled when the user is read-only or when no
+                          entity is loaded. */}
+                      {detEntity && (function() {
+                        var kycPassed = kycIsPassed(detEntity);
+                        var isAdmin = userProfile && userProfile.role === "admin";
+                        return <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: isAdmin ? "pointer" : "not-allowed" }}>
+                            <input type="checkbox" checked={kycPassed} disabled={!isAdmin} onChange={function(e) {
+                              if (!isAdmin) return;
+                              var nowIso = new Date().toISOString();
+                              var nowDisp = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+                              var actorEmail = userProfile.email || null;
+                              if (e.target.checked) {
+                                detEntity.kyc = Object.assign({}, detEntity.kyc || {}, { passed: true, passedAt: nowIso, passedBy: actorEmail });
+                                if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                auditLog("KYC Marked Passed", det.id + " (" + det.name + ") KYC marked Passed by " + (actorEmail || "admin") + " on " + nowDisp, { entityId: det.id, entityName: det.name, entityType: manageTab, kycPassed: true, passedAt: nowIso, passedBy: actorEmail });
+                              } else {
+                                // Untick is a corrective action. Does NOT auto-pause — the user
+                                // can pause manually if they want to lock funding while KYC is
+                                // re-verified. We just record the unset.
+                                var reason = prompt("Reason for unsetting KYC Passed (optional):") || null;
+                                detEntity.kyc = Object.assign({}, detEntity.kyc || {}, { passed: false, unsetAt: nowIso, unsetBy: actorEmail, unsetReason: reason });
+                                if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                auditLog("KYC Marked Not Passed", det.id + " (" + det.name + ") KYC unset by " + (actorEmail || "admin") + " on " + nowDisp + (reason ? " \u2014 " + reason : ""), { entityId: det.id, entityName: det.name, entityType: manageTab, kycPassed: false, unsetAt: nowIso, unsetBy: actorEmail, unsetReason: reason });
+                              }
+                              setDataVer(function(v) { return v + 1; });
+                            }} style={{ width: 16, height: 16, cursor: isAdmin ? "pointer" : "not-allowed" }} />
+                            <span style={{ fontSize: 13, fontWeight: 600, color: kycPassed ? "#059669" : "var(--text)" }}>KYC Passed</span>
+                          </label>
+                          {kycPassed && detEntity.kyc && detEntity.kyc.passedBy && <div style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center" }}>
+                            Marked by {detEntity.kyc.passedBy}{detEntity.kyc.passedAt ? " on " + new Date(detEntity.kyc.passedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : ""}
+                          </div>}
+                          {!kycPassed && (manageTab === "suppliers" || manageTab === "buyers") && <div style={{ fontSize: 10, color: "#D97706", fontStyle: "italic" }}>{manageTab === "suppliers" ? "Supplier" : "Buyer"} cannot be unpaused until KYC is marked Passed.</div>}
+                          {!kycPassed && manageTab === "service_providers" && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>KYC not yet completed (informational only \u2014 service providers are not pause-gated).</div>}
+                          {!isAdmin && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Read-only \u2014 admin role required to change KYC status.</div>}
+                        </div>;
+                      })()}
                     </div>
                   </div>
 
@@ -18171,7 +18274,20 @@ export default function FactoringDashboard() {
                               </td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
                                 <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
-                                <button onClick={function() { br.paused = !br.paused; saveSupplier(selectedSupplier); auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
+                                <button onClick={function() {
+                                  // Stage 1.9: branch unpause gated by parent supplier's KYC.
+                                  // detEntity here is the parent supplier (set further up in
+                                  // the entity detail render scope).
+                                  var attemptingBranchUnpause = !!br.paused;
+                                  if (attemptingBranchUnpause && !kycIsPassed(detEntity)) {
+                                    toast.error("KYC required", "Mark KYC as Passed on the parent supplier before unpausing this branch.");
+                                    return;
+                                  }
+                                  br.paused = !br.paused;
+                                  saveSupplier(selectedSupplier);
+                                  auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused });
+                                  setDataVer(function(v) { return v + 1; });
+                                }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
                               </td>
                             </tr>;
