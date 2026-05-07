@@ -421,6 +421,24 @@ function packSpqRow(item) {
   // still hold a composite — handle both.
   var entityId = item.supplierEntityId || item.entityId || item.supplierId || "";
   var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  // Defensive fallback: if no supplier resolved from the SPQ entry's own fields,
+  // walk to the invoice (single or first of bundle) and use ITS supplierId. The
+  // DB column is NOT NULL so sending null would reject the upsert. Without this,
+  // bugs that fail to populate supplierId at SPQ creation time become silent
+  // bundle-NOT-NULL violations at save time. Logged so the bug remains visible.
+  if (!parentId) {
+    var fallbackInvId = item.invoiceId || (Array.isArray(item.invoiceIds) ? item.invoiceIds[0] : null) || item.sourceInvoiceId || null;
+    if (fallbackInvId) {
+      var fallbackInv = INVOICES_DB.find(function(x) { return x.id === fallbackInvId; });
+      if (fallbackInv && fallbackInv.supplierId) {
+        var fbEntityId = fallbackInv.supplierId;
+        var fbParentId = parseEntityId(fbEntityId).supplierId || fbEntityId;
+        console.warn("[packSpqRow] Falling back to invoice supplier for SPQ " + item.id + ": " + fbParentId + " (entry had no supplierId — investigate creation path)");
+        entityId = fbEntityId;
+        parentId = fbParentId;
+      }
+    }
+  }
   return {
     id: item.id,
     type: item.type,
@@ -14327,9 +14345,15 @@ export default function FactoringDashboard() {
                               // Bundle semantic type: funding if any funding rows are present, else holdback
                               var hasFunding = (batchConfirm.fundingItems || []).length > 0;
                               var bundleType = hasFunding ? "funding" : "holdback";
+                              // Resolve the bundle's supplier from the first row. The batch is locked
+                              // to a single supplier (feqLockSup) so any row gives the right answer.
+                              // Without this populated, packSpqRow writes supplier_id as null and
+                              // the NOT NULL constraint on the column rejects the upsert.
+                              var bundleSupplierEntityId = firstRow.supplierId || "";
+                              var bundleSupplierParentId = getParentEntityId(bundleSupplierEntityId) || bundleSupplierEntityId;
                               SUPPLIER_PAYMENT_QUEUE.push({
                                 id: bundleId, type: bundleType, isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
-                                supplierName: firstRow.supplierName, supplierId: "",
+                                supplierName: firstRow.supplierName, supplierId: bundleSupplierParentId, supplierEntityId: bundleSupplierEntityId,
                                 bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
                                 amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
                                 currency: batchConfirm.currency, status: "Completed",
