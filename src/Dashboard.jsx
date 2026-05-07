@@ -5363,8 +5363,10 @@ export default function FactoringDashboard() {
         var entityId = m.entityId || m.supplierId;
         var entityName = m.entityName || m.supplierName;
         var entityLabel = isBuyer ? "Buyer" : "Supplier";
-        // Suppliers require rates; buyers don't have a rate model so the button enables on entity+program presence.
-        var canSubmit = isBuyer ? !!(entityId && m.programId) : !!(m.advanceRate && m.annualRate && m.penaltyRate);
+        // Both flows now require programId (was only checked for buyers; the supplier
+        // path silently saved with empty programId, corrupting program_rates keys).
+        // Suppliers additionally require rates; buyers don't have a rate model.
+        var canSubmit = !!(entityId && m.programId) && (isBuyer || !!(m.advanceRate && m.annualRate && m.penaltyRate));
         return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add {entityLabel} to Program</div>
@@ -19295,15 +19297,21 @@ export default function FactoringDashboard() {
                           }
                         } else {
                           // Select: open generalised add-to-program modal in buyer mode (no rates, just limits).
+                          // Guard: a new (unsaved) program has no stable ID yet, so adding entities to it
+                          // would silently key their limits/rates against an empty programId. Block until saved.
                           var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                          if (!editingProgramObjBuy) {
+                            toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                            return;
+                          }
                           setAddToProgramModal({
                             entityKind: "buyer",
                             entityId: b.id, entityName: b.name,
-                            programId: editingProgramObjBuy ? editingProgramObjBuy.id : "", programName: pf.name || "",
+                            programId: editingProgramObjBuy.id, programName: pf.name || "",
                             programCcy: pf.currency || "GBP",
                             // Pre-populate with any limits already set on the buyer for this program (re-add convenience).
-                            creditLimit: (editingProgramObjBuy && b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
-                            singleInvoiceLimit: (editingProgramObjBuy && b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
+                            creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
+                            singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
                           });
                         }
                       }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
@@ -19331,12 +19339,19 @@ export default function FactoringDashboard() {
                             } else {
                               // Select: open modal to capture rates + limits before adding to eligible list.
                               // pf.maxAdvanceRate / pf.minInterestRate are stored in form state as percent strings (e.g. "90", "15.0"), not decimals.
+                              // Guard: a new (unsaved) program has no stable ID yet, so adding a supplier to
+                              // it would silently key their rates and limits against an empty programId. Block
+                              // until saved. Mirrors the buyer-side guard.
+                              var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (!editingProgramObj) {
+                                toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                return;
+                              }
                               var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
                               var fpMinInt = parseFloat(pf.minInterestRate) || 15;
-                              var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                               setAddToProgramModal({
                                 supplierId: s.id, supplierName: s.name,
-                                programId: editingProgramObj ? editingProgramObj.id : "", programName: pf.name || "",
+                                programId: editingProgramObj.id, programName: pf.name || "",
                                 programCcy: pf.currency || "GBP",
                                 isBranch: false,
                                 advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
@@ -19361,12 +19376,19 @@ export default function FactoringDashboard() {
                                     saveFundingProgram(dpEditingProgB.id);
                                   }
                                 } else {
+                                  // Same guard as the parent path: a new (unsaved) program has no
+                                  // stable ID yet, so adding a branch to it would silently key its
+                                  // rates and limits against an empty programId.
+                                  var editingProgramObjB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (!editingProgramObjB) {
+                                    toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                    return;
+                                  }
                                   var fpMaxAdvB = parseFloat(pf.maxAdvanceRate) || 90;
                                   var fpMinIntB = parseFloat(pf.minInterestRate) || 15;
-                                  var editingProgramObjB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                                   setAddToProgramModal({
                                     supplierId: brEntityId, supplierName: s.name + " \u2014 " + br.branchName,
-                                    programId: editingProgramObjB ? editingProgramObjB.id : "", programName: pf.name || "",
+                                    programId: editingProgramObjB.id, programName: pf.name || "",
                                     programCcy: pf.currency || "GBP",
                                     isBranch: true,
                                     advanceRate: String(Math.max(0, fpMaxAdvB - 5).toFixed(0)),
