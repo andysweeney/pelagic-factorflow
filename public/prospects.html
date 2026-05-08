@@ -3984,38 +3984,77 @@ function clearUpload() {
     };
 
     function sb() {
-        if (!window.sbClient) {
-            throw new Error("Tasks module: window.sbClient not initialised. Tab opened before Supabase connected?");
+        return window.sbClient || null;
+    }
+
+    // Centralised error logger — every Supabase response goes through this.
+    // Returns true if there was an error (so callers can early-return).
+    function logIfError(label, response) {
+        if (response && response.error) {
+            console.error("[Tasks] " + label + " failed:", response.error.message || response.error, response.error);
+            return true;
         }
-        return window.sbClient;
+        return false;
+    }
+
+    function showBanner(message, kind) {
+        if (!tmState.container) return;
+        var existing = document.getElementById("tm-banner");
+        if (existing) existing.remove();
+        var bg = kind === "error"   ? "rgba(239,68,68,0.15)"
+               : kind === "warn"    ? "rgba(245,158,11,0.15)"
+               : "rgba(14,165,233,0.15)";
+        var fg = kind === "error"   ? "var(--danger)"
+               : kind === "warn"    ? "var(--warning)"
+               : "var(--accent)";
+        var div = document.createElement("div");
+        div.id = "tm-banner";
+        div.style.cssText = "padding:12px 16px;margin-bottom:12px;border-radius:6px;background:" + bg + ";color:" + fg + ";font-size:13px;border:1px solid " + fg + ";";
+        div.innerHTML = message;
+        tmState.container.insertBefore(div, tmState.container.firstChild);
     }
 
     // -----------------------------------------------------------------------
     // Data loaders
     // -----------------------------------------------------------------------
     function loadMembers(cb) {
+        if (!sb()) { console.warn("[Tasks] loadMembers: sbClient not ready"); if (cb) cb(); return; }
         sb().from("task_team_members")
             .select("id,name,email,colour")
             .eq("active", true)
             .order("name", { ascending: true })
             .then(function (r) {
-                tmState.members = r.data || [];
+                if (logIfError("loadMembers", r)) {
+                    showBanner("Could not load team members. Check the browser console — the most likely cause is that the Tasks tables don't exist yet. Run <code>01_schema_v2.sql</code> in the Supabase SQL editor.", "error");
+                    tmState.members = [];
+                } else {
+                    tmState.members = r.data || [];
+                    if (!tmState.members.length) {
+                        showBanner("No team members found. Add some via SQL: <code>insert into task_team_members(name) values ('Your Name');</code>", "warn");
+                    }
+                }
                 if (cb) cb();
             });
     }
 
     function loadProjects(cb) {
+        if (!sb()) { console.warn("[Tasks] loadProjects: sbClient not ready"); if (cb) cb(); return; }
         sb().from("task_projects")
             .select("id,name,colour")
             .eq("archived", false)
             .order("name", { ascending: true })
             .then(function (r) {
-                tmState.projects = r.data || [];
+                if (logIfError("loadProjects", r)) {
+                    tmState.projects = [];
+                } else {
+                    tmState.projects = r.data || [];
+                }
                 if (cb) cb();
             });
     }
 
     function loadTasks(cb) {
+        if (!sb()) { console.warn("[Tasks] loadTasks: sbClient not ready"); if (cb) cb(); return; }
         var f = tmState.filters;
         var from = tmState.page * PAGE_SIZE;
         var to = from + PAGE_SIZE - 1;
@@ -4034,8 +4073,13 @@ function clearUpload() {
         }
 
         q.then(function (r) {
-            tmState.tasks      = r.data || [];
-            tmState.totalCount = r.count || 0;
+            if (logIfError("loadTasks", r)) {
+                tmState.tasks = [];
+                tmState.totalCount = 0;
+            } else {
+                tmState.tasks      = r.data || [];
+                tmState.totalCount = r.count || 0;
+            }
             if (cb) cb();
         });
     }
@@ -4074,15 +4118,24 @@ function clearUpload() {
     // Mutations
     // -----------------------------------------------------------------------
     function createTask(payload, cb) {
+        if (!sb()) { alert("Supabase not connected yet. Try again in a moment."); return; }
         sb().from("tasks").insert(payload).select().single()
             .then(function (r) {
+                if (logIfError("createTask", r)) {
+                    alert("Could not save task: " + (r.error.message || "see console"));
+                    if (cb) cb(null);
+                    return;
+                }
                 if (r.data) {
                     sb().from("task_activity").insert({
                         task_id: r.data.id,
                         kind: "created",
                         author_id: payload.assignee_id || null,
                         body: "Task created"
-                    }).then(function () { if (cb) cb(r.data); });
+                    }).then(function (r2) {
+                        logIfError("createTask:activity", r2);
+                        if (cb) cb(r.data);
+                    });
                 } else if (cb) {
                     cb(null);
                 }
@@ -4090,12 +4143,18 @@ function clearUpload() {
     }
 
     function updateTaskField(taskId, field, value, authorId, cb) {
+        if (!sb()) return;
         var prev = findTask(taskId);
         var patch = {};
         patch[field] = value;
 
         sb().from("tasks").update(patch).eq("id", taskId).select().single()
             .then(function (r) {
+                if (logIfError("updateTaskField:" + field, r)) {
+                    alert("Could not save change: " + (r.error.message || "see console"));
+                    if (cb) cb(null);
+                    return;
+                }
                 if (!r.data) { if (cb) cb(null); return; }
                 var kind = field === "status" ? "status_change"
                          : field === "assignee_id" ? "assignee_change"
@@ -4110,7 +4169,10 @@ function clearUpload() {
                         author_id: authorId || null,
                         body: body,
                         meta: meta
-                    }).then(function () { if (cb) cb(r.data); });
+                    }).then(function (r2) {
+                        logIfError("updateTaskField:activity", r2);
+                        if (cb) cb(r.data);
+                    });
                 } else if (cb) {
                     cb(r.data);
                 }
@@ -4118,28 +4180,44 @@ function clearUpload() {
     }
 
     function addComment(taskId, body, authorId, cb) {
+        if (!sb()) return;
         sb().from("task_activity").insert({
             task_id: taskId,
             kind: "comment",
             author_id: authorId || null,
             body: body
         }).select().single()
-          .then(function (r) { if (cb) cb(r.data); });
+          .then(function (r) {
+              if (logIfError("addComment", r)) {
+                  alert("Could not save comment: " + (r.error.message || "see console"));
+                  return;
+              }
+              if (cb) cb(r.data);
+          });
     }
 
     function deleteTask(taskId, cb) {
+        if (!sb()) return;
         sb().from("tasks").delete().eq("id", taskId)
-            .then(function () { if (cb) cb(); });
+            .then(function (r) {
+                logIfError("deleteTask", r);
+                if (cb) cb();
+            });
     }
 
     // -----------------------------------------------------------------------
     // Attachments
     // -----------------------------------------------------------------------
     function uploadAttachment(taskId, file, uploadedById, cb) {
+        if (!sb()) { if (cb) cb(null, new Error("Supabase not connected")); return; }
         var path = taskId + "/" + Date.now() + "-" + safeFilename(file.name);
         sb().storage.from(BUCKET).upload(path, file, { upsert: false })
             .then(function (up) {
-                if (up.error) { if (cb) cb(null, up.error); return; }
+                if (up.error) {
+                    console.error("[Tasks] storage.upload failed:", up.error);
+                    if (cb) cb(null, up.error);
+                    return;
+                }
                 sb().from("task_attachments").insert({
                     task_id: taskId,
                     filename: file.name,
@@ -4148,12 +4226,19 @@ function clearUpload() {
                     size_bytes: file.size || null,
                     uploaded_by_id: uploadedById || null
                 }).select().single().then(function (r) {
+                    if (logIfError("attachment:insert", r)) {
+                        if (cb) cb(null, r.error);
+                        return;
+                    }
                     sb().from("task_activity").insert({
                         task_id: taskId,
                         kind: "attachment_added",
                         author_id: uploadedById || null,
                         body: "Added attachment: " + file.name
-                    }).then(function () { if (cb) cb(r.data, null); });
+                    }).then(function (r2) {
+                        logIfError("attachment:activity", r2);
+                        if (cb) cb(r.data, null);
+                    });
                 });
             });
     }
@@ -4561,8 +4646,13 @@ function clearUpload() {
             var name = document.getElementById("tm-np-name").value.trim();
             if (!name) return;
             var colour = document.getElementById("tm-np-colour").value;
+            if (!sb()) { alert("Supabase not connected yet."); return; }
             sb().from("task_projects").insert({ name: name, colour: colour }).select().single()
-                .then(function () {
+                .then(function (r) {
+                    if (logIfError("createProject", r)) {
+                        alert("Could not save project: " + (r.error.message || "see console"));
+                        return;
+                    }
                     wrap.remove();
                     loadProjects(function () { render(); });
                 });
@@ -4784,10 +4874,26 @@ function clearUpload() {
         tmState.container = container;
         container.classList.add("tm-root");
         injectStyles();
-        var loaded = 0;
-        function step() { loaded++; if (loaded === 2) loadTasks(render); }
-        loadMembers(step);
-        loadProjects(step);
+
+        // Wait for sbClient (Supabase init may not be done yet)
+        var retries = 0;
+        function whenReady() {
+            if (window.sbClient) {
+                var loaded = 0;
+                function step() { loaded++; if (loaded === 2) loadTasks(render); }
+                loadMembers(step);
+                loadProjects(step);
+                return;
+            }
+            retries++;
+            if (retries > 50) {
+                container.innerHTML = "<div style='padding:40px;text-align:center;color:var(--danger)'>Supabase failed to connect after 5 seconds. Check the browser console for errors.</div>";
+                console.error("[Tasks] sbClient never became ready");
+                return;
+            }
+            setTimeout(whenReady, 100);
+        }
+        whenReady();
     };
 
     window.Tasks.unmount = function () {
