@@ -3977,10 +3977,12 @@ function clearUpload() {
         page:        0,
         members:     [],
         projects:    [],
-        filters:     { status: "all", assignee: "all", project: "all", search: "" },
+        filters:     { status: "all", assignee: "all", project: "all", search: "", showSubtasks: false },
         selectedId:  null,
         activity:    [],
-        attachments: []
+        attachments: [],
+        subtasks:    [],
+        links:       []
     };
 
     function sb() {
@@ -4060,7 +4062,7 @@ function clearUpload() {
         var to = from + PAGE_SIZE - 1;
 
         var q = sb().from("tasks")
-                    .select("id,title,status,priority,due_date,assignee_id,project_id,updated_at",
+                    .select("id,title,status,priority,due_date,assignee_id,project_id,parent_id,updated_at",
                             { count: "exact" })
                     .order("updated_at", { ascending: false })
                     .range(from, to);
@@ -4068,6 +4070,9 @@ function clearUpload() {
         if (f.status   !== "all") q = q.eq("status", f.status);
         if (f.assignee !== "all") q = q.eq("assignee_id", f.assignee);
         if (f.project  !== "all") q = q.eq("project_id", f.project);
+        // By default the top-level list hides sub-tasks (they appear under their parents).
+        // The "Show sub-tasks" toggle lets power users see everything flat.
+        if (!f.showSubtasks) q = q.is("parent_id", null);
         if (f.search) {
             q = q.or("title.ilike.%" + f.search + "%,description.ilike.%" + f.search + "%");
         }
@@ -4076,21 +4081,59 @@ function clearUpload() {
             if (logIfError("loadTasks", r)) {
                 tmState.tasks = [];
                 tmState.totalCount = 0;
-            } else {
-                tmState.tasks      = r.data || [];
-                tmState.totalCount = r.count || 0;
+                if (cb) cb();
+                return;
             }
-            if (cb) cb();
+            tmState.tasks      = r.data || [];
+            tmState.totalCount = r.count || 0;
+
+            // Fetch sub-task counts for the parents on this page so we can show "X/Y done" pills
+            loadSubtaskCounts(function () { if (cb) cb(); });
         });
     }
 
+    // Fetches counts of children + done-children for each task currently on the page.
+    // Stamps onto tmState.tasks[i] as _subCount and _subDoneCount.
+    function loadSubtaskCounts(cb) {
+        if (!sb() || !tmState.tasks.length) { if (cb) cb(); return; }
+        var parentIds = [];
+        for (var i = 0; i < tmState.tasks.length; i++) {
+            // Only fetch counts for top-level rows; children that snuck in (from "Show sub-tasks") get nothing
+            if (!tmState.tasks[i].parent_id) parentIds.push(tmState.tasks[i].id);
+        }
+        if (!parentIds.length) { if (cb) cb(); return; }
+
+        sb().from("tasks")
+            .select("id,parent_id,status")
+            .in("parent_id", parentIds)
+            .then(function (r) {
+                if (logIfError("loadSubtaskCounts", r)) { if (cb) cb(); return; }
+                var counts = {};
+                var rows = r.data || [];
+                for (var j = 0; j < rows.length; j++) {
+                    var pid = rows[j].parent_id;
+                    if (!counts[pid]) counts[pid] = { total: 0, done: 0 };
+                    counts[pid].total++;
+                    if (rows[j].status === "done") counts[pid].done++;
+                }
+                for (var k = 0; k < tmState.tasks.length; k++) {
+                    var c = counts[tmState.tasks[k].id];
+                    tmState.tasks[k]._subCount = c ? c.total : 0;
+                    tmState.tasks[k]._subDoneCount = c ? c.done : 0;
+                }
+                if (cb) cb();
+            });
+    }
+
     function loadTaskDetail(taskId, cb) {
+        if (!sb()) { if (cb) cb(); return; }
         var done = 0;
-        function step() { done++; if (done === 3 && cb) cb(); }
+        var TOTAL_STEPS = 5;  // task, activity, attachments, subtasks, links
+        function step() { done++; if (done === TOTAL_STEPS && cb) cb(); }
 
         sb().from("tasks").select("*").eq("id", taskId).single()
             .then(function (r) {
-                if (r.data) {
+                if (!logIfError("loadTaskDetail:task", r) && r.data) {
                     for (var i = 0; i < tmState.tasks.length; i++) {
                         if (tmState.tasks[i].id === taskId) {
                             tmState.tasks[i] = Object.assign({}, tmState.tasks[i], r.data);
@@ -4105,13 +4148,91 @@ function clearUpload() {
             .select("id,kind,author_id,body,meta,created_at")
             .eq("task_id", taskId)
             .order("created_at", { ascending: false })
-            .then(function (r) { tmState.activity = r.data || []; step(); });
+            .then(function (r) {
+                logIfError("loadTaskDetail:activity", r);
+                tmState.activity = r.data || [];
+                step();
+            });
 
         sb().from("task_attachments")
             .select("id,filename,storage_path,mime_type,size_bytes,uploaded_by_id,created_at")
             .eq("task_id", taskId)
             .order("created_at", { ascending: false })
-            .then(function (r) { tmState.attachments = r.data || []; step(); });
+            .then(function (r) {
+                logIfError("loadTaskDetail:attachments", r);
+                tmState.attachments = r.data || [];
+                step();
+            });
+
+        // Sub-tasks: direct children of this task
+        sb().from("tasks")
+            .select("id,title,status,priority,due_date,assignee_id,parent_id")
+            .eq("parent_id", taskId)
+            .order("created_at", { ascending: true })
+            .then(function (r) {
+                logIfError("loadTaskDetail:subtasks", r);
+                tmState.subtasks = r.data || [];
+                step();
+            });
+
+        // Linked tasks: union of both directions in task_links, joined to tasks for display
+        loadTaskLinks(taskId, function () { step(); });
+    }
+
+    // Loads links in both directions and resolves them to {linkId, task}
+    // so the panel can render and remove cleanly regardless of which side made the link.
+    function loadTaskLinks(taskId, cb) {
+        if (!sb()) { tmState.links = []; if (cb) cb(); return; }
+        var pending = 2;
+        var rows = [];
+        function maybeFinish() {
+            pending--;
+            if (pending !== 0) return;
+            if (!rows.length) { tmState.links = []; if (cb) cb(); return; }
+
+            var otherIds = [];
+            for (var i = 0; i < rows.length; i++) otherIds.push(rows[i].otherId);
+
+            sb().from("tasks")
+                .select("id,title,status,priority")
+                .in("id", otherIds)
+                .then(function (r) {
+                    logIfError("loadTaskLinks:tasks", r);
+                    var byId = {};
+                    var data = r.data || [];
+                    for (var j = 0; j < data.length; j++) byId[data[j].id] = data[j];
+                    var resolved = [];
+                    for (var k = 0; k < rows.length; k++) {
+                        var t = byId[rows[k].otherId];
+                        if (t) resolved.push({ linkId: rows[k].linkId, task: t });
+                    }
+                    tmState.links = resolved;
+                    if (cb) cb();
+                });
+        }
+
+        sb().from("task_links")
+            .select("id,linked_task_id")
+            .eq("task_id", taskId)
+            .then(function (r) {
+                logIfError("loadTaskLinks:outgoing", r);
+                var data = r.data || [];
+                for (var i = 0; i < data.length; i++) {
+                    rows.push({ linkId: data[i].id, otherId: data[i].linked_task_id });
+                }
+                maybeFinish();
+            });
+        sb().from("task_links")
+            .select("id,task_id")
+            .eq("linked_task_id", taskId)
+            .then(function (r) {
+                logIfError("loadTaskLinks:incoming", r);
+                var data = r.data || [];
+                for (var i = 0; i < data.length; i++) {
+                    rows.push({ linkId: data[i].id, otherId: data[i].task_id });
+                }
+                maybeFinish();
+            });
     }
 
     // -----------------------------------------------------------------------
@@ -4202,6 +4323,92 @@ function clearUpload() {
             .then(function (r) {
                 logIfError("deleteTask", r);
                 if (cb) cb();
+            });
+    }
+
+    // Sub-tasks: insert with parent_id pointing at the parent. Inherits parent's project.
+    function createSubtask(parentId, title, cb) {
+        if (!sb()) { alert("Supabase not connected yet."); return; }
+        var parent = findTask(parentId);
+        var payload = {
+            title: title,
+            status: "todo",
+            priority: "normal",
+            parent_id: parentId,
+            project_id: parent ? (parent.project_id || null) : null
+        };
+        sb().from("tasks").insert(payload).select().single()
+            .then(function (r) {
+                if (logIfError("createSubtask", r)) {
+                    alert("Could not save sub-task: " + (r.error.message || "see console"));
+                    if (cb) cb(null);
+                    return;
+                }
+                sb().from("task_activity").insert({
+                    task_id: r.data.id,
+                    kind: "created",
+                    author_id: null,
+                    body: "Sub-task created"
+                }).then(function (r2) {
+                    logIfError("createSubtask:activity", r2);
+                    if (cb) cb(r.data);
+                });
+            });
+    }
+
+    // Links: insert one row (we render bidirectionally on read, so no need to insert pair).
+    // Uniqueness constraint prevents duplicates in the same direction; we also check
+    // the reverse direction client-side to avoid the user creating both A->B and B->A.
+    function addLink(taskId, linkedTaskId, cb) {
+        if (!sb()) { alert("Supabase not connected yet."); return; }
+        if (taskId === linkedTaskId) { alert("Can't link a task to itself."); return; }
+        sb().from("task_links")
+            .select("id")
+            .or("and(task_id.eq." + taskId + ",linked_task_id.eq." + linkedTaskId + ")," +
+                "and(task_id.eq." + linkedTaskId + ",linked_task_id.eq." + taskId + ")")
+            .then(function (existing) {
+                if (logIfError("addLink:check", existing)) return;
+                if (existing.data && existing.data.length) {
+                    alert("These tasks are already linked.");
+                    return;
+                }
+                sb().from("task_links").insert({
+                    task_id: taskId,
+                    linked_task_id: linkedTaskId
+                }).select().single().then(function (r) {
+                    if (logIfError("addLink:insert", r)) {
+                        alert("Could not add link: " + (r.error.message || "see console"));
+                        return;
+                    }
+                    if (cb) cb(r.data);
+                });
+            });
+    }
+
+    function removeLink(linkId, cb) {
+        if (!sb()) return;
+        sb().from("task_links").delete().eq("id", linkId)
+            .then(function (r) {
+                logIfError("removeLink", r);
+                if (cb) cb();
+            });
+    }
+
+    // Search tasks by title prefix — used by the link picker.
+    // Returns up to 10 matches, excluding the current task and any already-linked tasks.
+    function searchTasksForLink(currentTaskId, query, cb) {
+        if (!sb() || !query || query.length < 2) { if (cb) cb([]); return; }
+        var excludeIds = [currentTaskId];
+        for (var i = 0; i < tmState.links.length; i++) excludeIds.push(tmState.links[i].task.id);
+        var notInList = "(" + excludeIds.join(",") + ")";
+        sb().from("tasks")
+            .select("id,title,status")
+            .ilike("title", "%" + query + "%")
+            .not("id", "in", notInList)
+            .limit(10)
+            .then(function (r) {
+                logIfError("searchTasksForLink", r);
+                if (cb) cb(r.data || []);
             });
     }
 
@@ -4442,6 +4649,9 @@ function clearUpload() {
             + "  </select>"
             + "  <select id='tm-filter-assignee'>" + memOpts + "</select>"
             + "  <select id='tm-filter-project'>" + projOpts + "</select>"
+            + "  <label style='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;user-select:none;'>"
+            + "    <input type='checkbox' id='tm-show-subtasks'" + (f.showSubtasks ? " checked" : "") + " style='cursor:pointer;'> Show sub-tasks"
+            + "  </label>"
             + "  <div class='tm-spacer'></div>"
             + "  <button class='tm-btn tm-btn-secondary' id='tm-new-project'>New project</button>"
             + "  <button class='tm-btn tm-btn-primary' id='tm-new-task'>+ New task</button>"
@@ -4462,10 +4672,18 @@ function clearUpload() {
             var project  = findProject(t.project_id);
             var overdue  = isOverdue(t.due_date, t.status);
             var dueLabel = t.due_date ? fmtDate(t.due_date) : "—";
+            var hasSubs  = (t._subCount || 0) > 0;
+            var subPill  = hasSubs
+                ? " <span style='display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--card-hover);color:var(--text-secondary);font-size:11px;font-weight:600;font-family:var(--mono);' title='Sub-task progress'>" + t._subDoneCount + "/" + t._subCount + "</span>"
+                : "";
+            // If "Show sub-tasks" is on and this row IS a child, prefix with a chevron indent
+            var childPrefix = (tmState.filters.showSubtasks && t.parent_id)
+                ? "<span style='color:var(--muted);margin-right:6px;font-family:var(--mono);' title='Sub-task'>↳</span>"
+                : "";
 
             return "<tr data-id='" + escapeHtml(t.id) + "'" + (tmState.selectedId === t.id ? " class='tm-selected'" : "") + ">"
                 + "<td>" + statusPillHtml(t.status) + "</td>"
-                + "<td><div style='font-weight:500;color:var(--text);'>" + escapeHtml(t.title) + "</div></td>"
+                + "<td><div style='font-weight:500;color:var(--text);'>" + childPrefix + escapeHtml(t.title) + subPill + "</div></td>"
                 + "<td>" + (project
                     ? "<span class='tm-pill' style='background:" + escapeHtml(project.colour) + "33;color:" + escapeHtml(project.colour) + "'>" + escapeHtml(project.name) + "</span>"
                     : "<span style='color:var(--muted)'>—</span>") + "</td>"
@@ -4515,6 +4733,7 @@ function clearUpload() {
         var $status   = document.getElementById("tm-filter-status");
         var $assignee = document.getElementById("tm-filter-assignee");
         var $project  = document.getElementById("tm-filter-project");
+        var $showSub  = document.getElementById("tm-show-subtasks");
         var $newTask  = document.getElementById("tm-new-task");
         var $newProj  = document.getElementById("tm-new-project");
 
@@ -4530,6 +4749,7 @@ function clearUpload() {
         $status.addEventListener("change",   function (e) { tmState.filters.status   = e.target.value; tmState.page = 0; loadTasks(render); });
         $assignee.addEventListener("change", function (e) { tmState.filters.assignee = e.target.value; tmState.page = 0; loadTasks(render); });
         $project.addEventListener("change",  function (e) { tmState.filters.project  = e.target.value; tmState.page = 0; loadTasks(render); });
+        $showSub.addEventListener("change",  function (e) { tmState.filters.showSubtasks = e.target.checked; tmState.page = 0; loadTasks(render); });
         $newTask.addEventListener("click", openNewTaskModal);
         $newProj.addEventListener("click", openNewProjectModal);
     }
@@ -4692,6 +4912,21 @@ function clearUpload() {
                 + "</div>";
         }).join("") || "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No attachments yet.</div>";
 
+        var subtasksHtml = renderSubtasksList();
+        var linksHtml    = renderLinksList();
+
+        // Parent breadcrumb if this task has a parent
+        var parentTask = t.parent_id ? findTaskAnywhere(t.parent_id) : null;
+        var parentLine = "";
+        if (t.parent_id) {
+            // We may not have the parent in tmState.tasks (it's not on the page) — show a button that fetches it
+            parentLine = "<div style='font-size:11px;color:var(--text-secondary);margin-bottom:4px;'>"
+                + "Sub-task of <a href='#' id='tm-parent-link' data-parent-id='" + escapeHtml(t.parent_id) + "' style='color:var(--accent);text-decoration:none;'>"
+                + (parentTask ? escapeHtml(parentTask.title) : "open parent →")
+                + "</a>"
+                + "</div>";
+        }
+
         var actHtml = tmState.activity.map(function (a) {
             var who = findMember(a.author_id);
             var whoLabel = who ? who.name : "System";
@@ -4708,7 +4943,10 @@ function clearUpload() {
             + "<div class='tm-panel-overlay' id='tm-panel-overlay'></div>"
             + "<aside class='tm-panel' id='tm-panel'>"
             + "  <div class='tm-panel-header'>"
-            + "    <div class='tm-panel-title'>" + escapeHtml(t.title) + "</div>"
+            + "    <div style='flex:1;min-width:0'>"
+            + "      " + parentLine
+            + "      <div class='tm-panel-title' style='margin:0'>" + escapeHtml(t.title) + "</div>"
+            + "    </div>"
             + "    <button class='tm-btn tm-btn-danger' id='tm-panel-delete'>Delete</button>"
             + "    <button class='tm-x' id='tm-panel-close'>×</button>"
             + "  </div>"
@@ -4728,6 +4966,22 @@ function clearUpload() {
             + "      <textarea class='tm-textarea' id='tm-d-desc'>" + escapeHtml(t.description || "") + "</textarea>"
             + "      <div style='margin-top:8px;text-align:right'>"
             + "        <button class='tm-btn tm-btn-secondary' id='tm-d-desc-save'>Save description</button>"
+            + "      </div>"
+            + "    </div>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Sub-tasks</h4>"
+            + "      <div id='tm-sub-list'>" + subtasksHtml + "</div>"
+            + "      <div style='display:flex;gap:6px;margin-top:8px'>"
+            + "        <input id='tm-sub-input' placeholder='Add a sub-task...' style='flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;background:var(--bg);color:var(--text);'>"
+            + "        <button class='tm-btn tm-btn-secondary' id='tm-sub-add'>Add</button>"
+            + "      </div>"
+            + "    </div>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Linked tasks</h4>"
+            + "      <div id='tm-link-list'>" + linksHtml + "</div>"
+            + "      <div style='position:relative;margin-top:8px'>"
+            + "        <input id='tm-link-input' placeholder='Search to link a task...' autocomplete='off' style='width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-family:var(--font);font-size:13px;background:var(--bg);color:var(--text);'>"
+            + "        <div id='tm-link-results' style='display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;z-index:1;'></div>"
             + "      </div>"
             + "    </div>"
             + "    <div class='tm-panel-section'>"
@@ -4822,6 +5076,200 @@ function clearUpload() {
             if (!confirm("Delete this task? This cannot be undone.")) return;
             deleteTask(t.id, function () { closeDetailPanel(); loadTasks(render); });
         });
+
+        // Parent breadcrumb — navigate up
+        var $parent = document.getElementById("tm-parent-link");
+        if ($parent) {
+            $parent.addEventListener("click", function (e) {
+                e.preventDefault();
+                var pid = e.currentTarget.getAttribute("data-parent-id");
+                tmState.selectedId = pid;
+                loadTaskDetail(pid, openDetailPanel);
+            });
+        }
+
+        // Sub-tasks: add
+        function addSubtaskFromInput() {
+            var $inp = document.getElementById("tm-sub-input");
+            var v = $inp.value.trim();
+            if (!v) return;
+            createSubtask(t.id, v, function (created) {
+                if (created) {
+                    $inp.value = "";
+                    loadTaskDetail(t.id, function () {
+                        refreshSubtasksList();
+                        // Refresh main list so the parent's progress pill updates
+                        loadTasks(render);
+                    });
+                }
+            });
+        }
+        document.getElementById("tm-sub-add").addEventListener("click", addSubtaskFromInput);
+        document.getElementById("tm-sub-input").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); addSubtaskFromInput(); }
+        });
+
+        // Sub-tasks: row click (open child) and inline status toggle
+        document.getElementById("tm-sub-list").addEventListener("click", function (e) {
+            var openId = e.target.getAttribute && e.target.getAttribute("data-sub-open");
+            var toggleId = e.target.getAttribute && e.target.getAttribute("data-sub-toggle");
+            var deleteId = e.target.getAttribute && e.target.getAttribute("data-sub-delete");
+            if (openId) {
+                tmState.selectedId = openId;
+                loadTaskDetail(openId, openDetailPanel);
+            } else if (toggleId) {
+                e.stopPropagation();
+                // Cycle todo -> doing -> done -> todo
+                var sub = null;
+                for (var i = 0; i < tmState.subtasks.length; i++) {
+                    if (tmState.subtasks[i].id === toggleId) { sub = tmState.subtasks[i]; break; }
+                }
+                if (!sub) return;
+                var nextStatus = sub.status === "todo" ? "doing" : sub.status === "doing" ? "done" : "todo";
+                updateTaskField(toggleId, "status", nextStatus, null, function () {
+                    loadTaskDetail(t.id, function () {
+                        refreshSubtasksList();
+                        loadTasks(render);
+                    });
+                });
+            } else if (deleteId) {
+                e.stopPropagation();
+                if (!confirm("Delete this sub-task?")) return;
+                deleteTask(deleteId, function () {
+                    loadTaskDetail(t.id, function () {
+                        refreshSubtasksList();
+                        loadTasks(render);
+                    });
+                });
+            }
+        });
+
+        // Linked tasks: search-as-you-type picker
+        var linkSearchTimer = null;
+        var $linkInput   = document.getElementById("tm-link-input");
+        var $linkResults = document.getElementById("tm-link-results");
+
+        $linkInput.addEventListener("input", function () {
+            if (linkSearchTimer) clearTimeout(linkSearchTimer);
+            var q = $linkInput.value;
+            if (!q || q.length < 2) {
+                $linkResults.style.display = "none";
+                return;
+            }
+            linkSearchTimer = setTimeout(function () {
+                searchTasksForLink(t.id, q, function (results) {
+                    if (!results.length) {
+                        $linkResults.innerHTML = "<div style='padding:10px;color:var(--muted);font-size:12px'>No matching tasks.</div>";
+                    } else {
+                        $linkResults.innerHTML = results.map(function (r) {
+                            return "<div class='tm-link-result' data-link-pick='" + escapeHtml(r.id) + "' style='padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;'>"
+                                + statusPillHtml(r.status) + " <span style='margin-left:8px'>" + escapeHtml(r.title) + "</span>"
+                                + "</div>";
+                        }).join("");
+                    }
+                    $linkResults.style.display = "block";
+                });
+            }, 200);
+        });
+
+        $linkInput.addEventListener("blur", function () {
+            // Delay hiding so click on a result still registers
+            setTimeout(function () { $linkResults.style.display = "none"; }, 150);
+        });
+
+        $linkResults.addEventListener("mousedown", function (e) {
+            // Use mousedown so we fire before blur hides the panel
+            var pickId = e.target.closest && e.target.closest("[data-link-pick]");
+            if (!pickId) return;
+            var id = pickId.getAttribute("data-link-pick");
+            addLink(t.id, id, function () {
+                $linkInput.value = "";
+                $linkResults.style.display = "none";
+                loadTaskDetail(t.id, refreshLinksList);
+            });
+        });
+
+        // Linked tasks: open or remove
+        document.getElementById("tm-link-list").addEventListener("click", function (e) {
+            var openId = e.target.getAttribute && e.target.getAttribute("data-link-open");
+            var removeId = e.target.getAttribute && e.target.getAttribute("data-link-remove");
+            if (openId) {
+                tmState.selectedId = openId;
+                loadTaskDetail(openId, openDetailPanel);
+            } else if (removeId) {
+                e.stopPropagation();
+                if (!confirm("Remove this link?")) return;
+                removeLink(removeId, function () {
+                    loadTaskDetail(t.id, refreshLinksList);
+                });
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Sub-tasks / links — render helpers
+    // -----------------------------------------------------------------------
+    function findTaskAnywhere(id) {
+        // Look in current page first; subtasks list second
+        var t = findTask(id);
+        if (t) return t;
+        for (var i = 0; i < tmState.subtasks.length; i++) {
+            if (tmState.subtasks[i].id === id) return tmState.subtasks[i];
+        }
+        return null;
+    }
+
+    function smallAvatarHtml(member) {
+        if (!member) return "";
+        var initials = member.name.split(" ").map(function (p) { return p[0]; }).join("").slice(0, 2).toUpperCase();
+        return "<span class='tm-avatar' style='background:" + escapeHtml(member.colour || "#0EA5E9") + ";width:22px;height:22px;font-size:10px' title='" + escapeHtml(member.name) + "'>" + escapeHtml(initials) + "</span>";
+    }
+
+    function renderSubtasksList() {
+        if (!tmState.subtasks.length) {
+            return "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No sub-tasks yet.</div>";
+        }
+        return tmState.subtasks.map(function (s) {
+            var assignee = findMember(s.assignee_id);
+            var dueLabel = s.due_date ? fmtDate(s.due_date) : "";
+            var overdue  = isOverdue(s.due_date, s.status);
+            var titleStyle = s.status === "done"
+                ? "text-decoration:line-through;color:var(--muted);"
+                : "color:var(--text);";
+            return "<div style='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;'>"
+                + "<span data-sub-toggle='" + escapeHtml(s.id) + "' style='cursor:pointer;display:inline-flex;align-items:center;' title='Click to cycle status'>" + statusPillHtml(s.status) + "</span>"
+                + "<span data-sub-open='" + escapeHtml(s.id) + "' style='flex:1;cursor:pointer;" + titleStyle + "'>" + escapeHtml(s.title) + "</span>"
+                + (dueLabel ? "<span style='font-size:11px;font-family:var(--mono);" + (overdue ? "color:var(--danger);font-weight:600" : "color:var(--muted)") + "'>" + escapeHtml(dueLabel) + "</span>" : "")
+                + smallAvatarHtml(assignee)
+                + "<button class='tm-x' data-sub-delete='" + escapeHtml(s.id) + "' title='Delete sub-task' style='font-size:18px'>×</button>"
+                + "</div>";
+        }).join("");
+    }
+
+    function renderLinksList() {
+        if (!tmState.links.length) {
+            return "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No linked tasks yet.</div>";
+        }
+        return tmState.links.map(function (l) {
+            var titleStyle = l.task.status === "done"
+                ? "text-decoration:line-through;color:var(--muted);"
+                : "color:var(--text);";
+            return "<div style='display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;'>"
+                + "<span style='display:inline-flex;align-items:center;'>" + statusPillHtml(l.task.status) + "</span>"
+                + "<span data-link-open='" + escapeHtml(l.task.id) + "' style='flex:1;cursor:pointer;" + titleStyle + "'>" + escapeHtml(l.task.title) + "</span>"
+                + "<button class='tm-x' data-link-remove='" + escapeHtml(l.linkId) + "' title='Remove link' style='font-size:18px'>×</button>"
+                + "</div>";
+        }).join("");
+    }
+
+    function refreshSubtasksList() {
+        var el = document.getElementById("tm-sub-list");
+        if (el) el.innerHTML = renderSubtasksList();
+    }
+
+    function refreshLinksList() {
+        var el = document.getElementById("tm-link-list");
+        if (el) el.innerHTML = renderLinksList();
     }
 
     function refreshActivityList() {
