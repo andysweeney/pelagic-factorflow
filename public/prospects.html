@@ -333,6 +333,7 @@
         <button class="tab-btn active" data-tab="upload">Upload</button>
         <button class="tab-btn" data-tab="pipeline">Pipeline</button>
         <button class="tab-btn" data-tab="uploads-history">Upload History</button>
+        <button class="tab-btn" data-tab="tasks">Tasks</button>
     </div>
 
     <!-- ── UPLOAD TAB ── -->
@@ -573,6 +574,11 @@
                 </table>
             </div>
         </div>
+    </div>
+
+    <!-- ── TASKS TAB ── -->
+    <div id="tab-tasks" class="tab-content hidden">
+        <div id="tasks-mount"></div>
     </div>
 
 </div>
@@ -849,6 +855,14 @@ function setupTabs() {
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'pipeline') renderPipeline();
             if (tab === 'uploads-history') renderUploadsHistory();
+            if (tab === 'tasks') {
+                if (!window.__tasksMounted) {
+                    window.Tasks.mount('#tasks-mount');
+                    window.__tasksMounted = true;
+                } else {
+                    window.Tasks.refresh();
+                }
+            }
         });
     });
 }
@@ -3919,6 +3933,873 @@ function clearUpload() {
     document.getElementById('cnUploadCol').classList.remove('hidden');
     document.getElementById('processBtn').disabled = true;
 }
+
+// ================================================================
+// TASKS MODULE (embedded)
+// ================================================================
+// ============================================================================
+// Tasks Module — embedded in Prospects.html
+// Conventions: var/function only. No let/const/arrow functions.
+// Uses window.sbClient (the existing Supabase client var in Prospects).
+// Inherits theme via existing Prospects CSS variables (--bg, --card, etc.).
+// ============================================================================
+
+(function () {
+    "use strict";
+
+    window.Tasks = window.Tasks || {};
+
+    // -----------------------------------------------------------------------
+    // Config
+    // -----------------------------------------------------------------------
+    var PAGE_SIZE = 50;
+    var BUCKET = "task-attachments";
+
+    var STATUS_LABELS = { todo: "To do", doing: "In progress", done: "Done" };
+    var STATUS_COLOURS = {
+        todo:  { bg: "rgba(148,163,184,0.15)", fg: "var(--text-secondary)", dot: "var(--muted)" },
+        doing: { bg: "rgba(245,158,11,0.15)",  fg: "var(--warning)",         dot: "var(--warning)" },
+        done:  { bg: "rgba(16,185,129,0.15)",  fg: "var(--success)",         dot: "var(--success)" }
+    };
+    var PRIORITY_COLOURS = {
+        low:    "var(--muted)",
+        normal: "var(--text-secondary)",
+        high:   "var(--danger)"
+    };
+
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+    var tmState = {
+        container:   null,
+        tasks:       [],
+        totalCount:  0,
+        page:        0,
+        members:     [],
+        projects:    [],
+        filters:     { status: "all", assignee: "all", project: "all", search: "" },
+        selectedId:  null,
+        activity:    [],
+        attachments: []
+    };
+
+    function sb() {
+        if (!window.sbClient) {
+            throw new Error("Tasks module: window.sbClient not initialised. Tab opened before Supabase connected?");
+        }
+        return window.sbClient;
+    }
+
+    // -----------------------------------------------------------------------
+    // Data loaders
+    // -----------------------------------------------------------------------
+    function loadMembers(cb) {
+        sb().from("task_team_members")
+            .select("id,name,email,colour")
+            .eq("active", true)
+            .order("name", { ascending: true })
+            .then(function (r) {
+                tmState.members = r.data || [];
+                if (cb) cb();
+            });
+    }
+
+    function loadProjects(cb) {
+        sb().from("task_projects")
+            .select("id,name,colour")
+            .eq("archived", false)
+            .order("name", { ascending: true })
+            .then(function (r) {
+                tmState.projects = r.data || [];
+                if (cb) cb();
+            });
+    }
+
+    function loadTasks(cb) {
+        var f = tmState.filters;
+        var from = tmState.page * PAGE_SIZE;
+        var to = from + PAGE_SIZE - 1;
+
+        var q = sb().from("tasks")
+                    .select("id,title,status,priority,due_date,assignee_id,project_id,updated_at",
+                            { count: "exact" })
+                    .order("updated_at", { ascending: false })
+                    .range(from, to);
+
+        if (f.status   !== "all") q = q.eq("status", f.status);
+        if (f.assignee !== "all") q = q.eq("assignee_id", f.assignee);
+        if (f.project  !== "all") q = q.eq("project_id", f.project);
+        if (f.search) {
+            q = q.or("title.ilike.%" + f.search + "%,description.ilike.%" + f.search + "%");
+        }
+
+        q.then(function (r) {
+            tmState.tasks      = r.data || [];
+            tmState.totalCount = r.count || 0;
+            if (cb) cb();
+        });
+    }
+
+    function loadTaskDetail(taskId, cb) {
+        var done = 0;
+        function step() { done++; if (done === 3 && cb) cb(); }
+
+        sb().from("tasks").select("*").eq("id", taskId).single()
+            .then(function (r) {
+                if (r.data) {
+                    for (var i = 0; i < tmState.tasks.length; i++) {
+                        if (tmState.tasks[i].id === taskId) {
+                            tmState.tasks[i] = Object.assign({}, tmState.tasks[i], r.data);
+                            break;
+                        }
+                    }
+                }
+                step();
+            });
+
+        sb().from("task_activity")
+            .select("id,kind,author_id,body,meta,created_at")
+            .eq("task_id", taskId)
+            .order("created_at", { ascending: false })
+            .then(function (r) { tmState.activity = r.data || []; step(); });
+
+        sb().from("task_attachments")
+            .select("id,filename,storage_path,mime_type,size_bytes,uploaded_by_id,created_at")
+            .eq("task_id", taskId)
+            .order("created_at", { ascending: false })
+            .then(function (r) { tmState.attachments = r.data || []; step(); });
+    }
+
+    // -----------------------------------------------------------------------
+    // Mutations
+    // -----------------------------------------------------------------------
+    function createTask(payload, cb) {
+        sb().from("tasks").insert(payload).select().single()
+            .then(function (r) {
+                if (r.data) {
+                    sb().from("task_activity").insert({
+                        task_id: r.data.id,
+                        kind: "created",
+                        author_id: payload.assignee_id || null,
+                        body: "Task created"
+                    }).then(function () { if (cb) cb(r.data); });
+                } else if (cb) {
+                    cb(null);
+                }
+            });
+    }
+
+    function updateTaskField(taskId, field, value, authorId, cb) {
+        var prev = findTask(taskId);
+        var patch = {};
+        patch[field] = value;
+
+        sb().from("tasks").update(patch).eq("id", taskId).select().single()
+            .then(function (r) {
+                if (!r.data) { if (cb) cb(null); return; }
+                var kind = field === "status" ? "status_change"
+                         : field === "assignee_id" ? "assignee_change"
+                         : field === "due_date" ? "due_date_change"
+                         : null;
+                if (kind) {
+                    var meta = { from: prev ? prev[field] : null, to: value };
+                    var body = humanFieldChange(field, meta.from, meta.to);
+                    sb().from("task_activity").insert({
+                        task_id: taskId,
+                        kind: kind,
+                        author_id: authorId || null,
+                        body: body,
+                        meta: meta
+                    }).then(function () { if (cb) cb(r.data); });
+                } else if (cb) {
+                    cb(r.data);
+                }
+            });
+    }
+
+    function addComment(taskId, body, authorId, cb) {
+        sb().from("task_activity").insert({
+            task_id: taskId,
+            kind: "comment",
+            author_id: authorId || null,
+            body: body
+        }).select().single()
+          .then(function (r) { if (cb) cb(r.data); });
+    }
+
+    function deleteTask(taskId, cb) {
+        sb().from("tasks").delete().eq("id", taskId)
+            .then(function () { if (cb) cb(); });
+    }
+
+    // -----------------------------------------------------------------------
+    // Attachments
+    // -----------------------------------------------------------------------
+    function uploadAttachment(taskId, file, uploadedById, cb) {
+        var path = taskId + "/" + Date.now() + "-" + safeFilename(file.name);
+        sb().storage.from(BUCKET).upload(path, file, { upsert: false })
+            .then(function (up) {
+                if (up.error) { if (cb) cb(null, up.error); return; }
+                sb().from("task_attachments").insert({
+                    task_id: taskId,
+                    filename: file.name,
+                    storage_path: path,
+                    mime_type: file.type || null,
+                    size_bytes: file.size || null,
+                    uploaded_by_id: uploadedById || null
+                }).select().single().then(function (r) {
+                    sb().from("task_activity").insert({
+                        task_id: taskId,
+                        kind: "attachment_added",
+                        author_id: uploadedById || null,
+                        body: "Added attachment: " + file.name
+                    }).then(function () { if (cb) cb(r.data, null); });
+                });
+            });
+    }
+
+    function getAttachmentUrl(storagePath, cb) {
+        sb().storage.from(BUCKET).createSignedUrl(storagePath, 60 * 10)
+            .then(function (r) { if (cb) cb(r.data ? r.data.signedUrl : null); });
+    }
+
+    function deleteAttachment(att, cb) {
+        sb().storage.from(BUCKET).remove([att.storage_path])
+            .then(function () {
+                sb().from("task_attachments").delete().eq("id", att.id)
+                    .then(function () { if (cb) cb(); });
+            });
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+    function findTask(id) {
+        for (var i = 0; i < tmState.tasks.length; i++) {
+            if (tmState.tasks[i].id === id) return tmState.tasks[i];
+        }
+        return null;
+    }
+    function findMember(id) {
+        if (!id) return null;
+        for (var i = 0; i < tmState.members.length; i++) {
+            if (tmState.members[i].id === id) return tmState.members[i];
+        }
+        return null;
+    }
+    function findProject(id) {
+        if (!id) return null;
+        for (var i = 0; i < tmState.projects.length; i++) {
+            if (tmState.projects[i].id === id) return tmState.projects[i];
+        }
+        return null;
+    }
+    function safeFilename(s) {
+        return String(s).replace(/[^a-zA-Z0-9._-]/g, "_");
+    }
+    function fmtDate(d) {
+        if (!d) return "";
+        var dt = new Date(d);
+        if (isNaN(dt.getTime())) return "";
+        return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
+    function fmtDateTime(d) {
+        if (!d) return "";
+        var dt = new Date(d);
+        return dt.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+    }
+    function fmtBytes(n) {
+        if (!n) return "";
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+    function isOverdue(d, status) {
+        if (!d || status === "done") return false;
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        return new Date(d) < today;
+    }
+    function humanFieldChange(field, from, to) {
+        if (field === "status") {
+            return "Status: " + (STATUS_LABELS[from] || from || "—") + " → " + (STATUS_LABELS[to] || to);
+        }
+        if (field === "assignee_id") {
+            var f = findMember(from); var t = findMember(to);
+            return "Assignee: " + (f ? f.name : "Unassigned") + " → " + (t ? t.name : "Unassigned");
+        }
+        if (field === "due_date") {
+            return "Due date: " + (from ? fmtDate(from) : "—") + " → " + (to ? fmtDate(to) : "—");
+        }
+        return field + " changed";
+    }
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return "";
+        return String(s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    // -----------------------------------------------------------------------
+    // Styles — namespaced .tm-*, themed via existing CSS vars
+    // -----------------------------------------------------------------------
+    function injectStyles() {
+        if (document.getElementById("tasks-module-styles")) return;
+        var css = ""
+            + ".tm-root { font-family: var(--font); color: var(--text); }"
+            + ".tm-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 14px 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }"
+            + ".tm-toolbar input, .tm-toolbar select { font-family: var(--font); font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); outline: none; }"
+            + ".tm-toolbar input:focus, .tm-toolbar select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }"
+            + ".tm-btn { font-family: var(--font); font-size: 13px; padding: 8px 14px; border-radius: 6px; border: 1px solid transparent; cursor: pointer; font-weight: 600; transition: all 0.15s; }"
+            + ".tm-btn-primary { background: var(--accent); color: #fff; }"
+            + ".tm-btn-primary:hover { background: var(--accent-hover); }"
+            + ".tm-btn-secondary { background: var(--bg); color: var(--text); border-color: var(--border); }"
+            + ".tm-btn-secondary:hover { background: var(--card-hover); }"
+            + ".tm-btn-danger { background: transparent; color: var(--danger); border-color: rgba(239,68,68,0.4); }"
+            + ".tm-btn-danger:hover { background: rgba(239,68,68,0.1); }"
+            + ".tm-search { flex: 1; min-width: 180px; }"
+            + ".tm-spacer { flex: 1; }"
+            + ".tm-table-wrap { background: var(--card); border-left: 1px solid var(--border); border-right: 1px solid var(--border); }"
+            + ".tm-table { width: 100%; border-collapse: collapse; font-size: 13px; }"
+            + ".tm-table th { text-align: left; padding: 12px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); font-weight: 700; border-bottom: 1px solid var(--border); background: var(--card); }"
+            + ".tm-table td { padding: 14px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }"
+            + ".tm-table tbody tr { cursor: pointer; transition: background 0.15s; }"
+            + ".tm-table tbody tr:hover { background: var(--card-hover); }"
+            + ".tm-table tbody tr.tm-selected { background: rgba(14,165,233,0.1); }"
+            + ".tm-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }"
+            + ".tm-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }"
+            + ".tm-avatar { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 11px; font-weight: 700; color: #fff; font-family: var(--font); }"
+            + ".tm-overdue { color: var(--danger); font-weight: 600; }"
+            + ".tm-priority-high { color: var(--danger); font-weight: 600; }"
+            + ".tm-empty { padding: 80px 20px; text-align: center; color: var(--muted); background: var(--card); }"
+            + ".tm-empty .tm-empty-title { font-size: 14px; color: var(--text-secondary); font-weight: 600; margin-bottom: 4px; }"
+            + ".tm-pagination { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; font-size: 12px; color: var(--text-secondary); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); background: var(--card); }"
+            + ".tm-pagination button { font-family: var(--font); padding: 6px 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 6px; cursor: pointer; font-size: 12px; }"
+            + ".tm-pagination button:hover:not(:disabled) { background: var(--card-hover); }"
+            + ".tm-pagination button:disabled { color: var(--muted); cursor: default; opacity: 0.5; }"
+            + ".tm-panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998; }"
+            + ".tm-panel { position: fixed; top: 0; right: 0; width: min(560px, 100vw); height: 100vh; background: var(--card); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,0.4); z-index: 9999; display: flex; flex-direction: column; }"
+            + ".tm-panel-header { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }"
+            + ".tm-panel-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--text); }"
+            + ".tm-panel-body { flex: 1; overflow-y: auto; padding: 20px 22px; }"
+            + ".tm-panel-section { margin-bottom: 24px; }"
+            + ".tm-panel-section h4 { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); font-weight: 700; }"
+            + ".tm-field-grid { display: grid; grid-template-columns: 110px 1fr; gap: 12px 14px; align-items: center; font-size: 13px; }"
+            + ".tm-field-grid label { color: var(--text-secondary); font-size: 12px; }"
+            + ".tm-field-grid select, .tm-field-grid input { font-family: var(--font); font-size: 13px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }"
+            + ".tm-textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-family: var(--font); font-size: 13px; resize: vertical; box-sizing: border-box; background: var(--bg); color: var(--text); }"
+            + ".tm-textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }"
+            + ".tm-activity-item { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); }"
+            + ".tm-activity-item:last-child { border-bottom: none; }"
+            + ".tm-activity-meta { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: var(--mono); }"
+            + ".tm-activity-system { color: var(--text-secondary); font-style: italic; }"
+            + ".tm-attachment-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }"
+            + ".tm-attachment-row:last-child { border-bottom: none; }"
+            + ".tm-attachment-name { flex: 1; color: var(--accent); cursor: pointer; }"
+            + ".tm-attachment-name:hover { text-decoration: underline; }"
+            + ".tm-attachment-size { color: var(--muted); font-size: 11px; font-family: var(--mono); }"
+            + ".tm-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; }"
+            + ".tm-modal { background: var(--card); border: 1px solid var(--border); border-radius: 10px; width: min(480px, 92vw); padding: 24px; box-shadow: 0 18px 40px rgba(0,0,0,0.4); }"
+            + ".tm-modal h3 { margin: 0 0 16px; font-size: 16px; font-weight: 700; color: var(--text); }"
+            + ".tm-modal input, .tm-modal select, .tm-modal textarea { font-family: var(--font); font-size: 13px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; }"
+            + ".tm-modal input:focus, .tm-modal select:focus, .tm-modal textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(14,165,233,0.18); }"
+            + ".tm-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }"
+            + ".tm-x { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--muted); line-height: 1; padding: 0 4px; }"
+            + ".tm-x:hover { color: var(--text); }";
+        var s = document.createElement("style");
+        s.id = "tasks-module-styles";
+        s.textContent = css;
+        document.head.appendChild(s);
+    }
+
+    function avatarHtml(member) {
+        if (!member) {
+            return "<span class='tm-avatar' style='background:var(--muted)' title='Unassigned'>—</span>";
+        }
+        var initials = member.name.split(" ").map(function (p) { return p[0]; }).join("").slice(0, 2).toUpperCase();
+        return "<span class='tm-avatar' style='background:" + escapeHtml(member.colour || "#0EA5E9") + "' title='" + escapeHtml(member.name) + "'>" + escapeHtml(initials) + "</span>";
+    }
+
+    function statusPillHtml(status) {
+        var c = STATUS_COLOURS[status] || STATUS_COLOURS.todo;
+        return "<span class='tm-pill' style='background:" + c.bg + ";color:" + c.fg + "'>"
+             + "<span class='tm-dot' style='background:" + c.dot + "'></span>"
+             + escapeHtml(STATUS_LABELS[status] || status)
+             + "</span>";
+    }
+
+    function render() {
+        if (!tmState.container) return;
+        tmState.container.innerHTML = renderToolbar() + renderTable() + renderPagination();
+        bindToolbar();
+        bindTable();
+        bindPagination();
+    }
+
+    function renderToolbar() {
+        var f = tmState.filters;
+        var memOpts = "<option value='all'>All assignees</option>"
+            + tmState.members.map(function (m) {
+                return "<option value='" + escapeHtml(m.id) + "'" + (f.assignee === m.id ? " selected" : "") + ">" + escapeHtml(m.name) + "</option>";
+            }).join("");
+        var projOpts = "<option value='all'>All projects</option>"
+            + tmState.projects.map(function (p) {
+                return "<option value='" + escapeHtml(p.id) + "'" + (f.project === p.id ? " selected" : "") + ">" + escapeHtml(p.name) + "</option>";
+            }).join("");
+
+        return ""
+            + "<div class='tm-toolbar'>"
+            + "  <input class='tm-search' id='tm-search' placeholder='Search tasks...' value='" + escapeHtml(f.search) + "'>"
+            + "  <select id='tm-filter-status'>"
+            + "    <option value='all'>All statuses</option>"
+            + "    <option value='todo'"  + (f.status === "todo"  ? " selected" : "") + ">To do</option>"
+            + "    <option value='doing'" + (f.status === "doing" ? " selected" : "") + ">In progress</option>"
+            + "    <option value='done'"  + (f.status === "done"  ? " selected" : "") + ">Done</option>"
+            + "  </select>"
+            + "  <select id='tm-filter-assignee'>" + memOpts + "</select>"
+            + "  <select id='tm-filter-project'>" + projOpts + "</select>"
+            + "  <div class='tm-spacer'></div>"
+            + "  <button class='tm-btn tm-btn-secondary' id='tm-new-project'>New project</button>"
+            + "  <button class='tm-btn tm-btn-primary' id='tm-new-task'>+ New task</button>"
+            + "</div>";
+    }
+
+    function renderTable() {
+        if (!tmState.tasks.length) {
+            return "<div class='tm-table-wrap'><div class='tm-empty'>"
+                 + "<div style='font-size:34px;margin-bottom:10px;'>📋</div>"
+                 + "<div class='tm-empty-title'>No tasks yet</div>"
+                 + "<div style='font-size:12px;'>Create your first task to get started.</div>"
+                 + "</div></div>";
+        }
+
+        var rows = tmState.tasks.map(function (t) {
+            var assignee = findMember(t.assignee_id);
+            var project  = findProject(t.project_id);
+            var overdue  = isOverdue(t.due_date, t.status);
+            var dueLabel = t.due_date ? fmtDate(t.due_date) : "—";
+
+            return "<tr data-id='" + escapeHtml(t.id) + "'" + (tmState.selectedId === t.id ? " class='tm-selected'" : "") + ">"
+                + "<td>" + statusPillHtml(t.status) + "</td>"
+                + "<td><div style='font-weight:500;color:var(--text);'>" + escapeHtml(t.title) + "</div></td>"
+                + "<td>" + (project
+                    ? "<span class='tm-pill' style='background:" + escapeHtml(project.colour) + "33;color:" + escapeHtml(project.colour) + "'>" + escapeHtml(project.name) + "</span>"
+                    : "<span style='color:var(--muted)'>—</span>") + "</td>"
+                + "<td>" + avatarHtml(assignee) + "</td>"
+                + "<td" + (overdue ? " class='tm-overdue'" : "") + ">" + escapeHtml(dueLabel) + "</td>"
+                + "<td" + (t.priority === "high" ? " class='tm-priority-high'" : "") + ">"
+                +   "<span style='font-size:12px;text-transform:capitalize;color:" + (PRIORITY_COLOURS[t.priority] || "var(--text-secondary)") + "'>"
+                +     escapeHtml(t.priority || "normal")
+                +   "</span>"
+                + "</td>"
+                + "</tr>";
+        }).join("");
+
+        return ""
+            + "<div class='tm-table-wrap'><table class='tm-table'>"
+            + "<thead><tr>"
+            + "<th style='width:120px'>Status</th>"
+            + "<th>Title</th>"
+            + "<th style='width:140px'>Project</th>"
+            + "<th style='width:60px'>Assignee</th>"
+            + "<th style='width:120px'>Due</th>"
+            + "<th style='width:90px'>Priority</th>"
+            + "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+    }
+
+    function renderPagination() {
+        var totalPages = Math.max(1, Math.ceil(tmState.totalCount / PAGE_SIZE));
+        var fromN = tmState.totalCount === 0 ? 0 : tmState.page * PAGE_SIZE + 1;
+        var toN   = Math.min((tmState.page + 1) * PAGE_SIZE, tmState.totalCount);
+        return ""
+            + "<div class='tm-pagination'>"
+            + "  <span>" + fromN + "–" + toN + " of " + tmState.totalCount + "</span>"
+            + "  <div style='display:flex;gap:8px;align-items:center;'>"
+            + "    <button id='tm-prev'" + (tmState.page === 0 ? " disabled" : "") + ">← Prev</button>"
+            + "    <span style='font-family:var(--mono);'>Page " + (tmState.page + 1) + " of " + totalPages + "</span>"
+            + "    <button id='tm-next'" + (tmState.page >= totalPages - 1 ? " disabled" : "") + ">Next →</button>"
+            + "  </div>"
+            + "</div>";
+    }
+
+    // -----------------------------------------------------------------------
+    // Event binding
+    // -----------------------------------------------------------------------
+    var searchTimer = null;
+    function bindToolbar() {
+        var $search   = document.getElementById("tm-search");
+        var $status   = document.getElementById("tm-filter-status");
+        var $assignee = document.getElementById("tm-filter-assignee");
+        var $project  = document.getElementById("tm-filter-project");
+        var $newTask  = document.getElementById("tm-new-task");
+        var $newProj  = document.getElementById("tm-new-project");
+
+        $search.addEventListener("input", function (e) {
+            if (searchTimer) clearTimeout(searchTimer);
+            var v = e.target.value;
+            searchTimer = setTimeout(function () {
+                tmState.filters.search = v;
+                tmState.page = 0;
+                loadTasks(render);
+            }, 250);
+        });
+        $status.addEventListener("change",   function (e) { tmState.filters.status   = e.target.value; tmState.page = 0; loadTasks(render); });
+        $assignee.addEventListener("change", function (e) { tmState.filters.assignee = e.target.value; tmState.page = 0; loadTasks(render); });
+        $project.addEventListener("change",  function (e) { tmState.filters.project  = e.target.value; tmState.page = 0; loadTasks(render); });
+        $newTask.addEventListener("click", openNewTaskModal);
+        $newProj.addEventListener("click", openNewProjectModal);
+    }
+
+    function bindTable() {
+        var rows = tmState.container.querySelectorAll(".tm-table tbody tr");
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].addEventListener("click", function (e) {
+                var id = e.currentTarget.getAttribute("data-id");
+                tmState.selectedId = id;
+                loadTaskDetail(id, openDetailPanel);
+            });
+        }
+    }
+
+    function bindPagination() {
+        var $prev = document.getElementById("tm-prev");
+        var $next = document.getElementById("tm-next");
+        if ($prev) $prev.addEventListener("click", function () {
+            if (tmState.page > 0) { tmState.page--; loadTasks(render); }
+        });
+        if ($next) $next.addEventListener("click", function () {
+            var totalPages = Math.ceil(tmState.totalCount / PAGE_SIZE);
+            if (tmState.page < totalPages - 1) { tmState.page++; loadTasks(render); }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Modals
+    // -----------------------------------------------------------------------
+    function openNewTaskModal() {
+        var memOpts = "<option value=''>Unassigned</option>"
+            + tmState.members.map(function (m) { return "<option value='" + escapeHtml(m.id) + "'>" + escapeHtml(m.name) + "</option>"; }).join("");
+        var projOpts = "<option value=''>No project</option>"
+            + tmState.projects.map(function (p) { return "<option value='" + escapeHtml(p.id) + "'>" + escapeHtml(p.name) + "</option>"; }).join("");
+
+        var html = ""
+            + "<div class='tm-modal-overlay' id='tm-modal-overlay'>"
+            + "  <div class='tm-modal'>"
+            + "    <h3>New task</h3>"
+            + "    <div style='display:grid;gap:10px'>"
+            + "      <input id='tm-nt-title' placeholder='Task title'>"
+            + "      <textarea class='tm-textarea' id='tm-nt-desc' placeholder='Description (optional)'></textarea>"
+            + "      <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>"
+            + "        <select id='tm-nt-assignee'>" + memOpts + "</select>"
+            + "        <select id='tm-nt-project'>" + projOpts + "</select>"
+            + "      </div>"
+            + "      <div style='display:grid;grid-template-columns:1fr 1fr;gap:8px'>"
+            + "        <input type='date' id='tm-nt-due'>"
+            + "        <select id='tm-nt-priority'>"
+            + "          <option value='low'>Low priority</option>"
+            + "          <option value='normal' selected>Normal priority</option>"
+            + "          <option value='high'>High priority</option>"
+            + "        </select>"
+            + "      </div>"
+            + "    </div>"
+            + "    <div class='tm-modal-actions'>"
+            + "      <button class='tm-btn tm-btn-secondary' id='tm-nt-cancel'>Cancel</button>"
+            + "      <button class='tm-btn tm-btn-primary' id='tm-nt-save'>Create task</button>"
+            + "    </div>"
+            + "  </div>"
+            + "</div>";
+
+        var wrap = document.createElement("div");
+        wrap.innerHTML = html;
+        document.body.appendChild(wrap);
+
+        document.getElementById("tm-nt-cancel").addEventListener("click", function () { wrap.remove(); });
+        document.getElementById("tm-modal-overlay").addEventListener("click", function (e) {
+            if (e.target.id === "tm-modal-overlay") wrap.remove();
+        });
+        document.getElementById("tm-nt-save").addEventListener("click", function () {
+            var title = document.getElementById("tm-nt-title").value.trim();
+            if (!title) { alert("Title required"); return; }
+            var payload = {
+                title: title,
+                description: document.getElementById("tm-nt-desc").value.trim() || null,
+                assignee_id: document.getElementById("tm-nt-assignee").value || null,
+                project_id: document.getElementById("tm-nt-project").value || null,
+                due_date: document.getElementById("tm-nt-due").value || null,
+                priority: document.getElementById("tm-nt-priority").value,
+                status: "todo"
+            };
+            createTask(payload, function () { wrap.remove(); loadTasks(render); });
+        });
+        document.getElementById("tm-nt-title").focus();
+    }
+
+    function openNewProjectModal() {
+        var html = ""
+            + "<div class='tm-modal-overlay' id='tm-modal-overlay-p'>"
+            + "  <div class='tm-modal'>"
+            + "    <h3>New project</h3>"
+            + "    <div style='display:grid;gap:10px'>"
+            + "      <input id='tm-np-name' placeholder='Project name'>"
+            + "      <input type='color' id='tm-np-colour' value='#0EA5E9' style='width:60px;height:36px;padding:2px;cursor:pointer'>"
+            + "    </div>"
+            + "    <div class='tm-modal-actions'>"
+            + "      <button class='tm-btn tm-btn-secondary' id='tm-np-cancel'>Cancel</button>"
+            + "      <button class='tm-btn tm-btn-primary' id='tm-np-save'>Create project</button>"
+            + "    </div>"
+            + "  </div>"
+            + "</div>";
+
+        var wrap = document.createElement("div");
+        wrap.innerHTML = html;
+        document.body.appendChild(wrap);
+
+        document.getElementById("tm-np-cancel").addEventListener("click", function () { wrap.remove(); });
+        document.getElementById("tm-modal-overlay-p").addEventListener("click", function (e) {
+            if (e.target.id === "tm-modal-overlay-p") wrap.remove();
+        });
+        document.getElementById("tm-np-save").addEventListener("click", function () {
+            var name = document.getElementById("tm-np-name").value.trim();
+            if (!name) return;
+            var colour = document.getElementById("tm-np-colour").value;
+            sb().from("task_projects").insert({ name: name, colour: colour }).select().single()
+                .then(function () {
+                    wrap.remove();
+                    loadProjects(function () { render(); });
+                });
+        });
+        document.getElementById("tm-np-name").focus();
+    }
+
+    // -----------------------------------------------------------------------
+    // Detail panel
+    // -----------------------------------------------------------------------
+    function openDetailPanel() {
+        var t = findTask(tmState.selectedId);
+        if (!t) return;
+        closeDetailPanel();
+
+        var memOpts = "<option value=''>Unassigned</option>"
+            + tmState.members.map(function (m) {
+                return "<option value='" + escapeHtml(m.id) + "'" + (t.assignee_id === m.id ? " selected" : "") + ">" + escapeHtml(m.name) + "</option>";
+            }).join("");
+        var projOpts = "<option value=''>No project</option>"
+            + tmState.projects.map(function (p) {
+                return "<option value='" + escapeHtml(p.id) + "'" + (t.project_id === p.id ? " selected" : "") + ">" + escapeHtml(p.name) + "</option>";
+            }).join("");
+        var statusOpts = ["todo", "doing", "done"].map(function (s) {
+            return "<option value='" + s + "'" + (t.status === s ? " selected" : "") + ">" + STATUS_LABELS[s] + "</option>";
+        }).join("");
+        var prioOpts = ["low", "normal", "high"].map(function (p) {
+            return "<option value='" + p + "'" + ((t.priority || "normal") === p ? " selected" : "") + ">" + p.charAt(0).toUpperCase() + p.slice(1) + "</option>";
+        }).join("");
+
+        var attHtml = tmState.attachments.map(function (a) {
+            return "<div class='tm-attachment-row' data-att-id='" + escapeHtml(a.id) + "'>"
+                + "<span style='font-size:18px'>📎</span>"
+                + "<span class='tm-attachment-name' data-path='" + escapeHtml(a.storage_path) + "'>" + escapeHtml(a.filename) + "</span>"
+                + "<span class='tm-attachment-size'>" + escapeHtml(fmtBytes(a.size_bytes)) + "</span>"
+                + "<button class='tm-x' data-del-att='" + escapeHtml(a.id) + "' title='Delete'>×</button>"
+                + "</div>";
+        }).join("") || "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No attachments yet.</div>";
+
+        var actHtml = tmState.activity.map(function (a) {
+            var who = findMember(a.author_id);
+            var whoLabel = who ? who.name : "System";
+            var isComment = a.kind === "comment";
+            return "<div class='tm-activity-item" + (isComment ? "" : " tm-activity-system") + "'>"
+                + (isComment
+                    ? "<div><strong style='color:var(--text)'>" + escapeHtml(whoLabel) + "</strong>: " + escapeHtml(a.body || "") + "</div>"
+                    : "<div>" + escapeHtml(a.body || "") + "</div>")
+                + "<div class='tm-activity-meta'>" + escapeHtml(fmtDateTime(a.created_at)) + "</div>"
+                + "</div>";
+        }).join("") || "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No activity yet.</div>";
+
+        var html = ""
+            + "<div class='tm-panel-overlay' id='tm-panel-overlay'></div>"
+            + "<aside class='tm-panel' id='tm-panel'>"
+            + "  <div class='tm-panel-header'>"
+            + "    <div class='tm-panel-title'>" + escapeHtml(t.title) + "</div>"
+            + "    <button class='tm-btn tm-btn-danger' id='tm-panel-delete'>Delete</button>"
+            + "    <button class='tm-x' id='tm-panel-close'>×</button>"
+            + "  </div>"
+            + "  <div class='tm-panel-body'>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Details</h4>"
+            + "      <div class='tm-field-grid'>"
+            + "        <label>Status</label>    <select id='tm-d-status'>" + statusOpts + "</select>"
+            + "        <label>Assignee</label>  <select id='tm-d-assignee'>" + memOpts + "</select>"
+            + "        <label>Project</label>   <select id='tm-d-project'>" + projOpts + "</select>"
+            + "        <label>Due date</label>  <input type='date' id='tm-d-due' value='" + escapeHtml(t.due_date || "") + "'>"
+            + "        <label>Priority</label>  <select id='tm-d-priority'>" + prioOpts + "</select>"
+            + "      </div>"
+            + "    </div>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Description</h4>"
+            + "      <textarea class='tm-textarea' id='tm-d-desc'>" + escapeHtml(t.description || "") + "</textarea>"
+            + "      <div style='margin-top:8px;text-align:right'>"
+            + "        <button class='tm-btn tm-btn-secondary' id='tm-d-desc-save'>Save description</button>"
+            + "      </div>"
+            + "    </div>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Attachments</h4>"
+            + "      <input type='file' id='tm-d-file' style='font-size:12px;margin-bottom:10px;color:var(--text-secondary)'>"
+            + "      <div id='tm-att-list'>" + attHtml + "</div>"
+            + "    </div>"
+            + "    <div class='tm-panel-section'>"
+            + "      <h4>Activity & comments</h4>"
+            + "      <textarea class='tm-textarea' id='tm-d-comment' placeholder='Add a comment...' style='min-height:60px'></textarea>"
+            + "      <div style='margin:8px 0 16px;text-align:right'>"
+            + "        <button class='tm-btn tm-btn-primary' id='tm-d-comment-add'>Comment</button>"
+            + "      </div>"
+            + "      <div id='tm-act-list'>" + actHtml + "</div>"
+            + "    </div>"
+            + "  </div>"
+            + "</aside>";
+
+        var wrap = document.createElement("div");
+        wrap.id = "tm-panel-wrap";
+        wrap.innerHTML = html;
+        document.body.appendChild(wrap);
+
+        document.getElementById("tm-panel-overlay").addEventListener("click", closeDetailPanel);
+        document.getElementById("tm-panel-close").addEventListener("click", closeDetailPanel);
+
+        document.getElementById("tm-d-status").addEventListener("change", function (e) {
+            updateTaskField(t.id, "status", e.target.value, null, function () {
+                loadTasks(function () { loadTaskDetail(t.id, function () { refreshActivityList(); render(); }); });
+            });
+        });
+        document.getElementById("tm-d-assignee").addEventListener("change", function (e) {
+            updateTaskField(t.id, "assignee_id", e.target.value || null, null, function () {
+                loadTasks(function () { loadTaskDetail(t.id, refreshActivityList); render(); });
+            });
+        });
+        document.getElementById("tm-d-project").addEventListener("change", function (e) {
+            sb().from("tasks").update({ project_id: e.target.value || null }).eq("id", t.id)
+                .then(function () { loadTasks(render); });
+        });
+        document.getElementById("tm-d-due").addEventListener("change", function (e) {
+            updateTaskField(t.id, "due_date", e.target.value || null, null, function () {
+                loadTasks(function () { loadTaskDetail(t.id, refreshActivityList); render(); });
+            });
+        });
+        document.getElementById("tm-d-priority").addEventListener("change", function (e) {
+            sb().from("tasks").update({ priority: e.target.value }).eq("id", t.id)
+                .then(function () { loadTasks(render); });
+        });
+
+        document.getElementById("tm-d-desc-save").addEventListener("click", function () {
+            var v = document.getElementById("tm-d-desc").value;
+            sb().from("tasks").update({ description: v }).eq("id", t.id)
+                .then(function () { /* silent */ });
+        });
+
+        document.getElementById("tm-d-comment-add").addEventListener("click", function () {
+            var v = document.getElementById("tm-d-comment").value.trim();
+            if (!v) return;
+            addComment(t.id, v, null, function () {
+                document.getElementById("tm-d-comment").value = "";
+                loadTaskDetail(t.id, refreshActivityList);
+            });
+        });
+
+        document.getElementById("tm-d-file").addEventListener("change", function (e) {
+            var f = e.target.files && e.target.files[0];
+            if (!f) return;
+            uploadAttachment(t.id, f, null, function (att, err) {
+                if (err) { alert("Upload failed: " + (err.message || err)); return; }
+                e.target.value = "";
+                loadTaskDetail(t.id, refreshAttachmentsAndActivity);
+            });
+        });
+
+        document.getElementById("tm-att-list").addEventListener("click", function (e) {
+            var path = e.target.getAttribute && e.target.getAttribute("data-path");
+            var del  = e.target.getAttribute && e.target.getAttribute("data-del-att");
+            if (path) {
+                getAttachmentUrl(path, function (url) { if (url) window.open(url, "_blank"); });
+            } else if (del) {
+                if (!confirm("Delete this attachment?")) return;
+                var att = null;
+                for (var i = 0; i < tmState.attachments.length; i++) {
+                    if (tmState.attachments[i].id === del) { att = tmState.attachments[i]; break; }
+                }
+                if (att) deleteAttachment(att, function () { loadTaskDetail(t.id, refreshAttachmentsAndActivity); });
+            }
+        });
+
+        document.getElementById("tm-panel-delete").addEventListener("click", function () {
+            if (!confirm("Delete this task? This cannot be undone.")) return;
+            deleteTask(t.id, function () { closeDetailPanel(); loadTasks(render); });
+        });
+    }
+
+    function refreshActivityList() {
+        var el = document.getElementById("tm-act-list");
+        if (!el) return;
+        var actHtml = tmState.activity.map(function (a) {
+            var who = findMember(a.author_id);
+            var whoLabel = who ? who.name : "System";
+            var isComment = a.kind === "comment";
+            return "<div class='tm-activity-item" + (isComment ? "" : " tm-activity-system") + "'>"
+                + (isComment
+                    ? "<div><strong style='color:var(--text)'>" + escapeHtml(whoLabel) + "</strong>: " + escapeHtml(a.body || "") + "</div>"
+                    : "<div>" + escapeHtml(a.body || "") + "</div>")
+                + "<div class='tm-activity-meta'>" + escapeHtml(fmtDateTime(a.created_at)) + "</div>"
+                + "</div>";
+        }).join("") || "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No activity yet.</div>";
+        el.innerHTML = actHtml;
+    }
+
+    function refreshAttachmentsAndActivity() {
+        var el = document.getElementById("tm-att-list");
+        if (el) {
+            var attHtml = tmState.attachments.map(function (a) {
+                return "<div class='tm-attachment-row' data-att-id='" + escapeHtml(a.id) + "'>"
+                    + "<span style='font-size:18px'>📎</span>"
+                    + "<span class='tm-attachment-name' data-path='" + escapeHtml(a.storage_path) + "'>" + escapeHtml(a.filename) + "</span>"
+                    + "<span class='tm-attachment-size'>" + escapeHtml(fmtBytes(a.size_bytes)) + "</span>"
+                    + "<button class='tm-x' data-del-att='" + escapeHtml(a.id) + "' title='Delete'>×</button>"
+                    + "</div>";
+            }).join("") || "<div style='color:var(--muted);font-size:12px;padding:6px 0'>No attachments yet.</div>";
+            el.innerHTML = attHtml;
+        }
+        refreshActivityList();
+    }
+
+    function closeDetailPanel() {
+        var w = document.getElementById("tm-panel-wrap");
+        if (w) w.remove();
+        tmState.selectedId = null;
+        var rows = tmState.container ? tmState.container.querySelectorAll(".tm-table tbody tr") : [];
+        for (var i = 0; i < rows.length; i++) rows[i].classList.remove("tm-selected");
+    }
+
+    // -----------------------------------------------------------------------
+    // Public API
+    // -----------------------------------------------------------------------
+    window.Tasks.mount = function (container) {
+        if (typeof container === "string") container = document.querySelector(container);
+        if (!container) throw new Error("Tasks.mount: container not found");
+        tmState.container = container;
+        container.classList.add("tm-root");
+        injectStyles();
+        var loaded = 0;
+        function step() { loaded++; if (loaded === 2) loadTasks(render); }
+        loadMembers(step);
+        loadProjects(step);
+    };
+
+    window.Tasks.unmount = function () {
+        closeDetailPanel();
+        if (tmState.container) tmState.container.innerHTML = "";
+        tmState.container = null;
+    };
+
+    window.Tasks.refresh = function () { loadTasks(render); };
+
+})();
+
 
 // ================================================================
 // BOOT
