@@ -4129,6 +4129,12 @@ function clearUpload() {
                     c.hasChildren = true;
                     if (rows[j].status === "done") c.done++;
                 }
+                // Diagnostic: log how many of the queried parents have children
+                var withChildren = 0;
+                for (var k = 0; k < taskIds.length; k++) {
+                    if (tmState.subCountsByTask[taskIds[k]] && tmState.subCountsByTask[taskIds[k]].hasChildren) withChildren++;
+                }
+                console.log("[Tasks] loadSubtaskCounts: queried " + taskIds.length + " parents, " + withChildren + " have children, " + rows.length + " child rows total");
                 if (cb) cb();
             });
     }
@@ -4733,11 +4739,15 @@ function clearUpload() {
             var hasChildren = counts && counts.hasChildren;
             var isExpanded  = !!tmState.expanded[t.id];
 
-            // Chevron cell — always present so columns line up; only renders a real chevron if hasChildren
-            var chevron = hasChildren
-                ? ("<span data-chevron='" + escapeHtml(t.id) + "' style='cursor:pointer;display:inline-block;width:16px;text-align:center;color:var(--text-secondary);user-select:none;font-family:var(--mono);' title='" + (isExpanded ? "Collapse" : "Expand") + "'>" + (isExpanded ? "▾" : "▸") + "</span>")
-                : "<span style='display:inline-block;width:16px;'></span>";
-            var indent = depth > 0 ? "<span style='display:inline-block;width:" + (depth * 18) + "px;'></span>" : "";
+            // Chevron cell — always present so columns line up; only renders a real chevron if hasChildren.
+            // Make the whole cell clickable (data-chevron on the cell itself), not just the arrow span.
+            var chevronInner = hasChildren
+                ? "<span style='display:inline-block;width:16px;text-align:center;color:var(--text-secondary);user-select:none;font-family:var(--mono);pointer-events:none;'>" + (isExpanded ? "▾" : "▸") + "</span>"
+                : "<span style='display:inline-block;width:16px;pointer-events:none;'></span>";
+            var indent = depth > 0 ? "<span style='display:inline-block;width:" + (depth * 18) + "px;pointer-events:none;'></span>" : "";
+            var chevronCell = hasChildren
+                ? "<td data-chevron='" + escapeHtml(t.id) + "' style='width:24px;padding-right:0;cursor:pointer;' title='" + (isExpanded ? "Collapse" : "Expand") + "'>" + indent + chevronInner + "</td>"
+                : "<td style='width:24px;padding-right:0;'>" + indent + chevronInner + "</td>";
 
             // Status as a styled select (looks like a pill)
             var statusOpts = ["todo", "doing", "done"].map(function (s) {
@@ -4800,7 +4810,7 @@ function clearUpload() {
 
             return "<tr data-id='" + escapeHtml(t.id) + "' data-depth='" + depth + "'"
                 + (tmState.selectedId === t.id ? " class='tm-selected'" : "") + ">"
-                + "<td style='width:24px;padding-right:0;'>" + indent + chevron + "</td>"
+                + chevronCell
                 + "<td>" + statusCell + "</td>"
                 + "<td><span data-open-id='" + escapeHtml(t.id) + "' style='font-weight:500;color:var(--text);cursor:pointer;'>" + escapeHtml(t.title) + "</span>" + subPill + "</td>"
                 + "<td>" + projectCell + "</td>"
@@ -4912,22 +4922,28 @@ function clearUpload() {
         var $table = root.querySelector(".tm-table");
         if (!$table) return;
 
-        // Chevron expand/collapse
+        // Chevron expand/collapse — the <td> itself carries data-chevron now,
+        // so use closest() to handle clicks on inner elements (the arrow span, indent span, padding).
         $table.addEventListener("click", function (e) {
-            var chev = e.target.getAttribute && e.target.getAttribute("data-chevron");
+            var cell = e.target.closest && e.target.closest("[data-chevron]");
+            if (!cell) return;
+            var chev = cell.getAttribute("data-chevron");
             if (!chev) return;
             e.stopPropagation();
+            console.log("[Tasks] chevron clicked for task", chev, "currently expanded:", !!tmState.expanded[chev]);
             if (tmState.expanded[chev]) {
-                // Collapse: just flip the flag and re-render (children stay cached)
                 delete tmState.expanded[chev];
                 render();
             } else {
-                // Expand: load children if not cached, then flip flag
                 if (tmState.childrenByParent[chev]) {
+                    console.log("[Tasks] using cached children, count:", tmState.childrenByParent[chev].length);
                     tmState.expanded[chev] = true;
                     render();
                 } else {
+                    console.log("[Tasks] loading children from server...");
                     loadChildren(chev, function () {
+                        var n = (tmState.childrenByParent[chev] || []).length;
+                        console.log("[Tasks] children loaded, count:", n);
                         tmState.expanded[chev] = true;
                         render();
                     });
@@ -4937,7 +4953,9 @@ function clearUpload() {
 
         // Title click → open detail panel
         $table.addEventListener("click", function (e) {
-            var openId = e.target.getAttribute && e.target.getAttribute("data-open-id");
+            var titleEl = e.target.closest && e.target.closest("[data-open-id]");
+            if (!titleEl) return;
+            var openId = titleEl.getAttribute("data-open-id");
             if (!openId) return;
             tmState.selectedId = openId;
             loadTaskDetail(openId, openDetailPanel);
