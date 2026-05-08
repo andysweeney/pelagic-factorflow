@@ -3977,12 +3977,16 @@ function clearUpload() {
         page:        0,
         members:     [],
         projects:    [],
-        filters:     { status: "all", assignee: "all", project: "all", search: "", showSubtasks: false },
+        filters:     { status: "all", assignee: "all", project: "all", search: "" },
         selectedId:  null,
         activity:    [],
         attachments: [],
         subtasks:    [],
-        links:       []
+        links:       [],
+        // Tree state
+        expanded:        {},  // { taskId: true } — which rows are expanded in the list
+        childrenByParent: {}, // { parentId: [task, task, ...] } — lazy-loaded children cache
+        subCountsByTask:  {}  // { taskId: {total, done, hasChildren} } — for chevrons + progress pills
     };
 
     function sb() {
@@ -4070,9 +4074,8 @@ function clearUpload() {
         if (f.status   !== "all") q = q.eq("status", f.status);
         if (f.assignee !== "all") q = q.eq("assignee_id", f.assignee);
         if (f.project  !== "all") q = q.eq("project_id", f.project);
-        // By default the top-level list hides sub-tasks (they appear under their parents).
-        // The "Show sub-tasks" toggle lets power users see everything flat.
-        if (!f.showSubtasks) q = q.is("parent_id", null);
+        // Top-level rows only — children appear under their parents via expansion.
+        q = q.is("parent_id", null);
         if (f.search) {
             q = q.or("title.ilike.%" + f.search + "%,description.ilike.%" + f.search + "%");
         }
@@ -4087,42 +4090,84 @@ function clearUpload() {
             tmState.tasks      = r.data || [];
             tmState.totalCount = r.count || 0;
 
-            // Fetch sub-task counts for the parents on this page so we can show "X/Y done" pills
-            loadSubtaskCounts(function () { if (cb) cb(); });
+            // Fetch sub-task counts for the parents on this page
+            loadSubtaskCounts(parentIdsFromTasks(tmState.tasks), function () { if (cb) cb(); });
         });
     }
 
-    // Fetches counts of children + done-children for each task currently on the page.
-    // Stamps onto tmState.tasks[i] as _subCount and _subDoneCount.
-    function loadSubtaskCounts(cb) {
-        if (!sb() || !tmState.tasks.length) { if (cb) cb(); return; }
-        var parentIds = [];
-        for (var i = 0; i < tmState.tasks.length; i++) {
-            // Only fetch counts for top-level rows; children that snuck in (from "Show sub-tasks") get nothing
-            if (!tmState.tasks[i].parent_id) parentIds.push(tmState.tasks[i].id);
-        }
-        if (!parentIds.length) { if (cb) cb(); return; }
+    function parentIdsFromTasks(tasks) {
+        var ids = [];
+        for (var i = 0; i < tasks.length; i++) ids.push(tasks[i].id);
+        return ids;
+    }
 
+    // Fetches counts of children + done-children for the given task IDs and stamps
+    // them into tmState.subCountsByTask. Used at initial render and after children load.
+    function loadSubtaskCounts(taskIds, cb) {
+        if (!sb() || !taskIds.length) { if (cb) cb(); return; }
         sb().from("tasks")
             .select("id,parent_id,status")
-            .in("parent_id", parentIds)
+            .in("parent_id", taskIds)
             .then(function (r) {
                 if (logIfError("loadSubtaskCounts", r)) { if (cb) cb(); return; }
-                var counts = {};
+                // Initialise zero-counts for the asked-about IDs so we know they were checked
+                // (rather than "we don't know if they have children")
+                for (var i = 0; i < taskIds.length; i++) {
+                    if (!tmState.subCountsByTask[taskIds[i]]) {
+                        tmState.subCountsByTask[taskIds[i]] = { total: 0, done: 0, hasChildren: false };
+                    } else {
+                        tmState.subCountsByTask[taskIds[i]].total = 0;
+                        tmState.subCountsByTask[taskIds[i]].done = 0;
+                        tmState.subCountsByTask[taskIds[i]].hasChildren = false;
+                    }
+                }
                 var rows = r.data || [];
                 for (var j = 0; j < rows.length; j++) {
                     var pid = rows[j].parent_id;
-                    if (!counts[pid]) counts[pid] = { total: 0, done: 0 };
-                    counts[pid].total++;
-                    if (rows[j].status === "done") counts[pid].done++;
-                }
-                for (var k = 0; k < tmState.tasks.length; k++) {
-                    var c = counts[tmState.tasks[k].id];
-                    tmState.tasks[k]._subCount = c ? c.total : 0;
-                    tmState.tasks[k]._subDoneCount = c ? c.done : 0;
+                    var c = tmState.subCountsByTask[pid] || (tmState.subCountsByTask[pid] = { total: 0, done: 0, hasChildren: false });
+                    c.total++;
+                    c.hasChildren = true;
+                    if (rows[j].status === "done") c.done++;
                 }
                 if (cb) cb();
             });
+    }
+
+    // Lazy-load children of a parent (called when the chevron is clicked the first time).
+    function loadChildren(parentId, cb) {
+        if (!sb()) { if (cb) cb(); return; }
+        var f = tmState.filters;
+        var q = sb().from("tasks")
+                    .select("id,title,status,priority,due_date,assignee_id,project_id,parent_id,updated_at")
+                    .eq("parent_id", parentId)
+                    .order("created_at", { ascending: true });
+        // Apply same filters as the top-level list so search/filter behave consistently
+        if (f.status   !== "all") q = q.eq("status", f.status);
+        if (f.assignee !== "all") q = q.eq("assignee_id", f.assignee);
+        if (f.project  !== "all") q = q.eq("project_id", f.project);
+        if (f.search)             q = q.or("title.ilike.%" + f.search + "%,description.ilike.%" + f.search + "%");
+
+        q.then(function (r) {
+            if (logIfError("loadChildren", r)) { if (cb) cb(); return; }
+            tmState.childrenByParent[parentId] = r.data || [];
+            // Fetch grandchild counts so chevrons appear on these too
+            loadSubtaskCounts(parentIdsFromTasks(r.data || []), function () { if (cb) cb(); });
+        });
+    }
+
+    // Walk the tree (top-level + expanded descendants) and produce a flat
+    // [{task, depth}, ...] array suitable for table rendering.
+    function flattenTreeForRender() {
+        var out = [];
+        function walk(task, depth) {
+            out.push({ task: task, depth: depth });
+            if (tmState.expanded[task.id]) {
+                var kids = tmState.childrenByParent[task.id] || [];
+                for (var i = 0; i < kids.length; i++) walk(kids[i], depth + 1);
+            }
+        }
+        for (var i = 0; i < tmState.tasks.length; i++) walk(tmState.tasks[i], 0);
+        return out;
     }
 
     function loadTaskDetail(taskId, cb) {
@@ -4649,9 +4694,8 @@ function clearUpload() {
             + "  </select>"
             + "  <select id='tm-filter-assignee'>" + memOpts + "</select>"
             + "  <select id='tm-filter-project'>" + projOpts + "</select>"
-            + "  <label style='display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;user-select:none;'>"
-            + "    <input type='checkbox' id='tm-show-subtasks'" + (f.showSubtasks ? " checked" : "") + " style='cursor:pointer;'> Show sub-tasks"
-            + "  </label>"
+            + "  <button class='tm-btn tm-btn-secondary' id='tm-expand-all' title='Expand all loaded rows'>Expand all</button>"
+            + "  <button class='tm-btn tm-btn-secondary' id='tm-collapse-all' title='Collapse all rows'>Collapse all</button>"
             + "  <div class='tm-spacer'></div>"
             + "  <button class='tm-btn tm-btn-secondary' id='tm-new-project'>New project</button>"
             + "  <button class='tm-btn tm-btn-primary' id='tm-new-task'>+ New task</button>"
@@ -4667,45 +4711,115 @@ function clearUpload() {
                  + "</div></div>";
         }
 
-        var rows = tmState.tasks.map(function (t) {
+        var flat = flattenTreeForRender();
+
+        // Pre-build option lists used by every row's inline editors
+        var assigneeOptsBlank = "<option value=''>—</option>"
+            + tmState.members.map(function (m) {
+                return "<option value='" + escapeHtml(m.id) + "'>" + escapeHtml(m.name) + "</option>";
+            }).join("");
+        var projectOptsBlank = "<option value=''>—</option>"
+            + tmState.projects.map(function (p) {
+                return "<option value='" + escapeHtml(p.id) + "'>" + escapeHtml(p.name) + "</option>";
+            }).join("");
+
+        var rows = flat.map(function (item) {
+            var t = item.task;
+            var depth = item.depth;
             var assignee = findMember(t.assignee_id);
             var project  = findProject(t.project_id);
             var overdue  = isOverdue(t.due_date, t.status);
-            var dueLabel = t.due_date ? fmtDate(t.due_date) : "—";
-            var hasSubs  = (t._subCount || 0) > 0;
-            var subPill  = hasSubs
-                ? " <span style='display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--card-hover);color:var(--text-secondary);font-size:11px;font-weight:600;font-family:var(--mono);' title='Sub-task progress'>" + t._subDoneCount + "/" + t._subCount + "</span>"
-                : "";
-            // If "Show sub-tasks" is on and this row IS a child, prefix with a chevron indent
-            var childPrefix = (tmState.filters.showSubtasks && t.parent_id)
-                ? "<span style='color:var(--muted);margin-right:6px;font-family:var(--mono);' title='Sub-task'>↳</span>"
+            var counts   = tmState.subCountsByTask[t.id];
+            var hasChildren = counts && counts.hasChildren;
+            var isExpanded  = !!tmState.expanded[t.id];
+
+            // Chevron cell — always present so columns line up; only renders a real chevron if hasChildren
+            var chevron = hasChildren
+                ? ("<span data-chevron='" + escapeHtml(t.id) + "' style='cursor:pointer;display:inline-block;width:16px;text-align:center;color:var(--text-secondary);user-select:none;font-family:var(--mono);' title='" + (isExpanded ? "Collapse" : "Expand") + "'>" + (isExpanded ? "▾" : "▸") + "</span>")
+                : "<span style='display:inline-block;width:16px;'></span>";
+            var indent = depth > 0 ? "<span style='display:inline-block;width:" + (depth * 18) + "px;'></span>" : "";
+
+            // Status as a styled select (looks like a pill)
+            var statusOpts = ["todo", "doing", "done"].map(function (s) {
+                return "<option value='" + s + "'" + (t.status === s ? " selected" : "") + ">" + STATUS_LABELS[s] + "</option>";
+            }).join("");
+            var sc = STATUS_COLOURS[t.status] || STATUS_COLOURS.todo;
+            var statusCell = "<select data-edit-status='" + escapeHtml(t.id) + "' "
+                + "style='font-family:var(--font);font-size:11px;font-weight:600;padding:3px 22px 3px 9px;border-radius:999px;border:none;cursor:pointer;background:" + sc.bg + " url(\"data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 viewBox=%270 0 10 10%27><path fill=%27%2394A3B8%27 d=%27M2 4l3 3 3-3z%27/></svg>\") no-repeat right 6px center;background-size:10px;color:" + sc.fg + ";appearance:none;-webkit-appearance:none;-moz-appearance:none;'>"
+                + statusOpts
+                + "</select>";
+
+            // Assignee inline select. Render avatar + select side-by-side; selecting changes assignee.
+            var assigneeOpts = "<option value=''>—</option>"
+                + tmState.members.map(function (m) {
+                    return "<option value='" + escapeHtml(m.id) + "'" + (t.assignee_id === m.id ? " selected" : "") + ">" + escapeHtml(m.name) + "</option>";
+                }).join("");
+            var assigneeCell = "<select data-edit-assignee='" + escapeHtml(t.id) + "' "
+                + "style='font-family:var(--font);font-size:12px;padding:4px 6px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--text);cursor:pointer;max-width:130px;' "
+                + "onfocus='this.style.borderColor=\"var(--border)\";this.style.background=\"var(--bg)\"' "
+                + "onblur='this.style.borderColor=\"transparent\";this.style.background=\"transparent\"'>"
+                + assigneeOpts
+                + "</select>";
+
+            // Project inline select
+            var projectOpts = "<option value=''>—</option>"
+                + tmState.projects.map(function (p) {
+                    return "<option value='" + escapeHtml(p.id) + "'" + (t.project_id === p.id ? " selected" : "") + ">" + escapeHtml(p.name) + "</option>";
+                }).join("");
+            var projectColour = project ? project.colour : null;
+            var projectCellStyle = projectColour
+                ? "background:" + escapeHtml(projectColour) + "33;color:" + escapeHtml(projectColour) + ";"
+                : "background:transparent;color:var(--muted);";
+            var projectCell = "<select data-edit-project='" + escapeHtml(t.id) + "' "
+                + "style='font-family:var(--font);font-size:11px;font-weight:600;padding:3px 8px;border:none;border-radius:999px;cursor:pointer;" + projectCellStyle + " appearance:none;-webkit-appearance:none;'>"
+                + projectOpts
+                + "</select>";
+
+            // Due date inline input
+            var dueCell = "<input type='date' data-edit-due='" + escapeHtml(t.id) + "' value='" + escapeHtml(t.due_date || "") + "' "
+                + "style='font-family:var(--font);font-size:12px;padding:3px 6px;border:1px solid transparent;border-radius:5px;background:transparent;cursor:pointer;color:" + (overdue ? "var(--danger);font-weight:600" : "var(--text)") + ";' "
+                + "onfocus='this.style.borderColor=\"var(--border)\";this.style.background=\"var(--bg)\"' "
+                + "onblur='this.style.borderColor=\"transparent\";this.style.background=\"transparent\"'>";
+
+            // Priority inline select
+            var prioOpts = ["low", "normal", "high"].map(function (p) {
+                return "<option value='" + p + "'" + ((t.priority || "normal") === p ? " selected" : "") + ">" + p.charAt(0).toUpperCase() + p.slice(1) + "</option>";
+            }).join("");
+            var prioColour = PRIORITY_COLOURS[t.priority] || "var(--text-secondary)";
+            var priorityCell = "<select data-edit-priority='" + escapeHtml(t.id) + "' "
+                + "style='font-family:var(--font);font-size:12px;padding:3px 6px;border:1px solid transparent;border-radius:5px;background:transparent;cursor:pointer;color:" + prioColour + ";text-transform:capitalize;' "
+                + "onfocus='this.style.borderColor=\"var(--border)\";this.style.background=\"var(--bg)\"' "
+                + "onblur='this.style.borderColor=\"transparent\";this.style.background=\"transparent\"'>"
+                + prioOpts
+                + "</select>";
+
+            // Sub-task progress pill — only on rows that have children
+            var subPill = (counts && counts.total > 0)
+                ? " <span style='display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--card-hover);color:var(--text-secondary);font-size:11px;font-weight:600;font-family:var(--mono);' title='Sub-task progress'>" + counts.done + "/" + counts.total + "</span>"
                 : "";
 
-            return "<tr data-id='" + escapeHtml(t.id) + "'" + (tmState.selectedId === t.id ? " class='tm-selected'" : "") + ">"
-                + "<td>" + statusPillHtml(t.status) + "</td>"
-                + "<td><div style='font-weight:500;color:var(--text);'>" + childPrefix + escapeHtml(t.title) + subPill + "</div></td>"
-                + "<td>" + (project
-                    ? "<span class='tm-pill' style='background:" + escapeHtml(project.colour) + "33;color:" + escapeHtml(project.colour) + "'>" + escapeHtml(project.name) + "</span>"
-                    : "<span style='color:var(--muted)'>—</span>") + "</td>"
-                + "<td>" + avatarHtml(assignee) + "</td>"
-                + "<td" + (overdue ? " class='tm-overdue'" : "") + ">" + escapeHtml(dueLabel) + "</td>"
-                + "<td" + (t.priority === "high" ? " class='tm-priority-high'" : "") + ">"
-                +   "<span style='font-size:12px;text-transform:capitalize;color:" + (PRIORITY_COLOURS[t.priority] || "var(--text-secondary)") + "'>"
-                +     escapeHtml(t.priority || "normal")
-                +   "</span>"
-                + "</td>"
+            return "<tr data-id='" + escapeHtml(t.id) + "' data-depth='" + depth + "'"
+                + (tmState.selectedId === t.id ? " class='tm-selected'" : "") + ">"
+                + "<td style='width:24px;padding-right:0;'>" + indent + chevron + "</td>"
+                + "<td>" + statusCell + "</td>"
+                + "<td><span data-open-id='" + escapeHtml(t.id) + "' style='font-weight:500;color:var(--text);cursor:pointer;'>" + escapeHtml(t.title) + "</span>" + subPill + "</td>"
+                + "<td>" + projectCell + "</td>"
+                + "<td>" + assigneeCell + "</td>"
+                + "<td>" + dueCell + "</td>"
+                + "<td>" + priorityCell + "</td>"
                 + "</tr>";
         }).join("");
 
         return ""
             + "<div class='tm-table-wrap'><table class='tm-table'>"
             + "<thead><tr>"
+            + "<th style='width:24px;padding-right:0;'></th>"
             + "<th style='width:120px'>Status</th>"
             + "<th>Title</th>"
             + "<th style='width:140px'>Project</th>"
-            + "<th style='width:60px'>Assignee</th>"
-            + "<th style='width:120px'>Due</th>"
-            + "<th style='width:90px'>Priority</th>"
+            + "<th style='width:140px'>Assignee</th>"
+            + "<th style='width:130px'>Due</th>"
+            + "<th style='width:100px'>Priority</th>"
             + "</tr></thead><tbody>" + rows + "</tbody></table></div>";
     }
 
@@ -4733,7 +4847,8 @@ function clearUpload() {
         var $status   = document.getElementById("tm-filter-status");
         var $assignee = document.getElementById("tm-filter-assignee");
         var $project  = document.getElementById("tm-filter-project");
-        var $showSub  = document.getElementById("tm-show-subtasks");
+        var $expandAll   = document.getElementById("tm-expand-all");
+        var $collapseAll = document.getElementById("tm-collapse-all");
         var $newTask  = document.getElementById("tm-new-task");
         var $newProj  = document.getElementById("tm-new-project");
 
@@ -4743,38 +4858,202 @@ function clearUpload() {
             searchTimer = setTimeout(function () {
                 tmState.filters.search = v;
                 tmState.page = 0;
+                resetTreeCaches();
                 loadTasks(render);
             }, 250);
         });
-        $status.addEventListener("change",   function (e) { tmState.filters.status   = e.target.value; tmState.page = 0; loadTasks(render); });
-        $assignee.addEventListener("change", function (e) { tmState.filters.assignee = e.target.value; tmState.page = 0; loadTasks(render); });
-        $project.addEventListener("change",  function (e) { tmState.filters.project  = e.target.value; tmState.page = 0; loadTasks(render); });
-        $showSub.addEventListener("change",  function (e) { tmState.filters.showSubtasks = e.target.checked; tmState.page = 0; loadTasks(render); });
+        $status.addEventListener("change",   function (e) { tmState.filters.status   = e.target.value; tmState.page = 0; resetTreeCaches(); loadTasks(render); });
+        $assignee.addEventListener("change", function (e) { tmState.filters.assignee = e.target.value; tmState.page = 0; resetTreeCaches(); loadTasks(render); });
+        $project.addEventListener("change",  function (e) { tmState.filters.project  = e.target.value; tmState.page = 0; resetTreeCaches(); loadTasks(render); });
+
+        $expandAll.addEventListener("click", function () {
+            // Expand all top-level rows that have children. Children-of-children that haven't been
+            // loaded yet will get loaded on demand if the user expands further.
+            var toLoad = [];
+            for (var i = 0; i < tmState.tasks.length; i++) {
+                var t = tmState.tasks[i];
+                var c = tmState.subCountsByTask[t.id];
+                if (c && c.hasChildren) {
+                    if (tmState.childrenByParent[t.id]) {
+                        tmState.expanded[t.id] = true;
+                    } else {
+                        toLoad.push(t.id);
+                    }
+                }
+            }
+            if (!toLoad.length) { render(); return; }
+            // Load all needed children in parallel, then expand
+            var pending = toLoad.length;
+            for (var j = 0; j < toLoad.length; j++) {
+                (function (pid) {
+                    loadChildren(pid, function () {
+                        tmState.expanded[pid] = true;
+                        pending--;
+                        if (pending === 0) render();
+                    });
+                })(toLoad[j]);
+            }
+        });
+
+        $collapseAll.addEventListener("click", function () {
+            tmState.expanded = {};
+            render();
+        });
+
         $newTask.addEventListener("click", openNewTaskModal);
         $newProj.addEventListener("click", openNewProjectModal);
     }
 
     function bindTable() {
-        var rows = tmState.container.querySelectorAll(".tm-table tbody tr");
-        for (var i = 0; i < rows.length; i++) {
-            rows[i].addEventListener("click", function (e) {
-                var id = e.currentTarget.getAttribute("data-id");
-                tmState.selectedId = id;
-                loadTaskDetail(id, openDetailPanel);
-            });
+        var root = tmState.container;
+        if (!root) return;
+
+        // Use one delegated listener on the table to keep things simple
+        var $table = root.querySelector(".tm-table");
+        if (!$table) return;
+
+        // Chevron expand/collapse
+        $table.addEventListener("click", function (e) {
+            var chev = e.target.getAttribute && e.target.getAttribute("data-chevron");
+            if (!chev) return;
+            e.stopPropagation();
+            if (tmState.expanded[chev]) {
+                // Collapse: just flip the flag and re-render (children stay cached)
+                delete tmState.expanded[chev];
+                render();
+            } else {
+                // Expand: load children if not cached, then flip flag
+                if (tmState.childrenByParent[chev]) {
+                    tmState.expanded[chev] = true;
+                    render();
+                } else {
+                    loadChildren(chev, function () {
+                        tmState.expanded[chev] = true;
+                        render();
+                    });
+                }
+            }
+        });
+
+        // Title click → open detail panel
+        $table.addEventListener("click", function (e) {
+            var openId = e.target.getAttribute && e.target.getAttribute("data-open-id");
+            if (!openId) return;
+            tmState.selectedId = openId;
+            loadTaskDetail(openId, openDetailPanel);
+        });
+
+        // Inline editors — single delegated change listener.
+        // We use 'change' on selects/dates rather than 'input' so we don't fire on every keystroke.
+        $table.addEventListener("change", function (e) {
+            var el = e.target;
+            if (!el || el.tagName !== "SELECT" && el.tagName !== "INPUT") return;
+
+            var statusId   = el.getAttribute("data-edit-status");
+            var assigneeId = el.getAttribute("data-edit-assignee");
+            var projectId  = el.getAttribute("data-edit-project");
+            var dueId      = el.getAttribute("data-edit-due");
+            var prioId     = el.getAttribute("data-edit-priority");
+
+            if (statusId) {
+                updateTaskField(statusId, "status", el.value, null, function () {
+                    afterInlineEdit(statusId);
+                });
+            } else if (assigneeId) {
+                updateTaskField(assigneeId, "assignee_id", el.value || null, null, function () {
+                    afterInlineEdit(assigneeId);
+                });
+            } else if (projectId) {
+                // project_id changes don't generate activity log entries (matches detail panel behaviour)
+                if (!sb()) return;
+                sb().from("tasks").update({ project_id: el.value || null }).eq("id", projectId)
+                    .then(function (r) {
+                        if (logIfError("inlineEdit:project", r)) {
+                            alert("Could not update project: " + (r.error.message || "see console"));
+                            return;
+                        }
+                        afterInlineEdit(projectId);
+                    });
+            } else if (dueId) {
+                updateTaskField(dueId, "due_date", el.value || null, null, function () {
+                    afterInlineEdit(dueId);
+                });
+            } else if (prioId) {
+                if (!sb()) return;
+                sb().from("tasks").update({ priority: el.value }).eq("id", prioId)
+                    .then(function (r) {
+                        if (logIfError("inlineEdit:priority", r)) {
+                            alert("Could not update priority: " + (r.error.message || "see console"));
+                            return;
+                        }
+                        afterInlineEdit(prioId);
+                    });
+            }
+        });
+
+        // Stop dropdown clicks from also firing the row-click handlers (defensive)
+        $table.addEventListener("mousedown", function (e) {
+            if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") {
+                e.stopPropagation();
+            }
+        });
+    }
+
+    // After an inline edit, re-fetch the task in tmState.tasks (or the children cache it lives in)
+    // and re-render. This keeps progress pills, "done" styling, and any cascading effects accurate.
+    function afterInlineEdit(taskId) {
+        // Find which collection the task lives in and replace it
+        function refetchInto(targetArray) {
+            sb().from("tasks")
+                .select("id,title,status,priority,due_date,assignee_id,project_id,parent_id,updated_at")
+                .eq("id", taskId).single()
+                .then(function (r) {
+                    if (r.data) {
+                        for (var i = 0; i < targetArray.length; i++) {
+                            if (targetArray[i].id === taskId) { targetArray[i] = r.data; break; }
+                        }
+                    }
+                    // Recompute parent counts if status changed (parent's "X/Y done" pill may shift)
+                    var task = r.data;
+                    if (task && task.parent_id) {
+                        loadSubtaskCounts([task.parent_id], function () { render(); });
+                    } else {
+                        render();
+                    }
+                });
         }
+
+        // Look in top-level tasks first
+        for (var i = 0; i < tmState.tasks.length; i++) {
+            if (tmState.tasks[i].id === taskId) { refetchInto(tmState.tasks); return; }
+        }
+        // Else search children caches
+        for (var pid in tmState.childrenByParent) {
+            var arr = tmState.childrenByParent[pid];
+            for (var j = 0; j < arr.length; j++) {
+                if (arr[j].id === taskId) { refetchInto(arr); return; }
+            }
+        }
+        // Fallback: full reload
+        loadTasks(render);
     }
 
     function bindPagination() {
         var $prev = document.getElementById("tm-prev");
         var $next = document.getElementById("tm-next");
         if ($prev) $prev.addEventListener("click", function () {
-            if (tmState.page > 0) { tmState.page--; loadTasks(render); }
+            if (tmState.page > 0) { tmState.page--; resetTreeCaches(); loadTasks(render); }
         });
         if ($next) $next.addEventListener("click", function () {
             var totalPages = Math.ceil(tmState.totalCount / PAGE_SIZE);
-            if (tmState.page < totalPages - 1) { tmState.page++; loadTasks(render); }
+            if (tmState.page < totalPages - 1) { tmState.page++; resetTreeCaches(); loadTasks(render); }
         });
+    }
+
+    function resetTreeCaches() {
+        tmState.expanded = {};
+        tmState.childrenByParent = {};
+        tmState.subCountsByTask = {};
     }
 
     // -----------------------------------------------------------------------
@@ -5074,7 +5353,15 @@ function clearUpload() {
 
         document.getElementById("tm-panel-delete").addEventListener("click", function () {
             if (!confirm("Delete this task? This cannot be undone.")) return;
-            deleteTask(t.id, function () { closeDetailPanel(); loadTasks(render); });
+            deleteTask(t.id, function () {
+                // The deleted task may have been a parent (cascading children) or a child.
+                // Either way, clear all caches and force a fresh top-level reload.
+                tmState.childrenByParent = {};
+                tmState.subCountsByTask = {};
+                tmState.expanded = {};
+                closeDetailPanel();
+                loadTasks(render);
+            });
         });
 
         // Parent breadcrumb — navigate up
@@ -5096,9 +5383,13 @@ function clearUpload() {
             createSubtask(t.id, v, function (created) {
                 if (created) {
                     $inp.value = "";
+                    // Invalidate cached children of this task so next tree render picks up the new sub-task,
+                    // and auto-expand the parent in the main list (if it's visible there)
+                    delete tmState.childrenByParent[t.id];
+                    tmState.expanded[t.id] = true;
                     loadTaskDetail(t.id, function () {
                         refreshSubtasksList();
-                        // Refresh main list so the parent's progress pill updates
+                        // Refresh main list so the parent's progress pill + chevron + tree update
                         loadTasks(render);
                     });
                 }
@@ -5127,6 +5418,7 @@ function clearUpload() {
                 if (!sub) return;
                 var nextStatus = sub.status === "todo" ? "doing" : sub.status === "doing" ? "done" : "todo";
                 updateTaskField(toggleId, "status", nextStatus, null, function () {
+                    delete tmState.childrenByParent[t.id]; // children cache stale
                     loadTaskDetail(t.id, function () {
                         refreshSubtasksList();
                         loadTasks(render);
@@ -5136,6 +5428,7 @@ function clearUpload() {
                 e.stopPropagation();
                 if (!confirm("Delete this sub-task?")) return;
                 deleteTask(deleteId, function () {
+                    delete tmState.childrenByParent[t.id]; // children cache stale
                     loadTaskDetail(t.id, function () {
                         refreshSubtasksList();
                         loadTasks(render);
