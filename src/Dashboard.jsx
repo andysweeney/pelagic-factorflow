@@ -4951,6 +4951,12 @@ export default function FactoringDashboard() {
       if (raw.doNotAdvance) { skipped.push({ id: invId, reason: "marked Do Not Advance" }); return; }
       if (r2(raw.capitalDue || 0) > 0.01) { skipped.push({ id: invId, reason: "already has capital queued" }); return; }
       if (!raw.fundingProgram) { skipped.push({ id: invId, reason: "no program allocated" }); return; }
+      // Pause gates — match the single-invoice fund popup's behaviour.
+      // Without these, Fund at Max bypasses the pause gate that openFundPopupFor
+      // enforces at line ~5749, letting an operator fund invoices for a paused
+      // supplier or buyer simply by routing through the bulk path. Closes that hole.
+      if (isEntityPaused(raw.supplierEntityId || raw.supplierId)) { skipped.push({ id: invId, reason: "supplier paused" }); return; }
+      if (isBuyerPaused(raw.buyerId)) { skipped.push({ id: invId, reason: "buyer paused" }); return; }
       var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
       if (!prog) { skipped.push({ id: invId, reason: "program not found" }); return; }
       // Compute effective base
@@ -5746,7 +5752,29 @@ export default function FactoringDashboard() {
             </div>;
           })()}
           <div style={{ display: "flex", gap: 10 }}>
-            {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0; var progAvail = getProgramAvailableBalance(fundPopup.prog.id); var insufficientBal = capNeeded > progAvail + 0.01; var disabled = blocked || insufficientBal; var label = insufficientBal ? "Insufficient Program Balance" : (fundPopup.isTopup ? "Advance Funding" : "Approve for Funding"); return <button onClick={confirmFundPopup} disabled={disabled} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{label}</button>; })()}
+            {(function() {
+              // Determine each blocker independently so the button label can name
+              // the actual reason rather than just turning grey. Operator-facing
+              // diagnostic: tells the user exactly what to fix without them having
+              // to inspect the entity, the audit log, or the program balance.
+              var supPaused = isEntityPaused(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId);
+              var buyPaused = isBuyerPaused(fundPopup.inv.buyerId);
+              var blocked = supPaused || buyPaused;
+              var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0;
+              var progAvail = getProgramAvailableBalance(fundPopup.prog.id);
+              var insufficientBal = capNeeded > progAvail + 0.01;
+              var disabled = blocked || insufficientBal;
+              // Label precedence (most actionable first): pause reasons, then balance,
+              // then the normal action label. Pause reasons are surfaced explicitly
+              // because they point the operator straight at the fix (tick KYC + unpause).
+              var label;
+              if (supPaused && buyPaused) label = "Supplier & Buyer Paused";
+              else if (supPaused) label = "Supplier Paused";
+              else if (buyPaused) label = "Buyer Paused";
+              else if (insufficientBal) label = "Insufficient Program Balance";
+              else label = fundPopup.isTopup ? "Advance Funding" : "Approve for Funding";
+              return <button onClick={confirmFundPopup} disabled={disabled} title={disabled ? (supPaused || buyPaused ? "Unpause the entity (tick KYC if required) before funding." : "Program does not have enough available balance for this advance.") : ""} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{label}</button>;
+            })()}
             <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
           </div>
         </div>
@@ -17059,6 +17087,12 @@ export default function FactoringDashboard() {
             var fp = selectedBulkOpt.fp;
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
             var allocated = [], funded = [], creditSkippedSup = [], creditSkippedBuy = [], creditSkippedBoth = [];
+            // Stage 1.9: pause gates for the fundAtMax branch. Allocate-only is intentionally
+            // not pause-gated (no cash moves; the gate matters only when capital is advanced).
+            // Without these, Fund-at-max-from-Unpurchased bypasses the pause gate enforced by
+            // the single-invoice fund popup, letting an operator fund invoices for a paused
+            // supplier or buyer simply by routing through the bulk path.
+            var pauseSkippedSup = [], pauseSkippedBuy = [];
             // Track per-supplier and per-buyer credit-limit headroom across the bulk run for the "& Fund" branch.
             var creditHeadroomMap = {}; // key = supplierParentId
             var buyerCreditHeadroomMap = {}; // key = buyerId
@@ -17068,6 +17102,9 @@ export default function FactoringDashboard() {
               var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
               if (!raw || raw.fundingStatus !== "pending") return;
               if (fundAtMax) {
+                // Pause gate — match the single-invoice fund popup. Skip paused entities.
+                if (isEntityPaused(raw.supplierEntityId || raw.supplierId)) { pauseSkippedSup.push(raw.id); return; }
+                if (isBuyerPaused(raw.buyerId)) { pauseSkippedBuy.push(raw.id); return; }
                 // Compute effective base (matches getMaxAvailableCapital + buyer-collected term)
                 var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
                 var postDil = raw.amount - (invProc.dilutionTotal || 0);
@@ -17142,13 +17179,24 @@ export default function FactoringDashboard() {
             if (creditSkippedBoth.length > 0) {
               auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedBoth.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (both supplier and buyer credit limits reached): " + creditSkippedBoth.join(", "), { invoiceIds: creditSkippedBoth, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "both_credit_limits" });
             }
+            // Stage 1.9: audit + alert pause-skipped invoices. Mirrors the credit-skipped
+            // pattern so operators see exactly which invoices were excluded and why.
+            if (pauseSkippedSup.length > 0) {
+              auditLog("Funding Skipped \u2014 Paused", pauseSkippedSup.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier paused): " + pauseSkippedSup.join(", "), { invoiceIds: pauseSkippedSup, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "supplier_paused" });
+            }
+            if (pauseSkippedBuy.length > 0) {
+              auditLog("Funding Skipped \u2014 Paused", pauseSkippedBuy.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (buyer paused): " + pauseSkippedBuy.join(", "), { invoiceIds: pauseSkippedBuy, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "buyer_paused" });
+            }
             var totalSkipped = creditSkippedSup.length + creditSkippedBuy.length + creditSkippedBoth.length;
-            if (totalSkipped > 0) {
-              var alertParts = [totalSkipped + " invoice(s) were skipped during Allocate & Fund on " + fp.name + " due to credit limits:\n"];
-              if (creditSkippedSup.length > 0) alertParts.push("\nSupplier limit reached (" + creditSkippedSup.length + "): " + creditSkippedSup.join(", "));
-              if (creditSkippedBuy.length > 0) alertParts.push("\nBuyer limit reached (" + creditSkippedBuy.length + "): " + creditSkippedBuy.join(", "));
-              if (creditSkippedBoth.length > 0) alertParts.push("\nBoth limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
-              alertParts.push("\n\nThese invoices remain pending. Reduce outstanding exposure or raise the limits, then retry.");
+            var totalPauseSkipped = pauseSkippedSup.length + pauseSkippedBuy.length;
+            if (totalSkipped > 0 || totalPauseSkipped > 0) {
+              var alertParts = [(totalSkipped + totalPauseSkipped) + " invoice(s) were skipped during Allocate & Fund on " + fp.name + ":\n"];
+              if (creditSkippedSup.length > 0) alertParts.push("\nSupplier credit limit reached (" + creditSkippedSup.length + "): " + creditSkippedSup.join(", "));
+              if (creditSkippedBuy.length > 0) alertParts.push("\nBuyer credit limit reached (" + creditSkippedBuy.length + "): " + creditSkippedBuy.join(", "));
+              if (creditSkippedBoth.length > 0) alertParts.push("\nBoth credit limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
+              if (pauseSkippedSup.length > 0) alertParts.push("\nSupplier paused (" + pauseSkippedSup.length + "): " + pauseSkippedSup.join(", "));
+              if (pauseSkippedBuy.length > 0) alertParts.push("\nBuyer paused (" + pauseSkippedBuy.length + "): " + pauseSkippedBuy.join(", "));
+              alertParts.push("\n\nThese invoices remain pending. Resolve the cause (unpause the entity, or increase credit limits), then retry.");
               alert(alertParts.join(""));
             }
             setUpiSelected({});
