@@ -8022,7 +8022,12 @@ export default function FactoringDashboard() {
                         React.createElement("tbody", null,
                           monthBuckets.reduce(function(acc, b) {
                             var isExpanded = !!expandedMonths[b.key];
-                            // Month header row
+                            // Month header row — same fix as Admin: balance columns
+                            // show end-of-month closing balances, flow info next to label.
+                            var flowParts = [];
+                            if (b.fundingAdvanced > 0.01) flowParts.push("+" + money(b.fundingAdvanced, spDisplayCcy) + " funded");
+                            if (b.paymentsReceived > 0.01) flowParts.push("\u2212" + money(b.paymentsReceived, spDisplayCcy) + " paid");
+                            var flowText = flowParts.length > 0 ? flowParts.join(" \u00b7 ") : b.events.length + " event" + (b.events.length === 1 ? "" : "s");
                             acc.push(React.createElement("tr", {
                               key: "mh-" + b.key,
                               onClick: function() { toggleMonth(b.key); },
@@ -8031,13 +8036,14 @@ export default function FactoringDashboard() {
                               React.createElement("td", { style: { padding: "10px 12px", fontSize: 14, color: spAccent, textAlign: "center", fontWeight: 700, lineHeight: 1 } }, isExpanded ? "\u25BC" : "\u25B6"),
                               React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, fontWeight: 700, color: spText, fontFamily: spFont } },
                                 b.label,
-                                React.createElement("span", { style: { fontSize: 11, fontWeight: 400, color: spMuted, marginLeft: 8 } }, b.events.length + " event" + (b.events.length === 1 ? "" : "s"))
+                                React.createElement("br", null),
+                                React.createElement("span", { style: { fontSize: 10, fontWeight: 400, color: spMuted, fontFamily: spMono } }, flowText)
                               ),
-                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", color: b.fundingAdvanced > 0.01 ? spGreen : spMuted } }, b.fundingAdvanced > 0.01 ? "+" + money(b.fundingAdvanced, spDisplayCcy) : "\u2014"),
-                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", color: b.paymentsReceived > 0.01 ? spAccent : spMuted } }, b.paymentsReceived > 0.01 ? "\u2212" + money(b.paymentsReceived, spDisplayCcy) : "\u2014"),
-                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 11, color: spMuted, textAlign: "right" } }, "\u2014"),
-                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", color: b.closing.hb > 0.01 ? "#8B5CF6" : spMuted } }, money(b.closing.hb, spDisplayCcy)),
-                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? spText : spMuted } }, money(b.closing.total, spDisplayCcy))
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? spText : spMuted } }, money(b.closing.cap, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? spText : spMuted } }, money(b.closing.int, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? spText : spMuted } }, money(b.closing.pen, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? spText : spMuted } }, money(b.closing.hb, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? spAccent : spMuted } }, money(b.closing.total, spDisplayCcy))
                             ));
                             if (isExpanded) {
                               // Opening balance row
@@ -10779,15 +10785,24 @@ export default function FactoringDashboard() {
                   <tbody>{monthBuckets.map(function(b, bi) {
                     var isExpanded = !!expandedMonths[b.key];
                     var monthRows = [];
-                    // Month header row — collapsed summary
+                    // Month header row — collapsed summary. Balance columns show the
+                    // END-OF-MONTH closing balance (so the table reads consistently
+                    // as a balance ledger). Flow info (funding advanced, payments
+                    // received) lives in the inline subtitle next to the month label
+                    // so the operator sees this-month-activity at a glance without the
+                    // column semantics being violated.
+                    var flowParts = [];
+                    if (b.fundingAdvanced > 0.01) flowParts.push("+" + money(b.fundingAdvanced, displayCcy) + " funded");
+                    if (b.paymentsReceived > 0.01) flowParts.push("\u2212" + money(b.paymentsReceived, displayCcy) + " paid");
+                    var flowText = flowParts.length > 0 ? flowParts.join(" \u00b7 ") : b.events.length + " event" + (b.events.length === 1 ? "" : "s");
                     monthRows.push(<tr key={"mh-" + b.key} onClick={function() { toggleMonth(b.key); }} style={{ borderBottom: "1px solid var(--border)", background: isExpanded ? "var(--accent)" + "08" : "var(--bg)", cursor: "pointer" }}>
                       <td style={{ padding: "10px 12px", fontSize: 14, color: "var(--accent)", textAlign: "center", fontWeight: 700, lineHeight: 1 }}>{isExpanded ? "\u25BC" : "\u25B6"}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{b.label} <span style={{ fontSize: 11, fontWeight: 400, color: "var(--muted)", marginLeft: 8 }}>{b.events.length} event{b.events.length === 1 ? "" : "s"}</span></td>
-                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.fundingAdvanced > 0.01 ? "#059669" : "var(--muted)" }}>{b.fundingAdvanced > 0.01 ? "+" + money(b.fundingAdvanced, displayCcy) : "\u2014"}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.paymentsReceived > 0.01 ? "#0EA5E9" : "var(--muted)" }}>{b.paymentsReceived > 0.01 ? "-" + money(b.paymentsReceived, displayCcy) : "\u2014"}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 11, color: "var(--muted)", textAlign: "right" }}>{"\u2014"}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.closing.hb > 0.01 ? "#8B5CF6" : "var(--muted)" }}>{money(b.closing.hb, displayCcy)}</td>
-                      <td style={{ padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.total, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{b.label}<br /><span style={{ fontSize: 10, fontWeight: 400, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{flowText}</span></td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.cap, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.int, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.pen, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.hb, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? "var(--accent)" : "var(--muted)" }}>{money(b.closing.total, displayCcy)}</td>
                     </tr>);
                     if (isExpanded) {
                       // Opening balance row — makes the month read self-contained
