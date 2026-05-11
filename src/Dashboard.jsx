@@ -248,6 +248,50 @@ function kycIsPassed(entity) {
   return !!(entity.kyc && entity.kyc.passed);
 }
 
+// Inspects the audit log to determine *why* and *when* the entity was most
+// recently paused, and by whom. Used by the entity-detail Pause banner to
+// give operators a clear "why is this paused?" answer without making them
+// dig through the audit tab themselves.
+//
+// Returns { pausedAt, pausedBy, source, context } when paused, or null when
+// the audit trail shows the entity is currently unpaused (or no pause events
+// exist). source is one of:
+//   "auto_program_add" — last pause came from first-program addition
+//                        (Supplier/Buyer Added to Program with forcePaused).
+//   "manual"           — last pause came from the Pause toggle.
+//   "unknown"          — entity.paused is true but no matching audit entry
+//                        was found (legacy data, or audit not yet hydrated).
+function getPauseContext(entityId) {
+  if (!entityId) return null;
+  // Walk audit entries newest-first. Stop on first event that touches pause
+  // state for this entity — its kind determines our answer.
+  for (var i = AUDIT_LOG.length - 1; i >= 0; i--) {
+    var e = AUDIT_LOG[i];
+    var ctx = e.context || {};
+    if (ctx.entityId !== entityId && ctx.supplierId !== entityId && ctx.buyerId !== entityId) continue;
+    if (e.action === "Entity Unpaused") return null;
+    if (e.action === "Entity Paused") {
+      return {
+        pausedAt: e.timestamp,
+        pausedDisplay: e.displayTime,
+        pausedBy: ctx.userEmail || ctx.userName || "unknown user",
+        source: "manual",
+        context: ctx
+      };
+    }
+    if ((e.action === "Supplier Added to Program" || e.action === "Buyer Added to Program") && ctx.forcePaused === true) {
+      return {
+        pausedAt: e.timestamp,
+        pausedDisplay: e.displayTime,
+        pausedBy: ctx.userEmail || ctx.userName || "unknown user",
+        source: "auto_program_add",
+        context: ctx
+      };
+    }
+  }
+  return null;
+}
+
 // ======== Entity files (Supabase Storage) ========
 // Files for suppliers/buyers/service_providers live in the entity-files
 // bucket (private, signed URLs only). Each entity row stores metadata
@@ -17717,6 +17761,78 @@ export default function FactoringDashboard() {
                     return <button key={t.key} onClick={function() { setManageDetailTab(t.key); }} style={{ padding: "10px 24px", borderRadius: 999, border: "1px solid " + (manageDetailTab === t.key ? "var(--accent)" : "var(--border)"), background: manageDetailTab === t.key ? "var(--accent)" : "transparent", color: manageDetailTab === t.key ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, letterSpacing: "0.03em", cursor: "pointer", boxShadow: manageDetailTab === t.key ? "0 2px 8px #2B4C7E30" : "none", transition: "all 0.15s ease" }}>{t.label}</button>;
                   })}
                 </div>
+
+                {/* Pause banner. Visible on every tab whenever the entity is paused.
+                    Surfaces the answer to "why is this paused?" without forcing the
+                    operator to dig through the audit log. Three reasons covered:
+                    auto-paused on first program addition, manual pause via the toggle,
+                    or unknown (legacy data, audit not yet hydrated). When KYC is the
+                    only remaining gate, the banner offers an inline Unpause button
+                    so the operator doesn't have to scroll back to the entity header. */}
+                {detEntity && detEntity.paused && (function() {
+                  var pc = getPauseContext(det.id);
+                  var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                  var kycOk = kycIsPassed(detEntity);
+                  // Three-way banner state:
+                  //   "needs_kyc"   — paused, KYC required and not yet passed
+                  //   "ready"       — paused, KYC passed (or not required); operator may unpause now
+                  //   "informational" — service provider paused (no KYC gate); show details only
+                  var state =
+                    kycRequired && !kycOk ? "needs_kyc" :
+                    kycRequired && kycOk  ? "ready" :
+                    "informational";
+                  // Source phrasing
+                  var sourceText =
+                    pc && pc.source === "auto_program_add" ? "Auto-paused when added to first funding program" :
+                    pc && pc.source === "manual"           ? "Manually paused" :
+                    "Paused (audit context unavailable)";
+                  var actor = pc ? pc.pausedBy : "unknown";
+                  var when  = pc ? (pc.pausedDisplay || "") : "";
+                  // Banner colour: amber for needs_kyc, green-ish for ready, neutral for SP
+                  var fill   = state === "needs_kyc" ? "#FEF3C7" : state === "ready" ? "#D1FAE5" : "#F3F4F6";
+                  var stroke = state === "needs_kyc" ? "#FCD34D" : state === "ready" ? "#6EE7B7" : "#D1D5DB";
+                  var headInk= state === "needs_kyc" ? "#92400E" : state === "ready" ? "#065F46" : "#374151";
+                  var subInk = state === "needs_kyc" ? "#78350F" : state === "ready" ? "#047857" : "#4B5563";
+                  // Headline
+                  var headline =
+                    state === "needs_kyc"     ? "Paused \u2014 pending KYC verification" :
+                    state === "ready"         ? "Paused \u2014 KYC verified, ready to unpause" :
+                                                "Paused";
+                  // Sub-line
+                  var sub;
+                  if (state === "needs_kyc") {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Tick the KYC Passed checkbox in the Files panel below to enable unpausing.";
+                  } else if (state === "ready") {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Click Unpause to restore funding eligibility.";
+                  } else {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ".";
+                  }
+                  return <div style={{ background: fill, border: "1px solid " + stroke, borderRadius: 12, padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 280 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: headInk, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>{state === "needs_kyc" ? "\u26A0" : state === "ready" ? "\u2713" : "\u23F8"}</span>
+                        {headline}
+                      </div>
+                      <div style={{ fontSize: 12, color: subInk, lineHeight: 1.45 }}>{sub}</div>
+                    </div>
+                    {state === "ready" || state === "informational" ? <button onClick={function() {
+                      // Same path as the header pause button, but inline for ergonomics.
+                      // KYC gate is intentionally re-checked here for safety: if state
+                      // changes between render and click (concurrent edit) we don't want
+                      // the inline button to bypass the gate.
+                      if (kycRequired && !kycIsPassed(detEntity)) {
+                        toast.error("KYC required", "Mark KYC as Passed below before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                        return;
+                      }
+                      detEntity.paused = false;
+                      if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                      else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                      else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                      auditLog("Entity Unpaused", det.id + " (" + det.name + ") unpaused \u2014 funding eligibility restored", { entityId: det.id, entityName: det.name, paused: false });
+                      setDataVer(function(v) { return v + 1; });
+                    }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + (state === "ready" ? "#10B981" : "#6B7280"), background: state === "ready" ? "#10B981" : "transparent", color: state === "ready" ? "#fff" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{"\u25B6"} Unpause now</button> : null}
+                  </div>;
+                })()}
 
                 {/* Tab 1: Overview — Layout A: Refined Card Grid */}
                 {manageDetailTab === "overview" && (function() {
