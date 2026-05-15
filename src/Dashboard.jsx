@@ -19286,9 +19286,74 @@ export default function FactoringDashboard() {
               }
 
               return <div>
+              {/* Pause banner on the Edit form. Mirrors the Details-panel banner so an
+                  operator who opens Edit on a paused entity immediately sees why it's
+                  paused and can either unpause inline (when KYC is satisfied) or switch
+                  to Details to tick KYC. Without this, the only pause UI lived on the
+                  Details panel, leaving Edit users with a paused entity and no idea why
+                  or how to fix it. */}
+              {manageEdit && (function() {
+                var editEnt = db.find(function(x) { return x.id === manageEdit; });
+                if (!editEnt || !editEnt.paused) return null;
+                var pc = getPauseContext(manageEdit);
+                var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                var kycOk = kycIsPassed(editEnt);
+                var state =
+                  kycRequired && !kycOk ? "needs_kyc" :
+                  kycRequired && kycOk  ? "ready" :
+                  "informational";
+                var sourceText =
+                  pc && pc.source === "auto_program_add" ? "Auto-paused when added to first funding program" :
+                  pc && pc.source === "manual"           ? "Manually paused" :
+                  "Paused (audit context unavailable)";
+                var actor = pc ? pc.pausedBy : "unknown";
+                var when  = pc ? (pc.pausedDisplay || "") : "";
+                var fill   = state === "needs_kyc" ? "#FEF3C7" : state === "ready" ? "#D1FAE5" : "#F3F4F6";
+                var stroke = state === "needs_kyc" ? "#FCD34D" : state === "ready" ? "#6EE7B7" : "#D1D5DB";
+                var headInk= state === "needs_kyc" ? "#92400E" : state === "ready" ? "#065F46" : "#374151";
+                var subInk = state === "needs_kyc" ? "#78350F" : state === "ready" ? "#047857" : "#4B5563";
+                var headline =
+                  state === "needs_kyc" ? "Paused \u2014 pending KYC verification" :
+                  state === "ready"     ? "Paused \u2014 KYC verified, ready to unpause" :
+                                          "Paused";
+                var sub;
+                if (state === "needs_kyc") {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Close this form and open the Details view to tick the KYC Passed checkbox in the Files panel.";
+                } else if (state === "ready") {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Click Unpause now to restore funding eligibility.";
+                } else {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ".";
+                }
+                return <div style={{ background: fill, border: "1px solid " + stroke, borderRadius: 12, padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 280 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: headInk, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16 }}>{state === "needs_kyc" ? "\u26A0" : state === "ready" ? "\u2713" : "\u23F8"}</span>
+                      {headline}
+                    </div>
+                    <div style={{ fontSize: 12, color: subInk, lineHeight: 1.45 }}>{sub}</div>
+                  </div>
+                  {state === "ready" || state === "informational" ? <button onClick={function() {
+                    if (kycRequired && !kycIsPassed(editEnt)) {
+                      toast.error("KYC required", "Mark KYC as Passed in Details before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                      return;
+                    }
+                    editEnt.paused = false;
+                    if (manageTab === "suppliers") saveSupplier(editEnt.id);
+                    else if (manageTab === "service_providers") saveServiceProvider(editEnt.id);
+                    else if (manageTab === "buyers") saveBuyer(editEnt.id);
+                    auditLog("Entity Unpaused", editEnt.id + " (" + editEnt.name + ") unpaused \u2014 funding eligibility restored", { entityId: editEnt.id, entityName: editEnt.name, paused: false });
+                    setDataVer(function(v) { return v + 1; });
+                  }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + (state === "ready" ? "#10B981" : "#6B7280"), background: state === "ready" ? "#10B981" : "transparent", color: state === "ready" ? "#fff" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{"\u25B6"} Unpause now</button> : null}
+                </div>;
+              })()}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{manageEdit ? "Edit" : "New"} {entityLabel}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+                    {manageEdit ? "Edit" : "New"} {entityLabel}
+                    {/* Paused badge: small but visible inline alongside the title so it's
+                        clear at a glance from the Edit form. Mirrors the badge in Details. */}
+                    {manageEdit && (function() { var ee = db.find(function(x) { return x.id === manageEdit; }); return ee && ee.paused ? <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", textTransform: "uppercase", letterSpacing: "0.04em" }}>{"\u23F8"} Paused</span> : null; })()}
+                  </div>
                   {chImportStep === "done" && <div style={{ fontSize: 10, color: "#059669", fontWeight: 600, marginTop: 2 }}>Imported from Companies House</div>}
                   {isCh && manageEdit && <div style={{ fontSize: 10, color: "#38BDF8", fontWeight: 600, marginTop: 2 }}>CH-sourced entity {"\u2014"} company details and CH directors are read-only</div>}
                 </div>
