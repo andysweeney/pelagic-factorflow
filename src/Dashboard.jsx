@@ -8327,7 +8327,34 @@ export default function FactoringDashboard() {
           var cardBodyH = 200; // scrollable body height
           var cardTotalMinH = 256; // approx total incl. header and footer
 
-          return <div>
+          return <div style={{
+            /* Light-mode preview override. CSS variables are scoped to this
+               wrapper so only the Pelagic Overview screen renders in the new
+               palette; every other screen stays on the dark theme. Revert
+               just this one element to undo. */
+            "--bg": "#F8FAFC",
+            "--card": "#FFFFFF",
+            "--card-hover": "#F1F5F9",
+            "--border": "#E2E8F0",
+            "--text": "#0F172A",
+            "--text-secondary": "#475569",
+            "--muted": "#64748B",
+            "--accent": "#0EA5E9",
+            background: "var(--bg)",
+            color: "var(--text)",
+            margin: "-18px -22px",
+            padding: "18px 22px",
+            minHeight: "calc(100vh - 80px)"
+          }}>
+            {/* Preview banner — temporary visual signal that this screen is
+                showing the proposed light theme. Remove after evaluation. */}
+            <div style={{ background: "#DBEAFE", border: "1px solid #93C5FD", borderRadius: 10, padding: "10px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12, color: "#1E40AF" }}>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{"\u2728"}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>Light theme preview {"\u2014"} Pelagic Overview only</div>
+                <div style={{ fontSize: 11, opacity: 0.85 }}>This is what every screen could look like. Other tabs remain in the current dark theme until you approve the change.</div>
+              </div>
+            </div>
             {/* ============ HEADER STRIP ============ */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "4px 6px 18px", borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
               <div>
