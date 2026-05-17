@@ -3214,8 +3214,24 @@ export default function FactoringDashboard() {
   // Cleared on successful conversion (Step E saveEntity round-trip).
   var pdl1 = useState(null), prospectDeepLink = pdl1[0], setProspectDeepLink = pdl1[1];
 
-  // Load persisted data on mount
+  // Load persisted data on mount — but only after auth is established.
+  //
+  // Why this is gated on `session`: the data load and the auth handshake
+  // are two independent useEffects that fire in parallel on mount. If the
+  // load completes before auth settles, every Supabase query is rejected
+  // by RLS and returns an empty result, safeFetch swallows the rejection,
+  // _dataLoaded flips to true on empty arrays, and the in-memory DBs stay
+  // empty for the rest of the session. The user sees the app render with
+  // no suppliers, buyers, programs, etc. — a hard refresh worked because
+  // a cached session populated more quickly on the second load and won
+  // the race.
+  //
+  // Waiting for session before loading guarantees RLS-allowed queries
+  // and removes the race entirely. The useEffect re-fires whenever the
+  // session object changes; _dataLoaded acts as a one-shot guard so a
+  // mid-session token refresh doesn't trigger a redundant reload.
   useEffect(function() {
+    if (!session) return;
     if (_dataLoaded) { setStorageLoading(false); return; }
     loadPersistedData().then(function() {
       _dataLoaded = true;
@@ -3229,7 +3245,7 @@ export default function FactoringDashboard() {
       setDataVer(function(v) { return v + 1; });
       if (CSV_REVIEW_QUEUE_DB.length > 0) setCsvReviewQueue(CSV_REVIEW_QUEUE_DB);
     });
-  }, []);
+  }, [session]);
 
   // dataVer changes trigger re-render only, NOT automatic saves
   // Individual operations (fund, execute, etc.) use targeted saves (saveInvoice, saveSPQEntry, etc.)
