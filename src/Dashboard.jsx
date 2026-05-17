@@ -2842,7 +2842,7 @@ function IneligibilityIndicator(p) {
 }
 
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28,  color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
-function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" }} labelStyle={{ color: "#94A3B8" }} /></AreaChart></ResponsiveContainer></div>); }
+function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }} labelStyle={{ color: "#64748B" }} /></AreaChart></ResponsiveContainer></div>); }
 
 export default function FactoringDashboard() {
   // Auth state
@@ -3421,7 +3421,7 @@ export default function FactoringDashboard() {
     if (document.getElementById("ff-tooltip-styles")) return;
     var s = document.createElement("style");
     s.id = "ff-tooltip-styles";
-    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:50%;left:-12px;transform:translateY(-50%);border:6px solid transparent;border-right-color:#1A2744}";
+    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:50%;left:-12px;transform:translateY(-50%);border:6px solid transparent;border-right-color:#FFFFFF}";
     document.head.appendChild(s);
   }, []);
 
@@ -5506,7 +5506,40 @@ export default function FactoringDashboard() {
   }
   cols.push({ key: "_x", label: "" });
 
-  var rootStyle = { "--bg": "#586076", "--card": "#131C2E", "--card-hover": "#1F2940", "--border": "#3D4760", "--text": "#E2E8F0", "--text-secondary": "#CBD5E1", "--muted": "#94A3B8", "--accent": "#0EA5E9", "--accent-hover": "#0284C7", "--sidebar-bg": "#3A4358", "--sidebar-text": "#CBD5E1", "--sidebar-active": "#0EA5E9", "--danger": "#EF4444", "--warning": "#F59E0B", "--success": "#10B981", "--purple": "#8B5CF6", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif", fontSize: 14, padding: 0, margin: 0, lineHeight: 1.5 };
+  var rootStyle = {
+    /* Light theme palette. Sky-blue accent unchanged from the previous dark
+       palette (it matches the Pelagic wave in the logo and was already used
+       throughout the codebase). Sidebar uses its own variables so it can be
+       deeper navy than the workspace background — a maritime contrast that
+       anchors the brand while keeping the workspace open and readable. */
+    "--bg": "#F8FAFC",
+    "--card": "#FFFFFF",
+    "--card-hover": "#F1F5F9",
+    "--border": "#E2E8F0",
+    "--text": "#0F172A",
+    "--text-secondary": "#475569",
+    "--muted": "#64748B",
+    "--accent": "#0EA5E9",
+    "--accent-hover": "#0284C7",
+    "--brand-navy": "#1E40AF",
+    "--sidebar-bg": "#1E293B",
+    "--sidebar-text": "#CBD5E1",
+    "--sidebar-text-active": "#FFFFFF",
+    "--sidebar-active-bg": "#0F172A",
+    "--sidebar-active-accent": "#38BDF8",
+    "--danger": "#EF4444",
+    "--warning": "#F59E0B",
+    "--success": "#10B981",
+    "--purple": "#8B5CF6",
+    minHeight: "100vh",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+    fontSize: 14,
+    padding: 0,
+    margin: 0,
+    lineHeight: 1.5
+  };
 
   return (
     <div style={rootStyle}>
@@ -5892,31 +5925,31 @@ export default function FactoringDashboard() {
           </div>
         </div>
       </div>}
-      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #F8FAFC 0%, #E2E8F0 70%)" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
-        <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
+        <div style={{ width: 180, height: 3, background: "#CBD5E1", borderRadius: 2, overflow: "hidden", position: "relative" }}>
           <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "40%", background: "linear-gradient(90deg, transparent 0%, #0EA5E9 50%, transparent 100%)", animation: "ffShimmer 1.6s ease-in-out infinite" }} />
         </div>
         <div style={{ fontSize: 11, fontWeight: 500, color: "#64748B", letterSpacing: "0.14em", textTransform: "uppercase", animation: "ffCaption 2s ease-in-out infinite" }}>{authLoading ? "Authenticating" : "Loading Portfolio"}</div>
-      </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A", flexDirection: "column" }}>
-        <div style={{ width: 380, padding: "40px 36px", background: "#1E293B", borderRadius: 16, border: "1px solid #334155", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
+      </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#F8FAFC", flexDirection: "column" }}>
+        <div style={{ width: 380, padding: "40px 36px", background: "#FFFFFF", borderRadius: 16, border: "1px solid #E2E8F0", boxShadow: "0 20px 40px rgba(15, 23, 42, 0.08), 0 6px 12px rgba(15, 23, 42, 0.04)" }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, marginBottom: 16, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#E2E8F0", marginBottom: 4 }}>FactorFlow</div>
+            <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, marginBottom: 16 }} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A", marginBottom: 4 }}>FactorFlow</div>
             <div style={{ fontSize: 12, color: "#64748B" }}>Sign in to continue</div>
           </div>
-          {loginError && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#EF444420", border: "1px solid #EF444440", color: "#FCA5A5", fontSize: 12, marginBottom: 16, textAlign: "center" }}>{loginError}</div>}
+          {loginError && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", fontSize: 12, marginBottom: 16, textAlign: "center" }}>{loginError}</div>}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Email</label>
-            <input type="email" value={loginEmail} onChange={function(e) { setLoginEmail(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="you@company.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Email</label>
+            <input type="email" value={loginEmail} onChange={function(e) { setLoginEmail(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="you@company.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#0F172A", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
           </div>
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Password</label>
-            <input type="password" value={loginPassword} onChange={function(e) { setLoginPassword(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Password</label>
+            <input type="password" value={loginPassword} onChange={function(e) { setLoginPassword(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#0F172A", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
           </div>
           <button onClick={handleLogin} disabled={loggingIn || !loginEmail || !loginPassword} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: loggingIn ? "#0E7490" : "#0EA5E9", color: "#FFF", fontSize: 14, fontWeight: 700, cursor: loggingIn ? "not-allowed" : "pointer", opacity: (!loginEmail || !loginPassword) ? 0.5 : 1, transition: "all 0.15s" }}>{loggingIn ? "Signing in..." : "Sign In"}</button>
         </div>
-        <div style={{ marginTop: 24, fontSize: 11, color: "#475569" }}>Pelagic Solutions Ltd</div>
+        <div style={{ marginTop: 24, fontSize: 11, color: "#64748B" }}>Pelagic Solutions Ltd</div>
       </div> : userProfile && userProfile.role === "supplier" ? (function() {
         /* ====================================================================
            SUPPLIER PORTAL
@@ -5924,16 +5957,25 @@ export default function FactoringDashboard() {
         var spPortalTab = view;
         var spFont = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         var spMono = "'JetBrains Mono', monospace";
-        var spBg = "#586076";
+        /* Supplier portal palette — light theme. Mirrors the admin app's palette
+           so the brand reads consistently when a customer compares what their
+           supplier sees with what they see internally. The sidebar still uses
+           the deep Pelagic navy. */
+        var spBg = "#F8FAFC";
 
-        var spCard = "#131C2E";
-        var spBorder = "#3D4760";
-        var spText = "#E2E8F0";
-        var spMuted = "#94A3B8";
+        var spCard = "#FFFFFF";
+        var spBorder = "#E2E8F0";
+        var spText = "#0F172A";
+        var spMuted = "#64748B";
         var spAccent = "#0EA5E9";
         var spGreen = "#10B981";
         var spRed = "#EF4444";
         var spAmber = "#F59E0B";
+        /* Sidebar-specific palette for the supplier portal (deep navy + soft slate). */
+        var spSidebarBg = "#1E293B";
+        var spSidebarActiveBg = "#0F172A";
+        var spSidebarText = "#CBD5E1";
+        var spSidebarMuted = "#64748B";
 
         // Entity ID from user profile: stage 2 split composite into supplier_id (parent only)
         // + branch_id (suffix or null). Compose them for the in-memory entity ID.
@@ -6243,27 +6285,27 @@ export default function FactoringDashboard() {
 
         return React.createElement("div", { style: { minHeight: "100vh", background: spBg, color: spText, fontFamily: spFont, display: "flex" } },
           /* Sidebar */
-          React.createElement("div", { style: { width: 220, background: "#3A4358", borderRight: "1px solid " + spBorder, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
-            React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spBorder } },
+          React.createElement("div", { style: { width: 220, background: spSidebarBg, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
+            React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spSidebarActiveBg } },
               React.createElement("img", { src: LOGO_URL, alt: "Pelagic Solutions", style: { height: 32, filter: "drop-shadow(0 0 8px rgba(14,165,233,0.3))" } }),
-              React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
+              React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spSidebarMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
             ),
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? spSidebarActiveBg : "transparent", color: active ? "#38BDF8" : spSidebarText, transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
-            React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
-              React.createElement("div", { style: { fontSize: 12, color: "#CBD5E1", fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
-              React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 10, fontFamily: spFont } }, spDisplayIdentity),
-              React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
+            React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spSidebarActiveBg } },
+              React.createElement("div", { style: { fontSize: 12, color: spSidebarText, fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
+              React.createElement("div", { style: { fontSize: 10, color: spSidebarMuted, marginBottom: 10, fontFamily: spFont } }, spDisplayIdentity),
+              React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: spSidebarText, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
             )
           ),
           /* Main content */
           React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "0", maxWidth: 1200 } },
             /* Top bar with date picker */
-            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#3A4358", position: "sticky", top: 0, zIndex: 30 } },
+            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: spCard, position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
                 React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
                 spPrograms.length > 0 ? (function() {
@@ -6485,7 +6527,7 @@ export default function FactoringDashboard() {
                         React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1C2A4280", vertical: false }),
                         React.createElement(XAxis, { dataKey: "name", tick: { fontSize: 10, fill: "#64748B", fontFamily: "'Inter', sans-serif" }, axisLine: { stroke: "#1C2A42" }, tickLine: false, interval: "preserveStartEnd" }),
                         React.createElement(YAxis, { tick: { fontSize: 10, fill: "#64748B", fontFamily: "'JetBrains Mono', monospace" }, axisLine: false, tickLine: false, tickFormatter: function(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + "m" : v >= 1000 ? (v / 1000).toFixed(0) + "k" : v; } }),
-                        React.createElement(Tooltip, { contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val, name) { var fst = FST[name] || { label: name }; return [money(val, spDisplayCcy), fst.label]; } }),
+                        React.createElement(Tooltip, { contentStyle: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val, name) { var fst = FST[name] || { label: name }; return [money(val, spDisplayCcy), fst.label]; } }),
                         statusKeys.map(function(k) {
                           return React.createElement(Area, { key: k, type: "monotone", dataKey: k, stackId: "1", stroke: statusColors[k], strokeWidth: 1.5, fill: "url(#spGrad_" + k + ")", dot: false, activeDot: { r: 4, fill: statusColors[k], stroke: "#fff", strokeWidth: 2 } });
                         })
@@ -6546,15 +6588,15 @@ export default function FactoringDashboard() {
                         React.createElement(PieChart, null,
                           React.createElement(Pie, {
                             data: donutData, cx: "50%", cy: "50%", innerRadius: 55, outerRadius: 85,
-                            dataKey: "value", nameKey: "name", paddingAngle: 3, label: renderLabel, labelLine: { stroke: "#334155", strokeWidth: 1 },
-                            stroke: "#131C2E", strokeWidth: 2
+                            dataKey: "value", nameKey: "name", paddingAngle: 3, label: renderLabel, labelLine: { stroke: "#CBD5E1", strokeWidth: 1 },
+                            stroke: "#FFFFFF", strokeWidth: 2
                           },
                             donutData.map(function(d, i) { return React.createElement(Cell, { key: i, fill: d.color }); })
                           ),
                           React.createElement(Tooltip, {
-                            contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" },
-                            itemStyle: { color: "#E2E8F0" },
-                            labelStyle: { color: "#94A3B8" },
+                            contentStyle: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" },
+                            itemStyle: { color: "#0F172A" },
+                            labelStyle: { color: "#64748B" },
                             formatter: function(val, name, props) {
                               var entry = props.payload;
                               return [money(val, spDisplayCcy) + " (" + entry.count + " invoice" + (entry.count !== 1 ? "s" : "") + ")", entry.name];
@@ -6731,7 +6773,7 @@ export default function FactoringDashboard() {
                           ),
                           isExpanded ? React.createElement("tr", null,
                             React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -6782,7 +6824,7 @@ export default function FactoringDashboard() {
                                   React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Status History"),
                                   React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
                                     inv.invoiceStatusHistory.map(function(h, hi) {
-                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#1A2744", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
+                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#F8FAFC", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
                                         React.createElement("span", { style: { color: spMuted, marginRight: 6 } }, fmt(h.date)),
                                         React.createElement("span", { style: { color: spText, fontWeight: 600 } }, h.status)
                                       );
@@ -6887,19 +6929,19 @@ export default function FactoringDashboard() {
                                                 var tipAllocs = srcPay.allocations.map(function(a) { return { label: a.invoiceId, amount: a.amount }; });
                                                 var tipRemits = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === p.paymentId && spq.type === "remittance"; }).map(function(spq) { return { label: "Pass-through \u2192 " + spq.supplierName, amount: spq.amount }; });
                                                 var tipAll = tipAllocs.concat(tipRemits);
-                                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, "Payment Breakdown \u2014 " + p.paymentId),
+                                                return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, "Payment Breakdown \u2014 " + p.paymentId),
                                                   React.createElement("div", { style: { padding: "6px 14px 10px" } },
                                                     tipAll.map(function(t, ti) {
                                                       var isRemit = t.label.indexOf("Pass-through") === 0;
-                                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipAll.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipAll.length - 1 ? "1px solid #E2E8F050" : "none" } },
                                                         React.createElement("span", { style: { fontSize: 11, color: isRemit ? "#8B5CF6" : "#0EA5E9", fontFamily: "'JetBrains Mono', monospace" } }, t.label),
                                                         React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, srcPay.currency))
                                                       );
                                                     }),
                                                     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
                                                       React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Total"),
-                                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(srcPay.amount, srcPay.currency))
+                                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace" } }, money(srcPay.amount, srcPay.currency))
                                                     )
                                                   )
                                                 );
@@ -7058,7 +7100,7 @@ export default function FactoringDashboard() {
                           ),
                           isCnExp ? React.createElement("tr", null,
                             React.createElement("td", { colSpan: 6, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 /* CN Details */
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 16 } },
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -7195,7 +7237,7 @@ export default function FactoringDashboard() {
                         ),
                         isExpPTP ? React.createElement("tr", null,
                           React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                            React.createElement("div", { style: { padding: "16px 24px", background: "#0E1829" } },
+                            React.createElement("div", { style: { padding: "16px 24px", background: "#F1F5F9" } },
                               React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 10 } }, "Allocations"),
                               React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                                 React.createElement("thead", null,
@@ -7219,15 +7261,15 @@ export default function FactoringDashboard() {
                                             var tipInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }) || INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                                             if (!tipInv) return null;
                                             var daysToMat = tipInv.dueDate ? daysBetween(viewDate, tipInv.dueDate) : 0;
-                                            return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                              React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, a.invoiceId),
+                                            return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                              React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, a.invoiceId),
                                               React.createElement("div", { style: { padding: "10px 14px" } },
                                                 [{ l: "Invoice Date", v: fmt(tipInv.invoiceDate), c: "#E2E8F0" },
                                                  { l: "Invoice Amount", v: money(tipInv.amount, tipInv.currency), c: "#0EA5E9" },
                                                  { l: "Maturity Date", v: fmt(tipInv.dueDate), c: daysToMat < 0 ? "#EF4444" : "#10B981" },
                                                  { l: "Days to Maturity", v: daysToMat >= 0 ? daysToMat + " days" : Math.abs(daysToMat) + " days overdue", c: daysToMat < 0 ? "#EF4444" : "#10B981" },
                                                  { l: "Buyer", v: tipInv.buyerName, c: "#E2E8F0" }].map(function(r, ri) {
-                                                  return React.createElement("div", { key: ri, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: ri < 4 ? "1px solid #2A3A5C50" : "none" } },
+                                                  return React.createElement("div", { key: ri, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: ri < 4 ? "1px solid #E2E8F050" : "none" } },
                                                     React.createElement("span", { style: { fontSize: 10, color: "#64748B", fontWeight: 600 } }, r.l),
                                                     React.createElement("span", { style: { fontSize: 11, color: r.c, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, r.v)
                                                   );
@@ -7340,18 +7382,18 @@ export default function FactoringDashboard() {
                                   tipLines.push({ label: "Holdback from " + (spqEntry.sourceInvoiceId || "\u2014"), amount: spqEntry.amount, color: "#D97706" });
                                 }
                                 if (tipLines.length === 0) return null;
-                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, p.type + " \u2014 " + p.id),
+                                return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, p.type + " \u2014 " + p.id),
                                   React.createElement("div", { style: { padding: "6px 14px 10px" } },
                                     tipLines.map(function(t, ti) {
-                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipLines.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipLines.length - 1 ? "1px solid #E2E8F050" : "none" } },
                                         React.createElement("span", { style: { fontSize: 11, color: t.color, fontFamily: "'JetBrains Mono', monospace" } }, t.label),
                                         React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, p.currency))
                                       );
                                     }),
                                     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
                                       React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Amount"),
-                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(p.amount, p.currency))
+                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace" } }, money(p.amount, p.currency))
                                     )
                                   )
                                 );
@@ -7817,7 +7859,7 @@ export default function FactoringDashboard() {
                         return React.createElement("tr", { key: ei },
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { fontSize: 11, color: spMuted, whiteSpace: "nowrap" }) }, e.displayTime),
                           React.createElement("td", { style: Object.assign({}, portalTd, { fontWeight: 600, color: spAccent, fontSize: 12 }) }, e.action),
-                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 12, color: "#94A3B8" }) }, e.details)
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 12, color: spMuted }) }, e.details)
                         );
                       })
                     )
@@ -8089,7 +8131,7 @@ export default function FactoringDashboard() {
                                   if (isPay && v !== 0) return (v < 0 ? "\u2212" : "+") + money(Math.abs(v), spDisplayCcy);
                                   return money(Math.abs(v), spDisplayCcy);
                                 }
-                                acc.push(React.createElement("tr", { key: "me-" + b.key + "-" + ri, style: { borderBottom: "1px solid " + spBorder + "40", background: isClose ? "#1A274440" : "transparent" } },
+                                acc.push(React.createElement("tr", { key: "me-" + b.key + "-" + ri, style: { borderBottom: "1px solid " + spBorder + "40", background: isClose ? "#F1F5F9" : "transparent" } },
                                   React.createElement("td", null),
                                   React.createElement("td", { style: { padding: "8px 12px 8px 32px", fontSize: isClose ? 12 : 11, color: isPay ? spAccent : isFunding ? spGreen : spText, fontWeight: isClose ? 700 : (isFunding ? 600 : 400), fontFamily: spFont } },
                                     React.createElement("span", { style: { color: spMuted, fontSize: 10, marginRight: 8, fontFamily: spMono } }, fmt(r.date)),
@@ -8124,46 +8166,46 @@ export default function FactoringDashboard() {
             })()
             )
           ),
-          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n/* Self-hosted webfonts. Duplicated from the admin tree so the supplier\n   portal also loads them on first paint without depending on admin\n   render order. Browsers de-duplicate identical @font-face entries. */\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/Inter-Medium.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-SemiBold.woff2') format('woff2'); }\nbody { font-feature-settings: 'tnum' 1, 'cv11' 1; }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #1F2940 !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n/* Self-hosted webfonts. Duplicated from the admin tree so the supplier\n   portal also loads them on first paint without depending on admin\n   render order. Browsers de-duplicate identical @font-face entries. */\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/Inter-Medium.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-SemiBold.woff2') format('woff2'); }\nbody { font-feature-settings: 'tnum' 1, 'cv11' 1; }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #F1F5F9 !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" } })
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
         <div style={{ width: 240, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: sidebarOpen ? 0 : -240, height: "100vh", zIndex: 50, transition: "left 0.3s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.3)" : "none" }} className="ff-sidebar-mobile">
-          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
+          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid var(--sidebar-active-bg)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 36, filter: "drop-shadow(0 0 6px rgba(14,165,233,0.3)) drop-shadow(0 0 2px rgba(255,255,255,0.6))" }} />
-              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
+              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "var(--sidebar-text)", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
             </div>
-            <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
+            <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
-          <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
-            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
+            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "var(--sidebar-active-bg)", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
         </div>
         {sidebarOpen && <div onClick={function() { setSidebarOpen(false); }} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} className="ff-sidebar-overlay" />}
         {/* Desktop Sidebar (always visible) */}
         <div style={{ width: 240, flexShrink: 0, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", minHeight: "100vh" }} className="ff-sidebar-desktop">
-          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
+          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid var(--sidebar-active-bg)" }}>
             <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 36, filter: "drop-shadow(0 0 6px rgba(14,165,233,0.3)) drop-shadow(0 0 2px rgba(255,255,255,0.6))" }} />
-            <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
+            <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
-          <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
-            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
+            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "var(--sidebar-active-bg)", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
-          <div style={{ padding: "12px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
-            <div style={{ fontSize: 10, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
-            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
+          <div style={{ padding: "12px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "var(--sidebar-text)", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
+            <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
+            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
           </div>
         </div>
         {/* Main Content */}
@@ -8327,34 +8369,7 @@ export default function FactoringDashboard() {
           var cardBodyH = 200; // scrollable body height
           var cardTotalMinH = 256; // approx total incl. header and footer
 
-          return <div style={{
-            /* Light-mode preview override. CSS variables are scoped to this
-               wrapper so only the Pelagic Overview screen renders in the new
-               palette; every other screen stays on the dark theme. Revert
-               just this one element to undo. */
-            "--bg": "#F8FAFC",
-            "--card": "#FFFFFF",
-            "--card-hover": "#F1F5F9",
-            "--border": "#E2E8F0",
-            "--text": "#0F172A",
-            "--text-secondary": "#475569",
-            "--muted": "#64748B",
-            "--accent": "#0EA5E9",
-            background: "var(--bg)",
-            color: "var(--text)",
-            margin: "-18px -22px",
-            padding: "18px 22px",
-            minHeight: "calc(100vh - 80px)"
-          }}>
-            {/* Preview banner — temporary visual signal that this screen is
-                showing the proposed light theme. Remove after evaluation. */}
-            <div style={{ background: "#DBEAFE", border: "1px solid #93C5FD", borderRadius: 10, padding: "10px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12, color: "#1E40AF" }}>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>{"\u2728"}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>Light theme preview {"\u2014"} Pelagic Overview only</div>
-                <div style={{ fontSize: 11, opacity: 0.85 }}>This is what every screen could look like. Other tabs remain in the current dark theme until you approve the change.</div>
-              </div>
-            </div>
+          return <div>
             {/* ============ HEADER STRIP ============ */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "4px 6px 18px", borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
               <div>
