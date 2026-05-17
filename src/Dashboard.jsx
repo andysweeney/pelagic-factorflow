@@ -17282,6 +17282,25 @@ export default function FactoringDashboard() {
             var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
+          // Drill to the invoice on its supplier's Invoices tab, expand the
+          // detail row, and immediately activate edit mode. Used by the row-
+          // level Edit button — saves the operator from the multi-step path
+          // of opening the supplier, finding the invoice, clicking the chevron,
+          // then the Edit Invoice button. Especially useful when the table is
+          // wider than the viewport and the chevron is off-screen to the right.
+          function drillToInvoiceForEdit(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (!sup) return;
+            setView("supplier");
+            setSelectedSupplier(sup.id);
+            setSupTab("invoices");
+            setQ(invoiceId);
+            setPg(0);
+            setExp(invoiceId);
+            startEdit(inv);
+          }
           function drillToSupplier(supplierName) {
             var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
@@ -17638,7 +17657,7 @@ export default function FactoringDashboard() {
                     <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", width: 32 }}>
                       <div onClick={toggleSelectAllPage} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allPageSelected ? "var(--accent)" : "var(--border)"), background: allPageSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: pageEligibleIds.length > 0 ? "pointer" : "default", opacity: pageEligibleIds.length > 0 ? 1 : 0.3 }} title={pageEligibleIds.length === 0 ? "No eligible rows on this page" : (allPageSelected ? "Deselect all on page" : "Select all on page")}>{allPageSelected ? "\u2713" : ""}</div>
                     </th>
-                    {[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "daysPending", l: "Days" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "maxCap", l: "Max Capital" }, { k: null, l: "Eligibility" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"uph-" + hi} onClick={h.k ? upiSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? upiArr(h.k) : ""}</th>; })}
+                    {[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "daysPending", l: "Days" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "maxCap", l: "Max Capital" }, { k: null, l: "Eligibility" }, { k: null, l: "Actions" }].map(function(h, hi) { return <th key={"uph-" + hi} onClick={h.k ? upiSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? upiArr(h.k) : ""}</th>; })}
                   </tr></thead>
                   <tbody>{upiPageItems.map(function(inv) {
                     var ist = IST[inv.invoiceStatus] || IST["Received"];
@@ -17691,6 +17710,11 @@ export default function FactoringDashboard() {
                               <IneligibilityIndicator diag={diag} placement="left" />
                             </span>;
                           })()}
+                          {/* Edit shortcut — drills to the invoice's supplier Invoices tab with
+                              the row expanded and edit mode already on. Saves the operator from
+                              hunting for the chevron, which is often scrolled off-screen on a
+                              wide table. */}
+                          <button onClick={function() { drillToInvoiceForEdit(inv.id); }} title="Edit this invoice" style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Edit</button>
                         </div>
                       </td>
                     </tr>;
