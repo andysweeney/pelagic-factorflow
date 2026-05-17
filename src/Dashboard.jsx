@@ -13152,30 +13152,87 @@ export default function FactoringDashboard() {
               var progInvIds = {};
               progInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
               var allProgPays = [];
+              var allProgPaysSeen = {}; // paymentId → index in allProgPays
               PAYMENTS_DB.forEach(function(p) {
                 var matchAllocs = p.allocations.filter(function(a) { return progInvIds[a.invoiceId]; });
-                if (matchAllocs.length > 0) allProgPays.push({ pay: p, allocs: matchAllocs });
+                if (matchAllocs.length > 0) {
+                  allProgPaysSeen[p.paymentId] = allProgPays.length;
+                  allProgPays.push({ pay: p, allocs: matchAllocs, passthroughRoutings: [] });
+                }
+              });
+              // Pass-through routings — completed remittance SPQs that flowed through this
+              // program, sourced from a buyer payment. The on-program-invoice loop above
+              // only catches them when the pass-through is allocated to an on-program
+              // invoice; routings against off-program (or unfunded) invoices were missed
+              // entirely. Walk the SPQ table once and surface them, attaching to an
+              // existing payment row if already present, otherwise creating a new row.
+              SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                if (spq.type !== "remittance") return;
+                if (!spq.sourcePaymentId) return;
+                if (spq.programId !== selectedProgram) return;
+                if (spq.status === "Cancelled" || spq.status === "Failed") return;
+                var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+                if (!srcPay) return;
+                // Only inbound (incoming) source payments are pass-throughs in the
+                // operational sense. Outbound payments use remittance SPQs too but
+                // for a different reason (manual disbursements) and have their own
+                // surfaces.
+                if (srcPay.direction === "outbound") return;
+                var existingIdx = allProgPaysSeen[srcPay.paymentId];
+                if (existingIdx === undefined) {
+                  allProgPaysSeen[srcPay.paymentId] = allProgPays.length;
+                  allProgPays.push({ pay: srcPay, allocs: [], passthroughRoutings: [spq] });
+                } else {
+                  allProgPays[existingIdx].passthroughRoutings.push(spq);
+                }
               });
 
-              // Derived metrics
+              // Derived metrics. For a row that's pure pass-through (no on-program-invoice
+              // allocations), the payment amount may exceed the routed amount because part
+              // of the payment went elsewhere. Track pass-through routed amount separately
+              // to avoid inflating totalUnallocated.
               var totalAllocated = allProgPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0);
+              var totalPassthrough = allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).reduce(function(s2, q) { return s2 + (q.amount || 0); }, 0); }, 0);
               var totalPayments = allProgPays.reduce(function(s, ep) { return s + (ep.pay.amount || 0); }, 0);
               var totalUnallocated = allProgPays.reduce(function(s, ep) {
                 var allocSum = ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0);
-                return s + Math.max(0, (ep.pay.amount || 0) - allocSum);
+                var ptSum = (ep.passthroughRoutings || []).reduce(function(s2, q) { return s2 + (q.amount || 0); }, 0);
+                return s + Math.max(0, (ep.pay.amount || 0) - allocSum - ptSum);
               }, 0);
 
               // Filter + sort + paginate
               var progPays = allProgPays.slice();
-              if (paSearch) progPays = progPays.filter(function(ep) { var s = paSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
-              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; }); });
+              if (paSearch) progPays = progPays.filter(function(ep) {
+                var s = paSearch.toLowerCase();
+                if (ep.pay.paymentId.toLowerCase().indexOf(s) > -1) return true;
+                if (ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; })) return true;
+                // Pass-through routings carry their own invoice and SPQ IDs.
+                if ((ep.passthroughRoutings || []).some(function(q) {
+                  if (q.id && q.id.toLowerCase().indexOf(s) > -1) return true;
+                  if (q.invoiceId && q.invoiceId.toLowerCase().indexOf(s) > -1) return true;
+                  if (q.supplierName && q.supplierName.toLowerCase().indexOf(s) > -1) return true;
+                  return false;
+                })) return true;
+                return false;
+              });
+              if (paSupFilter) progPays = progPays.filter(function(ep) {
+                if (ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; })) return true;
+                // Pass-through routings carry supplier name directly on the SPQ.
+                if ((ep.passthroughRoutings || []).some(function(q) { return q.supplierName === paSupFilter; })) return true;
+                return false;
+              });
               if (paDateFilter) progPays = progPays.filter(function(ep) { return ep.pay.date === paDateFilter; });
               progPays.sort(function(a, b) {
                 var av, bv;
                 if (paSort === "date") { av = a.pay.date; bv = b.pay.date; }
                 else if (paSort === "paymentId") { av = a.pay.paymentId; bv = b.pay.paymentId; }
                 else if (paSort === "amount") { av = a.pay.amount; bv = b.pay.amount; }
-                else if (paSort === "allocated") { av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0); bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0); }
+                else if (paSort === "allocated") {
+                  // Combine direct allocations + pass-through routings so pass-through-only
+                  // rows sort meaningfully alongside allocation-only rows.
+                  av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0) + (a.passthroughRoutings || []).reduce(function(s, x) { return s + (x.amount || 0); }, 0);
+                  bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0) + (b.passthroughRoutings || []).reduce(function(s, x) { return s + (x.amount || 0); }, 0);
+                }
                 else { av = a.pay.date; bv = b.pay.date; }
                 if (av === bv) return 0;
                 var cmp = av > bv ? 1 : -1;
@@ -13186,8 +13243,14 @@ export default function FactoringDashboard() {
               var paPageItems = progPays.slice(paCurPage * paPerPage, (paCurPage + 1) * paPerPage);
               var paHasActive = !!paSearch || !!paSupFilter || !!paDateFilter;
 
+              // Supplier dropdown — include suppliers reached via direct allocation AND
+              // via pass-through routing (otherwise pass-through-only suppliers wouldn't
+              // be filterable).
               var paSups = []; var _pas = {};
-              allProgPays.forEach(function(ep) { ep.allocs.forEach(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); if (inv && !_pas[inv.supplierName]) { _pas[inv.supplierName] = true; paSups.push(inv.supplierName); } }); });
+              allProgPays.forEach(function(ep) {
+                ep.allocs.forEach(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); if (inv && inv.supplierName && !_pas[inv.supplierName]) { _pas[inv.supplierName] = true; paSups.push(inv.supplierName); } });
+                (ep.passthroughRoutings || []).forEach(function(q) { if (q.supplierName && !_pas[q.supplierName]) { _pas[q.supplierName] = true; paSups.push(q.supplierName); } });
+              });
               paSups.sort();
 
               var pamc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
@@ -13220,10 +13283,11 @@ export default function FactoringDashboard() {
 
               return <div>
                 {/* Filter-aware stat cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 14 }}>
                   <StatCard label="Payments Touching Program" value={String(allProgPays.length)} sub={paHasActive && progPays.length !== allProgPays.length ? progPays.length + " shown" : (allProgPays.length === 0 ? "none" : "total")} accent={allProgPays.length > 0 ? "#0EA5E9" : "#94A3B8"} />
                   <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#94A3B8"} />
                   <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#94A3B8"} />
+                  <StatCard label="Pass-through Routed" value={money(r2(totalPassthrough), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).length; }, 0) + " routing" + (allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).length; }, 0) === 1 ? "" : "s")} accent={totalPassthrough > 0 ? "#8B5CF6" : "#94A3B8"} />
                   <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
                 </div>
 
@@ -13237,7 +13301,7 @@ export default function FactoringDashboard() {
                 </div>
 
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated to this program's invoices."}</div>}
+                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated or routed through this program yet."}</div>}
                   {progPays.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{paCols.map(function(col) {
@@ -13247,18 +13311,26 @@ export default function FactoringDashboard() {
                       {paPageItems.map(function(ep) {
                         var isExpPA = paExp === ep.pay.paymentId;
                         var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                        var ptRoutings = ep.passthroughRoutings || [];
+                        var totalPt = ptRoutings.reduce(function(s, q) { return s + (q.amount || 0); }, 0);
+                        var hasPt = ptRoutings.length > 0;
+                        var hasAlloc = ep.allocs.length > 0;
                         return <tbody key={ep.pay.paymentId}>
                           <tr style={{ borderBottom: isExpPA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpPA ? "var(--card-hover)" : "transparent" }} onClick={function() { setPaExp(isExpPA ? null : ep.pay.paymentId); }}>
-                            <td style={Object.assign({}, pamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}</td>
+                            <td style={Object.assign({}, pamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}{hasPt && !hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Routed through this program via pass-through; no on-program-invoice allocation.">PASS-THROUGH</span>}{hasPt && hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Has both direct allocations and pass-through routings on this program.">MIXED</span>}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
                             <td style={Object.assign({}, pamc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{ep.pay.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12 }}>
+                              {hasAlloc && <div><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></div>}
+                              {hasPt && <div><span style={{ color: "#8B5CF6", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalPt), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ptRoutings.length} routed)</span></div>}
+                              {!hasAlloc && !hasPt && <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}
+                            </td>
                             <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpPA ? "var(--accent)" : "var(--card-hover)", color: isExpPA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpPA ? "\u25b4" : "\u25be"}</button></td>
                           </tr>
                           {isExpPA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
+                            {hasAlloc && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>}
+                            {hasAlloc && <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
                               var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
                               var effDate = a.allocDate || ep.pay.date;
                               var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
@@ -13269,7 +13341,22 @@ export default function FactoringDashboard() {
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
                               </tr>;
-                            })}</tbody></table>
+                            })}</tbody></table>}
+                            {hasPt && <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8B5CF6", marginBottom: 8 }}>Pass-through Routings ({ptRoutings.length})</div>
+                              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["SPQ ID", "Supplier", "Target Invoice", "Routed Amount", "Status", "Executed"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ptRoutings.map(function(q, qi) {
+                                var targetInvId = q.invoiceId || (q.invoiceIds && q.invoiceIds[0]) || "";
+                                var execDate = q.executedAt ? q.executedAt.split("T")[0] : "";
+                                return <tr key={qi} style={{ borderBottom: "1px solid var(--border)" }}>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{q.id}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11 }}>{q.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(q.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + q.supplierName}>{q.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{targetInvId ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(targetInvId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{targetInvId}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6", fontWeight: 600 }}>{money(q.amount || 0, q.currency || ep.pay.currency)}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: q.status === "Completed" ? "#10B98114" : q.status === "Pending" ? "#D9770614" : "#94A3B814", color: q.status === "Completed" ? "#10B981" : q.status === "Pending" ? "#D97706" : "#94A3B8", border: "1px solid " + (q.status === "Completed" ? "#10B98130" : q.status === "Pending" ? "#D9770630" : "#94A3B830"), letterSpacing: "0.04em", textTransform: "uppercase" }}>{q.status || "Unknown"}</span></td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{execDate ? fmt(execDate) : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                </tr>;
+                              })}</tbody></table>
+                            </div>}
                             {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
                             <div>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>
