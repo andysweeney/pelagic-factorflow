@@ -15611,6 +15611,51 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
                       <button onClick={function(e) {
                         e.stopPropagation();
+                        // Block re-allocation if any SPQ remittance for this payment has
+                        // already been executed (Completed). The cash has left Pelagic;
+                        // editing the allocation would silently re-disburse to a different
+                        // supplier. Failed/Cancelled SPQs have released capacity and don't
+                        // block. Operator must either mark the SPQ Failed (if bank reversed)
+                        // or book the supplier's refund as a new inbound payment.
+                        var completedRems = SUPPLIER_PAYMENT_QUEUE.filter(function(sp) {
+                          return sp.type === "remittance" && sp.sourcePaymentId === pay.paymentId && sp.status === "Completed";
+                        });
+                        if (completedRems.length > 0) {
+                          var first = completedRems[0];
+                          var firstSupName = first.supplierName || first.supplierId;
+                          var extra = completedRems.length > 1 ? " and " + (completedRems.length - 1) + " more" : "";
+                          toast.error(
+                            "Cannot edit allocations \u2014 payment already remitted",
+                            money(first.amount, pay.currency) + " has been remitted via " + first.id + " to " + firstSupName + extra + ". Mark the SPQ as Failed if the bank reversed it, or book the supplier's refund as a new inbound payment."
+                          );
+                          return;
+                        }
+                        // Warn (do not block) if re-allocation could push HBP-released
+                        // invoices into overdrawn state. Only flag invoices this payment
+                        // is actually applied to as funded_recovery — pass-through
+                        // allocations don't move the HBP needle. The system already
+                        // tracks holdbackOverdrawn correctly post-reallocation; this is
+                        // informational so the operator isn't surprised when a supplier
+                        // suddenly owes funds back.
+                        var hbAffected = [];
+                        pay.allocations.forEach(function(a) {
+                          if (a.remittance) return;
+                          if (a.kind === "pass_through") return;
+                          var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                          if (!inv) return;
+                          if ((inv.holdbackDisbursed || 0) > 0.01) {
+                            hbAffected.push({ id: inv.id, hbDisbursed: inv.holdbackDisbursed, currency: inv.currency });
+                          }
+                        });
+                        if (hbAffected.length > 0) {
+                          var hbShown = hbAffected.slice(0, 3);
+                          var hbList = hbShown.map(function(h) { return h.id + " (HBP " + money(h.hbDisbursed, h.currency) + " disbursed)"; }).join(", ");
+                          var hbExtra = hbAffected.length > 3 ? " and " + (hbAffected.length - 3) + " more" : "";
+                          toast.warning(
+                            "HBP released on affected invoices",
+                            "Re-allocating may push these into overdrawn state: " + hbList + hbExtra + ". Suppliers will owe the overdrawn amount back."
+                          );
+                        }
                         // Stage 1.7: rebuild routings from PENDING SPQ entries linked to
                         // this payment. SPQ entries carry both supplierId and programId
                         // explicitly, so this works for funded recovery (where the entry
