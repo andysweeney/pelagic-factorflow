@@ -1138,6 +1138,18 @@ async function saveSPQEntry(spqId) {
   _isSaving = false;
 }
 
+// Delete an SPQ row from Supabase. Use after the row has been spliced out of
+// SUPPLIER_PAYMENT_QUEUE locally (e.g. HBP-disbursement cancellation). For
+// status flips (e.g. remittance cancel keeps the row), use saveSPQEntry.
+async function deleteSPQEntry(spqId) {
+  _isSaving = true;
+  try {
+    var result = await supabase.from("supplier_payment_queue").delete().eq("id", spqId);
+    if (result.error) { console.error("[DeleteSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue delete failed", result.error.message || "Database rejected the delete."); }
+  } catch (e) { console.error("[DeleteSPQ] Error:", e); toast.error("Payment queue delete error", e.message || String(e)); }
+  _isSaving = false;
+}
+
 async function saveFundingProgram(progId) {
   var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
   if (!fp) return;
@@ -5414,7 +5426,7 @@ export default function FactoringDashboard() {
     }
     // Remove the queue entry
     SUPPLIER_PAYMENT_QUEUE.splice(spqIdx, 1);
-    saveSPQEntry(spqId);
+    deleteSPQEntry(spqId);
     auditLog("Supplier Payment Cancelled", spqId + " cancelled: " + money(spq.amount, spq.currency) + " to " + spq.supplierName + " — restored to holdback available on " + spq.sourceInvoiceId, { queueId: spqId, hbPaymentId: spq.hbPaymentId, sourceInvoiceId: spq.sourceInvoiceId, supplierName: spq.supplierName, amount: spq.amount, currency: spq.currency });
     setDataVer(function(v) { return v + 1; });
   }
