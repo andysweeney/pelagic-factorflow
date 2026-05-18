@@ -2604,6 +2604,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (amtPostDil < effectiveAmt) effectiveAmt = amtPostDil;
 
     if (rawInv.fundingStatus === "historic") fs = "historic";
+    else if (rawInv.fundingStatus === "pending" && terminalInvStatus) fs = "historic";
     else if (rawInv.fundingStatus === "pending") fs = "pending";
     else if (rawInv.fundingStatus === "purchased" && !terminalInvStatus) fs = "purchased";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
@@ -2698,6 +2699,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       statusAsOfDate = "Settled";
       // Re-evaluate funding status since settled with balance triggers recovery
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
+      // Pending (never-funded) invoices that just auto-Settled are no longer fundable.
+      // Mirror the rule at the top of the chain: pending + terminal Invoice Status -> historic.
+      if (fs === "pending") fs = "historic";
     }
     // For unfunded invoices, compute max available capital from eligible programs.
     // buyerCollected reduces fundable headroom — the portion already paid by the buyer
