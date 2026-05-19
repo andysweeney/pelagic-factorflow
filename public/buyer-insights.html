@@ -189,6 +189,116 @@
         .empty-state { padding: 60px 24px; text-align: center; color: var(--text-secondary); }
         .empty-state-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
         .empty-state-sub { font-size: 13px; }
+
+        /* ── Report ── */
+        .report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
+        .report-title { font-size: 22px; font-weight: 700; color: var(--text); }
+        .report-meta { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+        .report-back { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; font-family: var(--font); }
+        .report-back:hover { background: var(--card-hover); color: var(--text); }
+
+        /* Currency tabs */
+        .ccy-tabs { display: flex; gap: 4px; margin-bottom: 24px; padding: 4px; background: var(--card); border-radius: 8px; width: fit-content; }
+        .ccy-tab { padding: 8px 18px; background: transparent; border: none; color: var(--text-secondary); font-size: 12px; font-weight: 700; cursor: pointer; border-radius: 6px; font-family: var(--font); letter-spacing: 0.4px; }
+        .ccy-tab.active { background: var(--accent); color: #fff; }
+        .ccy-tab:hover:not(.active) { background: var(--card-hover); color: var(--text); }
+
+        /* Section blocks */
+        .section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; margin-bottom: 20px; }
+        .section-eyebrow { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+        .section-title { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px; line-height: 1.3; }
+        .section-lede { font-size: 13px; color: var(--text-secondary); margin-bottom: 22px; max-width: 720px; line-height: 1.5; }
+
+        /* Stat cards (At a glance) */
+        .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+        .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+        .stat-card .stat-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .stat-card .stat-value { font-size: 22px; font-weight: 700; color: var(--text); font-family: var(--mono); }
+        .stat-card .stat-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+        /* Callout (the surprising fact) */
+        .callout { padding: 18px 22px; border-radius: 8px; background: linear-gradient(135deg, #0EA5E920 0%, #0EA5E910 100%); border: 1px solid #0EA5E940; border-left: 4px solid var(--accent); }
+        .callout-eyebrow { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .callout-text { font-size: 15px; color: var(--text); line-height: 1.5; font-weight: 500; }
+
+        /* Charts container */
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: stretch; }
+        .chart-box { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-height: 260px; }
+        .chart-box-title { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 12px; }
+        .chart-canvas-wrap { position: relative; height: 220px; }
+
+        /* League / data tables inside report */
+        .report-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .report-table th { background: var(--bg); padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); }
+        .report-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+        .report-table tr:last-child td { border-bottom: none; }
+        .report-table .text-right { text-align: right; }
+        .report-table .text-center { text-align: center; }
+
+        /* Dilution rate cells */
+        .dil-cell { font-family: var(--mono); font-weight: 600; }
+        .dil-cell.high { color: var(--danger); }
+        .dil-cell.med  { color: var(--warning); }
+        .dil-cell.low  { color: var(--success); }
+
+        /* Payment distribution buckets */
+        .dist-bar { display: flex; height: 32px; border-radius: 6px; overflow: hidden; background: var(--bg); margin-bottom: 8px; }
+        .dist-seg { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+        .dist-seg.early   { background: var(--success); }
+        .dist-seg.late1   { background: #34D399; }
+        .dist-seg.late2   { background: var(--warning); }
+        .dist-seg.late3   { background: #F97316; }
+        .dist-seg.late4   { background: var(--danger); }
+        .dist-legend { display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary); flex-wrap: wrap; margin-top: 6px; }
+        .dist-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+
+        /* Bullet observations (final section) */
+        .observations { display: flex; flex-direction: column; gap: 10px; }
+        .observation { padding: 14px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; border-left: 3px solid var(--accent); font-size: 13px; color: var(--text); line-height: 1.5; }
+        .observation.warn { border-left-color: var(--warning); }
+        .observation.danger { border-left-color: var(--danger); }
+
+        /* CTA strip */
+        .cta-strip { margin-top: 18px; padding: 18px 22px; border-radius: 8px; background: #1A2744; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .cta-text { font-size: 13px; color: var(--text-secondary); flex: 1; min-width: 240px; }
+        .cta-text strong { color: var(--text); }
+
+        /* Upload picker on Reports tab */
+        .picker-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+        .picker-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+        .picker-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+        .picker-row:hover { border-color: var(--accent); background: var(--card-hover); }
+        .picker-row-main { flex: 1; }
+        .picker-row-label { font-size: 13px; font-weight: 700; color: var(--text); }
+        .picker-row-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+        /* ── Print: minimal pass to make the report legible on paper.
+           Layer 4 (proper PDF) will do this properly. For now: flip the dark
+           theme to light, hide chrome (header nav, tab bar, back button,
+           CTA button), keep section content. ── */
+        @media print {
+            body { background: #fff !important; color: #000 !important; }
+            .app-header, .tab-bar, .report-back, .ccy-tabs, .cta-strip button { display: none !important; }
+            .card, .section, .stat-card, .chart-box, .observation, .picker-card, .callout, .cta-strip {
+                background: #fff !important;
+                border-color: #ddd !important;
+                color: #000 !important;
+                box-shadow: none !important;
+                page-break-inside: avoid;
+            }
+            .section { margin-bottom: 12px; padding: 16px; }
+            .section-title, .stat-card .stat-value, .report-title { color: #000 !important; }
+            .section-lede, .stat-label, .stat-sub, .report-meta, .observation { color: #333 !important; }
+            .callout { background: #f4faff !important; }
+            .report-table th { background: #f0f0f0 !important; color: #333 !important; }
+            .report-table td { color: #000 !important; }
+            .dil-cell.high { color: #b00 !important; }
+            .dil-cell.med { color: #c80 !important; }
+            .dil-cell.low { color: #060 !important; }
+            .section-eyebrow { color: #0072a3 !important; }
+            #tab-upload, #tab-uploads-history, #reportPicker { display: none !important; }
+            .ccy-tabs ~ * { display: block !important; }
+        }
     </style>
 </head>
 <body>
@@ -285,11 +395,34 @@
 
     <!-- ── REPORTS TAB ── -->
     <div id="tab-reports" class="tab-content hidden">
-        <div class="card">
-            <div class="empty-state">
-                <div class="empty-state-title">Buyer reports coming soon</div>
-                <div class="empty-state-sub">Once an upload is processed, this tab will host the analytical review — concentration risk, dilution league, payment behaviour, stress signals.</div>
+        <!-- Picker view (shown when no report is open) -->
+        <div id="reportPicker">
+            <div class="picker-card">
+                <div class="card-title">Pick an upload to view its report</div>
+                <div class="card-subtitle">Select one of your past uploads to generate the analytical review. Each report is per-currency, navigated by tabs at the top once open.</div>
+                <div id="reportPickerList" class="picker-list"></div>
+                <div id="reportPickerEmpty" class="empty-state hidden">
+                    <div class="empty-state-title">No uploads yet</div>
+                    <div class="empty-state-sub">Head to the Upload tab to bring in a buyer's AP data first.</div>
+                </div>
             </div>
+        </div>
+
+        <!-- Report view (populated by openReport()) -->
+        <div id="reportView" class="hidden">
+            <div class="report-header">
+                <div>
+                    <button class="report-back" id="reportBackBtn">← Back to upload list</button>
+                    <div class="report-title" id="reportTitle"></div>
+                    <div class="report-meta" id="reportMeta"></div>
+                </div>
+            </div>
+
+            <!-- Currency tab strip -->
+            <div class="ccy-tabs" id="reportCcyTabs"></div>
+
+            <!-- Report body — re-rendered when a currency tab is clicked -->
+            <div id="reportBody"></div>
         </div>
     </div>
 
@@ -422,6 +555,7 @@ function setupTabs() {
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
+            if (tab === 'reports') renderReportPicker();
         });
     });
 }
@@ -909,10 +1043,17 @@ function renderUploadsHistory() {
             '<td class="mono">' + escHTML(dateRange) + '</td>' +
             '<td>' + formatDateTime(u.created_at) + '</td>' +
             '<td class="text-center" style="white-space:nowrap;">' +
+                '<button class="btn btn-xs btn-primary" data-view-report="' + u.id + '" style="margin-right:4px;">View Report</button>' +
                 '<button class="btn btn-xs btn-secondary" data-analyse="' + u.id + '" style="margin-right:4px;">Run Analysis (dev)</button>' +
                 '<button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button>' +
             '</td>';
 
+        tr.querySelector('[data-view-report]').addEventListener('click', function() {
+            // Switch to Reports tab and open the report directly.
+            var reportsBtn = document.querySelector('.tab-btn[data-tab="reports"]');
+            if (reportsBtn) reportsBtn.click();
+            openReport(u.id);
+        });
         tr.querySelector('[data-analyse]').addEventListener('click', function() {
             runAnalysis(u.id, u.buyer_label);
         });
@@ -932,6 +1073,713 @@ function deleteUpload(uploadId) {
         if (res.error) { alert('Delete failed: ' + res.error.message); return; }
         loadAllData();
     });
+}
+
+// ================================================================
+// LAYER 3 — REPORT (the sales artefact)
+// ================================================================
+// Architecture:
+//   renderReportPicker()  — list of uploads on the Reports tab
+//   openReport(uploadId)  — fetches rows, computes stats, renders header
+//   renderReportBody(ccy) — renders the six sections for one currency tab
+//   _chartInstances       — registry of live Chart.js instances we destroy/recreate
+//
+// State held on window.__report so the currency-tab click handler can
+// re-render without re-fetching. Cleared by closeReport().
+
+var _chartInstances = {};
+
+function renderReportPicker() {
+    // If a report is already open, leave the view alone — operator may have
+    // navigated to another tab and come back; they expect the report still up.
+    if (window.__report && window.__report.uploadId) return;
+
+    var list = document.getElementById('reportPickerList');
+    var empty = document.getElementById('reportPickerEmpty');
+    list.innerHTML = '';
+
+    if (!state.uploads || state.uploads.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+
+    state.uploads.forEach(function(u) {
+        var row = document.createElement('div');
+        row.className = 'picker-row';
+        var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
+        var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
+        row.innerHTML =
+            '<div class="picker-row-main">' +
+                '<div class="picker-row-label">' + escHTML(u.buyer_label) + '</div>' +
+                '<div class="picker-row-sub">' +
+                    (u.invoice_count || 0).toLocaleString() + ' invoices · ' +
+                    (u.supplier_count || 0).toLocaleString() + ' suppliers · ' +
+                    escHTML(ccyList) + ' · ' +
+                    escHTML(dateRange) +
+                '</div>' +
+            '</div>' +
+            '<button class="btn btn-xs btn-primary">View Report →</button>';
+        row.addEventListener('click', function() { openReport(u.id); });
+        list.appendChild(row);
+    });
+}
+
+function openReport(uploadId) {
+    if (!sbClient) { alert('Supabase not connected.'); return; }
+    if (!window.BuyerAnalytics) { alert('Analytics module not loaded.'); return; }
+
+    showProcessing(10, 'Loading upload…');
+
+    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
+        if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
+        var uploadMeta = upRes.data;
+
+        updateProcessing(35, 'Fetching invoice rows…');
+        fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
+            if (invErr) { hideProcessing(); alert('Invoice fetch failed: ' + invErr); return; }
+
+            updateProcessing(70, 'Fetching credit note rows…');
+            fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
+                if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
+
+                updateProcessing(90, 'Computing analytics…');
+                var stats = window.BuyerAnalytics.computeBuyerStats(uploadMeta, invRows, cnRows);
+
+                hideProcessing();
+                showReportView(uploadId, uploadMeta, stats);
+            });
+        });
+    });
+}
+
+function showReportView(uploadId, meta, stats) {
+    window.__report = { uploadId: uploadId, meta: meta, stats: stats, activeCcy: null };
+
+    document.getElementById('reportPicker').classList.add('hidden');
+    document.getElementById('reportView').classList.remove('hidden');
+
+    document.getElementById('reportTitle').textContent = meta.buyer_label;
+    var metaBits = [];
+    if (meta.date_range_min && meta.date_range_max) {
+        metaBits.push(meta.date_range_min + ' → ' + meta.date_range_max);
+    }
+    metaBits.push(stats.overall.totalInvoices.toLocaleString() + ' invoices');
+    metaBits.push(stats.overall.totalSuppliers.toLocaleString() + ' suppliers');
+    if (stats.overall.totalCNs > 0) metaBits.push(stats.overall.totalCNs.toLocaleString() + ' credit notes');
+    document.getElementById('reportMeta').textContent = metaBits.join('  ·  ');
+
+    // Build currency tabs — pick the highest-spend currency as default. Ties broken
+    // by alphabetical so the choice is deterministic across renders.
+    var ccyTabs = document.getElementById('reportCcyTabs');
+    ccyTabs.innerHTML = '';
+    var currencies = stats.overall.currencies.slice();
+    currencies.sort(function(a, b) {
+        var sa = stats.perCurrency[a].totals.totalSpend;
+        var sb = stats.perCurrency[b].totals.totalSpend;
+        if (sb !== sa) return sb - sa;
+        return a < b ? -1 : 1;
+    });
+
+    currencies.forEach(function(ccy, idx) {
+        var btn = document.createElement('button');
+        btn.className = 'ccy-tab' + (idx === 0 ? ' active' : '');
+        btn.textContent = ccy + '  ·  ' + stats.perCurrency[ccy].totals.invoiceCount + ' inv';
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.ccy-tab').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            renderReportBody(ccy);
+        });
+        ccyTabs.appendChild(btn);
+    });
+
+    if (currencies.length > 0) {
+        window.__report.activeCcy = currencies[0];
+        renderReportBody(currencies[0]);
+    } else {
+        document.getElementById('reportBody').innerHTML = '<div class="section"><div class="empty-state"><div class="empty-state-title">No data to report</div><div class="empty-state-sub">This upload has no non-excluded invoice rows.</div></div></div>';
+    }
+}
+
+function closeReport() {
+    window.__report = null;
+    destroyAllCharts();
+    document.getElementById('reportView').classList.add('hidden');
+    document.getElementById('reportPicker').classList.remove('hidden');
+    renderReportPicker();
+}
+
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'reportBackBtn') closeReport();
+});
+
+function destroyAllCharts() {
+    Object.keys(_chartInstances).forEach(function(k) {
+        try { _chartInstances[k].destroy(); } catch (e) {}
+        delete _chartInstances[k];
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Report body — six sections, rendered for one currency
+// ────────────────────────────────────────────────────────────────
+
+function renderReportBody(ccy) {
+    destroyAllCharts();
+    var c = window.__report.stats.perCurrency[ccy];
+    window.__report.activeCcy = ccy;
+
+    var body = document.getElementById('reportBody');
+    body.innerHTML =
+        renderSectionAtAGlance(c, ccy) +
+        renderSectionConcentration(c, ccy) +
+        renderSectionDilution(c, ccy) +
+        renderSectionPaymentBehaviour(c, ccy) +
+        renderSectionStressSignals(c, ccy) +
+        renderSectionWhatThisMeans(c, ccy);
+
+    // Charts are drawn *after* the DOM is in place — the canvas elements have to exist.
+    drawConcentrationChart(ccy, c);
+    drawPaymentDistributionChart(ccy, c);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 1 — At a glance
+// Headline numbers + one "surprising fact" callout.
+// The surprising fact is chosen by deterministic rules so the same data
+// produces the same headline (operators rehearsing a pitch don't want surprises).
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionAtAGlance(c, ccy) {
+    var t = c.totals;
+    var fact = chooseSurprisingFact(c, ccy);
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 1</div>' +
+            '<div class="section-title">Your ' + ccy + ' supply chain at a glance</div>' +
+            '<div class="section-lede">Headline numbers from the period covered, with one observation worth dwelling on.</div>' +
+
+            '<div class="stat-grid">' +
+                statCard('Suppliers', t.supplierCount.toLocaleString(), '') +
+                statCard('Invoices', t.invoiceCount.toLocaleString(), '') +
+                statCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' per invoice') +
+                statCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'dilution ' + pct(t.dilutionRate)) +
+            '</div>' +
+
+            '<div class="callout">' +
+                '<div class="callout-eyebrow">Worth noting</div>' +
+                '<div class="callout-text">' + fact + '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+function chooseSurprisingFact(c, ccy) {
+    // Pick the most attention-grabbing fact from the data. Priority order:
+    //   1. Severe concentration on a single supplier (top1 >= 60%)
+    //   2. Long-tail Pareto (top 3 >= 80%, suggesting most suppliers are noise)
+    //   3. Dilution outlier (a single supplier > 5x the average rate)
+    //   4. Very slow payment supplier (>45 day median DPD)
+    //   5. Fallback — invoice count + supplier count colour
+    var topSup = c.suppliers[0];
+    if (topSup && topSup.sharePct >= 0.60) {
+        return '<strong>' + escHTML(topSup.name) + '</strong> accounts for ' + pct(topSup.sharePct) +
+               ' of your ' + ccy + ' spend. If that relationship were disrupted, ' + moneyShort(topSup.totalSpend, ccy) +
+               ' of invoicing would need to be replaced — and you may be a similarly outsized customer to them.';
+    }
+    if (c.concentration.top3Pct >= 0.80 && c.suppliers.length >= 5) {
+        return 'Three suppliers account for ' + pct(c.concentration.top3Pct) +
+               ' of your ' + ccy + ' spend. The remaining ' + (c.suppliers.length - 3) +
+               ' suppliers contribute the rest combined — your AP team is likely processing many small relationships at a per-transaction loss.';
+    }
+    if (c.dilution.league.length >= 2) {
+        var worst = c.dilution.league[0];
+        var avg = c.totals.dilutionRate;
+        if (worst.dilutionRate > 0.05 && (avg === 0 || worst.dilutionRate / avg > 5)) {
+            return '<strong>' + escHTML(worst.name) + '</strong> shows a credit-note rate of ' + pct(worst.dilutionRate) +
+                   ', against an overall ' + ccy + ' average of ' + pct(avg) +
+                   '. Sustained dilution at that level usually indicates process or quality issues.';
+        }
+    }
+    var late = c.paymentBehaviour.consistentlyLate[0];
+    if (late) {
+        return 'Your AP team is consistently paying <strong>' + escHTML(late.name) + '</strong> a median of ' +
+               late.medianDaysPastDue + ' days past due (across ' + late.paidCount + ' paid invoices). ' +
+               'Smaller suppliers feel that lateness disproportionately.';
+    }
+    return 'Across ' + c.totals.supplierCount.toLocaleString() + ' ' + ccy + ' suppliers and ' +
+           c.totals.invoiceCount.toLocaleString() + ' invoices, you spent ' + moneyShort(c.totals.totalSpend, ccy) +
+           ' over the period — averaging ' + moneyShort(c.totals.avgInvoiceAmount, ccy) + ' per transaction.';
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 2 — Concentration
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionConcentration(c, ccy) {
+    var conc = c.concentration;
+    var suppliers = c.suppliers;
+
+    var rows = suppliers.map(function(s, idx) {
+        return '<tr>' +
+            '<td>' + (idx + 1) + '</td>' +
+            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
+            '<td class="text-right mono">' + moneyShort(s.avgInvoiceAmount, ccy) + '</td>' +
+            '<td class="mono" style="font-size:11px; color:var(--text-secondary);">' + (s.firstInvoice || '—') + ' → ' + (s.lastInvoice || '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    // HHI interpretation, gentle — not as a hard threshold.
+    var hhiLabel = conc.hhi >= 0.5 ? 'highly concentrated'
+                 : conc.hhi >= 0.25 ? 'moderately concentrated'
+                 : 'reasonably diversified';
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 2</div>' +
+            '<div class="section-title">Suppliers you depend on more than you realise</div>' +
+            '<div class="section-lede">The share of your invoicing concentrated in your top suppliers. Pelagic\'s perspective — the dependency runs both ways: if you\'re a large share of a supplier\'s book, you carry mutual fragility.</div>' +
+
+            '<div class="stat-grid">' +
+                statCard('Top supplier', pct(conc.top1Pct), 'of total ' + ccy + ' spend') +
+                statCard('Top 3', pct(conc.top3Pct), '') +
+                statCard('Top 5', pct(conc.top5Pct), '') +
+                statCard('HHI index', conc.hhi.toFixed(3), hhiLabel) +
+            '</div>' +
+
+            '<div class="chart-row" style="grid-template-columns: 2fr 1fr;">' +
+                '<div class="chart-box">' +
+                    '<div class="chart-box-title">Supplier rankings — ' + ccy + '</div>' +
+                    '<div style="max-height:380px; overflow-y:auto;"><table class="report-table">' +
+                        '<thead><tr>' +
+                            '<th>#</th><th>Supplier</th>' +
+                            '<th class="text-right">Invoices</th>' +
+                            '<th class="text-right">Spend</th>' +
+                            '<th class="text-right">Share</th>' +
+                            '<th class="text-right">Avg invoice</th>' +
+                            '<th>Active</th>' +
+                        '</tr></thead>' +
+                        '<tbody>' + rows + '</tbody>' +
+                    '</table></div>' +
+                '</div>' +
+                '<div class="chart-box">' +
+                    '<div class="chart-box-title">Share of ' + ccy + ' spend</div>' +
+                    '<div class="chart-canvas-wrap"><canvas id="chart-concentration-' + ccy + '"></canvas></div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+function drawConcentrationChart(ccy, c) {
+    var canvas = document.getElementById('chart-concentration-' + ccy);
+    if (!canvas) return;
+    var top = c.suppliers.slice(0, 8);
+    var rest = c.suppliers.slice(8);
+    var labels = top.map(function(s) { return s.name; });
+    var data = top.map(function(s) { return s.totalSpend; });
+    if (rest.length > 0) {
+        labels.push('Other (' + rest.length + ' suppliers)');
+        data.push(rest.reduce(function(a, b) { return a + b.totalSpend; }, 0));
+    }
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#34D399', '#60A5FA', '#F97316', '#94A3B8'];
+    _chartInstances['conc-' + ccy] = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: palette.slice(0, labels.length), borderColor: '#0B1120', borderWidth: 2 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#94A3B8', font: { size: 10, family: 'Inter' }, padding: 6, boxWidth: 10 } },
+                tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': ' + moneyShort(ctx.parsed, ccy); } } }
+            }
+        }
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 3 — Dilution (quality signals)
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionDilution(c, ccy) {
+    var overall = c.dilution.overallRate;
+    var league = c.dilution.league.slice(0, 10);
+
+    if (c.totals.cnCount === 0) {
+        return '' +
+            '<div class="section">' +
+                '<div class="section-eyebrow">Section 3</div>' +
+                '<div class="section-title">Quality signals from your invoice flow</div>' +
+                '<div class="section-lede">No credit note data was provided for this currency. Dilution analysis is unavailable — re-upload with a credit notes CSV to see this view.</div>' +
+            '</div>';
+    }
+
+    var rows = league.map(function(s, idx) {
+        var cls = s.dilutionRate >= 0.08 ? 'high' : s.dilutionRate >= 0.03 ? 'med' : 'low';
+        return '<tr>' +
+            '<td>' + (idx + 1) + '</td>' +
+            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
+            '<td class="text-right mono">' + s.cnCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.cnTotal, ccy) + '</td>' +
+            '<td class="text-right dil-cell ' + cls + '">' + pct(s.dilutionRate) + '</td>' +
+            '<td class="text-right mono" style="color:var(--text-secondary);">' + pct(s.sharePct) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 3</div>' +
+            '<div class="section-title">Quality signals from your invoice flow</div>' +
+            '<div class="section-lede">Credit notes against invoices, ranked by rate. Above 5% generally indicates a process or quality issue worth investigating; above 8% is a strong signal.</div>' +
+
+            '<div class="stat-grid">' +
+                statCard('Overall dilution', pct(overall), 'across ' + c.totals.cnCount + ' credit notes') +
+                statCard('Total credit notes', moneyShort(c.totals.totalCNs, ccy), '') +
+                statCard('Net spend', moneyShort(c.totals.netSpend, ccy), '') +
+                statCard('Suppliers w/ CNs', league.filter(function(s) { return s.cnCount > 0; }).length.toLocaleString(), 'of ' + c.suppliers.length) +
+            '</div>' +
+
+            '<div class="chart-box">' +
+                '<div class="chart-box-title">Dilution league — ' + ccy + '</div>' +
+                '<table class="report-table">' +
+                    '<thead><tr>' +
+                        '<th>#</th><th>Supplier</th>' +
+                        '<th class="text-right">Invoices</th><th class="text-right">Invoice total</th>' +
+                        '<th class="text-right">CNs</th><th class="text-right">CN total</th>' +
+                        '<th class="text-right">Dilution</th>' +
+                        '<th class="text-right" style="color:var(--muted);">Share of spend</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+            '</div>' +
+        '</div>';
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 4 — Payment behaviour
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionPaymentBehaviour(c, ccy) {
+    var pb = c.paymentBehaviour;
+
+    if (pb.paidInvoiceCount === 0) {
+        return '' +
+            '<div class="section">' +
+                '<div class="section-eyebrow">Section 4</div>' +
+                '<div class="section-title">How you look from the supplier side</div>' +
+                '<div class="section-lede">No paid_date data was provided, so payment-behaviour analysis isn\'t available. This section is the most uncomfortable for buyers to see, so it\'s worth a re-upload with payment dates if you can get them.</div>' +
+            '</div>';
+    }
+
+    var d = pb.distribution;
+    var total = d.earlyOrOnTime + d.late1to14 + d.late15to30 + d.late31to60 + d.late61plus;
+    function segPct(n) { return total > 0 ? (n / total * 100) : 0; }
+
+    var lateList = pb.consistentlyLate.length > 0
+        ? '<div style="margin-top:18px;">' +
+            '<div style="font-size:11px; font-weight:700; color:var(--warning); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">Suppliers paid consistently late</div>' +
+            '<table class="report-table">' +
+                '<thead><tr><th>Supplier</th><th class="text-right">Median days past due</th><th class="text-right">Avg days past due</th><th class="text-right">Paid invoices</th></tr></thead>' +
+                '<tbody>' +
+                    pb.consistentlyLate.map(function(s) {
+                        return '<tr>' +
+                            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+                            '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
+                            '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
+                            '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
+                        '</tr>';
+                    }).join('') +
+                '</tbody>' +
+            '</table>' +
+          '</div>'
+        : '';
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 4</div>' +
+            '<div class="section-title">How you look from the supplier side</div>' +
+            '<div class="section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. The average can flatter you; the distribution rarely does.</div>' +
+
+            '<div class="stat-grid">' +
+                statCard('Median DPD', (pb.medianDaysPastDue >= 0 ? '+' : '') + pb.medianDaysPastDue + 'd', pb.medianDaysPastDue <= 0 ? 'paying on time at median' : 'past due at median') +
+                statCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', '') +
+                statCard('Coverage', pct(pb.coveragePct), pb.paidInvoiceCount + ' of ' + c.totals.invoiceCount + ' have paid_date') +
+                statCard('Late ≥30 days', pb.paidInvoiceCount > 0 ? pct((d.late31to60 + d.late61plus) / pb.paidInvoiceCount) : '0.0%', '') +
+            '</div>' +
+
+            '<div class="chart-box">' +
+                '<div class="chart-box-title">Distribution of payment lateness</div>' +
+                '<div class="dist-bar">' +
+                    (d.earlyOrOnTime > 0 ? '<div class="dist-seg early"   style="width:' + segPct(d.earlyOrOnTime) + '%;">' + (segPct(d.earlyOrOnTime) >= 6 ? d.earlyOrOnTime : '') + '</div>' : '') +
+                    (d.late1to14    > 0 ? '<div class="dist-seg late1"   style="width:' + segPct(d.late1to14) + '%;">'    + (segPct(d.late1to14) >= 6    ? d.late1to14    : '') + '</div>' : '') +
+                    (d.late15to30   > 0 ? '<div class="dist-seg late2"   style="width:' + segPct(d.late15to30) + '%;">'   + (segPct(d.late15to30) >= 6   ? d.late15to30   : '') + '</div>' : '') +
+                    (d.late31to60   > 0 ? '<div class="dist-seg late3"   style="width:' + segPct(d.late31to60) + '%;">'   + (segPct(d.late31to60) >= 6   ? d.late31to60   : '') + '</div>' : '') +
+                    (d.late61plus   > 0 ? '<div class="dist-seg late4"   style="width:' + segPct(d.late61plus) + '%;">'   + (segPct(d.late61plus) >= 6   ? d.late61plus   : '') + '</div>' : '') +
+                '</div>' +
+                '<div class="dist-legend">' +
+                    '<span><span class="dist-legend-dot" style="background:var(--success);"></span>On time / early (' + d.earlyOrOnTime + ')</span>' +
+                    '<span><span class="dist-legend-dot" style="background:#34D399;"></span>1–14 days (' + d.late1to14 + ')</span>' +
+                    '<span><span class="dist-legend-dot" style="background:var(--warning);"></span>15–30 days (' + d.late15to30 + ')</span>' +
+                    '<span><span class="dist-legend-dot" style="background:#F97316;"></span>31–60 days (' + d.late31to60 + ')</span>' +
+                    '<span><span class="dist-legend-dot" style="background:var(--danger);"></span>61+ days (' + d.late61plus + ')</span>' +
+                '</div>' +
+                '<div class="chart-canvas-wrap" style="margin-top:14px;"><canvas id="chart-payment-' + ccy + '"></canvas></div>' +
+                lateList +
+            '</div>' +
+        '</div>';
+}
+
+function drawPaymentDistributionChart(ccy, c) {
+    var canvas = document.getElementById('chart-payment-' + ccy);
+    if (!canvas) return;
+    var d = c.paymentBehaviour.distribution;
+    if ((d.earlyOrOnTime + d.late1to14 + d.late15to30 + d.late31to60 + d.late61plus) === 0) return;
+
+    _chartInstances['pay-' + ccy] = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: ['On time / early', '1–14d late', '15–30d late', '31–60d late', '61+d late'],
+            datasets: [{
+                label: 'Invoice count',
+                data: [d.earlyOrOnTime, d.late1to14, d.late15to30, d.late31to60, d.late61plus],
+                backgroundColor: ['#10B981', '#34D399', '#F59E0B', '#F97316', '#EF4444'],
+                borderColor: '#0B1120',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { display: false } },
+                y: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { color: '#1C2A42' } }
+            }
+        }
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 5 — Stress signals
+// Derived from per-supplier numbers — no new thresholds, just composite reads.
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionStressSignals(c, ccy) {
+    var meta = window.__report.meta;
+    // Period end is the upload's date_range_max (date the buyer's extract ends).
+    // We measure "is this supplier going quiet?" relative to that, not today.
+    var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
+    var signals = [];
+
+    c.suppliers.forEach(function(s) {
+        var supSignals = [];
+
+        // Signal 1: declining trend slope, normalised below -0.10
+        // (≥3 months of data, see analytics module)
+        if (s.trendSlopeNormalised !== null && s.trendSlopeNormalised < -0.10 && s.activeMonths >= 3) {
+            supSignals.push({ tag: 'declining', text: 'Monthly invoice count trending down (slope ' + s.trendSlopeNormalised.toFixed(2) + ')' });
+        }
+
+        // Signal 2: last invoice >= 90 days before period end (gone quiet)
+        if (s.lastInvoice) {
+            var last = new Date(s.lastInvoice + 'T00:00:00');
+            var daysSinceLast = Math.floor((periodEnd - last) / (1000 * 60 * 60 * 24));
+            if (daysSinceLast >= 90 && s.activeMonths >= 2) {
+                supSignals.push({ tag: 'silent', text: 'Last invoice ' + daysSinceLast + ' days before period end' });
+            }
+        }
+
+        // Signal 3: dilution rate >= 8%
+        if (s.dilutionRate >= 0.08 && s.invoiceCount >= 3) {
+            supSignals.push({ tag: 'quality', text: pct(s.dilutionRate) + ' credit-note rate — sustained quality issues' });
+        }
+
+        if (supSignals.length > 0) {
+            signals.push({ supplier: s, signals: supSignals });
+        }
+    });
+
+    if (signals.length === 0) {
+        return '' +
+            '<div class="section">' +
+                '<div class="section-eyebrow">Section 5</div>' +
+                '<div class="section-title">Stress signals across your supplier base</div>' +
+                '<div class="section-lede">No stress signals detected for ' + ccy + ' suppliers in this period. Monitored signals are declining invoice volume, prolonged silence, and sustained credit-note rates.</div>' +
+            '</div>';
+    }
+
+    var rows = signals.map(function(entry) {
+        var s = entry.supplier;
+        var tags = entry.signals.map(function(sig) {
+            var color = sig.tag === 'silent' ? 'var(--danger)' : sig.tag === 'declining' ? 'var(--warning)' : 'var(--purple)';
+            return '<div style="margin:4px 0; padding:6px 10px; background:var(--bg); border-left:3px solid ' + color + '; border-radius:3px; font-size:12px;">' + escHTML(sig.text) + '</div>';
+        }).join('');
+
+        return '<tr>' +
+            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td>' + tags + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
+            '<td class="text-right mono" style="font-size:11px;">' + (s.firstInvoice || '—') + '<br>→ ' + (s.lastInvoice || '—') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 5</div>' +
+            '<div class="section-title">Stress signals across your supplier base</div>' +
+            '<div class="section-lede">Suppliers showing one or more leading indicators of relationship distress: declining invoice volume, prolonged silence relative to the period end, or sustained credit-note rates. Worth a procurement conversation — could be them, could be you.</div>' +
+
+            '<div class="chart-box">' +
+                '<table class="report-table">' +
+                    '<thead><tr>' +
+                        '<th>Supplier</th><th>Signals</th>' +
+                        '<th class="text-right">Total spend</th>' +
+                        '<th class="text-right">Share</th>' +
+                        '<th class="text-right">Active period</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+            '</div>' +
+        '</div>';
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section 6 — What this means
+// Synthesises the prior sections into 3–5 named observations + soft CTA.
+// ────────────────────────────────────────────────────────────────
+
+function renderSectionWhatThisMeans(c, ccy) {
+    var obs = generateObservations(c, ccy);
+    var rows = obs.map(function(o) {
+        return '<div class="observation ' + (o.severity || '') + '">' + o.text + '</div>';
+    }).join('');
+
+    return '' +
+        '<div class="section">' +
+            '<div class="section-eyebrow">Section 6</div>' +
+            '<div class="section-title">What this means</div>' +
+            '<div class="section-lede">A few observations drawn from the sections above, named specifically rather than generically.</div>' +
+
+            '<div class="observations">' + rows + '</div>' +
+
+            '<div class="cta-strip">' +
+                '<div class="cta-text">' +
+                    '<strong>How Pelagic helps:</strong> we fund supplier invoices on the date you receive them, so suppliers get paid on time and you keep your existing payment terms. Concentrated supplier risk, slow-paid SMEs, and dilution disputes are all places where our financing changes the equation.' +
+                '</div>' +
+                '<button class="btn btn-primary" onclick="window.print();">Print / Save as PDF</button>' +
+            '</div>' +
+        '</div>';
+}
+
+function generateObservations(c, ccy) {
+    var out = [];
+    var top = c.suppliers[0];
+
+    // Observation: concentration
+    if (top && top.sharePct >= 0.40) {
+        out.push({
+            severity: top.sharePct >= 0.60 ? 'danger' : 'warn',
+            text: '<strong>' + escHTML(top.name) + '</strong> represents ' + pct(top.sharePct) +
+                  ' of your ' + ccy + ' spend (' + moneyShort(top.totalSpend, ccy) + '). This is a concentration worth managing — both for continuity risk and because you may be a similarly large share of their book.'
+        });
+    }
+
+    // Observation: dilution outliers
+    var dilOutliers = c.dilution.league.filter(function(s) { return s.dilutionRate >= 0.05 && s.invoiceCount >= 3; });
+    if (dilOutliers.length > 0) {
+        var names = dilOutliers.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (' + pct(s.dilutionRate) + ')'; }).join(', ');
+        var moreCount = dilOutliers.length - 3;
+        out.push({
+            severity: dilOutliers[0].dilutionRate >= 0.08 ? 'warn' : '',
+            text: 'Suppliers with elevated credit-note rates: ' + names + (moreCount > 0 ? ', plus ' + moreCount + ' more' : '') +
+                  '. AP teams typically don\'t aggregate these — your CFO may be unaware of the cumulative dilution drag.'
+        });
+    }
+
+    // Observation: payment lateness
+    var late = c.paymentBehaviour.consistentlyLate;
+    if (late.length > 0) {
+        var lateNames = late.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (median +' + s.medianDaysPastDue + 'd)'; }).join(', ');
+        var lateMore = late.length - 3;
+        out.push({
+            severity: 'warn',
+            text: 'You\'re paying ' + lateNames + (lateMore > 0 ? ' and ' + lateMore + ' others' : '') +
+                  ' well past their due dates. Smaller suppliers feel this disproportionately, and it\'s likely affecting their willingness to extend favourable terms.'
+        });
+    }
+
+    // Observation: stress signals (if any)
+    var meta = window.__report.meta;
+    var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
+    var silentSuppliers = c.suppliers.filter(function(s) {
+        if (!s.lastInvoice) return false;
+        var last = new Date(s.lastInvoice + 'T00:00:00');
+        var daysSince = Math.floor((periodEnd - last) / (1000 * 60 * 60 * 24));
+        return daysSince >= 90 && s.activeMonths >= 2;
+    });
+    if (silentSuppliers.length > 0) {
+        var silentNames = silentSuppliers.slice(0, 3).map(function(s) {
+            var daysSince = Math.floor((periodEnd - new Date(s.lastInvoice + 'T00:00:00')) / (1000 * 60 * 60 * 24));
+            return '<strong>' + escHTML(s.name) + '</strong> (' + daysSince + ' days silent)';
+        }).join(', ');
+        out.push({
+            severity: 'danger',
+            text: 'Suppliers that have gone quiet relative to period end: ' + silentNames +
+                  '. Could be relationship cooling, could be supplier distress — worth a procurement check-in either way.'
+        });
+    }
+
+    // Observation: payment coverage
+    if (c.paymentBehaviour.coveragePct < 0.50 && c.totals.invoiceCount >= 20) {
+        out.push({
+            severity: '',
+            text: 'Only ' + pct(c.paymentBehaviour.coveragePct) + ' of ' + ccy + ' invoices have a paid_date populated, which limits the depth of payment analysis. If your AP system tracks settlement separately, re-uploading with paid dates joined in would unlock more of this report.'
+        });
+    }
+
+    // Always end with a positive/neutral framing if obs list is empty (rare but possible).
+    if (out.length === 0) {
+        out.push({
+            severity: '',
+            text: 'Your ' + ccy + ' supply chain shows no severe concentration, quality, or payment-behaviour signals in this period. That\'s a strong baseline — Pelagic typically helps companies in this position with growth financing (advance funding for top-supplier expansion) rather than risk management.'
+        });
+    }
+
+    return out;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Helper: stat card markup
+// ────────────────────────────────────────────────────────────────
+
+function statCard(label, value, sub) {
+    return '<div class="stat-card">' +
+        '<div class="stat-label">' + escHTML(label) + '</div>' +
+        '<div class="stat-value">' + value + '</div>' +
+        (sub ? '<div class="stat-sub">' + escHTML(sub) + '</div>' : '') +
+    '</div>';
+}
+
+// Short-form money display: £1.2M, €847k, $5.4k, with currency symbol.
+function moneyShort(val, ccy) {
+    var symbols = { GBP: '£', EUR: '€', USD: '$' };
+    var sym = symbols[ccy] || (ccy + ' ');
+    var abs = Math.abs(val);
+    if (abs >= 1e9) return sym + (val / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return sym + (val / 1e6).toFixed(2) + 'M';
+    if (abs >= 1e3) return sym + (val / 1e3).toFixed(1) + 'k';
+    return sym + val.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function pct(v) {
+    if (v == null || isNaN(v)) return '—';
+    return (v * 100).toFixed(1) + '%';
 }
 
 // ================================================================
