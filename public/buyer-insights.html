@@ -510,13 +510,19 @@
 
             /* ── Trends-specific print layout ───────────────────── */
             /* One currency spans 3 pages: chart-pair A, chart-pair B, supplier table.
-               Each chart pair stacks two ~90mm-tall charts on a single landscape page. */
+               Each chart pair stacks two charts on a single landscape page. */
+            /* Explicit heights everywhere — Chart.js needs measured canvas
+               dimensions at construction time. Flex-derived sizing was
+               unreliable in print: the canvases ended up rendering at zero
+               dimensions inside the print snapshot. */
             .print-trends-page { padding: 0; }
-            .print-trends-chart-pair { display: grid; grid-template-rows: 1fr 1fr; gap: 4mm; height: 175mm; }
-            .print-trends-chart { background: #fff; border: 1px solid #E2E8F0; border-radius: 2mm; padding: 4mm 5mm; page-break-inside: avoid; display: flex; flex-direction: column; }
+            .print-trends-chart-pair { display: block; }
+            .print-trends-chart { background: #fff; border: 1px solid #E2E8F0; border-radius: 2mm; padding: 4mm 5mm; page-break-inside: avoid; margin-bottom: 4mm; height: 84mm; box-sizing: border-box; }
+            .print-trends-chart:last-child { margin-bottom: 0; }
             .print-trends-chart-title { font-size: 9pt; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 1mm; }
             .print-trends-chart-sub { font-size: 7pt; color: #64748B; margin-bottom: 2mm; }
-            .print-trends-chart-canvas-wrap { position: relative; flex: 1; min-height: 60mm; }
+            .print-trends-chart-canvas-wrap { position: relative; height: 66mm; width: 100%; }
+            .print-trends-chart-canvas-wrap canvas { height: 100% !important; width: 100% !important; }
             .print-trends-granularity-note { font-size: 7pt; color: #64748B; font-style: italic; margin-top: 3mm; }
 
             /* Trends supplier table page — denser than the screen table because
@@ -4041,6 +4047,23 @@ function renderTrendsPrintCharts() {
     _printChartInstances = [];
     var stats = window.__trends._stats;
     var ccys = stats.overall.currencies;
+
+    // Pre-size every print canvas before Chart.js touches them. Without this,
+    // Chart.js can measure the parent at the moment of construction and find
+    // zero (the print stylesheet may not have applied yet, or flex layout
+    // may not have settled). Pre-sizing gives Chart.js valid dimensions
+    // immediately so its first synchronous draw produces visible pixels.
+    // Dimensions are pixel approximations of the CSS height: 66mm height,
+    // half-page landscape width.
+    var canvases = document.querySelectorAll('#printRoot .print-trends-chart-canvas-wrap canvas');
+    canvases.forEach(function(cv) {
+        // ~266mm usable width × 66mm height at ~3.78px/mm
+        cv.width = 1000;
+        cv.height = 250;
+        cv.style.width = '100%';
+        cv.style.height = '100%';
+    });
+
     ccys.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
         var ts = _trendsPrintData[ccy];
@@ -4055,7 +4078,13 @@ function renderTrendsPrintCharts() {
 function trendsPrintChartOptions(opts) {
     opts = opts || {};
     var options = {
-        responsive: true,
+        // responsive:false ensures Chart.js draws at the canvas's intrinsic
+        // pixel dimensions (1000×250 pre-set in renderTrendsPrintCharts)
+        // without measuring the parent at construction time. Removes the
+        // layout-timing dependency that caused blank charts in earlier
+        // print preview tests. Canvas CSS still scales it to fill 100%
+        // of the wrapper, so the visual result is the same.
+        responsive: false,
         maintainAspectRatio: false,
         devicePixelRatio: 2,
         animation: false,
