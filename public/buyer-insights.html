@@ -1297,6 +1297,24 @@ document.addEventListener('click', function(e) {
         openTrends(uploadId);
     }
     if (e.target && e.target.id === 'trendsBackBtn') closeTrends();
+    // Expandable consistently-late table
+    if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-late-toggle')) {
+        var id = e.target.getAttribute('data-late-toggle');
+        var rest = document.getElementById(id + '-rest');
+        if (rest) {
+            var isHidden = rest.classList.contains('hidden');
+            if (isHidden) {
+                rest.classList.remove('hidden');
+                e.target.textContent = '↑ Show top 10 only';
+            } else {
+                rest.classList.add('hidden');
+                // Restore original label — count comes from current text (we
+                // stored it in the original innerHTML pre-toggle).
+                var btnTotal = e.target.getAttribute('data-late-total');
+                e.target.textContent = btnTotal ? ('Show all ' + btnTotal + ' →') : 'Show all →';
+            }
+        }
+    }
 });
 
 function destroyAllCharts() {
@@ -1567,24 +1585,40 @@ function renderSectionPaymentBehaviour(c, ccy) {
     var total = d.earlyOrOnTime + d.late1to14 + d.late15to30 + d.late31to60 + d.late61plus;
     function segPct(n) { return total > 0 ? (n / total * 100) : 0; }
 
-    var lateList = pb.consistentlyLate.length > 0
-        ? '<div style="margin-top:18px;">' +
-            '<div style="font-size:11px; font-weight:700; color:var(--warning); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">Suppliers paid consistently late</div>' +
+    var lateList = '';
+    if (pb.consistentlyLate.length > 0) {
+        var lateAll = pb.consistentlyLate;
+        var lateTop = lateAll.slice(0, 10);
+        var lateRest = lateAll.slice(10);
+
+        function lateRow(s) {
+            return '<tr>' +
+                '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+                '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
+                '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
+                '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
+            '</tr>';
+        }
+
+        // toggleId is unique per render-pass so the click delegate can flip the
+        // right hidden tbody. activeCcy makes it unique across currency tabs.
+        var toggleId = 'late-' + (window.__report ? window.__report.activeCcy : 'x');
+        lateList = '<div style="margin-top:18px;">' +
+            '<div style="font-size:11px; font-weight:700; color:var(--warning); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">' +
+                'Suppliers paid consistently late (' + lateAll.length + ')' +
+            '</div>' +
             '<table class="report-table">' +
                 '<thead><tr><th>Supplier</th><th class="text-right">Median days past due</th><th class="text-right">Avg days past due</th><th class="text-right">Paid invoices</th></tr></thead>' +
-                '<tbody>' +
-                    pb.consistentlyLate.map(function(s) {
-                        return '<tr>' +
-                            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
-                            '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
-                            '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
-                            '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
-                        '</tr>';
-                    }).join('') +
-                '</tbody>' +
+                '<tbody>' + lateTop.map(lateRow).join('') + '</tbody>' +
+                (lateRest.length > 0
+                    ? '<tbody id="' + toggleId + '-rest" class="hidden">' + lateRest.map(lateRow).join('') + '</tbody>'
+                    : '') +
             '</table>' +
-          '</div>'
-        : '';
+            (lateRest.length > 0
+                ? '<button class="btn btn-xs btn-secondary" data-late-toggle="' + toggleId + '" data-late-total="' + lateAll.length + '" style="margin-top:10px;">Show all ' + lateAll.length + ' →</button>'
+                : '') +
+        '</div>';
+    }
 
     return '' +
         '<div class="section">' +
@@ -2009,7 +2043,13 @@ function showTrendsView(uploadId, meta, invRows, cnRows) {
 
     if (currencies.length > 0) {
         window.__trends.activeCcy = currencies[0];
-        renderTrendsBody();
+        // Defer the first render to the next frame so the browser has laid out
+        // the now-visible Trends container before Chart.js measures the
+        // canvases. Without this, charts initialise with zero dimensions on the
+        // first openTrends() call because the container was display:none just
+        // before — fixed only when the user clicks a granularity button (which
+        // re-renders after layout has happened).
+        requestAnimationFrame(function() { renderTrendsBody(); });
     } else {
         document.getElementById('trendsBody').innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No data</div><div class="empty-state-sub">This upload has no non-excluded invoice rows.</div></div></div>';
     }
@@ -2326,7 +2366,7 @@ function renderTrendsSupplierTable(ts, ccy) {
 
     var suppliers = ccyStats.suppliers;
 
-    var rows = suppliers.map(function(s) {
+    function supplierRow(s) {
         var sparkVol = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].volume : [];
         var sparkSpend = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].spend : [];
 
@@ -2351,7 +2391,14 @@ function renderTrendsSupplierTable(ts, ccy) {
             '<td class="text-right mono">' + dpdCell + '</td>' +
             '<td class="text-center">' + trendLbl + '</td>' +
         '</tr>';
-    }).join('');
+    }
+
+    // Same expandable pattern as the consistently-late table. Hard cap render
+    // count: 200 suppliers × 2 SVG sparklines each is ~400 SVGs per render.
+    // Showing 10 by default keeps the page snappy. Toggle reveals the rest.
+    var topSups = suppliers.slice(0, 10);
+    var restSups = suppliers.slice(10);
+    var toggleId = 'trsup-' + ccy;
 
     return '<div style="overflow-x:auto;"><table class="report-table trends-supplier-table">' +
         '<thead><tr>' +
@@ -2364,8 +2411,14 @@ function renderTrendsSupplierTable(ts, ccy) {
             '<th class="text-right">Avg DPD</th>' +
             '<th class="text-center">Trend</th>' +
         '</tr></thead>' +
-        '<tbody>' + rows + '</tbody>' +
-    '</table></div>';
+        '<tbody>' + topSups.map(supplierRow).join('') + '</tbody>' +
+        (restSups.length > 0
+            ? '<tbody id="' + toggleId + '-rest" class="hidden">' + restSups.map(supplierRow).join('') + '</tbody>'
+            : '') +
+    '</table></div>' +
+    (restSups.length > 0
+        ? '<button class="btn btn-xs btn-secondary" data-late-toggle="' + toggleId + '" data-late-total="' + suppliers.length + '" style="margin-top:10px;">Show all ' + suppliers.length + ' →</button>'
+        : '');
 }
 
 // Tiny SVG sparkline. No library, no Chart.js instance overhead.
