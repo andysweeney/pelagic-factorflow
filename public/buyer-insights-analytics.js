@@ -419,6 +419,280 @@
         });
     }
 
+    // ── Time-series for the Trends surface ─────────────────────────
+    //
+    // Computes per-bucket series at the requested granularity. Buckets are
+    // labeled by ISO week (e.g. "2025-W23"), month ("2025-06"), or quarter
+    // ("2025Q2"). The bucket label is also the natural sort key — string
+    // comparison gives the right order.
+    //
+    // Output shape (one bundle, per currency):
+    //   {
+    //     granularity: "weekly" | "monthly" | "quarterly",
+    //     buckets: ["2025-06", "2025-07", ...],
+    //     volume:      [{ bucket, invoiceCount, totalSpend }, ...]
+    //     payments:    [{ bucket, paidCount, medianDpd, avgDpd, onTimePct }, ...]
+    //     dilution:    [{ bucket, invTotal, cnTotal, rate }, ...]
+    //     concentration: { topNames: [...], series: [{ bucket, shares: { name: pct, ... }, otherPct }, ...] }
+    //     sparklines: { bySupplier: { sid: { volume: [n,n,n,...], spend: [n,n,n,...] } } }
+    //   }
+    //
+    // The sparkline series use the same bucket order as the main charts so the
+    // table cells align visually with the chart x-axis.
+
+    function computeTimeSeries(invoiceRows, cnRows, granularity, ccy) {
+        granularity = granularity || "monthly";
+        invoiceRows = (invoiceRows || []).filter(function(r) { return !r.excluded && normCcy(r.currency) === ccy; });
+        cnRows      = (cnRows || []).filter(function(r) { return !r.excluded && normCcy(r.currency) === ccy; });
+
+        var bucketFn = granularity === "weekly"    ? bucketLabelWeek
+                     : granularity === "quarterly" ? bucketLabelQuarter
+                     :                                bucketLabelMonth;
+
+        // Bucket invoices and CNs separately, then pivot.
+        var invByBucket = {};   // bucket -> invoice rows
+        var cnByBucket  = {};   // bucket -> cn rows
+        invoiceRows.forEach(function(r) {
+            if (!r.invoice_date) return;
+            var b = bucketFn(r.invoice_date);
+            if (!b) return;
+            if (!invByBucket[b]) invByBucket[b] = [];
+            invByBucket[b].push(r);
+        });
+        cnRows.forEach(function(r) {
+            if (!r.cn_date) return;
+            var b = bucketFn(r.cn_date);
+            if (!b) return;
+            if (!cnByBucket[b]) cnByBucket[b] = [];
+            cnByBucket[b].push(r);
+        });
+
+        // Establish a complete bucket range — fill in empty buckets so charts
+        // don't have gaps. Range is from earliest to latest invoice OR CN bucket.
+        var allKeys = Object.keys(invByBucket).concat(Object.keys(cnByBucket));
+        var minB = allKeys.sort()[0];
+        var maxB = allKeys.sort()[allKeys.length - 1];
+        var buckets = expandBucketRange(minB, maxB, granularity);
+
+        // Per-bucket: volume, payments, dilution.
+        var volume = [];
+        var payments = [];
+        var dilution = [];
+
+        buckets.forEach(function(b) {
+            var invs = invByBucket[b] || [];
+            var cns  = cnByBucket[b]  || [];
+
+            // Volume
+            volume.push({
+                bucket:       b,
+                invoiceCount: invs.length,
+                totalSpend:   round2(sum(invs, function(r) { return numericAmount(r.amount); }))
+            });
+
+            // Payments: invoices that *paid* within this bucket (bucket by paid_date,
+            // not invoice_date). DPD = paid_date - due_date.
+            // Note: this is *recomputed* — we walk all invoices and check which
+            // had paid_date falling in this bucket. Could pre-bucket for efficiency
+            // but at ~5000 rows it's fine.
+            var paidInThisBucket = invoiceRows.filter(function(r) {
+                if (!r.paid_date || !r.due_date) return false;
+                return bucketFn(r.paid_date) === b;
+            });
+            var dpdArr = paidInThisBucket.map(function(r) { return daysBetween(r.due_date, r.paid_date); }).filter(function(d) { return d !== null; });
+            payments.push({
+                bucket:     b,
+                paidCount:  dpdArr.length,
+                medianDpd:  dpdArr.length > 0 ? median(dpdArr) : null,
+                avgDpd:     dpdArr.length > 0 ? round1(mean(dpdArr)) : null,
+                onTimePct:  dpdArr.length > 0 ? dpdArr.filter(function(d) { return d <= 0; }).length / dpdArr.length : null
+            });
+
+            // Dilution: rate within this bucket, by invoice_date for invoices
+            // and cn_date for CNs. Note this is *not* matched — buyer extracts
+            // typically don't link CNs to specific invoices, so we treat both as
+            // streams flowing through time. Rate is the per-bucket ratio.
+            var invTotal = sum(invs, function(r) { return numericAmount(r.amount); });
+            var cnTotal  = sum(cns,  function(r) { return numericAmount(r.amount); });
+            dilution.push({
+                bucket:   b,
+                invTotal: round2(invTotal),
+                cnTotal:  round2(cnTotal),
+                rate:     invTotal > 0 ? cnTotal / invTotal : 0
+            });
+        });
+
+        // Concentration over time — share-of-spend of top-3 suppliers (by overall
+        // spend), per bucket. The "top 3" set is fixed across the whole period to
+        // make the area chart legible — otherwise the slices would rename per
+        // bucket which is unreadable.
+        var supplierTotals = {};
+        invoiceRows.forEach(function(r) {
+            var sid = r.supplier_identifier;
+            if (!sid) return;
+            if (!supplierTotals[sid]) supplierTotals[sid] = { name: r.supplier_name || sid, total: 0 };
+            supplierTotals[sid].total += numericAmount(r.amount);
+            if (!supplierTotals[sid].name && r.supplier_name) supplierTotals[sid].name = r.supplier_name;
+        });
+        var supplierRanking = Object.keys(supplierTotals).map(function(sid) {
+            return { sid: sid, name: supplierTotals[sid].name, total: supplierTotals[sid].total };
+        }).sort(function(a, b) { return b.total - a.total; });
+        var topN = supplierRanking.slice(0, 3);
+        var topSids = topN.map(function(s) { return s.sid; });
+
+        var concentrationSeries = buckets.map(function(b) {
+            var invs = invByBucket[b] || [];
+            var bucketTotal = sum(invs, function(r) { return numericAmount(r.amount); });
+            var shares = {};
+            var topShareSum = 0;
+            topN.forEach(function(t) {
+                var s = sum(invs.filter(function(r) { return r.supplier_identifier === t.sid; }), function(r) { return numericAmount(r.amount); });
+                shares[t.name] = bucketTotal > 0 ? s / bucketTotal : 0;
+                topShareSum += shares[t.name];
+            });
+            return { bucket: b, shares: shares, otherPct: Math.max(0, 1 - topShareSum) };
+        });
+
+        // Per-supplier sparkline series: volume + spend per bucket, aligned to
+        // the same `buckets` array order. Empty buckets get 0 so sparkline lines
+        // are continuous.
+        var sparklines = {};
+        Object.keys(supplierTotals).forEach(function(sid) {
+            var volSeries = [];
+            var spendSeries = [];
+            buckets.forEach(function(b) {
+                var bucketRows = (invByBucket[b] || []).filter(function(r) { return r.supplier_identifier === sid; });
+                volSeries.push(bucketRows.length);
+                spendSeries.push(round2(sum(bucketRows, function(r) { return numericAmount(r.amount); })));
+            });
+            sparklines[sid] = { volume: volSeries, spend: spendSeries };
+        });
+
+        return {
+            granularity:  granularity,
+            currency:     ccy,
+            buckets:      buckets,
+            volume:       volume,
+            payments:     payments,
+            dilution:     dilution,
+            concentration: {
+                topNames: topN.map(function(s) { return s.name; }),
+                series:   concentrationSeries
+            },
+            sparklines:   sparklines
+        };
+    }
+
+    // ── Bucket label generators ─────────────────────────────────────
+
+    function bucketLabelMonth(dateStr) {
+        if (!dateStr || dateStr.length < 7) return null;
+        return dateStr.slice(0, 7);  // "YYYY-MM"
+    }
+
+    function bucketLabelQuarter(dateStr) {
+        if (!dateStr || dateStr.length < 7) return null;
+        var y = dateStr.slice(0, 4);
+        var m = parseInt(dateStr.slice(5, 7), 10);
+        var q = Math.ceil(m / 3);
+        return y + "Q" + q;
+    }
+
+    function bucketLabelWeek(dateStr) {
+        // ISO 8601 week date. Returns "YYYY-Www" e.g. "2025-W23".
+        // Week 1 is the week containing the first Thursday of the year.
+        if (!dateStr) return null;
+        var d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return null;
+        // Set to nearest Thursday: current date + 4 - current day number (Mon=1..Sun=7)
+        var target = new Date(d.getTime());
+        var dayNum = (target.getDay() + 6) % 7 + 1;  // Mon=1..Sun=7
+        target.setDate(target.getDate() + 4 - dayNum);
+        var yearStart = new Date(target.getFullYear(), 0, 1);
+        var weekNo = Math.ceil(((target - yearStart) / 86400000 + 1) / 7);
+        return target.getFullYear() + "-W" + (weekNo < 10 ? "0" + weekNo : weekNo);
+    }
+
+    // ── Bucket range expansion (fill in empties) ────────────────────
+
+    function expandBucketRange(min, max, granularity) {
+        if (!min || !max) return [];
+        if (min === max) return [min];
+
+        if (granularity === "monthly") {
+            return expandMonthRange(min, max);
+        } else if (granularity === "quarterly") {
+            return expandQuarterRange(min, max);
+        } else if (granularity === "weekly") {
+            return expandWeekRange(min, max);
+        }
+        return [min, max];
+    }
+
+    function expandMonthRange(min, max) {
+        // "YYYY-MM" → enumerate
+        var out = [];
+        var y = parseInt(min.slice(0, 4), 10);
+        var m = parseInt(min.slice(5, 7), 10);
+        var ey = parseInt(max.slice(0, 4), 10);
+        var em = parseInt(max.slice(5, 7), 10);
+        while (y < ey || (y === ey && m <= em)) {
+            out.push(y + "-" + (m < 10 ? "0" + m : m));
+            m++;
+            if (m > 12) { m = 1; y++; }
+        }
+        return out;
+    }
+
+    function expandQuarterRange(min, max) {
+        // "YYYYQn"
+        var out = [];
+        var y = parseInt(min.slice(0, 4), 10);
+        var q = parseInt(min.slice(5, 6), 10);
+        var ey = parseInt(max.slice(0, 4), 10);
+        var eq = parseInt(max.slice(5, 6), 10);
+        while (y < ey || (y === ey && q <= eq)) {
+            out.push(y + "Q" + q);
+            q++;
+            if (q > 4) { q = 1; y++; }
+        }
+        return out;
+    }
+
+    function expandWeekRange(min, max) {
+        // "YYYY-Www". Enumerate week-by-week; needs date arithmetic since
+        // week count per year varies (52 or 53).
+        var out = [];
+        var cursor = isoWeekToDate(min);
+        var end = isoWeekToDate(max);
+        if (!cursor || !end) return [min, max];
+        while (cursor <= end) {
+            out.push(bucketLabelWeek(toISODate(cursor)));
+            cursor.setDate(cursor.getDate() + 7);
+        }
+        return out;
+    }
+
+    function isoWeekToDate(label) {
+        // "YYYY-Www" -> Date of Monday of that week
+        var m = label.match(/^(\d{4})-W(\d{1,2})$/);
+        if (!m) return null;
+        var year = parseInt(m[1], 10);
+        var week = parseInt(m[2], 10);
+        var jan4 = new Date(year, 0, 4);
+        var jan4Day = (jan4.getDay() + 6) % 7 + 1;
+        var mondayWeek1 = new Date(jan4.getTime() - (jan4Day - 1) * 86400000);
+        var target = new Date(mondayWeek1.getTime() + (week - 1) * 7 * 86400000);
+        return target;
+    }
+
+    function toISODate(d) {
+        var y = d.getFullYear();
+        var m = d.getMonth() + 1;
+        var dd = d.getDate();
+        return y + "-" + (m < 10 ? "0" + m : m) + "-" + (dd < 10 ? "0" + dd : dd);
+    }
+
     // ── Helpers ────────────────────────────────────────────────────
 
     function normCcy(c) {
@@ -510,7 +784,7 @@
     // ── Export ─────────────────────────────────────────────────────
     // Expose on global for the browser, and on module.exports for Node test.
 
-    var api = { computeBuyerStats: computeBuyerStats };
+    var api = { computeBuyerStats: computeBuyerStats, computeTimeSeries: computeTimeSeries };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
