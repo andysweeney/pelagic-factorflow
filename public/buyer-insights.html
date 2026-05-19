@@ -324,7 +324,9 @@
             .print-page:last-child { page-break-after: auto; }
 
             /* ── Cover page ──────────────────────────────────────── */
-            .print-cover { height: 195mm; display: flex; flex-direction: column; justify-content: space-between; position: relative; padding: 8mm 4mm; }
+            /* Usable landscape A4 area is ~186mm tall (210mm − 24mm margins).
+               Sized below the usable height to leave a margin of safety. */
+            .print-cover { min-height: 180mm; display: flex; flex-direction: column; justify-content: space-between; position: relative; padding: 0 4mm; }
             .print-cover-accent { height: 4mm; background: #0EA5E9; margin-bottom: 14mm; }
             .print-cover-logo { max-width: 110mm; height: auto; display: block; }
             .print-cover-title-block { margin-top: 18mm; }
@@ -731,8 +733,28 @@ function setupTabs() {
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
-            if (tab === 'reports') renderReportPicker();
-            if (tab === 'trends') renderTrendsPicker();
+            if (tab === 'reports') {
+                // If a report is already open, re-render its body. Chart instances
+                // share a global registry with Trends — opening a Trends view after
+                // a report destroys the report charts; coming back here needs to
+                // rebuild them. Re-render is cheap because the stats bundle is
+                // cached on window.__report.
+                if (window.__report && window.__report.uploadId && window.__report.activeCcy) {
+                    requestAnimationFrame(function() { renderReportBody(window.__report.activeCcy); });
+                } else {
+                    renderReportPicker();
+                }
+            }
+            if (tab === 'trends') {
+                // Symmetric: rebuild trends body if a trends view is open. Without
+                // this, navigating Reports → Trends shows the trends DOM with dead
+                // canvases (the report render called destroyAllCharts on them).
+                if (window.__trends && window.__trends.uploadId && window.__trends.activeCcy) {
+                    requestAnimationFrame(function() { renderTrendsBody(); });
+                } else {
+                    renderTrendsPicker();
+                }
+            }
         });
     });
 }
@@ -2733,30 +2755,41 @@ function exportReportPDF() {
         alert('No report loaded.');
         return;
     }
-    showProcessing(10, 'Building print layout...');
 
-    // Defer to next frame so the spinner shows before we lock the thread.
-    requestAnimationFrame(function() {
+    // Build the print tree synchronously. The earlier rAF chain was an attempt
+    // to keep the UI responsive during a long build, but it confused Edge —
+    // window.print() captured a snapshot before the rAF callbacks completed,
+    // so the preview pane was blank. Synchronous build is reliable.
+    showProcessing(20, 'Building print layout...');
+
+    // Use setTimeout(0) just so the spinner renders before we block on
+    // the synchronous build. Single deferral is enough; nested rAFs were
+    // the problem, not the deferral concept.
+    setTimeout(function() {
         try {
             buildPrintTree();
-            updateProcessing(60, 'Rendering charts for print...');
-            requestAnimationFrame(function() {
-                renderPrintCharts();
-                updateProcessing(95, 'Opening print dialog...');
-                requestAnimationFrame(function() {
-                    hideProcessing();
-                    // window.print() blocks until dialog closes; afterwards, tear down.
-                    window.print();
-                    setTimeout(teardownPrintTree, 250);
-                });
-            });
+            renderPrintCharts();
+
+            hideProcessing();
+
+            // One-shot afterprint listener handles teardown after the user
+            // closes (or saves from) the print dialog. Edge's preview pane
+            // can still be rendering after window.print() returns; tearing
+            // down via setTimeout races and produces a blank preview.
+            var onAfterPrint = function() {
+                window.removeEventListener('afterprint', onAfterPrint);
+                teardownPrintTree();
+            };
+            window.addEventListener('afterprint', onAfterPrint);
+
+            window.print();
         } catch (e) {
             hideProcessing();
             console.error('PDF build error:', e);
             alert('Could not build print layout: ' + e.message);
             teardownPrintTree();
         }
-    });
+    }, 50);
 }
 
 function buildPrintTree() {
