@@ -272,6 +272,34 @@
         .picker-row-label { font-size: 13px; font-weight: 700; color: var(--text); }
         .picker-row-sub { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
 
+        /* ── Trends surface ── */
+        .trends-controls { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .gran-toggle { display: flex; gap: 2px; background: var(--card); padding: 3px; border-radius: 7px; border: 1px solid var(--border); }
+        .gran-toggle button { padding: 6px 14px; background: transparent; border: none; color: var(--text-secondary); font-size: 11px; font-weight: 700; cursor: pointer; border-radius: 5px; font-family: var(--font); letter-spacing: 0.3px; text-transform: uppercase; }
+        .gran-toggle button.active { background: var(--accent); color: #fff; }
+        .gran-toggle button:hover:not(.active) { background: var(--card-hover); color: var(--text); }
+
+        .trends-chart-block { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+        .trends-chart-block .chart-box-title { font-size: 12px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+        .trends-chart-block .chart-box-sub { font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; }
+        .trends-chart-canvas { position: relative; height: 220px; }
+
+        /* Sparklines */
+        .sparkline-cell { padding: 4px 8px !important; }
+        .sparkline-svg { display: block; }
+        .sparkline-svg path.line { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+        .sparkline-svg path.area { fill: var(--accent); fill-opacity: 0.15; }
+        .sparkline-svg circle.last { fill: var(--accent); }
+
+        .trends-supplier-table { font-size: 11px; }
+        .trends-supplier-table th { padding: 8px 10px; }
+        .trends-supplier-table td { padding: 6px 10px; }
+
+        .trend-label { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+        .trend-label.growing   { background: #10B98120; color: var(--success); }
+        .trend-label.declining { background: #EF444420; color: var(--danger); }
+        .trend-label.flat      { background: #94A3B820; color: var(--text-secondary); }
+
         /* ── Print: minimal pass to make the report legible on paper.
            Layer 4 (proper PDF) will do this properly. For now: flip the dark
            theme to light, hide chrome (header nav, tab bar, back button,
@@ -334,6 +362,7 @@
     <div class="tab-bar">
         <button class="tab-btn active" data-tab="upload">Upload</button>
         <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="trends">Trends</button>
         <button class="tab-btn" data-tab="uploads-history">Upload History</button>
     </div>
 
@@ -416,6 +445,9 @@
                     <div class="report-title" id="reportTitle"></div>
                     <div class="report-meta" id="reportMeta"></div>
                 </div>
+                <div>
+                    <button class="btn btn-secondary" id="reportViewTrendsBtn">View Trends →</button>
+                </div>
             </div>
 
             <!-- Currency tab strip -->
@@ -423,6 +455,46 @@
 
             <!-- Report body — re-rendered when a currency tab is clicked -->
             <div id="reportBody"></div>
+        </div>
+    </div>
+
+    <!-- ── TRENDS TAB ── -->
+    <div id="tab-trends" class="tab-content hidden">
+        <!-- Picker view (shown when no trends surface open) -->
+        <div id="trendsPicker">
+            <div class="picker-card">
+                <div class="card-title">Pick an upload to explore</div>
+                <div class="card-subtitle">Trends is the exploratory view — time-series of volume, dilution, payment lateness, and concentration. Each chart shares the same x-axis so you can read patterns across them.</div>
+                <div id="trendsPickerList" class="picker-list"></div>
+                <div id="trendsPickerEmpty" class="empty-state hidden">
+                    <div class="empty-state-title">No uploads yet</div>
+                    <div class="empty-state-sub">Head to the Upload tab to bring in a buyer's AP data first.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trends view (populated by openTrends()) -->
+        <div id="trendsView" class="hidden">
+            <div class="report-header">
+                <div>
+                    <button class="report-back" id="trendsBackBtn">← Back to upload list</button>
+                    <div class="report-title" id="trendsTitle"></div>
+                    <div class="report-meta" id="trendsMeta"></div>
+                </div>
+            </div>
+
+            <!-- Controls: granularity + currency -->
+            <div class="trends-controls">
+                <div class="gran-toggle" id="trendsGranToggle">
+                    <button data-gran="weekly">Weekly</button>
+                    <button data-gran="monthly" class="active">Monthly</button>
+                    <button data-gran="quarterly">Quarterly</button>
+                </div>
+                <div class="ccy-tabs" id="trendsCcyTabs" style="margin-bottom: 0;"></div>
+            </div>
+
+            <!-- Stacked chart blocks + supplier table -->
+            <div id="trendsBody"></div>
         </div>
     </div>
 
@@ -556,6 +628,7 @@ function setupTabs() {
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
             if (tab === 'reports') renderReportPicker();
+            if (tab === 'trends') renderTrendsPicker();
         });
     });
 }
@@ -1044,15 +1117,20 @@ function renderUploadsHistory() {
             '<td>' + formatDateTime(u.created_at) + '</td>' +
             '<td class="text-center" style="white-space:nowrap;">' +
                 '<button class="btn btn-xs btn-primary" data-view-report="' + u.id + '" style="margin-right:4px;">View Report</button>' +
+                '<button class="btn btn-xs btn-secondary" data-view-trends="' + u.id + '" style="margin-right:4px;">Trends</button>' +
                 '<button class="btn btn-xs btn-secondary" data-analyse="' + u.id + '" style="margin-right:4px;">Run Analysis (dev)</button>' +
                 '<button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button>' +
             '</td>';
 
         tr.querySelector('[data-view-report]').addEventListener('click', function() {
-            // Switch to Reports tab and open the report directly.
             var reportsBtn = document.querySelector('.tab-btn[data-tab="reports"]');
             if (reportsBtn) reportsBtn.click();
             openReport(u.id);
+        });
+        tr.querySelector('[data-view-trends]').addEventListener('click', function() {
+            var trendsBtn = document.querySelector('.tab-btn[data-tab="trends"]');
+            if (trendsBtn) trendsBtn.click();
+            openTrends(u.id);
         });
         tr.querySelector('[data-analyse]').addEventListener('click', function() {
             runAnalysis(u.id, u.buyer_label);
@@ -1211,6 +1289,14 @@ function closeReport() {
 
 document.addEventListener('click', function(e) {
     if (e.target && e.target.id === 'reportBackBtn') closeReport();
+    if (e.target && e.target.id === 'reportViewTrendsBtn') {
+        if (!window.__report) return;
+        var uploadId = window.__report.uploadId;
+        var trendsBtn = document.querySelector('.tab-btn[data-tab="trends"]');
+        if (trendsBtn) trendsBtn.click();
+        openTrends(uploadId);
+    }
+    if (e.target && e.target.id === 'trendsBackBtn') closeTrends();
 });
 
 function destroyAllCharts() {
@@ -1780,6 +1866,537 @@ function moneyShort(val, ccy) {
 function pct(v) {
     if (v == null || isNaN(v)) return '—';
     return (v * 100).toFixed(1) + '%';
+}
+
+// ================================================================
+// TRENDS — exploratory surface
+// ================================================================
+// Architecture mirrors the report module:
+//   renderTrendsPicker()   — pick an upload
+//   openTrends(uploadId)   — fetch rows, store on window.__trends, render
+//   renderTrendsBody()     — re-rendered when granularity OR currency changes
+//
+// The fetched rows are cached on window.__trends so the granularity toggle
+// re-computes from in-memory rows rather than re-fetching. The toggle calls
+// computeTimeSeries() afresh for the active currency at the chosen granularity.
+
+function renderTrendsPicker() {
+    if (window.__trends && window.__trends.uploadId) return;
+
+    var list = document.getElementById('trendsPickerList');
+    var empty = document.getElementById('trendsPickerEmpty');
+    list.innerHTML = '';
+
+    if (!state.uploads || state.uploads.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+
+    state.uploads.forEach(function(u) {
+        var row = document.createElement('div');
+        row.className = 'picker-row';
+        var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
+        var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
+        row.innerHTML =
+            '<div class="picker-row-main">' +
+                '<div class="picker-row-label">' + escHTML(u.buyer_label) + '</div>' +
+                '<div class="picker-row-sub">' +
+                    (u.invoice_count || 0).toLocaleString() + ' invoices · ' +
+                    (u.supplier_count || 0).toLocaleString() + ' suppliers · ' +
+                    escHTML(ccyList) + ' · ' +
+                    escHTML(dateRange) +
+                '</div>' +
+            '</div>' +
+            '<button class="btn btn-xs btn-primary">Explore →</button>';
+        row.addEventListener('click', function() { openTrends(u.id); });
+        list.appendChild(row);
+    });
+}
+
+function openTrends(uploadId) {
+    if (!sbClient) { alert('Supabase not connected.'); return; }
+    if (!window.BuyerAnalytics) { alert('Analytics module not loaded.'); return; }
+
+    showProcessing(10, 'Loading upload…');
+
+    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
+        if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
+        var uploadMeta = upRes.data;
+
+        updateProcessing(35, 'Fetching invoice rows…');
+        fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
+            if (invErr) { hideProcessing(); alert('Invoice fetch failed: ' + invErr); return; }
+
+            updateProcessing(70, 'Fetching credit note rows…');
+            fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
+                if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
+
+                hideProcessing();
+                showTrendsView(uploadId, uploadMeta, invRows, cnRows);
+            });
+        });
+    });
+}
+
+function showTrendsView(uploadId, meta, invRows, cnRows) {
+    // Cache rows on window — used by both the granularity toggle and currency tabs.
+    window.__trends = {
+        uploadId:  uploadId,
+        meta:      meta,
+        invRows:   invRows,
+        cnRows:    cnRows,
+        granularity: 'monthly',
+        activeCcy: null
+    };
+
+    document.getElementById('trendsPicker').classList.add('hidden');
+    document.getElementById('trendsView').classList.remove('hidden');
+
+    document.getElementById('trendsTitle').textContent = meta.buyer_label;
+    var metaBits = [];
+    if (meta.date_range_min && meta.date_range_max) metaBits.push(meta.date_range_min + ' → ' + meta.date_range_max);
+    metaBits.push((invRows.length || 0).toLocaleString() + ' invoices');
+    metaBits.push(((meta.supplier_count) || 0).toLocaleString() + ' suppliers');
+    if (cnRows.length > 0) metaBits.push(cnRows.length.toLocaleString() + ' credit notes');
+    document.getElementById('trendsMeta').textContent = metaBits.join('  ·  ');
+
+    // Determine the currencies present in the data — same logic as report.
+    var ccyTotals = {};
+    invRows.forEach(function(r) {
+        if (r.excluded) return;
+        var c = (r.currency || '').toUpperCase().trim();
+        if (!c) return;
+        if (!ccyTotals[c]) ccyTotals[c] = { spend: 0, count: 0 };
+        ccyTotals[c].spend += parseFloat(r.amount) || 0;
+        ccyTotals[c].count += 1;
+    });
+    var currencies = Object.keys(ccyTotals).sort(function(a, b) {
+        if (ccyTotals[b].spend !== ccyTotals[a].spend) return ccyTotals[b].spend - ccyTotals[a].spend;
+        return a < b ? -1 : 1;
+    });
+
+    // Currency tabs
+    var ccyTabsEl = document.getElementById('trendsCcyTabs');
+    ccyTabsEl.innerHTML = '';
+    currencies.forEach(function(ccy, idx) {
+        var btn = document.createElement('button');
+        btn.className = 'ccy-tab' + (idx === 0 ? ' active' : '');
+        btn.textContent = ccy + '  ·  ' + ccyTotals[ccy].count + ' inv';
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#trendsCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            window.__trends.activeCcy = ccy;
+            renderTrendsBody();
+        });
+        ccyTabsEl.appendChild(btn);
+    });
+
+    // Granularity toggle
+    var granButtons = document.querySelectorAll('#trendsGranToggle button');
+    granButtons.forEach(function(b) {
+        b.classList.remove('active');
+        if (b.getAttribute('data-gran') === 'monthly') b.classList.add('active');
+    });
+    granButtons.forEach(function(b) {
+        b.onclick = function() {
+            granButtons.forEach(function(x) { x.classList.remove('active'); });
+            b.classList.add('active');
+            window.__trends.granularity = b.getAttribute('data-gran');
+            renderTrendsBody();
+        };
+    });
+
+    if (currencies.length > 0) {
+        window.__trends.activeCcy = currencies[0];
+        renderTrendsBody();
+    } else {
+        document.getElementById('trendsBody').innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No data</div><div class="empty-state-sub">This upload has no non-excluded invoice rows.</div></div></div>';
+    }
+}
+
+function closeTrends() {
+    window.__trends = null;
+    destroyAllCharts();   // shared registry with report
+    document.getElementById('trendsView').classList.add('hidden');
+    document.getElementById('trendsPicker').classList.remove('hidden');
+    renderTrendsPicker();
+}
+
+// ────────────────────────────────────────────────────────────────
+// Trends body — four charts + supplier sparkline table
+// ────────────────────────────────────────────────────────────────
+
+function renderTrendsBody() {
+    destroyAllCharts();
+    var t = window.__trends;
+    var ccy = t.activeCcy;
+    var ts = window.BuyerAnalytics.computeTimeSeries(t.invRows, t.cnRows, t.granularity, ccy);
+
+    var body = document.getElementById('trendsBody');
+
+    if (ts.buckets.length === 0) {
+        body.innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No ' + ccy + ' data</div></div></div>';
+        return;
+    }
+
+    var labels = ts.buckets;
+
+    body.innerHTML =
+        // Chart 1: Volume + Spend
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Invoice volume &amp; spend</div>' +
+            '<div class="chart-box-sub">Bars: invoice count per ' + t.granularity.replace('ly', '') + '. Line: total spend.</div>' +
+            '<div class="trends-chart-canvas"><canvas id="trends-chart-volume"></canvas></div>' +
+        '</div>' +
+
+        // Chart 2: Dilution
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Dilution rate</div>' +
+            '<div class="chart-box-sub">Credit notes as a percentage of invoiced value, by ' + t.granularity.replace('ly', '') + '. Capped at 50% for legibility.</div>' +
+            '<div class="trends-chart-canvas"><canvas id="trends-chart-dilution"></canvas></div>' +
+        '</div>' +
+
+        // Chart 3: Payment lateness
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Payment lateness</div>' +
+            '<div class="chart-box-sub">Median days past due, by ' + t.granularity.replace('ly', '') + ' the invoice was paid. Positive = late, negative = early.</div>' +
+            '<div class="trends-chart-canvas"><canvas id="trends-chart-payments"></canvas></div>' +
+        '</div>' +
+
+        // Chart 4: Concentration over time
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Concentration over time</div>' +
+            '<div class="chart-box-sub">Share-of-spend of the three largest ' + ccy + ' suppliers, plus everyone else combined.</div>' +
+            '<div class="trends-chart-canvas"><canvas id="trends-chart-concentration"></canvas></div>' +
+        '</div>' +
+
+        // Supplier table with sparklines
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Suppliers</div>' +
+            '<div class="chart-box-sub">Each sparkline shows the supplier\'s monthly invoice activity over the period. Hover values on the main charts above.</div>' +
+            renderTrendsSupplierTable(ts, ccy) +
+        '</div>';
+
+    drawTrendsVolume(labels, ts, ccy);
+    drawTrendsDilution(labels, ts);
+    drawTrendsPayments(labels, ts);
+    drawTrendsConcentration(labels, ts);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Chart 1 — Volume + Spend (dual axis)
+// ────────────────────────────────────────────────────────────────
+
+function drawTrendsVolume(labels, ts, ccy) {
+    var canvas = document.getElementById('trends-chart-volume');
+    if (!canvas) return;
+    _chartInstances['trends-volume'] = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Invoice count',
+                    data: ts.volume.map(function(v) { return v.invoiceCount; }),
+                    backgroundColor: '#0EA5E950',
+                    borderColor: '#0EA5E9',
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    type: 'line',
+                    label: 'Total spend (' + ccy + ')',
+                    data: ts.volume.map(function(v) { return v.totalSpend; }),
+                    borderColor: '#8B5CF6',
+                    backgroundColor: '#8B5CF620',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.3,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: chartCommonOptions({
+            yLeftLabel: 'Invoices',
+            yRightLabel: 'Spend (' + ccy + ')',
+            yRightFormat: function(v) { return moneyShort(v, ccy); }
+        })
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Chart 2 — Dilution
+// Cap rate at 50% (DILUTION_CAP) to keep the y-axis legible.
+// A bucket with one outsized CN can spike to 200%+; we'd lose all the
+// useful 1-15% signal trying to fit it.
+// ────────────────────────────────────────────────────────────────
+
+var DILUTION_CAP = 0.50;
+
+function drawTrendsDilution(labels, ts) {
+    var canvas = document.getElementById('trends-chart-dilution');
+    if (!canvas) return;
+    var rates = ts.dilution.map(function(d) { return Math.min(d.rate, DILUTION_CAP); });
+    var rawRates = ts.dilution.map(function(d) { return d.rate; });
+
+    _chartInstances['trends-dilution'] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Dilution rate',
+                data: rates,
+                borderColor: '#F59E0B',
+                backgroundColor: '#F59E0B20',
+                borderWidth: 2,
+                pointRadius: 2,
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: chartCommonOptions({
+            yLeftLabel: 'Rate',
+            yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; },
+            tooltipFormatter: function(ctx) {
+                // Show actual (uncapped) rate in tooltip even when capped on chart.
+                var idx = ctx.dataIndex;
+                var raw = rawRates[idx];
+                var d = ts.dilution[idx];
+                return 'Dilution: ' + (raw * 100).toFixed(2) + '% (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
+            },
+            suggestedMaxLeft: DILUTION_CAP
+        })
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Chart 3 — Payment lateness
+// ────────────────────────────────────────────────────────────────
+
+function drawTrendsPayments(labels, ts) {
+    var canvas = document.getElementById('trends-chart-payments');
+    if (!canvas) return;
+
+    _chartInstances['trends-payments'] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Median DPD',
+                data: ts.payments.map(function(p) { return p.medianDpd; }),
+                borderColor: '#EF4444',
+                backgroundColor: '#EF444420',
+                borderWidth: 2,
+                pointRadius: 2,
+                fill: true,
+                tension: 0.3,
+                spanGaps: true
+            }]
+        },
+        options: chartCommonOptions({
+            yLeftLabel: 'Days past due',
+            yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v + 'd'; },
+            tooltipFormatter: function(ctx) {
+                var p = ts.payments[ctx.dataIndex];
+                if (p.medianDpd === null) return 'No invoices paid';
+                return 'Median DPD: ' + (p.medianDpd >= 0 ? '+' : '') + p.medianDpd + 'd (' + p.paidCount + ' invoices, ' + ((p.onTimePct || 0) * 100).toFixed(0) + '% on time)';
+            }
+        })
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Chart 4 — Concentration over time (stacked area)
+// ────────────────────────────────────────────────────────────────
+
+function drawTrendsConcentration(labels, ts) {
+    var canvas = document.getElementById('trends-chart-concentration');
+    if (!canvas) return;
+
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#94A3B8'];
+    var datasets = ts.concentration.topNames.map(function(name, i) {
+        return {
+            label: name,
+            data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }),
+            backgroundColor: palette[i] + '80',
+            borderColor: palette[i],
+            borderWidth: 1,
+            fill: true,
+            tension: 0.2,
+            pointRadius: 0
+        };
+    });
+    // Add "Other" as the top stack
+    datasets.push({
+        label: 'Other suppliers',
+        data: ts.concentration.series.map(function(s) { return s.otherPct; }),
+        backgroundColor: palette[3] + '60',
+        borderColor: palette[3],
+        borderWidth: 1,
+        fill: true,
+        tension: 0.2,
+        pointRadius: 0
+    });
+
+    _chartInstances['trends-conc'] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: chartCommonOptions({
+            stacked: true,
+            yLeftLabel: 'Share',
+            yLeftFormat: function(v) { return (v * 100).toFixed(0) + '%'; },
+            suggestedMaxLeft: 1
+        })
+    });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Common chart options factory
+// ────────────────────────────────────────────────────────────────
+
+function chartCommonOptions(opts) {
+    opts = opts || {};
+    var options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: true, position: 'top', labels: { color: '#94A3B8', font: { size: 10, family: 'Inter' }, padding: 6, boxWidth: 12 } },
+            tooltip: {
+                backgroundColor: '#0D1526',
+                titleColor: '#E2E8F0',
+                bodyColor: '#E2E8F0',
+                borderColor: '#1C2A42',
+                borderWidth: 1,
+                callbacks: {}
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#94A3B8', font: { size: 10, family: 'JetBrains Mono' }, maxRotation: 60, minRotation: 0 },
+                grid: { color: '#1C2A4240' }
+            },
+            y: {
+                stacked: !!opts.stacked,
+                ticks: { color: '#94A3B8', font: { size: 10 } },
+                grid: { color: '#1C2A42' },
+                title: { display: !!opts.yLeftLabel, text: opts.yLeftLabel || '', color: '#94A3B8', font: { size: 10 } }
+            }
+        }
+    };
+    if (opts.yRightLabel) {
+        options.scales.y1 = {
+            position: 'right',
+            ticks: { color: '#94A3B8', font: { size: 10 }, callback: opts.yRightFormat },
+            grid: { drawOnChartArea: false },
+            title: { display: true, text: opts.yRightLabel, color: '#94A3B8', font: { size: 10 } }
+        };
+    }
+    if (opts.yLeftFormat) {
+        options.scales.y.ticks.callback = opts.yLeftFormat;
+    }
+    if (opts.suggestedMaxLeft !== undefined) {
+        options.scales.y.suggestedMax = opts.suggestedMaxLeft;
+    }
+    if (opts.tooltipFormatter) {
+        options.plugins.tooltip.callbacks.label = opts.tooltipFormatter;
+    }
+    return options;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Supplier table with SVG sparklines
+// ────────────────────────────────────────────────────────────────
+
+function renderTrendsSupplierTable(ts, ccy) {
+    // Reconstruct per-supplier stats from the raw rows. We use the same
+    // computeBuyerStats result for consistency with the report — it's already
+    // cached in window.__trends if openTrends has been opened from a report,
+    // but for direct entry we recompute.
+    if (!window.__trends._stats) {
+        window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
+            window.__trends.meta, window.__trends.invRows, window.__trends.cnRows
+        );
+    }
+    var stats = window.__trends._stats;
+    var ccyStats = stats.perCurrency[ccy];
+    if (!ccyStats) return '<div class="empty-state-sub">No supplier data for ' + ccy + '.</div>';
+
+    var suppliers = ccyStats.suppliers;
+
+    var rows = suppliers.map(function(s) {
+        var sparkVol = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].volume : [];
+        var sparkSpend = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].spend : [];
+
+        // Trend label from normalised slope.
+        var trendLbl = '<span class="trend-label flat">flat</span>';
+        if (s.trendSlopeNormalised !== null) {
+            if (s.trendSlopeNormalised > 0.10) trendLbl = '<span class="trend-label growing">growing</span>';
+            else if (s.trendSlopeNormalised < -0.10) trendLbl = '<span class="trend-label declining">declining</span>';
+        }
+
+        var dpdCell = s.avgDaysPastDue !== null
+            ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd'
+            : '—';
+
+        return '<tr>' +
+            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
+            '<td class="sparkline-cell">' + renderSparkline(sparkVol, 90, 26, '#0EA5E9') + '</td>' +
+            '<td class="sparkline-cell">' + renderSparkline(sparkSpend, 90, 26, '#8B5CF6') + '</td>' +
+            '<td class="text-right mono">' + pct(s.dilutionRate) + '</td>' +
+            '<td class="text-right mono">' + dpdCell + '</td>' +
+            '<td class="text-center">' + trendLbl + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<div style="overflow-x:auto;"><table class="report-table trends-supplier-table">' +
+        '<thead><tr>' +
+            '<th>Supplier</th>' +
+            '<th class="text-right">Spend</th>' +
+            '<th class="text-right">Share</th>' +
+            '<th>Volume</th>' +
+            '<th>Spend</th>' +
+            '<th class="text-right">Dilution</th>' +
+            '<th class="text-right">Avg DPD</th>' +
+            '<th class="text-center">Trend</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+    '</table></div>';
+}
+
+// Tiny SVG sparkline. No library, no Chart.js instance overhead.
+// data: array of numbers (any scale). w, h: pixel dimensions. color: hex.
+// Auto-scales y-axis to data range; flat-line if all values are the same.
+function renderSparkline(data, w, h, color) {
+    if (!data || data.length === 0) return '<svg width="' + w + '" height="' + h + '"></svg>';
+
+    var max = Math.max.apply(null, data);
+    var min = Math.min.apply(null, data);
+    if (max === min) { max = min + 1; }   // avoid divide-by-zero on flat data
+
+    var pad = 2;
+    var innerW = w - 2 * pad;
+    var innerH = h - 2 * pad;
+    var step = data.length > 1 ? innerW / (data.length - 1) : 0;
+
+    var pts = data.map(function(v, i) {
+        var x = pad + i * step;
+        var y = pad + innerH - ((v - min) / (max - min)) * innerH;
+        return [x, y];
+    });
+    var pathLine = pts.map(function(p, i) { return (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var pathArea = pathLine + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (h - pad) + ' L' + pts[0][0].toFixed(1) + ',' + (h - pad) + ' Z';
+    var last = pts[pts.length - 1];
+
+    return '<svg class="sparkline-svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+        '<path class="area" style="fill:' + color + '; fill-opacity:0.12;" d="' + pathArea + '" />' +
+        '<path class="line" style="stroke:' + color + ';" d="' + pathLine + '" />' +
+        '<circle class="last" style="fill:' + color + ';" cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="2" />' +
+    '</svg>';
 }
 
 // ================================================================
