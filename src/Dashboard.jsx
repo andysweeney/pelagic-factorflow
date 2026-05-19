@@ -15694,23 +15694,16 @@ export default function FactoringDashboard() {
                           }
                           routingMap[key].amount += sp.amount;
                         });
-                        // Legacy fallback: if no SPQ entries (older payments), derive from funded allocs.
-                        if (Object.keys(routingMap).length === 0) {
-                          existingFunded.forEach(function(a) {
-                            var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
-                            if (!inv || !inv.fundingProgram) return;
-                            var key = inv.supplierId + "|" + inv.fundingProgram;
-                            if (!routingMap[key]) {
-                              var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; });
-                              routingMap[key] = { counterpartyType: "supplier", supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "", amount: 0 };
-                            }
-                            routingMap[key].amount += a.amount;
-                          });
-                        }
-                        // Add funded-recovery amounts that didn't pair with an SPQ entry
-                        // (pure recovery, no remittance) to the routing total — otherwise
-                        // routing.amount would only show the remittance portion and the user
-                        // wouldn't be able to re-edit funded amounts.
+                        // Add funded-recovery allocations to the routing total. This block
+                        // handles two scenarios in a single pass:
+                        //  (a) Routing had only funded recovery (no pass-through, no SPQ
+                        //      remittance) — SPQ walk above produced nothing, this block
+                        //      seeds routingMap from the funded allocs.
+                        //  (b) Routing had mixed funded + pass-through — SPQ walk seeded
+                        //      routingMap with the pass-through portion, this block adds
+                        //      the funded portion on top.
+                        // Note: do NOT also run a separate legacy fallback that walks
+                        // existingFunded into routingMap — it would double-count case (a).
                         existingFunded.forEach(function(a) {
                           var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                           if (!inv || !inv.fundingProgram) return;
