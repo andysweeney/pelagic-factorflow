@@ -419,6 +419,25 @@
             .print-disclaimer-title { font-size: 10pt; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 4mm; border-bottom: 2px solid #0EA5E9; padding-bottom: 2mm; display: inline-block; }
             .print-disclaimer-text { font-size: 9pt; color: #475569; line-height: 1.6; max-width: 240mm; }
 
+            /* ── Trends-specific print layout ───────────────────── */
+            /* One currency spans 3 pages: chart-pair A, chart-pair B, supplier table.
+               Each chart pair stacks two ~90mm-tall charts on a single landscape page. */
+            .print-trends-page { padding: 0; }
+            .print-trends-chart-pair { display: grid; grid-template-rows: 1fr 1fr; gap: 4mm; height: 175mm; }
+            .print-trends-chart { background: #fff; border: 1px solid #E2E8F0; border-radius: 2mm; padding: 4mm 5mm; page-break-inside: avoid; display: flex; flex-direction: column; }
+            .print-trends-chart-title { font-size: 9pt; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 1mm; }
+            .print-trends-chart-sub { font-size: 7pt; color: #64748B; margin-bottom: 2mm; }
+            .print-trends-chart-canvas-wrap { position: relative; flex: 1; min-height: 60mm; }
+            .print-trends-granularity-note { font-size: 7pt; color: #64748B; font-style: italic; margin-top: 3mm; }
+
+            /* Trends supplier table page — denser than the screen table because
+               we need ~30 suppliers per page rather than 10. */
+            .print-trends-suppliers-page .print-currency-header { margin-bottom: 4mm; }
+            .print-trends-suppliers { font-size: 7.5pt; }
+            .print-trends-suppliers th { padding: 1.5mm 2mm; font-size: 6.5pt; }
+            .print-trends-suppliers td { padding: 1.2mm 2mm; }
+            .print-trends-suppliers .sparkline-cell { padding: 0.5mm 2mm; }
+
             /* Page footer — fixed at bottom of every page via @page hooks
                isn't reliable across browsers, so we inline a footer band on
                each .print-page instead. Done via the body content directly. */
@@ -576,6 +595,9 @@
                     <button class="report-back" id="trendsBackBtn">← Back to upload list</button>
                     <div class="report-title" id="trendsTitle"></div>
                     <div class="report-meta" id="trendsMeta"></div>
+                </div>
+                <div>
+                    <button class="btn btn-primary" id="trendsPrintBtn">Print / Save as PDF</button>
                 </div>
             </div>
 
@@ -1423,6 +1445,7 @@ document.addEventListener('click', function(e) {
         openTrends(uploadId);
     }
     if (e.target && e.target.id === 'trendsBackBtn') closeTrends();
+    if (e.target && e.target.id === 'trendsPrintBtn') exportTrendsPDF();
     // Expandable consistently-late table
     if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-late-toggle')) {
         var id = e.target.getAttribute('data-late-toggle');
@@ -2739,67 +2762,86 @@ function nullableStr(v) {
 // ================================================================
 // LAYER 4 — PDF EXPORT
 // ================================================================
-// Approach: render all currencies + cover + disclaimer into a hidden
-// #printRoot tree, then call window.print(). CSS hides the screen UI
-// and reveals #printRoot during the print operation. After the dialog
-// closes (or is cancelled), tear down the print tree.
+// Architecture: a single beforeprint listener decides which builder to
+// use based on which view is currently open (Reports vs Trends). The
+// builder populates the hidden #printRoot tree synchronously; CSS hides
+// the screen UI and reveals #printRoot during print. afterprint tears
+// down. This means ANY print path (Ctrl+P, browser menu, the Print
+// button) all produce the right output — the button is now just a
+// shortcut to window.print().
 //
-// Charts are re-rendered into the print tree as fresh Chart.js instances
-// because canvases can't be duplicated and screen instances are tied to
-// their original DOM nodes. We force devicePixelRatio: 2 for crisp output.
+// Why not the previous async build? Edge's print preview can capture a
+// snapshot of the page before async callbacks complete. Synchronous
+// build + beforeprint is reliable across all paths.
 
 var _printChartInstances = [];
+var _printPathActive = false;  // guards against beforeprint re-entry
 
+window.addEventListener('beforeprint', function() {
+    if (_printPathActive) return;
+    _printPathActive = true;
+    try {
+        // Detect active view. Trends takes priority if both are open
+        // (operator who's currently looking at Trends and hits Ctrl+P
+        // expects Trends output).
+        var trendsOpen = window.__trends && window.__trends.uploadId && window.__trends.activeCcy
+            && !document.getElementById('trendsView').classList.contains('hidden');
+        var reportOpen = window.__report && window.__report.uploadId && window.__report.activeCcy
+            && !document.getElementById('reportView').classList.contains('hidden');
+
+        if (trendsOpen) {
+            buildTrendsPrintTree();
+            renderTrendsPrintCharts();
+        } else if (reportOpen) {
+            buildReportPrintTree();
+            renderReportPrintCharts();
+        }
+        // If neither view is open, printRoot stays empty. The print
+        // stylesheet will hide everything else, so the preview will be
+        // blank — but the operator wasn't on a printable view, so that's
+        // acceptable (and matches the previous behaviour).
+    } catch (e) {
+        console.error('beforeprint error:', e);
+        _printPathActive = false;
+    }
+});
+
+window.addEventListener('afterprint', function() {
+    teardownPrintTree();
+    _printPathActive = false;
+});
+
+// Programmatic entry from the on-screen buttons. Both buttons call this;
+// it's a thin wrapper around window.print() so the beforeprint listener
+// fires consistently regardless of entry path.
 function exportReportPDF() {
     if (!window.__report || !window.__report.stats) {
         alert('No report loaded.');
         return;
     }
-
-    // Build the print tree synchronously. The earlier rAF chain was an attempt
-    // to keep the UI responsive during a long build, but it confused Edge —
-    // window.print() captured a snapshot before the rAF callbacks completed,
-    // so the preview pane was blank. Synchronous build is reliable.
-    showProcessing(20, 'Building print layout...');
-
-    // Use setTimeout(0) just so the spinner renders before we block on
-    // the synchronous build. Single deferral is enough; nested rAFs were
-    // the problem, not the deferral concept.
-    setTimeout(function() {
-        try {
-            buildPrintTree();
-            renderPrintCharts();
-
-            hideProcessing();
-
-            // One-shot afterprint listener handles teardown after the user
-            // closes (or saves from) the print dialog. Edge's preview pane
-            // can still be rendering after window.print() returns; tearing
-            // down via setTimeout races and produces a blank preview.
-            var onAfterPrint = function() {
-                window.removeEventListener('afterprint', onAfterPrint);
-                teardownPrintTree();
-            };
-            window.addEventListener('afterprint', onAfterPrint);
-
-            window.print();
-        } catch (e) {
-            hideProcessing();
-            console.error('PDF build error:', e);
-            alert('Could not build print layout: ' + e.message);
-            teardownPrintTree();
-        }
-    }, 50);
+    window.print();
 }
 
-function buildPrintTree() {
+function exportTrendsPDF() {
+    if (!window.__trends || !window.__trends.uploadId) {
+        alert('No trends view loaded.');
+        return;
+    }
+    window.print();
+}
+
+// ================================================================
+// REPORTS — print tree
+// ================================================================
+
+function buildReportPrintTree() {
     var stats = window.__report.stats;
     var meta = window.__report.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
     // Cover page
-    root.appendChild(buildPrintCover(meta, stats));
+    root.appendChild(buildPrintCover(meta, stats, 'Buyer Insights'));
 
     // Per-currency pages — same order as the on-screen tabs (highest spend first)
     var currencies = stats.overall.currencies.slice();
@@ -2818,7 +2860,7 @@ function buildPrintTree() {
     root.appendChild(buildPrintDisclaimer());
 }
 
-function buildPrintCover(meta, stats) {
+function buildPrintCover(meta, stats, eyebrowLabel) {
     var page = document.createElement('div');
     page.className = 'print-page print-cover';
 
@@ -2833,7 +2875,7 @@ function buildPrintCover(meta, stats) {
             '<div class="print-cover-accent"></div>' +
             '<img class="print-cover-logo" src="' + PELAGIC_LOGO_DATAURL + '" alt="Pelagic Solutions" />' +
             '<div class="print-cover-title-block">' +
-                '<div class="print-cover-eyebrow">Buyer Insights</div>' +
+                '<div class="print-cover-eyebrow">' + escHTML(eyebrowLabel || 'Buyer Insights') + '</div>' +
                 '<div class="print-cover-title">' + escHTML(meta.buyer_label) + '</div>' +
                 '<div class="print-cover-subtitle">' + escHTML(period) + '</div>' +
             '</div>' +
@@ -3186,7 +3228,7 @@ function renderPrintSectionWhatThisMeans(c, ccy, meta) {
 // Chart rendering for print — high DPR, no animation
 // ────────────────────────────────────────────────────────────────
 
-function renderPrintCharts() {
+function renderReportPrintCharts() {
     _printChartInstances = [];
     var stats = window.__report.stats;
     stats.overall.currencies.forEach(function(ccy) {
@@ -3226,12 +3268,293 @@ function drawPrintConcentration(ccy, c) {
     _printChartInstances.push(inst);
 }
 
+// ================================================================
+// TRENDS — print tree
+// ================================================================
+// Per currency: 3 landscape pages.
+//   Page A — Volume+Spend chart  +  Dilution chart
+//   Page B — Payment Lateness chart  +  Concentration over time chart
+//   Page C — Supplier table (top 30 with sparklines)
+// Granularity honours the on-screen toggle selection.
+
+function buildTrendsPrintTree() {
+    var meta = window.__trends.meta;
+    var root = document.getElementById('printRoot');
+    root.innerHTML = '';
+
+    // We need stats (per-currency supplier list) and time-series. Cached on
+    // __trends._stats; re-compute here if missing (e.g. operator goes
+    // straight to print before opening the on-screen body).
+    if (!window.__trends._stats) {
+        window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
+            meta, window.__trends.invRows, window.__trends.cnRows
+        );
+    }
+    var stats = window.__trends._stats;
+    var granularity = window.__trends.granularity || 'monthly';
+
+    // Build a stats-shaped object for the cover so the same builder works
+    root.appendChild(buildPrintCover(meta, stats, 'Trends Analysis'));
+
+    // Currency order: highest spend first
+    var currencies = stats.overall.currencies.slice();
+    currencies.sort(function(a, b) {
+        var sa = stats.perCurrency[a].totals.totalSpend;
+        var sb = stats.perCurrency[b].totals.totalSpend;
+        if (sb !== sa) return sb - sa;
+        return a < b ? -1 : 1;
+    });
+
+    // For each currency, compute time-series fresh at the chosen granularity,
+    // then build 3 pages. Stash the time-series on the page so the chart
+    // renderer can find them by canvas id.
+    currencies.forEach(function(ccy) {
+        var c = stats.perCurrency[ccy];
+        var ts = window.BuyerAnalytics.computeTimeSeries(
+            window.__trends.invRows, window.__trends.cnRows, granularity, ccy
+        );
+        // Stash on a module-level map so chart-render step can find them.
+        _trendsPrintData[ccy] = ts;
+
+        root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'A'));
+        root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'B'));
+        root.appendChild(buildTrendsSupplierPage(ccy, c, ts, granularity));
+    });
+
+    root.appendChild(buildPrintDisclaimer());
+}
+
+// Per-currency time-series, keyed for chart renderer
+var _trendsPrintData = {};
+
+function buildTrendsPagePair(ccy, c, ts, granularity, pair) {
+    var page = document.createElement('div');
+    page.className = 'print-page print-trends-page';
+
+    var headerHtml =
+        '<div class="print-currency-header">' +
+            '<div class="print-currency-title"><span class="print-ccy-code">' + ccy + '</span> Trends ' + pair + '</div>' +
+            '<div class="print-currency-meta">' +
+                c.totals.invoiceCount.toLocaleString() + ' invoices  ·  ' +
+                c.totals.supplierCount + ' suppliers  ·  ' +
+                granularity + ' view' +
+            '</div>' +
+        '</div>';
+
+    var chartsHtml;
+    if (pair === 'A') {
+        chartsHtml =
+            '<div class="print-trends-chart-pair">' +
+                '<div class="print-trends-chart">' +
+                    '<div class="print-trends-chart-title">Invoice volume &amp; spend</div>' +
+                    '<div class="print-trends-chart-sub">Bars: invoice count per ' + granularity.replace('ly', '') + '. Line: total spend.</div>' +
+                    '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-vol-' + ccy + '"></canvas></div>' +
+                '</div>' +
+                '<div class="print-trends-chart">' +
+                    '<div class="print-trends-chart-title">Dilution rate</div>' +
+                    '<div class="print-trends-chart-sub">Credit notes as a percentage of invoiced value. Capped at 50% for legibility.</div>' +
+                    '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-dil-' + ccy + '"></canvas></div>' +
+                '</div>' +
+            '</div>';
+    } else {
+        chartsHtml =
+            '<div class="print-trends-chart-pair">' +
+                '<div class="print-trends-chart">' +
+                    '<div class="print-trends-chart-title">Payment lateness</div>' +
+                    '<div class="print-trends-chart-sub">Median days past due, by ' + granularity.replace('ly', '') + ' the invoice was paid. Positive = late.</div>' +
+                    '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-pay-' + ccy + '"></canvas></div>' +
+                '</div>' +
+                '<div class="print-trends-chart">' +
+                    '<div class="print-trends-chart-title">Concentration over time</div>' +
+                    '<div class="print-trends-chart-sub">Share-of-spend of the three largest ' + ccy + ' suppliers vs. everyone else.</div>' +
+                    '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-conc-' + ccy + '"></canvas></div>' +
+                '</div>' +
+            '</div>';
+    }
+
+    page.innerHTML = headerHtml + chartsHtml;
+    return page;
+}
+
+function buildTrendsSupplierPage(ccy, c, ts, granularity) {
+    var page = document.createElement('div');
+    page.className = 'print-page print-trends-suppliers-page';
+
+    // Cap at 30 for one-page fit at 7.5pt density.
+    var sups = c.suppliers.slice(0, 30);
+
+    function trendLabel(s) {
+        if (s.trendSlopeNormalised === null) return '<span class="print-trend-label flat">flat</span>';
+        if (s.trendSlopeNormalised > 0.10)   return '<span class="print-trend-label growing">growing</span>';
+        if (s.trendSlopeNormalised < -0.10)  return '<span class="print-trend-label declining">declining</span>';
+        return '<span class="print-trend-label flat">flat</span>';
+    }
+
+    var rows = sups.map(function(s) {
+        var sparkVol = (ts.sparklines && ts.sparklines[s.identifier]) ? ts.sparklines[s.identifier].volume : [];
+        var sparkSpend = (ts.sparklines && ts.sparklines[s.identifier]) ? ts.sparklines[s.identifier].spend : [];
+        var dpdCell = s.avgDaysPastDue !== null
+            ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd'
+            : '—';
+        return '<tr>' +
+            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
+            '<td class="sparkline-cell">' + renderSparkline(sparkVol, 60, 18, '#0EA5E9') + '</td>' +
+            '<td class="sparkline-cell">' + renderSparkline(sparkSpend, 60, 18, '#8B5CF6') + '</td>' +
+            '<td class="text-right mono">' + pct(s.dilutionRate) + '</td>' +
+            '<td class="text-right mono">' + dpdCell + '</td>' +
+            '<td class="text-center">' + trendLabel(s) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var headerHtml =
+        '<div class="print-currency-header">' +
+            '<div class="print-currency-title"><span class="print-ccy-code">' + ccy + '</span> Trends C - Suppliers</div>' +
+            '<div class="print-currency-meta">' +
+                sups.length + ' shown' + (c.suppliers.length > 30 ? ' of ' + c.suppliers.length : '') +
+                '  ·  sparklines at ' + granularity + ' granularity' +
+            '</div>' +
+        '</div>';
+
+    page.innerHTML = headerHtml +
+        '<table class="print-table print-trends-suppliers">' +
+            '<thead><tr>' +
+                '<th>Supplier</th>' +
+                '<th class="text-right">Spend</th>' +
+                '<th class="text-right">Share</th>' +
+                '<th>Volume</th>' +
+                '<th>Spend</th>' +
+                '<th class="text-right">Dilution</th>' +
+                '<th class="text-right">Avg DPD</th>' +
+                '<th class="text-center">Trend</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        (c.suppliers.length > 30 ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm; font-style:italic;">+ ' + (c.suppliers.length - 30) + ' more suppliers not shown</div>' : '');
+
+    return page;
+}
+
+// ── Trends chart renderers for print ──────────────────────────
+
+function renderTrendsPrintCharts() {
+    _printChartInstances = [];
+    var stats = window.__trends._stats;
+    var ccys = stats.overall.currencies;
+    ccys.forEach(function(ccy) {
+        var c = stats.perCurrency[ccy];
+        var ts = _trendsPrintData[ccy];
+        if (!ts) return;
+        drawTrendsPrintVolume(ccy, ts, c);
+        drawTrendsPrintDilution(ccy, ts);
+        drawTrendsPrintPayments(ccy, ts);
+        drawTrendsPrintConcentration(ccy, ts);
+    });
+}
+
+function trendsPrintChartOptions(opts) {
+    opts = opts || {};
+    var options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        devicePixelRatio: 2,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: !!opts.legend, position: 'top', labels: { color: '#475569', font: { size: 7, family: 'Inter' }, padding: 3, boxWidth: 10 } },
+            tooltip: { enabled: false }
+        },
+        scales: {
+            x: { ticks: { color: '#475569', font: { size: 6, family: 'JetBrains Mono' }, maxRotation: 60, autoSkip: true, maxTicksLimit: 16 }, grid: { color: '#F1F5F9' } },
+            y: {
+                stacked: !!opts.stacked,
+                ticks: { color: '#475569', font: { size: 7 } },
+                grid: { color: '#F1F5F9' }
+            }
+        }
+    };
+    if (opts.yRightFormat) {
+        options.scales.y1 = {
+            position: 'right',
+            ticks: { color: '#475569', font: { size: 7 }, callback: opts.yRightFormat },
+            grid: { drawOnChartArea: false }
+        };
+    }
+    if (opts.yLeftFormat) options.scales.y.ticks.callback = opts.yLeftFormat;
+    if (opts.suggestedMaxLeft !== undefined) options.scales.y.suggestedMax = opts.suggestedMaxLeft;
+    return options;
+}
+
+function drawTrendsPrintVolume(ccy, ts, c) {
+    var canvas = document.getElementById('print-trends-vol-' + ccy);
+    if (!canvas) return;
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: ts.buckets,
+            datasets: [
+                { type: 'bar', label: 'Invoice count', data: ts.volume.map(function(v) { return v.invoiceCount; }), backgroundColor: '#0EA5E950', borderColor: '#0EA5E9', borderWidth: 1, yAxisID: 'y' },
+                { type: 'line', label: 'Total spend (' + ccy + ')', data: ts.volume.map(function(v) { return v.totalSpend; }), borderColor: '#8B5CF6', backgroundColor: '#8B5CF620', borderWidth: 1.5, pointRadius: 1, tension: 0.3, yAxisID: 'y1' }
+            ]
+        },
+        options: trendsPrintChartOptions({ legend: true, yRightFormat: function(v) { return moneyShort(v, ccy); } })
+    });
+    _printChartInstances.push(inst);
+}
+
+function drawTrendsPrintDilution(ccy, ts) {
+    var canvas = document.getElementById('print-trends-dil-' + ccy);
+    if (!canvas) return;
+    var rates = ts.dilution.map(function(d) { return Math.min(d.rate, 0.50); });
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: ts.buckets,
+            datasets: [{ label: 'Dilution rate', data: rates, borderColor: '#F59E0B', backgroundColor: '#F59E0B25', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3 }]
+        },
+        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; }, suggestedMaxLeft: 0.50 })
+    });
+    _printChartInstances.push(inst);
+}
+
+function drawTrendsPrintPayments(ccy, ts) {
+    var canvas = document.getElementById('print-trends-pay-' + ccy);
+    if (!canvas) return;
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: ts.buckets,
+            datasets: [{ label: 'Median DPD', data: ts.payments.map(function(p) { return p.medianDpd; }), borderColor: '#EF4444', backgroundColor: '#EF444425', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3, spanGaps: true }]
+        },
+        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v + 'd'; } })
+    });
+    _printChartInstances.push(inst);
+}
+
+function drawTrendsPrintConcentration(ccy, ts) {
+    var canvas = document.getElementById('print-trends-conc-' + ccy);
+    if (!canvas) return;
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#94A3B8'];
+    var datasets = ts.concentration.topNames.map(function(name, i) {
+        return { label: name, data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }), backgroundColor: palette[i] + '80', borderColor: palette[i], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 };
+    });
+    datasets.push({ label: 'Other', data: ts.concentration.series.map(function(s) { return s.otherPct; }), backgroundColor: palette[3] + '60', borderColor: palette[3], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 });
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: ts.buckets, datasets: datasets },
+        options: trendsPrintChartOptions({ legend: true, stacked: true, yLeftFormat: function(v) { return (v * 100).toFixed(0) + '%'; }, suggestedMaxLeft: 1 })
+    });
+    _printChartInstances.push(inst);
+}
+
 function teardownPrintTree() {
     // Destroy print chart instances first to free canvases
     _printChartInstances.forEach(function(c) {
         try { c.destroy(); } catch (e) {}
     });
     _printChartInstances = [];
+    _trendsPrintData = {};
     var root = document.getElementById('printRoot');
     if (root) root.innerHTML = '';
 }
