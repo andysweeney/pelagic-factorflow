@@ -300,32 +300,126 @@
         .trend-label.declining { background: #EF444420; color: var(--danger); }
         .trend-label.flat      { background: #94A3B820; color: var(--text-secondary); }
 
-        /* ── Print: minimal pass to make the report legible on paper.
-           Layer 4 (proper PDF) will do this properly. For now: flip the dark
-           theme to light, hide chrome (header nav, tab bar, back button,
-           CTA button), keep section content. ── */
+        /* ══════════════════════════════════════════════════════════
+           PDF EXPORT — print-only DOM
+           When the user clicks "Print / Save as PDF", a hidden tree
+           (#printRoot) is populated with cover + every currency's full
+           report + disclaimer, then window.print() fires. The print
+           stylesheet hides the screen UI and reveals #printRoot.
+           ══════════════════════════════════════════════════════════ */
+        #printRoot { display: none; }
+
         @media print {
-            body { background: #fff !important; color: #000 !important; }
-            .app-header, .tab-bar, .report-back, .ccy-tabs, .cta-strip button { display: none !important; }
-            .card, .section, .stat-card, .chart-box, .observation, .picker-card, .callout, .cta-strip {
-                background: #fff !important;
-                border-color: #ddd !important;
-                color: #000 !important;
-                box-shadow: none !important;
-                page-break-inside: avoid;
-            }
-            .section { margin-bottom: 12px; padding: 16px; }
-            .section-title, .stat-card .stat-value, .report-title { color: #000 !important; }
-            .section-lede, .stat-label, .stat-sub, .report-meta, .observation { color: #333 !important; }
-            .callout { background: #f4faff !important; }
-            .report-table th { background: #f0f0f0 !important; color: #333 !important; }
-            .report-table td { color: #000 !important; }
-            .dil-cell.high { color: #b00 !important; }
-            .dil-cell.med { color: #c80 !important; }
-            .dil-cell.low { color: #060 !important; }
-            .section-eyebrow { color: #0072a3 !important; }
-            #tab-upload, #tab-uploads-history, #reportPicker { display: none !important; }
-            .ccy-tabs ~ * { display: block !important; }
+            /* Page setup — landscape A4 with tight margins */
+            @page { size: A4 landscape; margin: 12mm 14mm; }
+
+            /* Hide everything except the print tree */
+            body > *:not(#printRoot) { display: none !important; }
+            body { background: #fff !important; color: #0F172A !important; margin: 0 !important; padding: 0 !important; }
+            #printRoot { display: block !important; color: #0F172A; }
+
+            /* Each major block forces a page break; the cover gets its own
+               page, each currency starts on a new page, disclaimer ends. */
+            .print-page { page-break-after: always; page-break-inside: avoid; padding: 0; }
+            .print-page:last-child { page-break-after: auto; }
+
+            /* ── Cover page ──────────────────────────────────────── */
+            .print-cover { height: 195mm; display: flex; flex-direction: column; justify-content: space-between; position: relative; padding: 8mm 4mm; }
+            .print-cover-accent { height: 4mm; background: #0EA5E9; margin-bottom: 14mm; }
+            .print-cover-logo { max-width: 110mm; height: auto; display: block; }
+            .print-cover-title-block { margin-top: 18mm; }
+            .print-cover-eyebrow { font-size: 10pt; color: #0EA5E9; font-weight: 700; letter-spacing: 2pt; text-transform: uppercase; margin-bottom: 6mm; }
+            .print-cover-title { font-size: 32pt; font-weight: 700; color: #0F172A; letter-spacing: -0.5pt; line-height: 1.1; margin-bottom: 4mm; }
+            .print-cover-subtitle { font-size: 16pt; color: #475569; font-weight: 400; }
+            .print-cover-stats { margin-top: 16mm; display: flex; gap: 16mm; }
+            .print-cover-stat-label { font-size: 8pt; font-weight: 700; color: #64748B; letter-spacing: 0.8pt; text-transform: uppercase; margin-bottom: 2mm; }
+            .print-cover-stat-value { font-size: 14pt; font-weight: 700; color: #0F172A; font-family: 'JetBrains Mono', monospace; }
+            .print-cover-footer { display: flex; justify-content: space-between; align-items: flex-end; font-size: 9pt; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 4mm; }
+            .print-cover-contact strong { color: #0F172A; }
+
+            /* ── Per-currency section header (divider page-top) ──── */
+            .print-currency-header { padding: 0 0 6mm 0; margin-bottom: 6mm; border-bottom: 2px solid #0EA5E9; display: flex; justify-content: space-between; align-items: baseline; }
+            .print-currency-title { font-size: 22pt; font-weight: 700; color: #0F172A; letter-spacing: -0.3pt; }
+            .print-currency-title .print-ccy-code { color: #0EA5E9; }
+            .print-currency-meta { font-size: 9pt; color: #64748B; font-family: 'JetBrains Mono', monospace; }
+
+            /* ── Section blocks in print ─────────────────────────── */
+            .print-section { padding: 0 0 6mm 0; margin-bottom: 4mm; page-break-inside: avoid; }
+            .print-section + .print-section { border-top: 1px solid #E2E8F0; padding-top: 6mm; }
+            .print-section-eyebrow { font-size: 8pt; font-weight: 700; color: #0EA5E9; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 2mm; }
+            .print-section-title { font-size: 16pt; font-weight: 700; color: #0F172A; margin-bottom: 2mm; line-height: 1.2; }
+            .print-section-lede { font-size: 9pt; color: #475569; margin-bottom: 5mm; line-height: 1.4; max-width: 200mm; }
+
+            /* Stat cards in print — tinted for visual interest */
+            .print-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; margin-bottom: 5mm; }
+            .print-stat-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 3px solid #0EA5E9; border-radius: 2mm; padding: 4mm 5mm; }
+            .print-stat-card .stat-label { font-size: 7pt; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 0.6pt; margin-bottom: 1mm; }
+            .print-stat-card .stat-value { font-size: 14pt; font-weight: 700; color: #0F172A; font-family: 'JetBrains Mono', monospace; }
+            .print-stat-card .stat-sub { font-size: 7pt; color: #64748B; margin-top: 1mm; }
+
+            /* Callout — accented panel */
+            .print-callout { padding: 5mm 6mm; border-radius: 2mm; background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #0EA5E9; margin-bottom: 4mm; }
+            .print-callout-eyebrow { font-size: 7pt; font-weight: 700; color: #0EA5E9; text-transform: uppercase; letter-spacing: 0.6pt; margin-bottom: 2mm; }
+            .print-callout-text { font-size: 11pt; color: #0F172A; line-height: 1.5; font-weight: 500; }
+
+            /* Chart panels */
+            .print-chart-row { display: grid; gap: 4mm; margin-bottom: 4mm; }
+            .print-chart-row.two-col { grid-template-columns: 2fr 1fr; }
+            .print-chart-box { background: #fff; border: 1px solid #E2E8F0; border-radius: 2mm; padding: 4mm; page-break-inside: avoid; }
+            .print-chart-box-title { font-size: 8pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 2mm; }
+            .print-chart-canvas-wrap { position: relative; height: 70mm; }
+
+            /* Tables in print */
+            .print-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+            .print-table thead th { background: #F8FAFC; padding: 2mm 3mm; text-align: left; font-size: 7pt; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.4pt; border-bottom: 1px solid #CBD5E1; }
+            .print-table td { padding: 2mm 3mm; border-bottom: 1px solid #E2E8F0; color: #0F172A; }
+            .print-table tr:last-child td { border-bottom: none; }
+            .print-table .text-right { text-align: right; }
+            .print-table .text-center { text-align: center; }
+            .print-table .mono { font-family: 'JetBrains Mono', monospace; }
+
+            /* Dilution colour cues — survive print */
+            .print-dil-high { color: #B91C1C !important; font-weight: 700; }
+            .print-dil-med  { color: #B45309 !important; font-weight: 700; }
+            .print-dil-low  { color: #047857 !important; font-weight: 500; }
+
+            /* Payment distribution bar — colour-coded segments */
+            .print-dist-bar { display: flex; height: 7mm; border-radius: 1mm; overflow: hidden; background: #F1F5F9; margin-bottom: 2mm; }
+            .print-dist-seg { display: flex; align-items: center; justify-content: center; font-size: 7pt; font-weight: 700; color: #fff; }
+            .print-dist-seg.early   { background: #10B981; }
+            .print-dist-seg.late1   { background: #34D399; }
+            .print-dist-seg.late2   { background: #F59E0B; }
+            .print-dist-seg.late3   { background: #F97316; }
+            .print-dist-seg.late4   { background: #EF4444; }
+            .print-dist-legend { display: flex; gap: 4mm; font-size: 7pt; color: #475569; flex-wrap: wrap; margin-bottom: 4mm; }
+            .print-dist-legend-dot { display: inline-block; width: 2.5mm; height: 2.5mm; border-radius: 0.5mm; margin-right: 1mm; vertical-align: middle; }
+
+            /* Observation blocks — accent stripe */
+            .print-observation { padding: 3mm 4mm; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 2mm; border-left: 3px solid #0EA5E9; font-size: 9pt; color: #0F172A; line-height: 1.5; margin-bottom: 2mm; page-break-inside: avoid; }
+            .print-observation.warn   { border-left-color: #F59E0B; background: #FFFBEB; }
+            .print-observation.danger { border-left-color: #EF4444; background: #FEF2F2; }
+            .print-observation strong { color: #0F172A; }
+
+            /* Stress signal mini-panels */
+            .print-stress-sig { margin: 1mm 0; padding: 2mm 3mm; background: #F8FAFC; border-left: 2px solid #94A3B8; border-radius: 1mm; font-size: 8pt; color: #475569; }
+            .print-stress-sig.silent    { border-left-color: #EF4444; }
+            .print-stress-sig.declining { border-left-color: #F59E0B; }
+            .print-stress-sig.quality   { border-left-color: #8B5CF6; }
+
+            /* Trend label pills */
+            .print-trend-label { font-size: 7pt; padding: 0.5mm 2mm; border-radius: 4mm; font-weight: 700; }
+            .print-trend-label.growing   { background: #D1FAE5; color: #047857; }
+            .print-trend-label.declining { background: #FEE2E2; color: #B91C1C; }
+            .print-trend-label.flat      { background: #F1F5F9; color: #64748B; }
+
+            /* Disclaimer page */
+            .print-disclaimer { padding: 10mm 4mm; }
+            .print-disclaimer-title { font-size: 10pt; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 4mm; border-bottom: 2px solid #0EA5E9; padding-bottom: 2mm; display: inline-block; }
+            .print-disclaimer-text { font-size: 9pt; color: #475569; line-height: 1.6; max-width: 240mm; }
+
+            /* Page footer — fixed at bottom of every page via @page hooks
+               isn't reliable across browsers, so we inline a footer band on
+               each .print-page instead. Done via the body content directly. */
         }
     </style>
 </head>
@@ -530,6 +624,11 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+<!-- PRINT ROOT — populated by exportReportPDF() before printing -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="printRoot"></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
 <!-- SCRIPTS                                                    -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <script>
@@ -539,6 +638,11 @@
 // ================================================================
 var SUPABASE_URL = 'https://jgmyrxevvaxjsxiecmzf.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnbXlyeGV2dmF4anN4aWVjbXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDEwMzcsImV4cCI6MjA5MDcxNzAzN30.Iy6eh3yXOzyTvGq8uYYZqj2ZUlwP0yNJ6XHf7x892c4';
+
+// Embedded Pelagic logo (base64 JPEG). Used on the PDF cover page so the
+// HTML stays self-contained — relative URLs to image files don't always
+// work reliably across browsers' print engines.
+var PELAGIC_LOGO_DATAURL = "data:image/jpeg;base64,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xPcx7TlrmnBCiUpRhNSksor1YylBqLwyzqujpquDmKiFkkfQCOHk6lG67SALi6iqtkdDJRw9I/BYrZq2RjWx18POgf8AEj3O9I4dy7cGobRMB/WhGep7SP8AZX3Us7pdbGfZkRQurZ9XOPdEcGkrntY5ymx17Z/Bday6YjpKhlTVTCZ7DlrGjDQevtXUN4tYGfl9P/nWrU6ktMLSRO6Vw/ZjYT7TuX5G2s6T3ZXufUri7qLbj7HWke2ON0j3BrWjJJ6AqyulT8ruE9TwEjyR5Oj2Lo33UFRcWmCNvMU54tByXeU/BcVT9QvI12ow5I22NrKinKfNhERTSgEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBbdpt1Zda6OioYTLM/oHADpJPQFqK3OSWeyGzmGja2O4f/kh5y9/UR/h7Bw9p02lBV6ii3g4XNZ0obkslYXq2VlouMtDWx7EsZ4j6Lh0EHpBWkvQ13tNuu9OILjSRzsH0drcW+QjeFHRyc6c53b2ast/c57d3Z9q2VdKqKXUfAy09Rg49dcSs9H2ea9X6npWMJia4Pndjc1gO/Pl4elX2tO02u32mm+T26ljp4zvIbxcesk7z6Vw9fapgsVA+ngka+4zNxGwHfGD+2fh1rfb0Y2VJym/Mx1qsrqolFFacola2u1hXSMcHMjcImkH90AH25UfX64lxLnEkneSelfi89Um5zcn3luEdkVFdwREXwfQREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAFkpp5qadk9PK+KVhy17HYIPYVjROQJra+Ui90zBHVxU9aB+04bD/WN3sXSPKlJs7rIza6/lO73VXCLXG+uIrCkZpWlFvLiTK68ot9q2OjphBRNP7Ubcv9Z/BRCeWWeV000j5JHnLnvdkk9pXwi41K1Sq8zeTrTpQp/pWAiIuR0CIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiA/9k=";
 
 var sbClient = null;
 
@@ -1792,7 +1896,7 @@ function renderSectionWhatThisMeans(c, ccy) {
                 '<div class="cta-text">' +
                     '<strong>How Pelagic helps:</strong> we fund supplier invoices on the date you receive them, so suppliers get paid on time and you keep your existing payment terms. Concentrated supplier risk, slow-paid SMEs, and dilution disputes are all places where our financing changes the equation.' +
                 '</div>' +
-                '<button class="btn btn-primary" onclick="window.print();">Print / Save as PDF</button>' +
+                '<button class="btn btn-primary" onclick="exportReportPDF();">Print / Save as PDF</button>' +
             '</div>' +
         '</div>';
 }
@@ -2608,6 +2712,495 @@ function nullableStr(v) {
     if (v == null) return null;
     var s = String(v).trim();
     return s === '' ? null : s;
+}
+
+// ================================================================
+// LAYER 4 — PDF EXPORT
+// ================================================================
+// Approach: render all currencies + cover + disclaimer into a hidden
+// #printRoot tree, then call window.print(). CSS hides the screen UI
+// and reveals #printRoot during the print operation. After the dialog
+// closes (or is cancelled), tear down the print tree.
+//
+// Charts are re-rendered into the print tree as fresh Chart.js instances
+// because canvases can't be duplicated and screen instances are tied to
+// their original DOM nodes. We force devicePixelRatio: 2 for crisp output.
+
+var _printChartInstances = [];
+
+function exportReportPDF() {
+    if (!window.__report || !window.__report.stats) {
+        alert('No report loaded.');
+        return;
+    }
+    showProcessing(10, 'Building print layout...');
+
+    // Defer to next frame so the spinner shows before we lock the thread.
+    requestAnimationFrame(function() {
+        try {
+            buildPrintTree();
+            updateProcessing(60, 'Rendering charts for print...');
+            requestAnimationFrame(function() {
+                renderPrintCharts();
+                updateProcessing(95, 'Opening print dialog...');
+                requestAnimationFrame(function() {
+                    hideProcessing();
+                    // window.print() blocks until dialog closes; afterwards, tear down.
+                    window.print();
+                    setTimeout(teardownPrintTree, 250);
+                });
+            });
+        } catch (e) {
+            hideProcessing();
+            console.error('PDF build error:', e);
+            alert('Could not build print layout: ' + e.message);
+            teardownPrintTree();
+        }
+    });
+}
+
+function buildPrintTree() {
+    var stats = window.__report.stats;
+    var meta = window.__report.meta;
+    var root = document.getElementById('printRoot');
+    root.innerHTML = '';
+
+    // Cover page
+    root.appendChild(buildPrintCover(meta, stats));
+
+    // Per-currency pages — same order as the on-screen tabs (highest spend first)
+    var currencies = stats.overall.currencies.slice();
+    currencies.sort(function(a, b) {
+        var sa = stats.perCurrency[a].totals.totalSpend;
+        var sb = stats.perCurrency[b].totals.totalSpend;
+        if (sb !== sa) return sb - sa;
+        return a < b ? -1 : 1;
+    });
+
+    currencies.forEach(function(ccy) {
+        root.appendChild(buildPrintCurrencySection(ccy, stats.perCurrency[ccy], meta));
+    });
+
+    // Disclaimer page
+    root.appendChild(buildPrintDisclaimer());
+}
+
+function buildPrintCover(meta, stats) {
+    var page = document.createElement('div');
+    page.className = 'print-page print-cover';
+
+    var genDate = new Date();
+    var genDateStr = genDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+    var period = (meta.date_range_min && meta.date_range_max)
+        ? meta.date_range_min + ' to ' + meta.date_range_max
+        : 'Period not specified';
+
+    page.innerHTML =
+        '<div>' +
+            '<div class="print-cover-accent"></div>' +
+            '<img class="print-cover-logo" src="' + PELAGIC_LOGO_DATAURL + '" alt="Pelagic Solutions" />' +
+            '<div class="print-cover-title-block">' +
+                '<div class="print-cover-eyebrow">Buyer Insights</div>' +
+                '<div class="print-cover-title">' + escHTML(meta.buyer_label) + '</div>' +
+                '<div class="print-cover-subtitle">' + escHTML(period) + '</div>' +
+            '</div>' +
+            '<div class="print-cover-stats">' +
+                printCoverStat('Invoices',  stats.overall.totalInvoices.toLocaleString()) +
+                printCoverStat('Suppliers', stats.overall.totalSuppliers.toLocaleString()) +
+                printCoverStat('Currencies', stats.overall.currencies.join(', ')) +
+                (stats.overall.totalCNs > 0 ? printCoverStat('Credit notes', stats.overall.totalCNs.toLocaleString()) : '') +
+            '</div>' +
+        '</div>' +
+        '<div class="print-cover-footer">' +
+            '<div class="print-cover-contact"><strong>Pelagic Solutions Limited</strong>  ·  andy@pelagicsolutions.co.uk</div>' +
+            '<div>Generated ' + genDateStr + '</div>' +
+        '</div>';
+    return page;
+}
+
+function printCoverStat(label, value) {
+    return '<div>' +
+        '<div class="print-cover-stat-label">' + escHTML(label) + '</div>' +
+        '<div class="print-cover-stat-value">' + escHTML(value) + '</div>' +
+    '</div>';
+}
+
+function buildPrintCurrencySection(ccy, c, meta) {
+    var page = document.createElement('div');
+    page.className = 'print-page';
+
+    // Currency header at top of section
+    var headerHtml =
+        '<div class="print-currency-header">' +
+            '<div class="print-currency-title"><span class="print-ccy-code">' + ccy + '</span> Report</div>' +
+            '<div class="print-currency-meta">' +
+                c.totals.invoiceCount.toLocaleString() + ' invoices  ·  ' +
+                c.totals.supplierCount + ' suppliers  ·  ' +
+                moneyShort(c.totals.totalSpend, ccy) + ' total' +
+            '</div>' +
+        '</div>';
+
+    page.innerHTML = headerHtml +
+        renderPrintSectionAtAGlance(c, ccy) +
+        renderPrintSectionConcentration(c, ccy) +
+        renderPrintSectionDilution(c, ccy) +
+        renderPrintSectionPaymentBehaviour(c, ccy) +
+        renderPrintSectionStress(c, ccy, meta) +
+        renderPrintSectionWhatThisMeans(c, ccy, meta);
+
+    return page;
+}
+
+function buildPrintDisclaimer() {
+    var page = document.createElement('div');
+    page.className = 'print-page print-disclaimer';
+    page.innerHTML =
+        '<div class="print-disclaimer-title">Disclaimer</div>' +
+        '<div class="print-disclaimer-text">' +
+            'Pelagic Solutions Limited is registered in England and Wales under Company Number 16145375. ' +
+            'This Presentation is for informational purposes only. It is not intended as and should not be construed as ' +
+            'financial, investment, tax, legal, regulatory or other advice. None of the contents of this Presentation is an offer ' +
+            'to sell or the solicitation of any offer to buy securities. It is not an offer or sale of securities in the United States ' +
+            'or to, or for the account or benefit of, any US person (as defined in relevant US securities laws, including ' +
+            'residents of the United States or partnerships or corporations organised there).' +
+        '</div>';
+    return page;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Section renderers — mirror on-screen versions but with print classes
+// ────────────────────────────────────────────────────────────────
+
+function renderPrintSectionAtAGlance(c, ccy) {
+    var t = c.totals;
+    var fact = chooseSurprisingFact(c, ccy);
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 1</div>' +
+            '<div class="print-section-title">Your ' + ccy + ' supply chain at a glance</div>' +
+            '<div class="print-section-lede">Headline numbers from the period covered, with one observation worth dwelling on.</div>' +
+
+            '<div class="print-stat-grid">' +
+                printStatCard('Suppliers', t.supplierCount.toLocaleString(), '') +
+                printStatCard('Invoices', t.invoiceCount.toLocaleString(), '') +
+                printStatCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' per invoice') +
+                printStatCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'dilution ' + pct(t.dilutionRate)) +
+            '</div>' +
+
+            '<div class="print-callout">' +
+                '<div class="print-callout-eyebrow">Worth noting</div>' +
+                '<div class="print-callout-text">' + fact + '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+function printStatCard(label, value, sub) {
+    return '<div class="print-stat-card">' +
+        '<div class="stat-label">' + escHTML(label) + '</div>' +
+        '<div class="stat-value">' + value + '</div>' +
+        (sub ? '<div class="stat-sub">' + escHTML(sub) + '</div>' : '') +
+    '</div>';
+}
+
+function renderPrintSectionConcentration(c, ccy) {
+    var conc = c.concentration;
+    var suppliers = c.suppliers.slice(0, 15);  // limit for print — long tail breaks pages
+
+    var rows = suppliers.map(function(s, idx) {
+        return '<tr>' +
+            '<td>' + (idx + 1) + '</td>' +
+            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
+            '<td class="text-right mono">' + moneyShort(s.avgInvoiceAmount, ccy) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var hhiLabel = conc.hhi >= 0.5 ? 'highly concentrated'
+                 : conc.hhi >= 0.25 ? 'moderately concentrated'
+                 : 'reasonably diversified';
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 2</div>' +
+            '<div class="print-section-title">Suppliers you depend on more than you realise</div>' +
+            '<div class="print-section-lede">The share of your invoicing concentrated in your top suppliers. The dependency runs both ways — if you are a large share of a supplier\'s book, you carry mutual fragility.</div>' +
+
+            '<div class="print-stat-grid">' +
+                printStatCard('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend') +
+                printStatCard('Top 3', pct(conc.top3Pct), '') +
+                printStatCard('Top 5', pct(conc.top5Pct), '') +
+                printStatCard('HHI index', conc.hhi.toFixed(3), hhiLabel) +
+            '</div>' +
+
+            '<div class="print-chart-row two-col">' +
+                '<div class="print-chart-box">' +
+                    '<div class="print-chart-box-title">Top ' + suppliers.length + ' suppliers by spend</div>' +
+                    '<table class="print-table">' +
+                        '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Spend</th><th class="text-right">Share</th><th class="text-right">Avg invoice</th></tr></thead>' +
+                        '<tbody>' + rows + '</tbody>' +
+                    '</table>' +
+                    (c.suppliers.length > 15 ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">+ ' + (c.suppliers.length - 15) + ' more suppliers</div>' : '') +
+                '</div>' +
+                '<div class="print-chart-box">' +
+                    '<div class="print-chart-box-title">Share of ' + ccy + ' spend</div>' +
+                    '<div class="print-chart-canvas-wrap"><canvas id="print-chart-conc-' + ccy + '"></canvas></div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+}
+
+function renderPrintSectionDilution(c, ccy) {
+    var overall = c.dilution.overallRate;
+    var league = c.dilution.league.slice(0, 10);
+
+    if (c.totals.cnCount === 0) {
+        return '' +
+            '<div class="print-section">' +
+                '<div class="print-section-eyebrow">Section 3</div>' +
+                '<div class="print-section-title">Quality signals from your invoice flow</div>' +
+                '<div class="print-section-lede">No credit note data was provided for this currency. Dilution analysis is unavailable.</div>' +
+            '</div>';
+    }
+
+    var rows = league.map(function(s, idx) {
+        var cls = s.dilutionRate >= 0.08 ? 'print-dil-high' : s.dilutionRate >= 0.03 ? 'print-dil-med' : 'print-dil-low';
+        return '<tr>' +
+            '<td>' + (idx + 1) + '</td>' +
+            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
+            '<td class="text-right mono">' + s.cnCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.cnTotal, ccy) + '</td>' +
+            '<td class="text-right ' + cls + '">' + pct(s.dilutionRate) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 3</div>' +
+            '<div class="print-section-title">Quality signals from your invoice flow</div>' +
+            '<div class="print-section-lede">Credit notes against invoices, ranked by rate. Above 5% generally indicates a process or quality issue worth investigating; above 8% is a strong signal.</div>' +
+
+            '<div class="print-stat-grid">' +
+                printStatCard('Overall dilution', pct(overall), 'across ' + c.totals.cnCount + ' credit notes') +
+                printStatCard('Total credit notes', moneyShort(c.totals.totalCNs, ccy), '') +
+                printStatCard('Net spend', moneyShort(c.totals.netSpend, ccy), '') +
+                printStatCard('Suppliers w/ CNs', league.filter(function(s) { return s.cnCount > 0; }).length.toLocaleString(), '') +
+            '</div>' +
+
+            '<div class="print-chart-box">' +
+                '<div class="print-chart-box-title">Dilution league - top ' + league.length + ' suppliers by rate</div>' +
+                '<table class="print-table">' +
+                    '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Invoice total</th><th class="text-right">CNs</th><th class="text-right">CN total</th><th class="text-right">Dilution</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+            '</div>' +
+        '</div>';
+}
+
+function renderPrintSectionPaymentBehaviour(c, ccy) {
+    var pb = c.paymentBehaviour;
+
+    if (pb.paidInvoiceCount === 0) {
+        return '' +
+            '<div class="print-section">' +
+                '<div class="print-section-eyebrow">Section 4</div>' +
+                '<div class="print-section-title">How you look from the supplier side</div>' +
+                '<div class="print-section-lede">No paid_date data was provided, so payment-behaviour analysis isn\'t available.</div>' +
+            '</div>';
+    }
+
+    var d = pb.distribution;
+    var total = d.earlyOrOnTime + d.late1to14 + d.late15to30 + d.late31to60 + d.late61plus;
+    function segPct(n) { return total > 0 ? (n / total * 100) : 0; }
+
+    // Print version: show top 8 of consistently-late, append +N more if longer.
+    var lateRows = '';
+    if (pb.consistentlyLate.length > 0) {
+        var top = pb.consistentlyLate.slice(0, 8);
+        lateRows = top.map(function(s) {
+            return '<tr>' +
+                '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+                '<td class="text-right mono" style="color:#B91C1C; font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
+                '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
+                '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
+            '</tr>';
+        }).join('');
+        if (pb.consistentlyLate.length > 8) {
+            lateRows += '<tr><td colspan="4" style="text-align:center; font-style:italic; color:#64748B; font-size:7pt;">+ ' + (pb.consistentlyLate.length - 8) + ' more suppliers paid consistently late</td></tr>';
+        }
+    }
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 4</div>' +
+            '<div class="print-section-title">How you look from the supplier side</div>' +
+            '<div class="print-section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. The average can flatter you; the distribution rarely does.</div>' +
+
+            '<div class="print-stat-grid">' +
+                printStatCard('Median DPD', (pb.medianDaysPastDue >= 0 ? '+' : '') + pb.medianDaysPastDue + 'd', pb.medianDaysPastDue <= 0 ? 'on time at median' : 'past due at median') +
+                printStatCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', '') +
+                printStatCard('Coverage', pct(pb.coveragePct), pb.paidInvoiceCount + ' have paid_date') +
+                printStatCard('Late >=30d', pb.paidInvoiceCount > 0 ? pct((d.late31to60 + d.late61plus) / pb.paidInvoiceCount) : '0.0%', '') +
+            '</div>' +
+
+            '<div class="print-chart-box">' +
+                '<div class="print-chart-box-title">Distribution of payment lateness</div>' +
+                '<div class="print-dist-bar">' +
+                    (d.earlyOrOnTime > 0 ? '<div class="print-dist-seg early" style="width:' + segPct(d.earlyOrOnTime) + '%;">' + (segPct(d.earlyOrOnTime) >= 6 ? d.earlyOrOnTime : '') + '</div>' : '') +
+                    (d.late1to14    > 0 ? '<div class="print-dist-seg late1" style="width:' + segPct(d.late1to14) + '%;">'    + (segPct(d.late1to14) >= 6    ? d.late1to14    : '') + '</div>' : '') +
+                    (d.late15to30   > 0 ? '<div class="print-dist-seg late2" style="width:' + segPct(d.late15to30) + '%;">'   + (segPct(d.late15to30) >= 6   ? d.late15to30   : '') + '</div>' : '') +
+                    (d.late31to60   > 0 ? '<div class="print-dist-seg late3" style="width:' + segPct(d.late31to60) + '%;">'   + (segPct(d.late31to60) >= 6   ? d.late31to60   : '') + '</div>' : '') +
+                    (d.late61plus   > 0 ? '<div class="print-dist-seg late4" style="width:' + segPct(d.late61plus) + '%;">'   + (segPct(d.late61plus) >= 6   ? d.late61plus   : '') + '</div>' : '') +
+                '</div>' +
+                '<div class="print-dist-legend">' +
+                    '<span><span class="print-dist-legend-dot" style="background:#10B981;"></span>On time / early (' + d.earlyOrOnTime + ')</span>' +
+                    '<span><span class="print-dist-legend-dot" style="background:#34D399;"></span>1-14 days (' + d.late1to14 + ')</span>' +
+                    '<span><span class="print-dist-legend-dot" style="background:#F59E0B;"></span>15-30 days (' + d.late15to30 + ')</span>' +
+                    '<span><span class="print-dist-legend-dot" style="background:#F97316;"></span>31-60 days (' + d.late31to60 + ')</span>' +
+                    '<span><span class="print-dist-legend-dot" style="background:#EF4444;"></span>61+ days (' + d.late61plus + ')</span>' +
+                '</div>' +
+                (lateRows
+                    ? '<div style="font-size:8pt; font-weight:700; color:#B45309; margin:3mm 0 1mm 0; text-transform:uppercase; letter-spacing:0.4pt;">Suppliers paid consistently late (' + pb.consistentlyLate.length + ')</div>' +
+                      '<table class="print-table"><thead><tr><th>Supplier</th><th class="text-right">Median DPD</th><th class="text-right">Avg DPD</th><th class="text-right">Paid invoices</th></tr></thead><tbody>' + lateRows + '</tbody></table>'
+                    : '') +
+            '</div>' +
+        '</div>';
+}
+
+function renderPrintSectionStress(c, ccy, meta) {
+    var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
+    var signals = [];
+
+    c.suppliers.forEach(function(s) {
+        var supSignals = [];
+        if (s.trendSlopeNormalised !== null && s.trendSlopeNormalised < -0.10 && s.activeMonths >= 3) {
+            supSignals.push({ tag: 'declining', text: 'Monthly invoice count trending down (slope ' + s.trendSlopeNormalised.toFixed(2) + ')' });
+        }
+        if (s.lastInvoice) {
+            var last = new Date(s.lastInvoice + 'T00:00:00');
+            var daysSinceLast = Math.floor((periodEnd - last) / (1000 * 60 * 60 * 24));
+            if (daysSinceLast >= 90 && s.activeMonths >= 2) {
+                supSignals.push({ tag: 'silent', text: 'Last invoice ' + daysSinceLast + ' days before period end' });
+            }
+        }
+        if (s.dilutionRate >= 0.08 && s.invoiceCount >= 3) {
+            supSignals.push({ tag: 'quality', text: pct(s.dilutionRate) + ' credit-note rate - sustained quality issues' });
+        }
+        if (supSignals.length > 0) signals.push({ supplier: s, signals: supSignals });
+    });
+
+    if (signals.length === 0) {
+        return '' +
+            '<div class="print-section">' +
+                '<div class="print-section-eyebrow">Section 5</div>' +
+                '<div class="print-section-title">Stress signals across your supplier base</div>' +
+                '<div class="print-section-lede">No stress signals detected for ' + ccy + ' suppliers in this period.</div>' +
+            '</div>';
+    }
+
+    // Cap at 12 for print readability
+    var shown = signals.slice(0, 12);
+    var rows = shown.map(function(entry) {
+        var s = entry.supplier;
+        var tags = entry.signals.map(function(sig) {
+            return '<div class="print-stress-sig ' + sig.tag + '">' + escHTML(sig.text) + '</div>';
+        }).join('');
+        return '<tr>' +
+            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td>' + tags + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 5</div>' +
+            '<div class="print-section-title">Stress signals across your supplier base</div>' +
+            '<div class="print-section-lede">Suppliers showing one or more leading indicators of relationship distress: declining invoice volume, prolonged silence, or sustained credit-note rates.</div>' +
+
+            '<div class="print-chart-box">' +
+                '<table class="print-table">' +
+                    '<thead><tr><th>Supplier</th><th>Signals</th><th class="text-right">Total spend</th><th class="text-right">Share</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+                (signals.length > 12 ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm; font-style:italic;">+ ' + (signals.length - 12) + ' more suppliers showing stress signals</div>' : '') +
+            '</div>' +
+        '</div>';
+}
+
+function renderPrintSectionWhatThisMeans(c, ccy, meta) {
+    var obs = generateObservations(c, ccy);
+    var rows = obs.map(function(o) {
+        return '<div class="print-observation ' + (o.severity || '') + '">' + o.text + '</div>';
+    }).join('');
+
+    return '' +
+        '<div class="print-section">' +
+            '<div class="print-section-eyebrow">Section 6</div>' +
+            '<div class="print-section-title">What this means</div>' +
+            '<div class="print-section-lede">A few observations drawn from the sections above, named specifically rather than generically.</div>' +
+
+            '<div>' + rows + '</div>' +
+        '</div>';
+}
+
+// ────────────────────────────────────────────────────────────────
+// Chart rendering for print — high DPR, no animation
+// ────────────────────────────────────────────────────────────────
+
+function renderPrintCharts() {
+    _printChartInstances = [];
+    var stats = window.__report.stats;
+    stats.overall.currencies.forEach(function(ccy) {
+        var c = stats.perCurrency[ccy];
+        drawPrintConcentration(ccy, c);
+    });
+}
+
+function drawPrintConcentration(ccy, c) {
+    var canvas = document.getElementById('print-chart-conc-' + ccy);
+    if (!canvas) return;
+    var top = c.suppliers.slice(0, 8);
+    var rest = c.suppliers.slice(8);
+    var labels = top.map(function(s) { return s.name; });
+    var data = top.map(function(s) { return s.totalSpend; });
+    if (rest.length > 0) {
+        labels.push('Other (' + rest.length + ')');
+        data.push(rest.reduce(function(a, b) { return a + b.totalSpend; }, 0));
+    }
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#34D399', '#60A5FA', '#F97316', '#94A3B8'];
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{ data: data, backgroundColor: palette.slice(0, labels.length), borderColor: '#ffffff', borderWidth: 2 }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            devicePixelRatio: 2,
+            animation: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: '#475569', font: { size: 8, family: 'Inter' }, padding: 4, boxWidth: 8 } },
+                tooltip: { enabled: false }
+            }
+        }
+    });
+    _printChartInstances.push(inst);
+}
+
+function teardownPrintTree() {
+    // Destroy print chart instances first to free canvases
+    _printChartInstances.forEach(function(c) {
+        try { c.destroy(); } catch (e) {}
+    });
+    _printChartInstances = [];
+    var root = document.getElementById('printRoot');
+    if (root) root.innerHTML = '';
 }
 
 </script>
