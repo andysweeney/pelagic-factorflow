@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pelagic Solutions — Buyer Insights</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js" onload="window._supabaseLoaded=true;"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        :root {
+            --bg: #0B1120;
+            --card: #131C2E;
+            --card-hover: #1A2744;
+            --border: #1C2A42;
+            --text: #E2E8F0;
+            --text-secondary: #94A3B8;
+            --muted: #64748B;
+            --accent: #0EA5E9;
+            --accent-hover: #0284C7;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --purple: #8B5CF6;
+            --radius: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        .mapping-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: var(--card); border: 1px solid var(--border); }
+        .mapping-row.matched { background: #10B98110; border-color: #10B98140; }
+        .mapping-row.required { border-left: 3px solid var(--danger); }
+        .mapping-row .mapping-label { flex: 1; font-size: 12px; font-weight: 600; color: var(--text); min-width: 0; }
+        .mapping-row .mapping-label .req { color: var(--danger); margin-left: 2px; }
+        .mapping-row select { flex: 1.2; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; background: var(--bg); color: var(--text); cursor: pointer; font-family: var(--font); }
+        .mapping-row select.auto-matched { background: #10B98110; border-color: #10B98140; }
+        .mapping-row .match-badge { font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 700; white-space: nowrap; }
+        .mapping-row .match-badge.auto { background: #10B98120; color: #10B981; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* ── Header ── */
+        .app-header {
+            background: #0D1526;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+        .app-header h1 {
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            font-family: var(--font);
+        }
+        .app-header h1 span { color: var(--accent); }
+        .header-nav { display: flex; gap: 8px; }
+        .header-nav a {
+            color: var(--muted);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: var(--radius);
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            font-family: var(--font);
+        }
+        .header-nav a:hover { background: var(--card-hover); color: var(--text); }
+        .header-nav a.active { background: var(--card-hover); color: var(--accent); }
+
+        /* ── Layout ── */
+        .app-body { max-width: 1500px; margin: 0 auto; padding: 24px 32px; }
+
+        /* ── Tabs ── */
+        .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+        .tab-btn {
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.2s;
+            font-family: var(--font);
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        .tab-content.hidden { display: none; }
+
+        /* ── Cards / panels ── */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .card-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text); letter-spacing: 0.3px; text-transform: uppercase; }
+        .card-subtitle { font-size: 11px; color: var(--text-secondary); margin-bottom: 16px; }
+
+        /* ── Drop zones ── */
+        .drop-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .drop-zone {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            text-align: center;
+            background: var(--bg);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .drop-zone:hover { border-color: var(--accent); background: var(--card-hover); }
+        .drop-zone.drag-over { border-color: var(--accent); background: #0EA5E920; }
+        .drop-zone.has-file { border-color: var(--success); border-style: solid; background: #10B98108; }
+        .drop-zone-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+        .drop-zone-sub { font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; }
+        .drop-zone-filename { font-size: 11px; color: var(--success); font-weight: 600; font-family: var(--mono); }
+        .drop-zone input[type="file"] { display: none; }
+        .hidden { display: none !important; }
+
+        /* ── Buttons ── */
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; font-family: var(--font); transition: all 0.2s; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.5; }
+        .btn-secondary { background: var(--card-hover); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); }
+        .btn-xs { padding: 4px 10px; font-size: 10px; }
+
+        /* ── Inputs ── */
+        .form-input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            font-family: var(--font);
+            outline: none;
+        }
+        .form-input:focus { border-color: var(--accent); }
+        .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+        /* ── Tables ── */
+        .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        thead { background: var(--card-hover); }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text-secondary); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+        tbody tr:hover { background: var(--card-hover); }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .mono { font-family: var(--mono); }
+
+        /* ── Badges / pills ── */
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+        .pill-success { background: #10B98120; color: var(--success); }
+        .pill-warning { background: #F59E0B20; color: var(--warning); }
+        .pill-info { background: #0EA5E920; color: var(--accent); }
+
+        /* ── Diagnostic block ── */
+        .diag { font-size: 11px; padding: 12px 14px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); margin-top: 12px; line-height: 1.6; }
+        .diag.ok { border-color: #10B98140; background: #10B98108; }
+        .diag.warn { border-color: #F59E0B40; background: #F59E0B08; }
+        .diag.err { border-color: #EF444440; background: #EF444408; }
+
+        /* ── Processing overlay ── */
+        .processing-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;
+        }
+        .processing-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 48px; text-align: center; min-width: 320px; }
+        .processing-bar { width: 100%; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin: 16px 0; }
+        .processing-bar-inner { height: 100%; background: var(--accent); transition: width 0.3s; }
+        .processing-text { color: var(--text-secondary); font-size: 12px; }
+
+        /* ── Empty state ── */
+        .empty-state { padding: 60px 24px; text-align: center; color: var(--text-secondary); }
+        .empty-state-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+        .empty-state-sub { font-size: 13px; }
+    </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                     -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<header class="app-header">
+    <h1>Pelagic<span>·</span>Solutions <span>—</span> Buyer Insights</h1>
+    <nav class="header-nav">
+        <a href="prospects.html">Prospects</a>
+        <a href="buyer-insights.html" class="active">Buyer Insights</a>
+    </nav>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- PROCESSING OVERLAY                                         -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="processingOverlay" class="processing-overlay hidden">
+    <div class="processing-box">
+        <div style="font-size:14px; font-weight:700; margin-bottom:4px;">Processing upload</div>
+        <div class="processing-bar"><div id="processingBarInner" class="processing-bar-inner" style="width:0%;"></div></div>
+        <div id="processingText" class="processing-text">Starting...</div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- MAIN BODY                                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="app-body">
+
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="upload">Upload</button>
+        <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="uploads-history">Upload History</button>
+    </div>
+
+    <!-- ── UPLOAD TAB ── -->
+    <div id="tab-upload" class="tab-content">
+        <div class="card">
+            <div class="card-title">Step 1 — Upload Buyer's AP Data</div>
+            <div class="card-subtitle">Drop the buyer's invoice and (optional) credit note CSV exports. We support most ERP formats (Coupa, SAP, Oracle, NetSuite, Xero, Sage). Column mapping is auto-detected; review and adjust in Step 2.</div>
+
+            <div class="drop-zones">
+                <div id="invoiceZone" class="drop-zone">
+                    <div class="drop-zone-title">Invoices CSV</div>
+                    <div class="drop-zone-sub">Required — every supplier invoice received by the buyer</div>
+                    <input type="file" id="invoiceFile" accept=".csv" />
+                    <div id="invoiceFilename" class="drop-zone-filename hidden"></div>
+                </div>
+                <div id="cnZone" class="drop-zone">
+                    <div class="drop-zone-title">Credit Notes CSV</div>
+                    <div class="drop-zone-sub">Optional — needed for dilution analysis</div>
+                    <input type="file" id="cnFile" accept=".csv" />
+                    <div id="cnFilename" class="drop-zone-filename hidden"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column Mapping -->
+        <div id="mappingSection" class="card hidden">
+            <div class="card-title">Step 2 — Map Columns</div>
+            <div class="card-subtitle">Auto-matched columns are highlighted green. Required columns are marked with a red bar.</div>
+            <div id="mappingGrid" style="display:flex; flex-direction:column; gap:8px;"></div>
+            <div id="mappingDiagnostic" class="diag" style="margin-top:14px;">Awaiting file…</div>
+        </div>
+
+        <!-- Preview -->
+        <div id="previewSection" class="card hidden">
+            <div class="card-title">Step 3 — Preview</div>
+            <div class="card-subtitle">First 5 rows mapped to canonical fields. Verify before saving.</div>
+            <div class="table-wrap" style="max-height:300px; overflow-y:auto;">
+                <table id="previewTable"></table>
+            </div>
+        </div>
+
+        <!-- Buyer label + save -->
+        <div id="saveSection" class="card hidden">
+            <div class="card-title">Step 4 — Label and Save</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                <div>
+                    <label class="form-label">Buyer label <span style="color:var(--danger);">*</span></label>
+                    <input id="buyerLabel" type="text" class="form-input" placeholder="e.g. Acme Plc — 2024 AP book" />
+                </div>
+                <div>
+                    <label class="form-label">Notes (optional)</label>
+                    <input id="uploadNotes" type="text" class="form-input" placeholder="Source, period covered, anything noteworthy…" />
+                </div>
+            </div>
+            <button id="processBtn" class="btn btn-primary" style="margin-top:16px;" disabled>Process &amp; Save</button>
+        </div>
+    </div>
+
+    <!-- ── REPORTS TAB ── -->
+    <div id="tab-reports" class="tab-content hidden">
+        <div class="card">
+            <div class="empty-state">
+                <div class="empty-state-title">Buyer reports coming soon</div>
+                <div class="empty-state-sub">Once an upload is processed, this tab will host the analytical review — concentration risk, dilution league, payment behaviour, stress signals.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── UPLOAD HISTORY TAB ── -->
+    <div id="tab-uploads-history" class="tab-content hidden">
+        <div class="card">
+            <div class="card-title">Past Uploads</div>
+            <div class="card-subtitle">Each upload is one buyer's AP extract for a defined period. Delete cascades to invoice and credit-note rows.</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Buyer Label</th>
+                            <th class="text-right">Invoices</th>
+                            <th class="text-right">Credit Notes</th>
+                            <th class="text-right">Suppliers</th>
+                            <th class="text-right">Currencies</th>
+                            <th>Date Range</th>
+                            <th>Uploaded</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="uploadsBody"></tbody>
+                </table>
+            </div>
+            <div id="uploadsEmpty" class="empty-state hidden">
+                <div class="empty-state-title">No uploads yet</div>
+                <div class="empty-state-sub">Head to the Upload tab to get started.</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SCRIPTS                                                    -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<script>
+
+// ================================================================
+// CONFIG
+// ================================================================
+var SUPABASE_URL = 'https://jgmyrxevvaxjsxiecmzf.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnbXlyeGV2dmF4anN4aWVjbXpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDEwMzcsImV4cCI6MjA5MDcxNzAzN30.Iy6eh3yXOzyTvGq8uYYZqj2ZUlwP0yNJ6XHf7x892c4';
+
+var sbClient = null;
+
+// Canonical invoice fields the buyer can map their CSV columns onto.
+// Required fields are the analytical floor; without them we can't compute anything useful.
+// Hints are the column-name candidates we auto-match against (whitespace and punctuation stripped).
+var INVOICE_FIELDS = [
+    { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number', 'supplier_code', 'vendor_code'] },
+    { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname', 'payee', 'trading_name'] },
+    { key: 'invoice_reference',   label: 'Invoice Ref', required: false, hints: ['invoice_number', 'invoicenumber', 'invoice_ref', 'invoiceref', 'invoice_id', 'document_number', 'document_no', 'doc_number'] },
+    { key: 'invoice_date',        label: 'Invoice Date', required: true,  hints: ['invoice_date', 'invoicedate', 'date', 'document_date', 'doc_date', 'issue_date'] },
+    { key: 'due_date',            label: 'Due Date', required: true,  hints: ['due_date', 'duedate', 'payment_due', 'payment_due_date', 'maturity_date'] },
+    { key: 'paid_date',           label: 'Paid Date', required: false, hints: ['paid_date', 'paiddate', 'payment_date', 'paymentdate', 'cleared_date', 'settled_date', 'date_paid'] },
+    { key: 'amount',              label: 'Amount', required: true,  hints: ['amount', 'invoice_amount', 'invoiceamount', 'value', 'gross_amount', 'gross', 'total', 'invoice_total', 'amount_gross'] },
+    { key: 'currency',            label: 'Currency', required: true,  hints: ['currency', 'ccy', 'currency_code', 'curr'] },
+    { key: 'invoice_status',      label: 'Status', required: false, hints: ['status', 'invoice_status', 'payment_status', 'state'] },
+    { key: 'cost_centre',         label: 'Cost Centre', required: false, hints: ['cost_centre', 'cost_center', 'costcentre', 'costcenter', 'cc'] },
+    { key: 'po_number',           label: 'PO Number', required: false, hints: ['po_number', 'ponumber', 'po', 'purchase_order', 'purchaseorder'] },
+    { key: 'gl_code',             label: 'GL Code', required: false, hints: ['gl_code', 'glcode', 'gl', 'account_code', 'accountcode', 'nominal'] }
+];
+
+// Credit note fields — same supplier/amount/currency/date primitives, no due_date.
+var CN_FIELDS = [
+    { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number'] },
+    { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname'] },
+    { key: 'cn_reference',        label: 'Credit Note Ref', required: false, hints: ['credit_note_number', 'cn_number', 'cn_ref', 'document_number', 'reference'] },
+    { key: 'cn_date',             label: 'Credit Note Date', required: true,  hints: ['credit_note_date', 'cn_date', 'date', 'document_date', 'issue_date'] },
+    { key: 'paid_date',           label: 'Settled Date', required: false, hints: ['settled_date', 'cleared_date', 'paid_date', 'applied_date'] },
+    { key: 'amount',              label: 'Amount', required: true,  hints: ['amount', 'value', 'gross_amount', 'credit_note_amount', 'cn_amount', 'total'] },
+    { key: 'currency',            label: 'Currency', required: true,  hints: ['currency', 'ccy', 'currency_code', 'curr'] }
+];
+
+// Working state. Single in-memory bag for the upload wizard — keeps the flow easy to reason about
+// without prop-drilling through every helper.
+var state = {
+    invoiceFile: null,
+    cnFile: null,
+    invoiceData: [],   // raw rows from PapaParse
+    cnData: [],
+    invoiceColumns: [],
+    cnColumns: [],
+    invoiceMapping: {},  // canonical_field -> csv_column_name (or null)
+    cnMapping: {},
+    uploads: []          // populated by loadAllData()
+};
+
+// ================================================================
+// INIT
+// ================================================================
+window.addEventListener('DOMContentLoaded', initApp);
+
+function initApp() {
+    setupTabs();
+    setupUpload();
+    setupProcessHandler();
+
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        var sbRetries = 0;
+        function tryInitSupabase() {
+            var lib = window.supabase;
+            if (lib && lib.createClient) {
+                sbClient = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('Supabase connected');
+                loadAllData();
+            } else if (sbRetries < 30) {
+                sbRetries++;
+                setTimeout(tryInitSupabase, 100);
+            } else {
+                console.warn('Supabase library did not load after 3 seconds. Running in local mode.');
+            }
+        }
+        tryInitSupabase();
+    }
+}
+
+// ================================================================
+// TABS
+// ================================================================
+function setupTabs() {
+    var tabBtns = document.querySelectorAll('.tab-bar .tab-btn[data-tab]');
+    tabBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var tab = btn.getAttribute('data-tab');
+            tabBtns.forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
+            document.getElementById('tab-' + tab).classList.remove('hidden');
+            if (tab === 'uploads-history') renderUploadsHistory();
+        });
+    });
+}
+
+// ================================================================
+// UPLOAD: drop zones + PapaParse hand-off
+// ================================================================
+function setupUpload() {
+    setupDropZone('invoiceZone', 'invoiceFile', handleInvoiceFile);
+    setupDropZone('cnZone', 'cnFile', handleCNFile);
+}
+
+function setupDropZone(zoneId, inputId, onFile) {
+    var zone = document.getElementById(zoneId);
+    var input = document.getElementById(inputId);
+    zone.addEventListener('click', function() { input.click(); });
+    input.addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) onFile(e.target.files[0]);
+    });
+    zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
+    zone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+    });
+}
+
+function handleInvoiceFile(file) {
+    state.invoiceFile = file;
+    var zone = document.getElementById('invoiceZone');
+    zone.classList.add('has-file');
+    var fn = document.getElementById('invoiceFilename');
+    fn.textContent = '✓ ' + file.name;
+    fn.classList.remove('hidden');
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            state.invoiceData = results.data;
+            state.invoiceColumns = results.meta.fields || [];
+            buildColumnMapper('invoice');
+            updatePreview();
+            refreshSaveSection();
+        },
+        error: function(err) { alert('Error parsing invoices CSV: ' + err.message); }
+    });
+}
+
+function handleCNFile(file) {
+    state.cnFile = file;
+    var zone = document.getElementById('cnZone');
+    zone.classList.add('has-file');
+    var fn = document.getElementById('cnFilename');
+    fn.textContent = '✓ ' + file.name;
+    fn.classList.remove('hidden');
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            state.cnData = results.data;
+            state.cnColumns = results.meta.fields || [];
+            buildColumnMapper('cn');
+            updatePreview();
+            refreshSaveSection();
+        },
+        error: function(err) { alert('Error parsing credit notes CSV: ' + err.message); }
+    });
+}
+
+// ================================================================
+// COLUMN MAPPING
+// ================================================================
+function buildColumnMapper(which) {
+    // Combined mapper UI: invoice section always shown, CN section appears only when CN file uploaded.
+    // 'which' parameter is just a re-render trigger — the function rebuilds the whole mapping UI.
+    var section = document.getElementById('mappingSection');
+    section.classList.remove('hidden');
+
+    var grid = document.getElementById('mappingGrid');
+    grid.innerHTML = '';
+
+    // Invoice mappings
+    if (state.invoiceColumns.length > 0) {
+        var invHeader = document.createElement('div');
+        invHeader.style.cssText = 'font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.4px; margin-top:4px; margin-bottom:4px;';
+        invHeader.textContent = 'Invoices CSV — ' + state.invoiceColumns.length + ' columns';
+        grid.appendChild(invHeader);
+        INVOICE_FIELDS.forEach(function(field) {
+            grid.appendChild(buildMappingRow(field, state.invoiceColumns, state.invoiceMapping, 'inv'));
+        });
+    }
+
+    // CN mappings (only if CN file is present)
+    if (state.cnColumns.length > 0) {
+        var cnHeader = document.createElement('div');
+        cnHeader.style.cssText = 'font-size:11px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.4px; margin-top:16px; margin-bottom:4px;';
+        cnHeader.textContent = 'Credit Notes CSV — ' + state.cnColumns.length + ' columns';
+        grid.appendChild(cnHeader);
+        CN_FIELDS.forEach(function(field) {
+            grid.appendChild(buildMappingRow(field, state.cnColumns, state.cnMapping, 'cn'));
+        });
+    }
+
+    updateMappingDiagnostic();
+    refreshSaveSection();
+}
+
+function buildMappingRow(field, csvColumns, mappingTarget, prefix) {
+    var autoMatch = autoMatchColumn(field.hints, csvColumns);
+    // Honour existing user-selected mapping if present, otherwise auto-match.
+    var current = mappingTarget[field.key] || autoMatch || null;
+    mappingTarget[field.key] = current;
+
+    var row = document.createElement('div');
+    row.className = 'mapping-row' + (field.required ? ' required' : '') + (current ? ' matched' : '');
+    row.id = 'mapping-row-' + prefix + '-' + field.key;
+
+    var label = document.createElement('div');
+    label.className = 'mapping-label';
+    label.innerHTML = field.label + (field.required ? '<span class="req">*</span>' : '');
+
+    var select = document.createElement('select');
+    select.id = 'map-' + prefix + '-' + field.key;
+    select.className = current ? 'auto-matched' : '';
+    select.innerHTML = '<option value="">— Skip / Not in CSV —</option>';
+    csvColumns.forEach(function(col) {
+        var opt = document.createElement('option');
+        opt.value = col;
+        opt.textContent = col;
+        if (col === current) opt.selected = true;
+        select.appendChild(opt);
+    });
+    select.addEventListener('change', function() {
+        mappingTarget[field.key] = this.value || null;
+        if (this.value) { row.classList.add('matched'); this.classList.add('auto-matched'); }
+        else { row.classList.remove('matched'); this.classList.remove('auto-matched'); }
+        updateMappingDiagnostic();
+        updatePreview();
+        refreshSaveSection();
+    });
+
+    var badge = document.createElement('span');
+    badge.className = 'match-badge' + (autoMatch && autoMatch === current ? ' auto' : '');
+    badge.textContent = (autoMatch && autoMatch === current) ? 'Auto' : '';
+
+    row.appendChild(label);
+    row.appendChild(select);
+    row.appendChild(badge);
+    return row;
+}
+
+function autoMatchColumn(hints, csvColumns) {
+    for (var i = 0; i < hints.length; i++) {
+        var hint = hints[i].toLowerCase().replace(/[^a-z0-9]/g, '');
+        for (var j = 0; j < csvColumns.length; j++) {
+            var col = csvColumns[j].toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (col === hint) return csvColumns[j];
+        }
+    }
+    return null;
+}
+
+function updateMappingDiagnostic() {
+    var box = document.getElementById('mappingDiagnostic');
+    var missingInv = INVOICE_FIELDS.filter(function(f) { return f.required && !state.invoiceMapping[f.key]; });
+    var missingCn = state.cnData.length > 0 ? CN_FIELDS.filter(function(f) { return f.required && !state.cnMapping[f.key]; }) : [];
+
+    if (missingInv.length === 0 && missingCn.length === 0 && state.invoiceData.length > 0) {
+        box.className = 'diag ok';
+        box.innerHTML = '<strong>All required columns mapped.</strong> Review preview below and then save.';
+    } else if (state.invoiceData.length === 0) {
+        box.className = 'diag';
+        box.textContent = 'Awaiting invoice file…';
+    } else {
+        box.className = 'diag warn';
+        var parts = [];
+        if (missingInv.length > 0) parts.push('<strong>Missing invoice columns:</strong> ' + missingInv.map(function(f) { return f.label; }).join(', '));
+        if (missingCn.length > 0) parts.push('<strong>Missing credit-note columns:</strong> ' + missingCn.map(function(f) { return f.label; }).join(', '));
+        box.innerHTML = parts.join('<br>');
+    }
+}
+
+function getMappedValue(row, fieldKey, mappingTarget) {
+    var col = mappingTarget[fieldKey];
+    if (!col) return null;
+    return row[col];
+}
+
+// ================================================================
+// PREVIEW
+// ================================================================
+function updatePreview() {
+    if (state.invoiceData.length === 0) {
+        document.getElementById('previewSection').classList.add('hidden');
+        return;
+    }
+    document.getElementById('previewSection').classList.remove('hidden');
+
+    var table = document.getElementById('previewTable');
+    var fields = INVOICE_FIELDS.filter(function(f) { return state.invoiceMapping[f.key]; });
+
+    var thead = '<thead><tr>';
+    fields.forEach(function(f) { thead += '<th>' + f.label + '</th>'; });
+    thead += '</tr></thead>';
+
+    var tbody = '<tbody>';
+    var rows = state.invoiceData.slice(0, 5);
+    rows.forEach(function(row) {
+        tbody += '<tr>';
+        fields.forEach(function(f) {
+            var v = getMappedValue(row, f.key, state.invoiceMapping);
+            tbody += '<td>' + escHTML(v != null ? String(v) : '') + '</td>';
+        });
+        tbody += '</tr>';
+    });
+    tbody += '</tbody>';
+
+    table.innerHTML = thead + tbody;
+}
+
+// ================================================================
+// SAVE SECTION VISIBILITY + PROCESS BUTTON
+// ================================================================
+function refreshSaveSection() {
+    var ready = isReadyToSave();
+    document.getElementById('saveSection').classList.toggle('hidden', state.invoiceData.length === 0);
+    document.getElementById('processBtn').disabled = !ready;
+}
+
+function isReadyToSave() {
+    if (state.invoiceData.length === 0) return false;
+    var missingInv = INVOICE_FIELDS.filter(function(f) { return f.required && !state.invoiceMapping[f.key]; });
+    if (missingInv.length > 0) return false;
+    if (state.cnData.length > 0) {
+        var missingCn = CN_FIELDS.filter(function(f) { return f.required && !state.cnMapping[f.key]; });
+        if (missingCn.length > 0) return false;
+    }
+    var label = (document.getElementById('buyerLabel').value || '').trim();
+    if (!label) return false;
+    return true;
+}
+
+function setupProcessHandler() {
+    document.getElementById('buyerLabel').addEventListener('input', refreshSaveSection);
+    document.getElementById('processBtn').addEventListener('click', processAndSave);
+}
+
+// ================================================================
+// PROCESS + SAVE TO SUPABASE
+// ================================================================
+function processAndSave() {
+    if (!isReadyToSave()) return;
+    if (!sbClient) { alert('Supabase not connected. Cannot save.'); return; }
+
+    showProcessing(0, 'Normalising invoice rows…');
+
+    // Normalise invoice rows
+    var invRows = [];
+    var currencies = {};
+    var allDates = [];
+    state.invoiceData.forEach(function(raw) {
+        var sid = getMappedValue(raw, 'supplier_identifier', state.invoiceMapping);
+        if (!sid || String(sid).trim() === '') return; // skip rows with no supplier
+        var amt = parseFloat(getMappedValue(raw, 'amount', state.invoiceMapping));
+        if (isNaN(amt)) return;
+        var ccy = (getMappedValue(raw, 'currency', state.invoiceMapping) || '').toString().trim().toUpperCase();
+        if (!ccy) return;
+        var invDate = parseDate(getMappedValue(raw, 'invoice_date', state.invoiceMapping));
+        var dueDate = parseDate(getMappedValue(raw, 'due_date', state.invoiceMapping));
+        if (!invDate || !dueDate) return;
+
+        currencies[ccy] = true;
+        allDates.push(invDate);
+        if (dueDate) allDates.push(dueDate);
+
+        invRows.push({
+            supplier_identifier: String(sid).trim(),
+            supplier_name: nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
+            invoice_reference: nullableStr(getMappedValue(raw, 'invoice_reference', state.invoiceMapping)),
+            invoice_date: invDate,
+            due_date: dueDate,
+            paid_date: parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+            amount: amt,
+            currency: ccy,
+            invoice_status: nullableStr(getMappedValue(raw, 'invoice_status', state.invoiceMapping)),
+            cost_centre: nullableStr(getMappedValue(raw, 'cost_centre', state.invoiceMapping)),
+            po_number: nullableStr(getMappedValue(raw, 'po_number', state.invoiceMapping)),
+            gl_code: nullableStr(getMappedValue(raw, 'gl_code', state.invoiceMapping)),
+            excluded: false
+        });
+    });
+
+    // Normalise CN rows
+    var cnRows = [];
+    state.cnData.forEach(function(raw) {
+        var sid = getMappedValue(raw, 'supplier_identifier', state.cnMapping);
+        if (!sid || String(sid).trim() === '') return;
+        var amt = parseFloat(getMappedValue(raw, 'amount', state.cnMapping));
+        if (isNaN(amt)) return;
+        var ccy = (getMappedValue(raw, 'currency', state.cnMapping) || '').toString().trim().toUpperCase();
+        if (!ccy) return;
+        var cnDate = parseDate(getMappedValue(raw, 'cn_date', state.cnMapping));
+        if (!cnDate) return;
+
+        currencies[ccy] = true;
+        allDates.push(cnDate);
+
+        cnRows.push({
+            supplier_identifier: String(sid).trim(),
+            supplier_name: nullableStr(getMappedValue(raw, 'supplier_name', state.cnMapping)),
+            cn_reference: nullableStr(getMappedValue(raw, 'cn_reference', state.cnMapping)),
+            cn_date: cnDate,
+            paid_date: parseDate(getMappedValue(raw, 'paid_date', state.cnMapping)),
+            amount: amt,
+            currency: ccy,
+            excluded: false
+        });
+    });
+
+    if (invRows.length === 0) {
+        hideProcessing();
+        alert('No valid invoice rows after normalisation. Check column mappings and date formats.');
+        return;
+    }
+
+    allDates.sort();
+    var minDate = allDates[0] || null;
+    var maxDate = allDates[allDates.length - 1] || null;
+    var distinctSuppliers = {};
+    invRows.forEach(function(r) { distinctSuppliers[r.supplier_identifier] = true; });
+
+    var uploadRecord = {
+        buyer_label: document.getElementById('buyerLabel').value.trim(),
+        notes: document.getElementById('uploadNotes').value.trim() || null,
+        invoice_file_name: state.invoiceFile ? state.invoiceFile.name : null,
+        cn_file_name: state.cnFile ? state.cnFile.name : null,
+        currencies_seen: Object.keys(currencies),
+        invoice_count: invRows.length,
+        cn_count: cnRows.length,
+        supplier_count: Object.keys(distinctSuppliers).length,
+        date_range_min: minDate,
+        date_range_max: maxDate
+    };
+
+    updateProcessing(15, 'Creating upload record…');
+
+    sbClient.from('buyer_uploads').insert(uploadRecord).select().then(function(res) {
+        if (res.error) {
+            hideProcessing();
+            alert('Error saving upload: ' + res.error.message);
+            return;
+        }
+        var uploadId = res.data[0].id;
+
+        // Attach upload_id to each row
+        invRows.forEach(function(r) { r.upload_id = uploadId; });
+        cnRows.forEach(function(r) { r.upload_id = uploadId; });
+
+        updateProcessing(25, 'Saving ' + invRows.length.toLocaleString() + ' invoice rows…');
+
+        batchInsert('buyer_invoices', invRows, 500, function(invErr) {
+            if (invErr) {
+                hideProcessing();
+                alert('Error saving invoices: ' + invErr);
+                // Cascade-clean the parent upload so we don't leave a dangling header.
+                sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
+                return;
+            }
+            updateProcessing(70, 'Saving ' + cnRows.length.toLocaleString() + ' credit-note rows…');
+            batchInsert('buyer_credit_notes', cnRows, 500, function(cnErr) {
+                if (cnErr) {
+                    hideProcessing();
+                    alert('Error saving credit notes: ' + cnErr);
+                    sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
+                    return;
+                }
+                updateProcessing(100, 'Done.');
+                setTimeout(function() {
+                    hideProcessing();
+                    resetUploadForm();
+                    loadAllData();
+                    alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes, ' + Object.keys(distinctSuppliers).length.toLocaleString() + ' suppliers across ' + Object.keys(currencies).length + ' currencies.');
+                    // Jump to Upload History so the operator can see the new row.
+                    var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
+                    if (histBtn) histBtn.click();
+                }, 500);
+            });
+        });
+    });
+}
+
+// Generic batched insert. Calls cb(null) on full success, cb(errorMessage) on failure.
+// Batching avoids hitting Supabase row-size or payload limits on large imports.
+function batchInsert(table, records, batchSize, cb) {
+    if (records.length === 0) { cb(null); return; }
+    var batches = [];
+    for (var i = 0; i < records.length; i += batchSize) batches.push(records.slice(i, i + batchSize));
+    var idx = 0;
+    function next() {
+        if (idx >= batches.length) { cb(null); return; }
+        sbClient.from(table).insert(batches[idx]).then(function(res) {
+            if (res.error) { cb(res.error.message); return; }
+            idx++;
+            // Smoothly fill the progress bar across the batches in this stage.
+            var pct = 25 + Math.round(45 * (idx / batches.length));
+            if (table === 'buyer_credit_notes') pct = 70 + Math.round(25 * (idx / batches.length));
+            updateProcessing(pct, 'Saved batch ' + idx + '/' + batches.length + ' of ' + table + '…');
+            next();
+        });
+    }
+    next();
+}
+
+function resetUploadForm() {
+    state.invoiceFile = null; state.cnFile = null;
+    state.invoiceData = []; state.cnData = [];
+    state.invoiceColumns = []; state.cnColumns = [];
+    state.invoiceMapping = {}; state.cnMapping = {};
+    document.getElementById('invoiceZone').classList.remove('has-file');
+    document.getElementById('cnZone').classList.remove('has-file');
+    document.getElementById('invoiceFilename').classList.add('hidden');
+    document.getElementById('cnFilename').classList.add('hidden');
+    document.getElementById('invoiceFile').value = '';
+    document.getElementById('cnFile').value = '';
+    document.getElementById('buyerLabel').value = '';
+    document.getElementById('uploadNotes').value = '';
+    document.getElementById('mappingSection').classList.add('hidden');
+    document.getElementById('previewSection').classList.add('hidden');
+    document.getElementById('saveSection').classList.add('hidden');
+}
+
+// ================================================================
+// PROCESSING OVERLAY
+// ================================================================
+function showProcessing(pct, text) {
+    document.getElementById('processingOverlay').classList.remove('hidden');
+    updateProcessing(pct, text);
+}
+function updateProcessing(pct, text) {
+    document.getElementById('processingBarInner').style.width = pct + '%';
+    document.getElementById('processingText').textContent = text;
+}
+function hideProcessing() {
+    document.getElementById('processingOverlay').classList.add('hidden');
+}
+
+// ================================================================
+// LOAD DATA + UPLOAD HISTORY
+// ================================================================
+function loadAllData() {
+    if (!sbClient) return;
+    sbClient.from('buyer_uploads').select('*').order('created_at', { ascending: false }).then(function(res) {
+        if (res.error) { console.error('loadAllData error:', res.error); return; }
+        state.uploads = res.data || [];
+        // If user is currently viewing history, refresh it.
+        if (!document.getElementById('tab-uploads-history').classList.contains('hidden')) {
+            renderUploadsHistory();
+        }
+    });
+}
+
+function renderUploadsHistory() {
+    var tbody = document.getElementById('uploadsBody');
+    tbody.innerHTML = '';
+    if (state.uploads.length === 0) {
+        document.getElementById('uploadsEmpty').classList.remove('hidden');
+        return;
+    }
+    document.getElementById('uploadsEmpty').classList.add('hidden');
+
+    state.uploads.forEach(function(u) {
+        var tr = document.createElement('tr');
+        var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
+        var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
+
+        tr.innerHTML =
+            '<td><strong>' + escHTML(u.buyer_label) + '</strong>' + (u.notes ? '<div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">' + escHTML(u.notes) + '</div>' : '') + '</td>' +
+            '<td class="text-right mono">' + (u.invoice_count || 0).toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + (u.cn_count || 0).toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + (u.supplier_count || 0).toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + escHTML(ccyList) + '</td>' +
+            '<td class="mono">' + escHTML(dateRange) + '</td>' +
+            '<td>' + formatDateTime(u.created_at) + '</td>' +
+            '<td class="text-center" style="white-space:nowrap;"><button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button></td>';
+
+        tr.querySelector('[data-del]').addEventListener('click', function() {
+            if (confirm('Delete this upload and all associated invoices/credit notes? This cannot be undone.')) {
+                deleteUpload(u.id);
+            }
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function deleteUpload(uploadId) {
+    if (!sbClient) return;
+    // FK CASCADE on buyer_invoices / buyer_credit_notes handles row cleanup.
+    sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function(res) {
+        if (res.error) { alert('Delete failed: ' + res.error.message); return; }
+        loadAllData();
+    });
+}
+
+// ================================================================
+// UTILITIES
+// ================================================================
+function parseDate(str) {
+    if (!str) return null;
+    str = String(str).trim();
+    if (!str) return null;
+
+    // DD/MM/YYYY or DD-MM-YYYY
+    var match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (match) {
+        var d = parseInt(match[1]), m = parseInt(match[2]), y = parseInt(match[3]);
+        // Disambiguate: first > 12 must be DD; second > 12 must be MM/DD.
+        if (d > 12) return y + '-' + pad(m) + '-' + pad(d);
+        if (m > 12) return y + '-' + pad(d) + '-' + pad(m);
+        // Default to DD/MM/YYYY (UK).
+        return y + '-' + pad(m) + '-' + pad(d);
+    }
+
+    // YYYY-MM-DD
+    match = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (match) return match[1] + '-' + pad(parseInt(match[2])) + '-' + pad(parseInt(match[3]));
+
+    // Native parse as fallback
+    var d2 = new Date(str);
+    if (!isNaN(d2.getTime())) return formatDateStr(d2);
+
+    return null;
+}
+
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+function formatDateStr(d) {
+    if (typeof d === 'string') return d;
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function formatDateTime(str) {
+    if (!str) return '—';
+    var d = new Date(str);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('en-GB') + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escHTML(str) {
+    var div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+}
+
+function nullableStr(v) {
+    if (v == null) return null;
+    var s = String(v).trim();
+    return s === '' ? null : s;
+}
+
+</script>
+</body>
+</html>
