@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js" onload="window._supabaseLoaded=true;"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="buyer-insights-analytics.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
         :root {
@@ -907,8 +908,14 @@ function renderUploadsHistory() {
             '<td class="text-right mono">' + escHTML(ccyList) + '</td>' +
             '<td class="mono">' + escHTML(dateRange) + '</td>' +
             '<td>' + formatDateTime(u.created_at) + '</td>' +
-            '<td class="text-center" style="white-space:nowrap;"><button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button></td>';
+            '<td class="text-center" style="white-space:nowrap;">' +
+                '<button class="btn btn-xs btn-secondary" data-analyse="' + u.id + '" style="margin-right:4px;">Run Analysis (dev)</button>' +
+                '<button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button>' +
+            '</td>';
 
+        tr.querySelector('[data-analyse]').addEventListener('click', function() {
+            runAnalysis(u.id, u.buyer_label);
+        });
         tr.querySelector('[data-del]').addEventListener('click', function() {
             if (confirm('Delete this upload and all associated invoices/credit notes? This cannot be undone.')) {
                 deleteUpload(u.id);
@@ -925,6 +932,108 @@ function deleteUpload(uploadId) {
         if (res.error) { alert('Delete failed: ' + res.error.message); return; }
         loadAllData();
     });
+}
+
+// ================================================================
+// LAYER 2 DEV HOOK — fetch upload's rows, run analytics, dump to console
+// ================================================================
+// Temporary dev affordance. Layer 3 will replace this with a proper Reports tab
+// that visualises the stats; until then this lets the operator validate the
+// computation against any upload by clicking the button and inspecting devtools.
+function runAnalysis(uploadId, buyerLabel) {
+    if (!sbClient) { alert('Supabase not connected.'); return; }
+    if (!window.BuyerAnalytics) {
+        alert('Analytics module not loaded. Check that buyer-insights-analytics.js is reachable.');
+        return;
+    }
+
+    showProcessing(10, 'Fetching upload metadata…');
+
+    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
+        if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
+        var uploadMeta = upRes.data;
+
+        updateProcessing(25, 'Fetching invoice rows…');
+        fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
+            if (invErr) { hideProcessing(); alert('Invoice fetch failed: ' + invErr); return; }
+
+            updateProcessing(65, 'Fetching credit note rows…');
+            fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
+                if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
+
+                updateProcessing(90, 'Computing stats…');
+                var stats = window.BuyerAnalytics.computeBuyerStats(uploadMeta, invRows, cnRows);
+
+                hideProcessing();
+
+                // Dump in two forms: the full bundle (inspectable in devtools), and a
+                // per-currency summary table for quick scanning.
+                console.log('═══════════════════════════════════════════════════════════════');
+                console.log(' BUYER INSIGHTS ANALYSIS — ' + buyerLabel);
+                console.log('═══════════════════════════════════════════════════════════════');
+                console.log('Fetched ' + invRows.length + ' invoices, ' + cnRows.length + ' credit notes.');
+                if (stats.warnings.length > 0) {
+                    console.warn('Warnings:', stats.warnings);
+                }
+
+                stats.overall.currencies.forEach(function(ccy) {
+                    var c = stats.perCurrency[ccy];
+                    console.group('── ' + ccy + ' ──');
+                    console.log('Totals:', c.totals);
+                    console.log('Concentration:', c.concentration);
+                    console.log('Suppliers (sorted by spend):');
+                    console.table(c.suppliers.map(function(s) {
+                        return {
+                            name:        s.name,
+                            invoices:    s.invoiceCount,
+                            spend:       s.totalSpend,
+                            sharePct:    +(s.sharePct * 100).toFixed(1),
+                            avgDpd:      s.avgDaysPastDue,
+                            medianDpd:   s.medianDaysPastDue,
+                            dilutionPct: +(s.dilutionRate * 100).toFixed(2),
+                            firstInv:    s.firstInvoice,
+                            lastInv:     s.lastInvoice,
+                            trendNorm:   s.trendSlopeNormalised !== null ? +s.trendSlopeNormalised.toFixed(3) : null
+                        };
+                    }));
+                    console.log('Dilution league:', c.dilution.league);
+                    console.log('Payment distribution:', c.paymentBehaviour.distribution);
+                    if (c.paymentBehaviour.consistentlyLate.length > 0) {
+                        console.warn('Consistently late suppliers:', c.paymentBehaviour.consistentlyLate);
+                    }
+                    console.log('Volume over time:', c.volumeOverTime);
+                    console.groupEnd();
+                });
+
+                console.log('Full stats bundle:', stats);
+                console.log('(Hover the object above and right-click → "Store as global variable" for further poking.)');
+
+                alert('Analysis complete. Open the browser console (F12) to inspect.');
+            });
+        });
+    });
+}
+
+// Pagination helper. Supabase caps a single .select() at 1000 rows by default;
+// large uploads need range-based fetching. We page in 1000-row chunks until
+// fewer than that come back.
+function fetchAllRows(table, uploadId, cb) {
+    var all = [];
+    var pageSize = 1000;
+    var from = 0;
+    function nextPage() {
+        sbClient.from(table).select('*').eq('upload_id', uploadId).range(from, from + pageSize - 1).then(function(res) {
+            if (res.error) { cb(res.error.message); return; }
+            all = all.concat(res.data || []);
+            if (!res.data || res.data.length < pageSize) {
+                cb(null, all);
+            } else {
+                from += pageSize;
+                nextPage();
+            }
+        });
+    }
+    nextPage();
 }
 
 // ================================================================
