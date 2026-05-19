@@ -300,6 +300,95 @@
         .trend-label.declining { background: #EF444420; color: var(--danger); }
         .trend-label.flat      { background: #94A3B820; color: var(--text-secondary); }
 
+        /* ── Supplier detail panel (slide-out from right) ────────── */
+        /* Clickable supplier-name spans inside tables. Cursor + hover
+           underline tell the user the name is interactive. */
+        .sup-link { cursor: pointer; color: var(--text); transition: color 0.15s; }
+        .sup-link:hover { color: var(--accent); text-decoration: underline; }
+
+        /* Dim backdrop. Captures clicks outside the panel to close it.
+           Lower z-index than the panel itself. */
+        .sup-panel-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 900;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .sup-panel-backdrop.open { opacity: 1; pointer-events: auto; }
+
+        /* Slide-out panel. Starts off-screen via transform; .open slides in. */
+        .sup-panel {
+            position: fixed;
+            top: 0; right: 0;
+            height: 100vh;
+            width: 560px;
+            max-width: 90vw;
+            background: var(--card);
+            border-left: 1px solid var(--border);
+            box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+            z-index: 901;
+            transform: translateX(100%);
+            transition: transform 0.25s ease-out;
+            overflow-y: auto;
+            color: var(--text);
+        }
+        .sup-panel.open { transform: translateX(0); }
+
+        /* Sticky header keeps identifying info visible while scrolling */
+        .sup-panel-header {
+            position: sticky; top: 0;
+            background: var(--card);
+            border-bottom: 1px solid var(--border);
+            padding: 18px 22px 14px;
+            z-index: 1;
+        }
+        .sup-panel-close {
+            position: absolute; top: 14px; right: 14px;
+            background: transparent; border: none;
+            color: var(--text-secondary);
+            font-size: 22px; line-height: 1; cursor: pointer;
+            padding: 4px 8px; border-radius: 4px;
+            font-family: var(--font);
+        }
+        .sup-panel-close:hover { background: var(--card-hover); color: var(--text); }
+        .sup-panel-eyebrow { font-size: 10px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+        .sup-panel-title { font-size: 18px; font-weight: 700; color: var(--text); margin-top: 4px; padding-right: 32px; line-height: 1.25; }
+        .sup-panel-subtitle { font-size: 11px; color: var(--text-secondary); margin-top: 4px; font-family: var(--mono); }
+        .sup-panel-tags { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .sup-panel-tag { font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+        .sup-panel-tag.dominant   { background: #0EA5E920; color: var(--accent); }
+        .sup-panel-tag.growing    { background: #10B98120; color: var(--success); }
+        .sup-panel-tag.declining  { background: #EF444420; color: var(--danger); }
+        .sup-panel-tag.silent     { background: #EF444425; color: var(--danger); }
+        .sup-panel-tag.quality    { background: #8B5CF625; color: var(--purple); }
+        .sup-panel-tag.slow-paid  { background: #F59E0B25; color: var(--warning); }
+
+        .sup-panel-body { padding: 16px 22px 32px; }
+        .sup-panel-section { margin-bottom: 20px; }
+        .sup-panel-section-title { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+        .sup-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .sup-stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+        .sup-stat-card .stat-label { font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+        .sup-stat-card .stat-value { font-size: 15px; font-weight: 700; color: var(--text); font-family: var(--mono); }
+        .sup-stat-card .stat-sub { font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+        .sup-chart-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; height: 200px; position: relative; }
+
+        .sup-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .sup-table th { background: var(--bg); padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); }
+        .sup-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+        .sup-table tr:last-child td { border-bottom: none; }
+        .sup-table .text-right { text-align: right; }
+        .sup-table .mono { font-family: var(--mono); }
+
+        .sup-late { color: var(--danger); font-weight: 700; }
+        .sup-ontime { color: var(--success); }
+
+        .sup-empty { padding: 24px 12px; text-align: center; color: var(--text-secondary); font-size: 11px; }
+
         /* ══════════════════════════════════════════════════════════
            PDF EXPORT — print-only DOM
            When the user clicks "Print / Save as PDF", a hidden tree
@@ -651,6 +740,21 @@
 <!-- PRINT ROOT — populated by exportReportPDF() before printing -->
 <!-- ══════════════════════════════════════════════════════════ -->
 <div id="printRoot"></div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- SUPPLIER DETAIL PANEL — slide-out, populated by openSupplierPanel() -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div id="supPanelBackdrop" class="sup-panel-backdrop"></div>
+<div id="supPanel" class="sup-panel" aria-hidden="true">
+    <div id="supPanelHeader" class="sup-panel-header">
+        <button class="sup-panel-close" id="supPanelCloseBtn" aria-label="Close">&times;</button>
+        <div class="sup-panel-eyebrow">Supplier detail</div>
+        <div class="sup-panel-title" id="supPanelTitle"></div>
+        <div class="sup-panel-subtitle" id="supPanelSubtitle"></div>
+        <div class="sup-panel-tags" id="supPanelTags"></div>
+    </div>
+    <div id="supPanelBody" class="sup-panel-body"></div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════ -->
 <!-- SCRIPTS                                                    -->
@@ -1373,14 +1477,19 @@ function openReport(uploadId) {
                 var stats = window.BuyerAnalytics.computeBuyerStats(uploadMeta, invRows, cnRows);
 
                 hideProcessing();
-                showReportView(uploadId, uploadMeta, stats);
+                showReportView(uploadId, uploadMeta, stats, invRows, cnRows);
             });
         });
     });
 }
 
-function showReportView(uploadId, meta, stats) {
-    window.__report = { uploadId: uploadId, meta: meta, stats: stats, activeCcy: null };
+function showReportView(uploadId, meta, stats, invRows, cnRows) {
+    // Cache raw rows on __report so the supplier detail panel can scope
+    // its sub-tables/charts to one supplier without re-fetching.
+    window.__report = {
+        uploadId: uploadId, meta: meta, stats: stats, activeCcy: null,
+        invRows: invRows || [], cnRows: cnRows || []
+    };
 
     document.getElementById('reportPicker').classList.add('hidden');
     document.getElementById('reportView').classList.remove('hidden');
@@ -1576,7 +1685,7 @@ function renderSectionConcentration(c, ccy) {
     var rows = suppliers.map(function(s, idx) {
         return '<tr>' +
             '<td>' + (idx + 1) + '</td>' +
-            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
@@ -1675,7 +1784,7 @@ function renderSectionDilution(c, ccy) {
         var cls = s.dilutionRate >= 0.08 ? 'high' : s.dilutionRate >= 0.03 ? 'med' : 'low';
         return '<tr>' +
             '<td>' + (idx + 1) + '</td>' +
-            '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+            '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span></td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
             '<td class="text-right mono">' + s.cnCount.toLocaleString() + '</td>' +
@@ -1742,7 +1851,7 @@ function renderSectionPaymentBehaviour(c, ccy) {
 
         function lateRow(s) {
             return '<tr>' +
-                '<td><strong>' + escHTML(s.name) + '</strong></td>' +
+                '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span></td>' +
                 '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
                 '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
                 '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
@@ -1890,7 +1999,7 @@ function renderSectionStressSignals(c, ccy) {
         }).join('');
 
         return '<tr>' +
-            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
             '<td>' + tags + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
@@ -2531,7 +2640,7 @@ function renderTrendsSupplierTable(ts, ccy) {
             : '—';
 
         return '<tr>' +
-            '<td><strong>' + escHTML(s.name) + '</strong><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
+            '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
             '<td class="sparkline-cell">' + renderSparkline(sparkVol, 90, 26, '#0EA5E9') + '</td>' +
@@ -2748,15 +2857,505 @@ function formatDateTime(str) {
 }
 
 function escHTML(str) {
+    // Used in both text and attribute contexts (e.g. data-sup-id="..."). The
+    // textContent → innerHTML roundtrip handles &, <, > but not quotes —
+    // explicit replace covers the attribute case. Identifiers from real
+    // buyer extracts shouldn't contain quotes, but defensive.
+    if (str == null) return '';
     var div = document.createElement('div');
-    div.textContent = str == null ? '' : String(str);
-    return div.innerHTML;
+    div.textContent = String(str);
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function nullableStr(v) {
     if (v == null) return null;
     var s = String(v).trim();
     return s === '' ? null : s;
+}
+
+// ================================================================
+// SUPPLIER DETAIL PANEL
+// ================================================================
+// Slide-out from the right. Triggered by clicks on .sup-link spans in
+// tables across Reports and Trends. Reads raw invoice/CN rows from
+// whichever surface is open, computes a supplier-scoped view, renders
+// header + at-a-glance stats + volume chart + payment behaviour chart
+// + dilution list + recent invoices.
+//
+// Chart instances are kept in a SEPARATE registry from Reports/Trends
+// (_supplierPanelCharts). Avoids the cross-view destroy bug we hit
+// before: opening a Report from a Trends panel would destroyAllCharts
+// and wipe the panel's instances.
+
+var _supplierPanelCharts = [];
+var _supplierPanelOpen = false;
+
+// Click delegation. Captures any click anywhere on .sup-link.
+// Uses event bubbling so it works regardless of when/how the rows
+// were rendered (concentration table, dilution league, trends table, ...).
+document.addEventListener('click', function(e) {
+    // Walk up from the click target to find a .sup-link ancestor.
+    // (User might click on the <strong> inside the span.)
+    var el = e.target;
+    while (el && el !== document) {
+        if (el.classList && el.classList.contains('sup-link')) {
+            var supId = el.getAttribute('data-sup-id');
+            var supCcy = el.getAttribute('data-sup-ccy');
+            if (supId && supCcy) {
+                e.preventDefault();
+                openSupplierPanel(supId, supCcy);
+            }
+            return;
+        }
+        el = el.parentNode;
+    }
+});
+
+// Backdrop click closes panel
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'supPanelBackdrop') closeSupplierPanel();
+    if (e.target && e.target.id === 'supPanelCloseBtn') closeSupplierPanel();
+});
+
+// Escape key closes panel
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && _supplierPanelOpen) closeSupplierPanel();
+});
+
+function openSupplierPanel(supId, ccy) {
+    // Source raw rows from whichever surface is currently active.
+    // Both __report and __trends cache raw invoice/CN rows. Prefer __trends
+    // if it's the visible surface (operator's current context).
+    var src = pickSupplierDataSource();
+    if (!src) {
+        alert('No upload data available. Open a report or trends view first.');
+        return;
+    }
+
+    // Filter rows: this supplier, this currency, non-excluded
+    var invRows = src.invRows.filter(function(r) {
+        return !r.excluded && r.supplier_identifier === supId && (r.currency || '').toUpperCase() === ccy.toUpperCase();
+    });
+    var cnRows = src.cnRows.filter(function(r) {
+        return !r.excluded && r.supplier_identifier === supId && (r.currency || '').toUpperCase() === ccy.toUpperCase();
+    });
+
+    if (invRows.length === 0) {
+        alert('No invoices found for this supplier in ' + ccy + '. (Identifier: ' + supId + ')');
+        return;
+    }
+
+    // Compute supplier-scoped stats by reusing the analytics module.
+    // Wrap our filtered rows as a synthetic per-currency upload.
+    var supStats = computeSupplierScopedStats(invRows, cnRows, src.meta);
+    var supplierName = invRows[0].supplier_name || supId;
+
+    // Populate the panel
+    populateSupplierPanel(supplierName, supId, ccy, supStats, invRows, cnRows, src.meta);
+
+    // Show with slide-in
+    var panel = document.getElementById('supPanel');
+    var backdrop = document.getElementById('supPanelBackdrop');
+    panel.setAttribute('aria-hidden', 'false');
+    backdrop.classList.add('open');
+    panel.classList.add('open');
+    _supplierPanelOpen = true;
+
+    // Charts need to be drawn after the panel has laid out (just made
+    // visible from transform: translateX(100%)). One rAF is enough since
+    // the panel is already in DOM, just transformed.
+    requestAnimationFrame(function() {
+        drawSupplierVolumeChart(supStats, ccy);
+        drawSupplierPaymentChart(supStats);
+    });
+}
+
+function closeSupplierPanel() {
+    if (!_supplierPanelOpen) return;
+    var panel = document.getElementById('supPanel');
+    var backdrop = document.getElementById('supPanelBackdrop');
+    panel.setAttribute('aria-hidden', 'true');
+    panel.classList.remove('open');
+    backdrop.classList.remove('open');
+    _supplierPanelOpen = false;
+    // Tear down charts. Their canvases will be replaced next open.
+    _supplierPanelCharts.forEach(function(c) { try { c.destroy(); } catch (e) {} });
+    _supplierPanelCharts = [];
+    // Clear body so old DOM doesn't briefly flash on next open
+    var body = document.getElementById('supPanelBody');
+    if (body) body.innerHTML = '';
+}
+
+function pickSupplierDataSource() {
+    // Visible Trends view wins if both are open and trends is the
+    // current tab (operator's intent).
+    var trendsVisible = window.__trends && window.__trends.uploadId
+        && !document.getElementById('trendsView').classList.contains('hidden')
+        && !document.getElementById('tab-trends').classList.contains('hidden');
+    var reportVisible = window.__report && window.__report.uploadId
+        && !document.getElementById('reportView').classList.contains('hidden')
+        && !document.getElementById('tab-reports').classList.contains('hidden');
+
+    if (trendsVisible && window.__trends.invRows) return window.__trends;
+    if (reportVisible && window.__report.invRows) return window.__report;
+    // Fallback: either set, whichever exists with raw rows
+    if (window.__trends && window.__trends.invRows && window.__trends.invRows.length) return window.__trends;
+    if (window.__report && window.__report.invRows && window.__report.invRows.length) return window.__report;
+    return null;
+}
+
+// ── Supplier-scoped stats ───────────────────────────────────────
+// We deliberately don't reuse computeBuyerStats — it expects the full
+// upload. For one supplier we just compute the specific aggregates we'll
+// render in the panel. Simpler and faster than running the full pipeline.
+
+function computeSupplierScopedStats(invRows, cnRows, meta) {
+    // Totals
+    var totalSpend = 0;
+    var paidCount = 0;
+    var unpaidCount = 0;
+    var dpds = [];
+
+    for (var i = 0; i < invRows.length; i++) {
+        var inv = invRows[i];
+        var amt = parseFloat(inv.amount) || 0;
+        totalSpend += amt;
+        if (inv.paid_date && inv.due_date) {
+            paidCount++;
+            var d = daysBetween(inv.due_date, inv.paid_date);
+            if (d !== null) dpds.push(d);
+        } else {
+            unpaidCount++;
+        }
+    }
+
+    var cnTotal = 0;
+    for (var j = 0; j < cnRows.length; j++) {
+        cnTotal += parseFloat(cnRows[j].amount) || 0;
+    }
+
+    // Date span
+    var allDates = invRows.map(function(r) { return r.invoice_date; }).filter(Boolean).sort();
+    var firstInvoice = allDates[0] || null;
+    var lastInvoice = allDates[allDates.length - 1] || null;
+
+    // Days since last invoice (relative to upload's period end, not today)
+    var daysSinceLast = null;
+    if (lastInvoice && meta && meta.date_range_max) {
+        var last = new Date(lastInvoice + 'T00:00:00');
+        var periodEnd = new Date(meta.date_range_max + 'T00:00:00');
+        daysSinceLast = Math.floor((periodEnd - last) / 86400000);
+    }
+
+    // DPD distribution buckets (same bands as Reports Section 4)
+    var dist = { earlyOrOnTime: 0, late1to14: 0, late15to30: 0, late31to60: 0, late61plus: 0 };
+    dpds.forEach(function(d) {
+        if (d <= 0) dist.earlyOrOnTime++;
+        else if (d <= 14) dist.late1to14++;
+        else if (d <= 30) dist.late15to30++;
+        else if (d <= 60) dist.late31to60++;
+        else dist.late61plus++;
+    });
+
+    // Monthly volume buckets for the volume chart
+    var monthlyBuckets = {};
+    invRows.forEach(function(r) {
+        if (!r.invoice_date) return;
+        var m = r.invoice_date.slice(0, 7);
+        if (!monthlyBuckets[m]) monthlyBuckets[m] = { count: 0, spend: 0 };
+        monthlyBuckets[m].count++;
+        monthlyBuckets[m].spend += parseFloat(r.amount) || 0;
+    });
+    var months = Object.keys(monthlyBuckets).sort();
+    var monthlySeries = months.map(function(m) {
+        return { month: m, count: monthlyBuckets[m].count, spend: monthlyBuckets[m].spend };
+    });
+
+    // Sort CNs by date desc (most recent first)
+    var cnsSorted = cnRows.slice().sort(function(a, b) {
+        return (b.cn_date || '').localeCompare(a.cn_date || '');
+    });
+
+    // Sort invoices by date desc, take top 20
+    var invsSorted = invRows.slice().sort(function(a, b) {
+        return (b.invoice_date || '').localeCompare(a.invoice_date || '');
+    });
+
+    return {
+        invoiceCount: invRows.length,
+        totalSpend: totalSpend,
+        avgInvoiceAmount: invRows.length > 0 ? totalSpend / invRows.length : 0,
+        paidCount: paidCount,
+        unpaidCount: unpaidCount,
+        dpds: dpds,
+        avgDpd: dpds.length > 0 ? dpds.reduce(function(a, b) { return a + b; }, 0) / dpds.length : null,
+        medianDpd: dpds.length > 0 ? medianValue(dpds) : null,
+        dpdDistribution: dist,
+        firstInvoice: firstInvoice,
+        lastInvoice: lastInvoice,
+        daysSinceLast: daysSinceLast,
+        cnCount: cnRows.length,
+        cnTotal: cnTotal,
+        dilutionRate: totalSpend > 0 ? cnTotal / totalSpend : 0,
+        monthlySeries: monthlySeries,
+        creditNotes: cnsSorted,
+        recentInvoices: invsSorted.slice(0, 20),
+        totalInvoiceCount: invRows.length
+    };
+}
+
+function medianValue(arr) {
+    if (arr.length === 0) return null;
+    var sorted = arr.slice().sort(function(a, b) { return a - b; });
+    var mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// ── Panel content rendering ─────────────────────────────────────
+
+function populateSupplierPanel(name, supId, ccy, st, invRows, cnRows, meta) {
+    document.getElementById('supPanelTitle').textContent = name;
+    document.getElementById('supPanelSubtitle').textContent = supId + '  ·  ' + ccy;
+
+    // Tags: derived signals
+    var tags = [];
+    // Find this supplier's share-of-currency from the cached stats if available
+    var cachedShare = lookupShareOfCurrency(supId, ccy);
+    if (cachedShare !== null && cachedShare >= 0.20) tags.push({ cls: 'dominant', text: 'Dominant (' + pct(cachedShare) + ')' });
+    if (st.dilutionRate >= 0.08 && st.invoiceCount >= 3) tags.push({ cls: 'quality', text: 'Quality issues' });
+    if (st.medianDpd !== null && st.medianDpd > 30 && st.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Consistently late' });
+    if (st.daysSinceLast !== null && st.daysSinceLast >= 90) tags.push({ cls: 'silent', text: 'Silent ' + st.daysSinceLast + 'd' });
+    // Trend label from the cached stats
+    var cachedTrend = lookupTrendLabel(supId, ccy);
+    if (cachedTrend === 'growing')   tags.push({ cls: 'growing', text: 'Growing' });
+    if (cachedTrend === 'declining') tags.push({ cls: 'declining', text: 'Declining' });
+
+    document.getElementById('supPanelTags').innerHTML = tags.map(function(t) {
+        return '<span class="sup-panel-tag ' + t.cls + '">' + escHTML(t.text) + '</span>';
+    }).join('');
+
+    // Body
+    var body = document.getElementById('supPanelBody');
+    body.innerHTML =
+        renderSupAtAGlance(st, ccy, cachedShare) +
+        renderSupVolume(st, ccy) +
+        renderSupPayment(st) +
+        (st.cnCount > 0 ? renderSupDilution(st, ccy) : '') +
+        renderSupRecentInvoices(st, ccy);
+
+    // Reset scroll to top so each open starts fresh
+    document.getElementById('supPanel').scrollTop = 0;
+}
+
+// Look up share-of-currency from the cached per-currency stats. Used for
+// the tag and the at-a-glance stat. Returns null if no cached stats found.
+function lookupShareOfCurrency(supId, ccy) {
+    var stats = null;
+    if (window.__report && window.__report.stats) stats = window.__report.stats;
+    else if (window.__trends && window.__trends._stats) stats = window.__trends._stats;
+    if (!stats || !stats.perCurrency[ccy]) return null;
+    var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
+    return found ? found.sharePct : null;
+}
+
+function lookupTrendLabel(supId, ccy) {
+    var stats = null;
+    if (window.__report && window.__report.stats) stats = window.__report.stats;
+    else if (window.__trends && window.__trends._stats) stats = window.__trends._stats;
+    if (!stats || !stats.perCurrency[ccy]) return null;
+    var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
+    if (!found || found.trendSlopeNormalised === null) return 'flat';
+    if (found.trendSlopeNormalised > 0.10) return 'growing';
+    if (found.trendSlopeNormalised < -0.10) return 'declining';
+    return 'flat';
+}
+
+function renderSupAtAGlance(st, ccy, sharePct) {
+    var dpdStr = st.medianDpd !== null ? (st.medianDpd >= 0 ? '+' : '') + st.medianDpd + 'd' : '—';
+    var dpdSub = st.medianDpd !== null && st.paidCount > 0 ? 'median over ' + st.paidCount + ' paid' : 'no paid invoices';
+
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">At a glance</div>' +
+            '<div class="sup-stat-grid">' +
+                supStatCard('Total spend', moneyShort(st.totalSpend, ccy), 'avg ' + moneyShort(st.avgInvoiceAmount, ccy)) +
+                supStatCard('Invoices', st.invoiceCount.toLocaleString(), st.paidCount + ' paid, ' + st.unpaidCount + ' open') +
+                supStatCard('Share of ' + ccy, sharePct !== null ? pct(sharePct) : '—', 'of all ' + ccy + ' spend') +
+                supStatCard('Median DPD', dpdStr, dpdSub) +
+                supStatCard('First invoice', st.firstInvoice || '—', '') +
+                supStatCard('Last invoice', st.lastInvoice || '—', st.daysSinceLast !== null ? st.daysSinceLast + ' days before period end' : '') +
+            '</div>' +
+        '</div>';
+}
+
+function supStatCard(label, value, sub) {
+    return '<div class="sup-stat-card">' +
+        '<div class="stat-label">' + escHTML(label) + '</div>' +
+        '<div class="stat-value">' + value + '</div>' +
+        (sub ? '<div class="stat-sub">' + escHTML(sub) + '</div>' : '') +
+    '</div>';
+}
+
+function renderSupVolume(st, ccy) {
+    if (st.monthlySeries.length === 0) return '';
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Volume over time (monthly)</div>' +
+            '<div class="sup-chart-wrap"><canvas id="sup-chart-volume"></canvas></div>' +
+        '</div>';
+}
+
+function renderSupPayment(st) {
+    if (st.paidCount === 0) {
+        return '' +
+            '<div class="sup-panel-section">' +
+                '<div class="sup-panel-section-title">Payment behaviour</div>' +
+                '<div class="sup-empty">No paid invoices yet for this supplier.</div>' +
+            '</div>';
+    }
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Payment behaviour (days past due)</div>' +
+            '<div class="sup-chart-wrap"><canvas id="sup-chart-payment"></canvas></div>' +
+        '</div>';
+}
+
+function renderSupDilution(st, ccy) {
+    var rows = st.creditNotes.slice(0, 15).map(function(cn) {
+        return '<tr>' +
+            '<td class="mono" style="font-size:10px;">' + escHTML(cn.cn_date || '—') + '</td>' +
+            '<td>' + escHTML(cn.cn_reference || '—') + '</td>' +
+            '<td class="text-right mono">' + moneyShort(parseFloat(cn.amount) || 0, ccy) + '</td>' +
+            '<td class="mono" style="font-size:10px; color:var(--text-secondary);">' + escHTML(cn.paid_date || 'open') + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var moreRow = st.creditNotes.length > 15
+        ? '<tr><td colspan="4" style="text-align:center; font-style:italic; font-size:10px; color:var(--text-secondary);">+ ' + (st.creditNotes.length - 15) + ' more credit notes</td></tr>'
+        : '';
+
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(st.dilutionRate) + ')</div>' +
+            '<table class="sup-table">' +
+                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Settled</th></tr></thead>' +
+                '<tbody>' + rows + moreRow + '</tbody>' +
+            '</table>' +
+        '</div>';
+}
+
+function renderSupRecentInvoices(st, ccy) {
+    var rows = st.recentInvoices.map(function(inv) {
+        var dpdCell = '—';
+        if (inv.paid_date && inv.due_date) {
+            var d = daysBetween(inv.due_date, inv.paid_date);
+            if (d !== null) {
+                var cls = d > 0 ? 'sup-late' : 'sup-ontime';
+                dpdCell = '<span class="' + cls + '">' + (d >= 0 ? '+' : '') + d + 'd</span>';
+            }
+        } else if (!inv.paid_date) {
+            dpdCell = '<span style="color:var(--text-secondary); font-size:10px;">open</span>';
+        }
+
+        return '<tr>' +
+            '<td class="mono" style="font-size:10px;">' + escHTML(inv.invoice_date || '—') + '</td>' +
+            '<td>' + escHTML(inv.invoice_reference || '—') + '</td>' +
+            '<td class="text-right mono">' + moneyShort(parseFloat(inv.amount) || 0, ccy) + '</td>' +
+            '<td class="mono" style="font-size:10px;">' + escHTML(inv.due_date || '—') + '</td>' +
+            '<td class="mono text-right">' + dpdCell + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var moreNote = st.totalInvoiceCount > 20
+        ? '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:6px;">Showing 20 most recent of ' + st.totalInvoiceCount + ' invoices for this supplier.</div>'
+        : '';
+
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Recent invoices</div>' +
+            '<table class="sup-table">' +
+                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Due</th><th class="text-right">DPD</th></tr></thead>' +
+                '<tbody>' + rows + '</tbody>' +
+            '</table>' +
+            moreNote +
+        '</div>';
+}
+
+// ── Charts for the supplier panel ───────────────────────────────
+
+function drawSupplierVolumeChart(st, ccy) {
+    var canvas = document.getElementById('sup-chart-volume');
+    if (!canvas) return;
+    var labels = st.monthlySeries.map(function(m) { return m.month; });
+    var counts = st.monthlySeries.map(function(m) { return m.count; });
+    var spends = st.monthlySeries.map(function(m) { return m.spend; });
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                { type: 'bar', label: 'Count', data: counts, backgroundColor: '#0EA5E950', borderColor: '#0EA5E9', borderWidth: 1, yAxisID: 'y' },
+                { type: 'line', label: 'Spend', data: spends, borderColor: '#8B5CF6', borderWidth: 1.5, pointRadius: 1.5, tension: 0.3, yAxisID: 'y1', fill: false }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top', labels: { color: '#94A3B8', font: { size: 9 }, padding: 4, boxWidth: 10 } },
+                tooltip: { backgroundColor: '#0D1526', titleColor: '#E2E8F0', bodyColor: '#E2E8F0', borderColor: '#1C2A42', borderWidth: 1,
+                    callbacks: { label: function(ctx) {
+                        if (ctx.dataset.label === 'Spend') return 'Spend: ' + moneyShort(ctx.parsed.y, ccy);
+                        return 'Count: ' + ctx.parsed.y;
+                    } }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#94A3B8', font: { size: 9, family: 'JetBrains Mono' } }, grid: { color: '#1C2A4240' } },
+                y: { ticks: { color: '#94A3B8', font: { size: 9 } }, grid: { color: '#1C2A42' }, title: { display: true, text: 'Invoices', color: '#94A3B8', font: { size: 9 } } },
+                y1: { position: 'right', ticks: { color: '#94A3B8', font: { size: 9 }, callback: function(v) { return moneyShort(v, ccy); } }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Spend', color: '#94A3B8', font: { size: 9 } } }
+            }
+        }
+    });
+    _supplierPanelCharts.push(inst);
+}
+
+function drawSupplierPaymentChart(st) {
+    var canvas = document.getElementById('sup-chart-payment');
+    if (!canvas) return;
+    var d = st.dpdDistribution;
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: ['On time / early', '1-14d', '15-30d', '31-60d', '61+d'],
+            datasets: [{
+                label: 'Invoices',
+                data: [d.earlyOrOnTime, d.late1to14, d.late15to30, d.late31to60, d.late61plus],
+                backgroundColor: ['#10B981', '#34D399', '#F59E0B', '#F97316', '#EF4444'],
+                borderColor: '#0B1120',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0D1526', titleColor: '#E2E8F0', bodyColor: '#E2E8F0' } },
+            scales: {
+                x: { ticks: { color: '#94A3B8', font: { size: 9 } }, grid: { display: false } },
+                y: { ticks: { color: '#94A3B8', font: { size: 9 } }, grid: { color: '#1C2A42' } }
+            }
+        }
+    });
+    _supplierPanelCharts.push(inst);
+}
+
+// Helper: daysBetween used by the panel; existing one in the analytics
+// module isn't reachable here. Inline a small version.
+function daysBetween(fromDateStr, toDateStr) {
+    if (!fromDateStr || !toDateStr) return null;
+    var a = new Date(fromDateStr + 'T00:00:00');
+    var b = new Date(toDateStr + 'T00:00:00');
+    if (isNaN(a.getTime()) || isNaN(b.getTime())) return null;
+    return Math.round((b - a) / 86400000);
 }
 
 // ================================================================
