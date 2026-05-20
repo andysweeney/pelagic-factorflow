@@ -282,6 +282,27 @@
 
         /* Stat cards (At a glance) */
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+
+        /* Inline help icon next to a stat label. Uses the native `title`
+           attribute for the tooltip — minimal cost, accessible, and survives
+           in the print view without extra wiring. */
+        .stat-help {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 13px;
+            height: 13px;
+            margin-left: 5px;
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            border: 1px solid var(--text-secondary);
+            border-radius: 50%;
+            cursor: help;
+            vertical-align: middle;
+            user-select: none;
+        }
+        .stat-help:hover { color: var(--accent); border-color: var(--accent); }
         .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
         .stat-card .stat-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
         .stat-card .stat-value { font-size: 22px; font-weight: 700; color: var(--text); font-family: var(--mono); }
@@ -2274,6 +2295,15 @@ function renderSectionConcentration(c, ccy) {
                  : conc.hhi >= 0.25 ? 'moderately concentrated'
                  : 'reasonably diversified';
 
+    // Tooltip text used on the HHI card. Single sentence to keep the native
+    // browser tooltip readable. Buyer-facing language.
+    var hhiTooltip = 'Herfindahl-Hirschman Index. Sum of squared supplier shares; ' +
+        '0 = perfectly diversified, 1 = monopoly. Below 0.15 is competitive, ' +
+        '0.15-0.25 moderately concentrated, above 0.25 highly concentrated.';
+
+    var hhiLabelHtml = 'HHI index' +
+        '<span class="stat-help" title="' + escHTML(hhiTooltip) + '">?</span>';
+
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 2</div>' +
@@ -2282,9 +2312,11 @@ function renderSectionConcentration(c, ccy) {
 
             '<div class="stat-grid">' +
                 statCard('Top supplier', pct(conc.top1Pct), 'of total ' + ccy + ' spend') +
-                statCard('Top 3', pct(conc.top3Pct), '') +
-                statCard('Top 5', pct(conc.top5Pct), '') +
-                statCard('HHI index', conc.hhi.toFixed(3), hhiLabel) +
+                statCard('Top 3',  pct(conc.top3Pct),  '') +
+                statCard('Top 5',  pct(conc.top5Pct),  '') +
+                statCard('Top 10', pct(conc.top10Pct), '') +
+                statCard('Top 20', pct(conc.top20Pct), '') +
+                statCard(null, conc.hhi.toFixed(3), hhiLabel, hhiLabelHtml) +
             '</div>' +
 
             '<div class="chart-row" style="grid-template-columns: 2fr 1fr;">' +
@@ -2711,9 +2743,12 @@ function generateObservations(c, ccy) {
 // Helper: stat card markup
 // ────────────────────────────────────────────────────────────────
 
-function statCard(label, value, sub) {
+function statCard(label, value, sub, labelHtml) {
+    // labelHtml lets the caller supply already-trusted HTML for the label
+    // (e.g. text + a help icon). Used by Section 2's HHI card.
+    var labelMarkup = labelHtml !== undefined ? labelHtml : escHTML(label);
     return '<div class="stat-card">' +
-        '<div class="stat-label">' + escHTML(label) + '</div>' +
+        '<div class="stat-label">' + labelMarkup + '</div>' +
         '<div class="stat-value">' + value + '</div>' +
         (sub ? '<div class="stat-sub">' + escHTML(sub) + '</div>' : '') +
     '</div>';
@@ -3002,18 +3037,19 @@ function drawTrendsVolume(labels, ts, ccy) {
 
 // ────────────────────────────────────────────────────────────────
 // Chart 2 — Dilution
-// Cap rate at 50% (DILUTION_CAP) to keep the y-axis legible.
-// A bucket with one outsized CN can spike to 200%+; we'd lose all the
-// useful 1-15% signal trying to fit it.
+// Y axis auto-scales. We used to cap at 50% to handle outliers gracefully
+// but that hid the signal at typical 0.5-5% rates. If a single outsized
+// CN spikes a bucket to 200%, that's worth seeing — it's the signal.
 // ────────────────────────────────────────────────────────────────
-
-var DILUTION_CAP = 0.50;
 
 function drawTrendsDilution(labels, ts) {
     var canvas = document.getElementById('trends-chart-dilution');
     if (!canvas) return;
-    var rates = ts.dilution.map(function(d) { return Math.min(d.rate, DILUTION_CAP); });
-    var rawRates = ts.dilution.map(function(d) { return d.rate; });
+    // Previously we capped both the plotted values and the suggestedMax at
+    // 50% (DILUTION_CAP) for legibility. Cost: at typical 0.5-2% rates the
+    // chart looked flat against a 0-50% axis. Tradeoff was wrong — auto-scale
+    // is clearer and outliers should show as outliers, not get hidden.
+    var rates = ts.dilution.map(function(d) { return d.rate; });
 
     _chartInstances['trends-dilution'] = new Chart(canvas.getContext('2d'), {
         type: 'line',
@@ -3034,13 +3070,10 @@ function drawTrendsDilution(labels, ts) {
             yLeftLabel: 'Rate',
             yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; },
             tooltipFormatter: function(ctx) {
-                // Show actual (uncapped) rate in tooltip even when capped on chart.
                 var idx = ctx.dataIndex;
-                var raw = rawRates[idx];
                 var d = ts.dilution[idx];
-                return 'Dilution: ' + (raw * 100).toFixed(2) + '% (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
-            },
-            suggestedMaxLeft: DILUTION_CAP
+                return 'Dilution: ' + (ctx.parsed.y * 100).toFixed(2) + '% (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
+            }
         })
     });
 }
@@ -3071,11 +3104,14 @@ function drawTrendsPayments(labels, ts) {
         },
         options: chartCommonOptions({
             yLeftLabel: 'Days past due',
-            yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v + 'd'; },
+            // 1dp because the median of an even count of integer DPDs is
+            // typically a .5 — surfacing that detail is more honest than
+            // rounding to integer days.
+            yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'd'; },
             tooltipFormatter: function(ctx) {
                 var p = ts.payments[ctx.dataIndex];
                 if (p.medianDpd === null) return 'No invoices paid';
-                return 'Median DPD: ' + (p.medianDpd >= 0 ? '+' : '') + p.medianDpd + 'd (' + p.paidCount + ' invoices, ' + ((p.onTimePct || 0) * 100).toFixed(0) + '% on time)';
+                return 'Median DPD: ' + (p.medianDpd >= 0 ? '+' : '') + p.medianDpd.toFixed(1) + 'd (' + p.paidCount + ' invoices, ' + ((p.onTimePct || 0) * 100).toFixed(0) + '% on time)';
             }
         })
     });
@@ -4380,8 +4416,10 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
         { key: 'invoiceCount', label: 'Invoices', cls: 'text-right' },
         { key: 'totalSpend',   label: 'Spend',    cls: 'text-right' },
         { key: 'sharePct',     label: 'Share',    cls: 'text-right' },
-        { key: 'volSpark',     label: 'Volume',   cls: 'text-center',  sortable: false },
-        { key: 'spendSpark',   label: 'Spend ↗',  cls: 'text-center',  sortable: false },
+        { key: 'volSpark',     label: 'Volume',   cls: 'text-center',  sortable: false,
+          tooltip: 'Monthly invoice count over the period. Rising means more invoices, falling means fewer. Read together with Spend to spot price-vs-quantity changes.' },
+        { key: 'spendSpark',   label: 'Spend',    cls: 'text-center',  sortable: false,
+          tooltip: 'Monthly total invoice value (in supplier currency). Volume flat + Spend rising = price increase. Volume rising + Spend flat = smaller-average invoices.' },
         { key: 'dilutionRate', label: 'Dilution', cls: 'text-right' },
         { key: 'avgDpd',       label: 'Avg DPD',  cls: 'text-right' },
         { key: 'lastInvoice',  label: 'Last invoice', cls: 'text-right' },
@@ -4395,10 +4433,13 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
         // Non-sortable headers don't get the data-sort-col attribute (so
         // wireAllSupSortHandlers ignores them) and don't get cursor:pointer
         // styling. Inline style handles the latter without a new class.
+        // Tooltips (for the sparkline columns) added via title attribute —
+        // shows the help cue and the native browser tooltip explains.
         var attrs = sortable
             ? ('data-sort-col="' + c.key + '"')
-            : ('style="cursor:default;"');
-        return '<th ' + attrs + ' class="' + (c.cls || '') + (active ? ' sort-active' : '') + '">' +
+            : ('style="cursor:' + (c.tooltip ? 'help' : 'default') + ';"');
+        var tooltipAttr = c.tooltip ? ' title="' + escHTML(c.tooltip) + '"' : '';
+        return '<th ' + attrs + tooltipAttr + ' class="' + (c.cls || '') + (active ? ' sort-active' : '') + '">' +
             escHTML(c.label) +
             (arrow ? '<span class="sort-arrow">' + arrow + '</span>' : '') +
         '</th>';
@@ -4778,8 +4819,10 @@ function renderPrintSectionConcentration(c, ccy) {
 
             '<div class="print-stat-grid">' +
                 printStatCard('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend') +
-                printStatCard('Top 3', pct(conc.top3Pct), '') +
-                printStatCard('Top 5', pct(conc.top5Pct), '') +
+                printStatCard('Top 3',  pct(conc.top3Pct),  '') +
+                printStatCard('Top 5',  pct(conc.top5Pct),  '') +
+                printStatCard('Top 10', pct(conc.top10Pct), '') +
+                printStatCard('Top 20', pct(conc.top20Pct), '') +
                 printStatCard('HHI index', conc.hhi.toFixed(3), hhiLabel) +
             '</div>' +
 
@@ -5304,14 +5347,15 @@ function drawTrendsPrintVolume(ccy, ts, c) {
 function drawTrendsPrintDilution(ccy, ts) {
     var canvas = document.getElementById('print-trends-dil-' + ccy);
     if (!canvas) return;
-    var rates = ts.dilution.map(function(d) { return Math.min(d.rate, 0.50); });
+    // Auto-scale Y axis — same fix as the screen version. See drawTrendsDilution.
+    var rates = ts.dilution.map(function(d) { return d.rate; });
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
             labels: ts.buckets,
             datasets: [{ label: 'Dilution rate', data: rates, borderColor: '#F59E0B', backgroundColor: '#F59E0B25', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3 }]
         },
-        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; }, suggestedMaxLeft: 0.50 })
+        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; } })
     });
     _printChartInstances.push(inst);
 }
@@ -5325,7 +5369,7 @@ function drawTrendsPrintPayments(ccy, ts) {
             labels: ts.buckets,
             datasets: [{ label: 'Median DPD', data: ts.payments.map(function(p) { return p.medianDpd; }), borderColor: '#EF4444', backgroundColor: '#EF444425', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3, spanGaps: true }]
         },
-        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v + 'd'; } })
+        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'd'; } })
     });
     _printChartInstances.push(inst);
 }
