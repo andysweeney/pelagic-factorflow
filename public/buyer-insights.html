@@ -1932,6 +1932,9 @@ function applyUploadFilter(newFilter) {
     // re-derives from the new filtered slice on next render.
     if (window.__trends) window.__trends._stats = null;
 
+    // All Suppliers sparkline cache is also stats-derived — invalidate.
+    if (u._allSupTimeSeries) u._allSupTimeSeries = null;
+
     // Update the visible elements: strip period label, the active-filter
     // text under the dropdown, and re-render whatever view is currently
     // active. (If a view isn't visible, it'll re-render when next activated.)
@@ -4108,6 +4111,27 @@ function daysBetween(fromDateStr, toDateStr) {
 // suppliers matching BOTH conditions. The "Top 20" pill is special: it
 // caps the result after other filtering, sliced by sharePct desc.
 
+// Lazy-compute monthly time-series for sparklines on the All Suppliers table.
+// Cached at __upload._allSupTimeSeries[ccy] keyed by currency, so switching
+// currency tabs only costs the first switch's computation. applyUploadFilter
+// nulls this cache when the period filter changes.
+//
+// We deliberately hardcode monthly granularity here (not configurable from
+// this surface). Monthly is the universally readable density for a 60×22
+// sparkline over 24 months. Weekly is too jittery, quarterly too sparse.
+// Trends remains where granularity gets adjusted.
+function getAllSupTimeSeries(ccy) {
+    var u = window.__upload;
+    if (!u) return null;
+    if (!u._allSupTimeSeries) u._allSupTimeSeries = {};
+    if (!u._allSupTimeSeries[ccy]) {
+        var invRows = u.filteredInvRows || u.invRows;
+        var cnRows  = u.filteredCnRows  || u.cnRows;
+        u._allSupTimeSeries[ccy] = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, 'monthly', ccy);
+    }
+    return u._allSupTimeSeries[ccy];
+}
+
 function showAllSuppliersView(upload) {
     // Initialise (or preserve) UI state. We DON'T reset sortColumn/searchText
     // on every showAllSuppliersView call — operator who returns to the tab
@@ -4342,12 +4366,22 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             '</div>';
     }
 
+    // Pull the monthly time-series for this currency. Lazy-cached on __upload;
+    // first switch into a currency tab pays the computation, subsequent
+    // re-renders (sort, search, pill changes) are instant.
+    var ts = getAllSupTimeSeries(ccy);
+    var sparklineMap = (ts && ts.sparklines) ? ts.sparklines : {};
+
     var as = window.__allSuppliers;
+    // sortable:false means the column doesn't accept click-to-sort. Sparklines
+    // are visual columns — there's no obvious thing to sort on.
     var cols = [
         { key: 'name',         label: 'Supplier' },
         { key: 'invoiceCount', label: 'Invoices', cls: 'text-right' },
         { key: 'totalSpend',   label: 'Spend',    cls: 'text-right' },
         { key: 'sharePct',     label: 'Share',    cls: 'text-right' },
+        { key: 'volSpark',     label: 'Volume',   cls: 'text-center',  sortable: false },
+        { key: 'spendSpark',   label: 'Spend ↗',  cls: 'text-center',  sortable: false },
         { key: 'dilutionRate', label: 'Dilution', cls: 'text-right' },
         { key: 'avgDpd',       label: 'Avg DPD',  cls: 'text-right' },
         { key: 'lastInvoice',  label: 'Last invoice', cls: 'text-right' },
@@ -4355,9 +4389,16 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
     ];
 
     var head = cols.map(function(c) {
-        var active = c.key === as.sortColumn;
+        var sortable = c.sortable !== false;
+        var active = sortable && c.key === as.sortColumn;
         var arrow = active ? (as.sortDirection === 'asc' ? '▲' : '▼') : '';
-        return '<th data-sort-col="' + c.key + '" class="' + (c.cls || '') + (active ? ' sort-active' : '') + '">' +
+        // Non-sortable headers don't get the data-sort-col attribute (so
+        // wireAllSupSortHandlers ignores them) and don't get cursor:pointer
+        // styling. Inline style handles the latter without a new class.
+        var attrs = sortable
+            ? ('data-sort-col="' + c.key + '"')
+            : ('style="cursor:default;"');
+        return '<th ' + attrs + ' class="' + (c.cls || '') + (active ? ' sort-active' : '') + '">' +
             escHTML(c.label) +
             (arrow ? '<span class="sort-arrow">' + arrow + '</span>' : '') +
         '</th>';
@@ -4409,6 +4450,13 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             lastCell = '<span style="font-family:var(--mono); font-size:11px;">' + escHTML(s.lastInvoice) + '</span>';
         }
 
+        // Sparklines — pulled from cached time-series. Same colours as Trends
+        // table so the visual vocabulary matches across surfaces. Compressed
+        // to 60×22 since the table is wider here than Trends'.
+        var supSpark = sparklineMap[s.identifier] || { volume: [], spend: [] };
+        var volSparkHtml = renderSparkline(supSpark.volume, 60, 22, '#0EA5E9');
+        var spendSparkHtml = renderSparkline(supSpark.spend, 60, 22, '#8B5CF6');
+
         // Trend chip
         var trendLbl = '<span class="trend-label flat">flat</span>';
         if (s.trendSlopeNormalised !== null) {
@@ -4425,6 +4473,8 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
+            '<td class="sparkline-cell text-center">' + volSparkHtml + '</td>' +
+            '<td class="sparkline-cell text-center">' + spendSparkHtml + '</td>' +
             '<td class="text-right mono"><span class="' + dilCls + '">' + pct(s.dilutionRate) + '</span></td>' +
             '<td class="text-right mono">' + dpdCell + '</td>' +
             '<td class="text-right">' + lastCell + '</td>' +
@@ -4432,7 +4482,10 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
         '</tr>';
     }).join('');
 
-    return '<table class="all-sup-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+    // Wrap in an overflow-x scrollable container — at 10 columns this table
+    // may overflow on narrower viewports. Modern wide screens are fine; the
+    // wrap saves the layout when the viewport is tight.
+    return '<div style="overflow-x:auto;"><table class="all-sup-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
 }
 
 function wireAllSupSortHandlers() {
