@@ -307,6 +307,7 @@
             top3Pct:  totalSpend > 0 ? topNSum(spends, 3)  / totalSpend : 0,
             top5Pct:  totalSpend > 0 ? topNSum(spends, 5)  / totalSpend : 0,
             top10Pct: totalSpend > 0 ? topNSum(spends, 10) / totalSpend : 0,
+            top20Pct: totalSpend > 0 ? topNSum(spends, 20) / totalSpend : 0,
             hhi:      hhi
         };
     }
@@ -479,6 +480,22 @@
         var payments = [];
         var dilution = [];
 
+        // Pre-bucket paid invoices by paid_date bucket. Each invoice carries its
+        // DPD so we don't recompute. This converts what was previously O(buckets ×
+        // invoices) into a single O(invoices) pre-pass plus O(buckets) lookup.
+        // At 50k rows × 100 weekly buckets that's a 100x speed-up.
+        var dpdByPaidBucket = {};
+        for (var pi = 0; pi < invoiceRows.length; pi++) {
+            var pr = invoiceRows[pi];
+            if (!pr.paid_date || !pr.due_date) continue;
+            var pb = bucketFn(pr.paid_date);
+            if (!pb) continue;
+            var dpd = daysBetween(pr.due_date, pr.paid_date);
+            if (dpd === null) continue;
+            if (!dpdByPaidBucket[pb]) dpdByPaidBucket[pb] = [];
+            dpdByPaidBucket[pb].push(dpd);
+        }
+
         buckets.forEach(function(b) {
             var invs = invByBucket[b] || [];
             var cns  = cnByBucket[b]  || [];
@@ -490,16 +507,8 @@
                 totalSpend:   round2(sum(invs, function(r) { return numericAmount(r.amount); }))
             });
 
-            // Payments: invoices that *paid* within this bucket (bucket by paid_date,
-            // not invoice_date). DPD = paid_date - due_date.
-            // Note: this is *recomputed* — we walk all invoices and check which
-            // had paid_date falling in this bucket. Could pre-bucket for efficiency
-            // but at ~5000 rows it's fine.
-            var paidInThisBucket = invoiceRows.filter(function(r) {
-                if (!r.paid_date || !r.due_date) return false;
-                return bucketFn(r.paid_date) === b;
-            });
-            var dpdArr = paidInThisBucket.map(function(r) { return daysBetween(r.due_date, r.paid_date); }).filter(function(d) { return d !== null; });
+            // Payments — pre-bucketed DPDs (see above for rationale).
+            var dpdArr = dpdByPaidBucket[b] || [];
             payments.push({
                 bucket:     b,
                 paidCount:  dpdArr.length,
