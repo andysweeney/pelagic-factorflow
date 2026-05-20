@@ -1190,7 +1190,18 @@ function initApp() {
             if (lib && lib.createClient) {
                 sbClient = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                 console.log('Supabase connected');
-                loadAllData();
+                // AUTH GATE: check for a logged-in session before loading data.
+                // No session -> redirect to /login.html. After login the user is
+                // sent back here via the ?redirect= query parameter.
+                sbClient.auth.getSession().then(function(result) {
+                    if (!result.data || !result.data.session) {
+                        window.location.href = '/login.html?redirect=/buyer-insights.html';
+                        return;
+                    }
+                    window.__currentUser = result.data.session.user;
+                    showSignedInChrome(result.data.session.user);
+                    loadAllData();
+                });
             } else if (sbRetries < 30) {
                 sbRetries++;
                 setTimeout(tryInitSupabase, 100);
@@ -1200,6 +1211,29 @@ function initApp() {
         }
         tryInitSupabase();
     }
+}
+
+// ================================================================
+// SIGNED-IN CHROME (email indicator + sign-out button, top right)
+// ================================================================
+function showSignedInChrome(user) {
+    if (document.getElementById('authChrome')) return;
+    var bar = document.createElement('div');
+    bar.id = 'authChrome';
+    bar.style.cssText = 'position:fixed;top:10px;right:14px;z-index:9999;display:flex;align-items:center;gap:10px;font-size:12px;color:#555;background:rgba(255,255,255,0.9);padding:6px 10px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);';
+    var label = document.createElement('span');
+    label.textContent = user.email || 'Signed in';
+    var btn = document.createElement('button');
+    btn.textContent = 'Sign out';
+    btn.style.cssText = 'border:1px solid #d8d8dc;background:#fff;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;';
+    btn.onclick = function() {
+        if (sbClient) sbClient.auth.signOut().then(function() {
+            window.location.href = '/login.html';
+        });
+    };
+    bar.appendChild(label);
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
 }
 
 // ================================================================
