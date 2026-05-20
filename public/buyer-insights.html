@@ -389,6 +389,57 @@
 
         .sup-empty { padding: 24px 12px; text-align: center; color: var(--text-secondary); font-size: 11px; }
 
+        /* ── Period filter (Reports + Trends) ─────────────────────── */
+        .period-filter {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card);
+            padding: 6px 10px;
+            border-radius: 7px;
+            border: 1px solid var(--border);
+            font-family: var(--font);
+            flex-wrap: wrap;
+        }
+        .period-filter-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-right: 2px;
+        }
+        .period-filter-select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 5px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: var(--font);
+            cursor: pointer;
+        }
+        .period-filter-select:focus { outline: 1px solid var(--accent); }
+        .period-filter-custom { display: inline-flex; align-items: center; gap: 6px; }
+        .period-filter-date {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 4px 6px;
+            font-size: 11px;
+            font-family: var(--mono);
+        }
+        .period-filter-date::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+        .period-filter-sep { color: var(--text-secondary); font-size: 11px; }
+        .period-filter-active {
+            font-size: 10px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-left: 4px;
+        }
+
         /* ══════════════════════════════════════════════════════════
            PDF EXPORT — print-only DOM
            When the user clicks "Print / Save as PDF", a hidden tree
@@ -660,6 +711,9 @@
                 </div>
             </div>
 
+            <!-- Period filter — populated by showReportView -->
+            <div id="reportFilterWrap" style="margin-bottom: 16px;"></div>
+
             <!-- Currency tab strip -->
             <div class="ccy-tabs" id="reportCcyTabs"></div>
 
@@ -696,7 +750,7 @@
                 </div>
             </div>
 
-            <!-- Controls: granularity + currency -->
+            <!-- Controls: granularity + currency + period filter -->
             <div class="trends-controls">
                 <div class="gran-toggle" id="trendsGranToggle">
                     <button data-gran="weekly">Weekly</button>
@@ -704,6 +758,7 @@
                     <button data-gran="quarterly">Quarterly</button>
                 </div>
                 <div class="ccy-tabs" id="trendsCcyTabs" style="margin-bottom: 0;"></div>
+                <div id="trendsFilterWrap"></div>
             </div>
 
             <!-- Stacked chart blocks + supplier table -->
@@ -1490,30 +1545,60 @@ function openReport(uploadId) {
 }
 
 function showReportView(uploadId, meta, stats, invRows, cnRows) {
-    // Cache raw rows on __report so the supplier detail panel can scope
-    // its sub-tables/charts to one supplier without re-fetching.
+    // Cache raw rows on __report. The supplier detail panel uses these
+    // (unfiltered — it needs the full supplier picture, not just a slice).
+    // The report rendering uses filteredStats, recomputed on each filter
+    // change.
     window.__report = {
         uploadId: uploadId, meta: meta, stats: stats, activeCcy: null,
-        invRows: invRows || [], cnRows: cnRows || []
+        invRows: invRows || [], cnRows: cnRows || [],
+        filter: { kind: 'all' },
+        filteredStats: stats  // initial value — no filter applied
     };
 
     document.getElementById('reportPicker').classList.add('hidden');
     document.getElementById('reportView').classList.remove('hidden');
 
     document.getElementById('reportTitle').textContent = meta.buyer_label;
-    var metaBits = [];
-    if (meta.date_range_min && meta.date_range_max) {
-        metaBits.push(meta.date_range_min + ' → ' + meta.date_range_max);
-    }
-    metaBits.push(stats.overall.totalInvoices.toLocaleString() + ' invoices');
-    metaBits.push(stats.overall.totalSuppliers.toLocaleString() + ' suppliers');
-    if (stats.overall.totalCNs > 0) metaBits.push(stats.overall.totalCNs.toLocaleString() + ' credit notes');
-    document.getElementById('reportMeta').textContent = metaBits.join('  ·  ');
+    refreshReportMeta();
 
-    // Build currency tabs — pick the highest-spend currency as default. Ties broken
-    // by alphabetical so the choice is deterministic across renders.
+    // Render period filter control. Operator changes here re-compute filteredStats
+    // and re-render the body + currency tabs (since per-currency invoice counts
+    // depend on the filter).
+    var filterWrap = document.getElementById('reportFilterWrap');
+    filterWrap.innerHTML = renderPeriodFilterControl('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max);
+    attachPeriodFilterHandlers('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max, function(newFilter) {
+        window.__report.filter = newFilter;
+        recomputeReportFiltered();
+        rebuildReportCurrencyTabs();
+        refreshReportMeta();
+        updatePeriodFilterActiveLabel('reportFilter', newFilter, meta.date_range_min, meta.date_range_max);
+    });
+    updatePeriodFilterActiveLabel('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max);
+
+    rebuildReportCurrencyTabs();
+}
+
+// Recompute the stats bundle from filtered rows. Updates window.__report.filteredStats.
+// Called on filter change; not called on plain currency tab clicks.
+function recomputeReportFiltered() {
+    var r = window.__report;
+    var resolved = resolvePeriodFilter(r.filter, r.meta.date_range_min, r.meta.date_range_max);
+    var invF = filterRowsByDate(r.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
+    var cnF  = filterRowsByDate(r.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
+    r.filteredStats = window.BuyerAnalytics.computeBuyerStats(r.meta, invF, cnF);
+    r.filteredFromDate = resolved.fromDate;
+    r.filteredToDate = resolved.toDate;
+}
+
+// Rebuild the currency tab strip. Per-currency invoice counts come from
+// filteredStats. Currency ordering: highest filtered spend first.
+function rebuildReportCurrencyTabs() {
+    var r = window.__report;
+    var stats = r.filteredStats || r.stats;
     var ccyTabs = document.getElementById('reportCcyTabs');
     ccyTabs.innerHTML = '';
+
     var currencies = stats.overall.currencies.slice();
     currencies.sort(function(a, b) {
         var sa = stats.perCurrency[a].totals.totalSpend;
@@ -1522,24 +1607,41 @@ function showReportView(uploadId, meta, stats, invRows, cnRows) {
         return a < b ? -1 : 1;
     });
 
-    currencies.forEach(function(ccy, idx) {
+    // Preserve active currency if still present after filter; otherwise pick first
+    var nextActive = (currencies.indexOf(r.activeCcy) > -1) ? r.activeCcy : (currencies[0] || null);
+
+    currencies.forEach(function(ccy) {
         var btn = document.createElement('button');
-        btn.className = 'ccy-tab' + (idx === 0 ? ' active' : '');
+        btn.className = 'ccy-tab' + (ccy === nextActive ? ' active' : '');
         btn.textContent = ccy + '  ·  ' + stats.perCurrency[ccy].totals.invoiceCount + ' inv';
         btn.addEventListener('click', function() {
-            document.querySelectorAll('.ccy-tab').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('#reportCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
             renderReportBody(ccy);
         });
         ccyTabs.appendChild(btn);
     });
 
-    if (currencies.length > 0) {
-        window.__report.activeCcy = currencies[0];
-        renderReportBody(currencies[0]);
+    if (nextActive) {
+        r.activeCcy = nextActive;
+        renderReportBody(nextActive);
     } else {
-        document.getElementById('reportBody').innerHTML = '<div class="section"><div class="empty-state"><div class="empty-state-title">No data to report</div><div class="empty-state-sub">This upload has no non-excluded invoice rows.</div></div></div>';
+        document.getElementById('reportBody').innerHTML = '<div class="section"><div class="empty-state"><div class="empty-state-title">No data in the selected period</div><div class="empty-state-sub">No non-excluded invoices fall within the selected date range. Try a wider filter.</div></div></div>';
     }
+}
+
+// Refresh the meta line under the title. Shows filtered or full counts
+// depending on whether a filter is applied.
+function refreshReportMeta() {
+    var r = window.__report;
+    var stats = r.filteredStats || r.stats;
+    var metaBits = [];
+    var fromTo = (r.filteredFromDate || r.meta.date_range_min) + ' → ' + (r.filteredToDate || r.meta.date_range_max);
+    metaBits.push(fromTo);
+    metaBits.push(stats.overall.totalInvoices.toLocaleString() + ' invoices');
+    metaBits.push(stats.overall.totalSuppliers.toLocaleString() + ' suppliers');
+    if (stats.overall.totalCNs > 0) metaBits.push(stats.overall.totalCNs.toLocaleString() + ' credit notes');
+    document.getElementById('reportMeta').textContent = metaBits.join('  ·  ');
 }
 
 function closeReport() {
@@ -1594,7 +1696,16 @@ function destroyAllCharts() {
 
 function renderReportBody(ccy) {
     destroyAllCharts();
-    var c = window.__report.stats.perCurrency[ccy];
+    // Read from filteredStats (filter-aware). Falls back to full stats if
+    // no filter has been applied yet (initial render path before
+    // recomputeReportFiltered runs).
+    var stats = window.__report.filteredStats || window.__report.stats;
+    var c = stats.perCurrency[ccy];
+    if (!c) {
+        // Currency no longer present in the filtered slice — show empty state
+        document.getElementById('reportBody').innerHTML = '<div class="section"><div class="empty-state"><div class="empty-state-title">No ' + ccy + ' data in the selected period</div></div></div>';
+        return;
+    }
     window.__report.activeCcy = ccy;
 
     var body = document.getElementById('reportBody');
@@ -2238,59 +2349,43 @@ function openTrends(uploadId) {
 }
 
 function showTrendsView(uploadId, meta, invRows, cnRows) {
-    // Cache rows on window — used by both the granularity toggle and currency tabs.
+    // Cache rows on window. Filter is initially "all" — applies the full
+    // upload period. Filter changes invalidate _stats and re-render body
+    // with filtered rows passed through computeTimeSeries + computeBuyerStats.
     window.__trends = {
         uploadId:  uploadId,
         meta:      meta,
         invRows:   invRows,
         cnRows:    cnRows,
         granularity: 'monthly',
-        activeCcy: null
+        activeCcy: null,
+        filter: { kind: 'all' },
+        _stats: null,            // cached per-currency buyer stats; invalidated on filter change
+        filteredInvRows: invRows,
+        filteredCnRows: cnRows
     };
 
     document.getElementById('trendsPicker').classList.add('hidden');
     document.getElementById('trendsView').classList.remove('hidden');
 
     document.getElementById('trendsTitle').textContent = meta.buyer_label;
-    var metaBits = [];
-    if (meta.date_range_min && meta.date_range_max) metaBits.push(meta.date_range_min + ' → ' + meta.date_range_max);
-    metaBits.push((invRows.length || 0).toLocaleString() + ' invoices');
-    metaBits.push(((meta.supplier_count) || 0).toLocaleString() + ' suppliers');
-    if (cnRows.length > 0) metaBits.push(cnRows.length.toLocaleString() + ' credit notes');
-    document.getElementById('trendsMeta').textContent = metaBits.join('  ·  ');
+    refreshTrendsMeta();
 
-    // Determine the currencies present in the data — same logic as report.
-    var ccyTotals = {};
-    invRows.forEach(function(r) {
-        if (r.excluded) return;
-        var c = (r.currency || '').toUpperCase().trim();
-        if (!c) return;
-        if (!ccyTotals[c]) ccyTotals[c] = { spend: 0, count: 0 };
-        ccyTotals[c].spend += parseFloat(r.amount) || 0;
-        ccyTotals[c].count += 1;
+    // Render period filter control. Operator changes here invalidate cached
+    // stats, recompute filtered rows, rebuild currency tabs (counts shift),
+    // and re-render the trends body.
+    var filterWrap = document.getElementById('trendsFilterWrap');
+    filterWrap.innerHTML = renderPeriodFilterControl('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max);
+    attachPeriodFilterHandlers('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max, function(newFilter) {
+        window.__trends.filter = newFilter;
+        recomputeTrendsFiltered();
+        rebuildTrendsCurrencyTabs();
+        refreshTrendsMeta();
+        updatePeriodFilterActiveLabel('trendsFilter', newFilter, meta.date_range_min, meta.date_range_max);
     });
-    var currencies = Object.keys(ccyTotals).sort(function(a, b) {
-        if (ccyTotals[b].spend !== ccyTotals[a].spend) return ccyTotals[b].spend - ccyTotals[a].spend;
-        return a < b ? -1 : 1;
-    });
+    updatePeriodFilterActiveLabel('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max);
 
-    // Currency tabs
-    var ccyTabsEl = document.getElementById('trendsCcyTabs');
-    ccyTabsEl.innerHTML = '';
-    currencies.forEach(function(ccy, idx) {
-        var btn = document.createElement('button');
-        btn.className = 'ccy-tab' + (idx === 0 ? ' active' : '');
-        btn.textContent = ccy + '  ·  ' + ccyTotals[ccy].count + ' inv';
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('#trendsCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
-            btn.classList.add('active');
-            window.__trends.activeCcy = ccy;
-            renderTrendsBody();
-        });
-        ccyTabsEl.appendChild(btn);
-    });
-
-    // Granularity toggle
+    // Granularity toggle — independent of filter
     var granButtons = document.querySelectorAll('#trendsGranToggle button');
     granButtons.forEach(function(b) {
         b.classList.remove('active');
@@ -2305,18 +2400,84 @@ function showTrendsView(uploadId, meta, invRows, cnRows) {
         };
     });
 
-    if (currencies.length > 0) {
-        window.__trends.activeCcy = currencies[0];
-        // Defer the first render to the next frame so the browser has laid out
-        // the now-visible Trends container before Chart.js measures the
-        // canvases. Without this, charts initialise with zero dimensions on the
-        // first openTrends() call because the container was display:none just
-        // before — fixed only when the user clicks a granularity button (which
-        // re-renders after layout has happened).
+    rebuildTrendsCurrencyTabs();
+}
+
+// Recompute filtered row arrays. Invalidates _stats so the supplier table
+// recomputes from the filtered slice on next render.
+function recomputeTrendsFiltered() {
+    var t = window.__trends;
+    var resolved = resolvePeriodFilter(t.filter, t.meta.date_range_min, t.meta.date_range_max);
+    t.filteredInvRows = filterRowsByDate(t.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
+    t.filteredCnRows  = filterRowsByDate(t.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
+    t.filteredFromDate = resolved.fromDate;
+    t.filteredToDate = resolved.toDate;
+    t._stats = null;  // force re-derivation in renderTrendsSupplierTable
+}
+
+// Rebuild Trends currency tabs. Recomputes per-currency invoice/spend totals
+// from filteredInvRows.
+function rebuildTrendsCurrencyTabs() {
+    var t = window.__trends;
+    var invRows = t.filteredInvRows || t.invRows;
+
+    var ccyTotals = {};
+    invRows.forEach(function(r) {
+        if (r.excluded) return;
+        var c = (r.currency || '').toUpperCase().trim();
+        if (!c) return;
+        if (!ccyTotals[c]) ccyTotals[c] = { spend: 0, count: 0 };
+        ccyTotals[c].spend += parseFloat(r.amount) || 0;
+        ccyTotals[c].count += 1;
+    });
+    var currencies = Object.keys(ccyTotals).sort(function(a, b) {
+        if (ccyTotals[b].spend !== ccyTotals[a].spend) return ccyTotals[b].spend - ccyTotals[a].spend;
+        return a < b ? -1 : 1;
+    });
+
+    // Preserve active currency if still present after filter
+    var nextActive = (currencies.indexOf(t.activeCcy) > -1) ? t.activeCcy : (currencies[0] || null);
+
+    var ccyTabsEl = document.getElementById('trendsCcyTabs');
+    ccyTabsEl.innerHTML = '';
+    currencies.forEach(function(ccy) {
+        var btn = document.createElement('button');
+        btn.className = 'ccy-tab' + (ccy === nextActive ? ' active' : '');
+        btn.textContent = ccy + '  ·  ' + ccyTotals[ccy].count + ' inv';
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#trendsCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            window.__trends.activeCcy = ccy;
+            renderTrendsBody();
+        });
+        ccyTabsEl.appendChild(btn);
+    });
+
+    if (nextActive) {
+        t.activeCcy = nextActive;
+        // requestAnimationFrame for the first-render layout case (and any
+        // subsequent filter change that may have caused a layout shift).
         requestAnimationFrame(function() { renderTrendsBody(); });
     } else {
-        document.getElementById('trendsBody').innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No data</div><div class="empty-state-sub">This upload has no non-excluded invoice rows.</div></div></div>';
+        document.getElementById('trendsBody').innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No data in the selected period</div><div class="empty-state-sub">Try a wider filter.</div></div></div>';
     }
+}
+
+function refreshTrendsMeta() {
+    var t = window.__trends;
+    var invRows = t.filteredInvRows || t.invRows;
+    var cnRows = t.filteredCnRows || t.cnRows;
+    var metaBits = [];
+    var from = t.filteredFromDate || t.meta.date_range_min;
+    var to = t.filteredToDate || t.meta.date_range_max;
+    if (from && to) metaBits.push(from + ' → ' + to);
+    metaBits.push(invRows.length.toLocaleString() + ' invoices');
+    // Supplier count from filtered rows (unique identifiers)
+    var supIds = {};
+    invRows.forEach(function(r) { if (!r.excluded && r.supplier_identifier) supIds[r.supplier_identifier] = true; });
+    metaBits.push(Object.keys(supIds).length.toLocaleString() + ' suppliers');
+    if (cnRows.length > 0) metaBits.push(cnRows.length.toLocaleString() + ' credit notes');
+    document.getElementById('trendsMeta').textContent = metaBits.join('  ·  ');
 }
 
 function closeTrends() {
@@ -2335,7 +2496,11 @@ function renderTrendsBody() {
     destroyAllCharts();
     var t = window.__trends;
     var ccy = t.activeCcy;
-    var ts = window.BuyerAnalytics.computeTimeSeries(t.invRows, t.cnRows, t.granularity, ccy);
+    // Pass filtered rows to computeTimeSeries. Falls back to raw if no
+    // filter has been applied yet.
+    var invRows = t.filteredInvRows || t.invRows;
+    var cnRows  = t.filteredCnRows  || t.cnRows;
+    var ts = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, t.granularity, ccy);
 
     var body = document.getElementById('trendsBody');
 
@@ -2615,13 +2780,13 @@ function chartCommonOptions(opts) {
 // ────────────────────────────────────────────────────────────────
 
 function renderTrendsSupplierTable(ts, ccy) {
-    // Reconstruct per-supplier stats from the raw rows. We use the same
-    // computeBuyerStats result for consistency with the report — it's already
-    // cached in window.__trends if openTrends has been opened from a report,
-    // but for direct entry we recompute.
+    // Per-supplier stats from filtered rows (or raw rows if no filter applied).
+    // Cached on window.__trends._stats; invalidated when filter changes.
     if (!window.__trends._stats) {
+        var invRows = window.__trends.filteredInvRows || window.__trends.invRows;
+        var cnRows  = window.__trends.filteredCnRows  || window.__trends.cnRows;
         window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
-            window.__trends.meta, window.__trends.invRows, window.__trends.cnRows
+            window.__trends.meta, invRows, cnRows
         );
     }
     var stats = window.__trends._stats;
@@ -2877,6 +3042,168 @@ function nullableStr(v) {
     if (v == null) return null;
     var s = String(v).trim();
     return s === '' ? null : s;
+}
+
+// ================================================================
+// PERIOD FILTER
+// ================================================================
+// A small filter that scopes the report/trends to a slice of the upload.
+// Filters by invoice_date (and cn_date for CNs). Filter selection lives
+// on window.__report.filter and window.__trends.filter so each surface
+// keeps its own. Changing the filter triggers re-render but no Supabase
+// fetch — rows are already cached client-side.
+//
+// Options:
+//   all      — full upload period (no filter)
+//   quarter  — most recent calendar quarter within the upload window
+//              ("This Quarter") — bounded by period end
+//   ytd      — calendar Jan 1 of period-end's year through period end
+//   custom   — operator-supplied from/to dates
+//
+// The resolver returns {fromDate, toDate, label} — dates as YYYY-MM-DD
+// strings or null for unbounded. Apply filter via:
+//   rows.filter(function(r) { return inRange(r.invoice_date, from, to); })
+//
+// "Relative to period end" means the upload's date_range_max, not today —
+// a sales-tool upload may be months old.
+
+function resolvePeriodFilter(filter, periodMin, periodMax) {
+    if (!filter || filter.kind === 'all') {
+        return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period' };
+    }
+    if (filter.kind === 'custom') {
+        return {
+            fromDate: filter.from || periodMin || null,
+            toDate:   filter.to   || periodMax || null,
+            label: 'Custom range'
+        };
+    }
+
+    // For 'quarter' and 'ytd' we need a reference end-date. Use the upload's
+    // period end; fall back to today if the upload lacks date_range_max.
+    var refEndStr = periodMax || new Date().toISOString().slice(0, 10);
+    var refEnd = new Date(refEndStr + 'T00:00:00');
+    if (isNaN(refEnd.getTime())) refEnd = new Date();
+
+    if (filter.kind === 'quarter') {
+        // Calendar quarter of refEnd. Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec.
+        var m = refEnd.getMonth();
+        var qStartMonth = Math.floor(m / 3) * 3;
+        var qStart = new Date(refEnd.getFullYear(), qStartMonth, 1);
+        return {
+            fromDate: toISODate(qStart),
+            toDate:   refEndStr,
+            label: 'Q' + (Math.floor(m / 3) + 1) + ' ' + refEnd.getFullYear()
+        };
+    }
+    if (filter.kind === 'ytd') {
+        var jan1 = new Date(refEnd.getFullYear(), 0, 1);
+        return {
+            fromDate: toISODate(jan1),
+            toDate:   refEndStr,
+            label: refEnd.getFullYear() + ' YTD'
+        };
+    }
+    return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period' };
+}
+
+function toISODate(d) {
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    var dd = d.getDate();
+    return y + '-' + (m < 10 ? '0' + m : m) + '-' + (dd < 10 ? '0' + dd : dd);
+}
+
+// Apply a filter to a list of rows by a named date field. Inclusive on
+// both ends. Null bounds mean unbounded that side.
+function filterRowsByDate(rows, dateField, fromDate, toDate) {
+    if (!rows) return [];
+    if (!fromDate && !toDate) return rows.slice();
+    return rows.filter(function(r) {
+        var d = r[dateField];
+        if (!d) return false;  // rows missing the field can't be filtered cleanly; drop
+        if (fromDate && d < fromDate) return false;
+        if (toDate   && d > toDate)   return false;
+        return true;
+    });
+}
+
+// Build the filter UI as an HTML string. Caller injects it into a container
+// and wires up the change/apply handlers via attachPeriodFilterHandlers.
+//
+// The UI is a select + two date inputs (visible only when 'custom') + Apply
+// button. State is read from `filter` arg and written back to the same
+// object on apply.
+function renderPeriodFilterControl(idPrefix, filter, periodMin, periodMax) {
+    filter = filter || { kind: 'all' };
+    var isCustom = filter.kind === 'custom';
+    return '' +
+        '<div class="period-filter" id="' + idPrefix + '-wrap">' +
+            '<label class="period-filter-label">Period</label>' +
+            '<select class="period-filter-select" id="' + idPrefix + '-select">' +
+                '<option value="all"     ' + (filter.kind === 'all'     ? 'selected' : '') + '>All data</option>' +
+                '<option value="quarter" ' + (filter.kind === 'quarter' ? 'selected' : '') + '>This Quarter</option>' +
+                '<option value="ytd"     ' + (filter.kind === 'ytd'     ? 'selected' : '') + '>Year to Date</option>' +
+                '<option value="custom"  ' + (filter.kind === 'custom'  ? 'selected' : '') + '>Custom range</option>' +
+            '</select>' +
+            '<span class="period-filter-custom" id="' + idPrefix + '-custom-wrap" style="' + (isCustom ? '' : 'display:none;') + '">' +
+                '<input type="date" class="period-filter-date" id="' + idPrefix + '-from" value="' + escHTML(filter.from || (periodMin || '')) + '" min="' + escHTML(periodMin || '') + '" max="' + escHTML(periodMax || '') + '" />' +
+                '<span class="period-filter-sep">→</span>' +
+                '<input type="date" class="period-filter-date" id="' + idPrefix + '-to" value="' + escHTML(filter.to || (periodMax || '')) + '" min="' + escHTML(periodMin || '') + '" max="' + escHTML(periodMax || '') + '" />' +
+                '<button class="btn btn-xs btn-primary" id="' + idPrefix + '-apply">Apply</button>' +
+            '</span>' +
+            '<span class="period-filter-active" id="' + idPrefix + '-active-label"></span>' +
+        '</div>';
+}
+
+// Wire up handlers for a rendered filter control. onChange is called with
+// the new filter object whenever the operator commits a change (selecting
+// All/Quarter/YTD applies immediately; Custom waits for Apply).
+function attachPeriodFilterHandlers(idPrefix, filter, periodMin, periodMax, onChange) {
+    var sel = document.getElementById(idPrefix + '-select');
+    var customWrap = document.getElementById(idPrefix + '-custom-wrap');
+    var fromInput = document.getElementById(idPrefix + '-from');
+    var toInput = document.getElementById(idPrefix + '-to');
+    var applyBtn = document.getElementById(idPrefix + '-apply');
+
+    if (!sel) return;
+
+    sel.addEventListener('change', function() {
+        var kind = sel.value;
+        if (kind === 'custom') {
+            customWrap.style.display = '';
+            // Don't fire onChange yet — wait for Apply.
+        } else {
+            customWrap.style.display = 'none';
+            var newFilter = { kind: kind };
+            onChange(newFilter);
+        }
+    });
+
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            var from = fromInput.value;
+            var to = toInput.value;
+            if (from && to && from > to) {
+                alert('From date is after To date.');
+                return;
+            }
+            onChange({ kind: 'custom', from: from || null, to: to || null });
+        });
+    }
+}
+
+// Update the small "active range" label next to the control. Caller invokes
+// after each filter change so the operator sees what's effectively selected.
+function updatePeriodFilterActiveLabel(idPrefix, filter, periodMin, periodMax) {
+    var label = document.getElementById(idPrefix + '-active-label');
+    if (!label) return;
+    var resolved = resolvePeriodFilter(filter, periodMin, periodMax);
+    if (filter.kind === 'all') {
+        label.textContent = '';  // redundant with the dropdown
+    } else {
+        label.textContent = resolved.label + ' (' + (resolved.fromDate || '?') + ' → ' + (resolved.toDate || '?') + ')';
+    }
 }
 
 // ================================================================
@@ -3440,13 +3767,22 @@ function exportTrendsPDF() {
 // ================================================================
 
 function buildReportPrintTree() {
-    var stats = window.__report.stats;
-    var meta = window.__report.meta;
+    var r = window.__report;
+    // Use filteredStats so the printed deliverable matches what the operator
+    // sees on screen. Falls back to full stats if no filter applied.
+    var stats = r.filteredStats || r.stats;
+    var meta = r.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
+    var effective = {
+        fromDate: r.filteredFromDate || meta.date_range_min,
+        toDate:   r.filteredToDate   || meta.date_range_max,
+        label:    r.filter ? resolvePeriodFilter(r.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
+    };
+
     // Cover page
-    root.appendChild(buildPrintCover(meta, stats, 'Buyer Insights'));
+    root.appendChild(buildPrintCover(meta, stats, 'Buyer Insights', effective));
 
     // Per-currency pages — same order as the on-screen tabs (highest spend first)
     var currencies = stats.overall.currencies.slice();
@@ -3465,15 +3801,29 @@ function buildReportPrintTree() {
     root.appendChild(buildPrintDisclaimer());
 }
 
-function buildPrintCover(meta, stats, eyebrowLabel) {
+function buildPrintCover(meta, stats, eyebrowLabel, effective) {
     var page = document.createElement('div');
     page.className = 'print-page print-cover';
 
     var genDate = new Date();
     var genDateStr = genDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
-    var period = (meta.date_range_min && meta.date_range_max)
-        ? meta.date_range_min + ' to ' + meta.date_range_max
-        : 'Period not specified';
+
+    // Period shown on cover. If `effective` is provided (filter applied), show
+    // the filtered range and indicate it's filtered. Otherwise show the full
+    // upload period.
+    var period;
+    var periodSubNote = '';
+    if (effective && effective.fromDate && effective.toDate &&
+        (effective.fromDate !== meta.date_range_min || effective.toDate !== meta.date_range_max)) {
+        period = effective.fromDate + ' to ' + effective.toDate;
+        var fullFrom = meta.date_range_min || '?';
+        var fullTo = meta.date_range_max || '?';
+        periodSubNote = ' · filtered from ' + fullFrom + ' to ' + fullTo + ' (' + (effective.label || 'custom') + ')';
+    } else {
+        period = (meta.date_range_min && meta.date_range_max)
+            ? meta.date_range_min + ' to ' + meta.date_range_max
+            : 'Period not specified';
+    }
 
     page.innerHTML =
         '<div>' +
@@ -3482,7 +3832,9 @@ function buildPrintCover(meta, stats, eyebrowLabel) {
             '<div class="print-cover-title-block">' +
                 '<div class="print-cover-eyebrow">' + escHTML(eyebrowLabel || 'Buyer Insights') + '</div>' +
                 '<div class="print-cover-title">' + escHTML(meta.buyer_label) + '</div>' +
-                '<div class="print-cover-subtitle">' + escHTML(period) + '</div>' +
+                '<div class="print-cover-subtitle">' + escHTML(period) +
+                    (periodSubNote ? '<span style="font-size:10pt; color:#64748B; font-weight:400;">' + escHTML(periodSubNote) + '</span>' : '') +
+                '</div>' +
             '</div>' +
             '<div class="print-cover-stats">' +
                 printCoverStat('Invoices',  stats.overall.totalInvoices.toLocaleString()) +
@@ -3835,7 +4187,7 @@ function renderPrintSectionWhatThisMeans(c, ccy, meta) {
 
 function renderReportPrintCharts() {
     _printChartInstances = [];
-    var stats = window.__report.stats;
+    var stats = window.__report.filteredStats || window.__report.stats;
     stats.overall.currencies.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
         drawPrintConcentration(ccy, c);
@@ -3883,25 +4235,31 @@ function drawPrintConcentration(ccy, c) {
 // Granularity honours the on-screen toggle selection.
 
 function buildTrendsPrintTree() {
-    var meta = window.__trends.meta;
+    var t = window.__trends;
+    var meta = t.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
-    // We need stats (per-currency supplier list) and time-series. Cached on
-    // __trends._stats; re-compute here if missing (e.g. operator goes
-    // straight to print before opening the on-screen body).
-    if (!window.__trends._stats) {
-        window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
-            meta, window.__trends.invRows, window.__trends.cnRows
-        );
+    // Use filtered rows for both per-supplier stats and the time-series.
+    // Falls back to raw rows if no filter applied.
+    var invRows = t.filteredInvRows || t.invRows;
+    var cnRows  = t.filteredCnRows  || t.cnRows;
+
+    if (!t._stats) {
+        t._stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
     }
-    var stats = window.__trends._stats;
-    var granularity = window.__trends.granularity || 'monthly';
+    var stats = t._stats;
+    var granularity = t.granularity || 'monthly';
 
-    // Build a stats-shaped object for the cover so the same builder works
-    root.appendChild(buildPrintCover(meta, stats, 'Trends Analysis'));
+    var effective = {
+        fromDate: t.filteredFromDate || meta.date_range_min,
+        toDate:   t.filteredToDate   || meta.date_range_max,
+        label:    t.filter ? resolvePeriodFilter(t.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
+    };
 
-    // Currency order: highest spend first
+    // Cover page with Trends eyebrow and filtered range
+    root.appendChild(buildPrintCover(meta, stats, 'Trends Analysis', effective));
+
     var currencies = stats.overall.currencies.slice();
     currencies.sort(function(a, b) {
         var sa = stats.perCurrency[a].totals.totalSpend;
@@ -3910,15 +4268,10 @@ function buildTrendsPrintTree() {
         return a < b ? -1 : 1;
     });
 
-    // For each currency, compute time-series fresh at the chosen granularity,
-    // then build 3 pages. Stash the time-series on the page so the chart
-    // renderer can find them by canvas id.
     currencies.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
-        var ts = window.BuyerAnalytics.computeTimeSeries(
-            window.__trends.invRows, window.__trends.cnRows, granularity, ccy
-        );
-        // Stash on a module-level map so chart-render step can find them.
+        // Time-series from filtered rows so charts match the on-screen view
+        var ts = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, granularity, ccy);
         _trendsPrintData[ccy] = ts;
 
         root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'A'));
