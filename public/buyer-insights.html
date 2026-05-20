@@ -95,8 +95,79 @@
         }
         .tab-btn:hover { color: var(--text); }
         .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+        /* Disabled tab — operator can see the tab exists but can't navigate
+           to it until an upload is open. Pointer-events disabled prevents
+           click; the tooltip explains why (set via title attribute on the
+           button itself in JS). */
+        .tab-btn.disabled {
+            color: var(--muted);
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .tab-btn.disabled:hover { color: var(--muted); }
 
         .tab-content.hidden { display: none; }
+
+        /* ── Current upload strip ──────────────────────────────────
+           Shows above the tab bar when an upload is loaded. Lets the
+           operator see what they're inside and close it without
+           navigating to a specific view first. */
+        .current-upload-strip {
+            background: linear-gradient(to right, rgba(14, 165, 233, 0.10), rgba(14, 165, 233, 0.02));
+            border: 1px solid rgba(14, 165, 233, 0.3);
+            border-radius: 7px;
+            margin-bottom: 16px;
+        }
+        .current-upload-strip.hidden { display: none; }
+        .current-upload-strip-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .current-upload-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .current-upload-label { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+        .current-upload-label .eyebrow {
+            font-size: 9px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .current-upload-label .buyer-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .current-upload-label .period {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: var(--mono);
+        }
+        .current-upload-close {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: var(--font);
+            white-space: nowrap;
+        }
+        .current-upload-close:hover {
+            background: var(--card-hover);
+            color: var(--text);
+            border-color: var(--text-secondary);
+        }
 
         /* ── Cards / panels ── */
         .card {
@@ -299,6 +370,152 @@
         .trend-label.growing   { background: #10B98120; color: var(--success); }
         .trend-label.declining { background: #EF444420; color: var(--danger); }
         .trend-label.flat      { background: #94A3B820; color: var(--text-secondary); }
+
+        /* ── All Suppliers tab ──────────────────────────────────── */
+        .all-sup-header { margin-bottom: 16px; }
+        .all-sup-title-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+        .all-sup-title { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+        .all-sup-subtitle { font-size: 11px; color: var(--text-secondary); font-family: var(--mono); }
+
+        .all-sup-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+        }
+        .all-sup-search-wrap { flex: 0 0 auto; }
+        .all-sup-search {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: var(--font);
+            width: 240px;
+        }
+        .all-sup-search:focus { outline: 1px solid var(--accent); }
+
+        .all-sup-pills { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; flex: 1 1 auto; }
+        .all-sup-pill {
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 4px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: var(--font);
+            transition: all 0.15s;
+        }
+        .all-sup-pill:hover { color: var(--text); border-color: var(--text-secondary); }
+        .all-sup-pill.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+        .all-sup-pill.active:hover { background: var(--accent); }
+        .all-sup-clear {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            text-decoration: underline;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-family: var(--font);
+        }
+        .all-sup-clear:hover { color: var(--text); }
+        .all-sup-count {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: var(--mono);
+            white-space: nowrap;
+        }
+
+        /* Sortable table */
+        .all-sup-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            overflow: hidden;
+            font-size: 12px;
+        }
+        .all-sup-table thead th {
+            background: var(--bg);
+            padding: 9px 10px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .all-sup-table thead th:hover { color: var(--text); }
+        .all-sup-table thead th.sort-active { color: var(--accent); }
+        .all-sup-table thead th .sort-arrow { font-size: 9px; margin-left: 4px; opacity: 0.7; }
+        .all-sup-table tbody td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+            vertical-align: middle;
+        }
+        .all-sup-table tbody tr:last-child td { border-bottom: none; }
+        .all-sup-table tbody tr:hover { background: var(--card-hover); }
+        .all-sup-table .text-right { text-align: right; }
+        .all-sup-table .text-center { text-align: center; }
+        .all-sup-table .mono { font-family: var(--mono); }
+        .all-sup-table .sup-id { font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+
+        .all-sup-archetype-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; vertical-align: middle; margin-left: 6px; }
+        .all-sup-arch-tag {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .all-sup-arch-tag.dominant  { background: #0EA5E920; color: var(--accent); }
+        .all-sup-arch-tag.quality   { background: #8B5CF625; color: var(--purple); }
+        .all-sup-arch-tag.slow-paid { background: #F59E0B25; color: var(--warning); }
+        .all-sup-arch-tag.silent    { background: #EF444425; color: var(--danger); }
+
+        .all-sup-dil-high { color: var(--danger); font-weight: 700; }
+        .all-sup-dil-med  { color: var(--warning); font-weight: 700; }
+        .all-sup-dil-low  { color: var(--text-secondary); }
+
+        .all-sup-dpd-late { color: var(--danger); font-weight: 700; }
+        .all-sup-dpd-veryLate { color: var(--danger); font-weight: 700; background: rgba(239, 68, 68, 0.1); padding: 1px 6px; border-radius: 4px; }
+        .all-sup-dpd-ontime { color: var(--success); }
+
+        .all-sup-silent-badge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .all-sup-empty { padding: 40px 12px; text-align: center; color: var(--text-secondary); }
+        .all-sup-empty-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+        .all-sup-empty-sub { font-size: 11px; }
 
         /* ── Supplier detail panel (slide-out from right) ────────── */
         /* Clickable supplier-name spans inside tables. Cursor + hover
@@ -619,10 +836,26 @@
 <!-- ══════════════════════════════════════════════════════════ -->
 <div class="app-body">
 
+    <!-- Currently-viewing strip (hidden when no upload open) -->
+    <div id="currentUploadStrip" class="current-upload-strip hidden">
+        <div class="current-upload-strip-inner">
+            <div class="current-upload-label">
+                <span class="eyebrow">Currently viewing</span>
+                <span class="buyer-label" id="currentUploadName"></span>
+                <span class="period" id="currentUploadPeriod"></span>
+            </div>
+            <div class="current-upload-controls">
+                <div id="uploadFilterWrap"></div>
+                <button class="current-upload-close" id="closeUploadBtn" title="Close upload">✕ Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab Bar -->
     <div class="tab-bar">
         <button class="tab-btn active" data-tab="upload">Upload</button>
         <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="all-suppliers">All Suppliers</button>
         <button class="tab-btn" data-tab="trends">Trends</button>
         <button class="tab-btn" data-tab="uploads-history">Upload History</button>
     </div>
@@ -685,8 +918,10 @@
 
     <!-- ── REPORTS TAB ── -->
     <div id="tab-reports" class="tab-content hidden">
-        <!-- Picker view (shown when no report is open) -->
-        <div id="reportPicker">
+        <!-- Step 2: per-tab picker deprecated. Kept in DOM for any
+             remaining references (renderReportPicker is a no-op now);
+             permanently hidden. The Upload History tab is the picker. -->
+        <div id="reportPicker" class="hidden">
             <div class="picker-card">
                 <div class="card-title">Pick an upload to view its report</div>
                 <div class="card-subtitle">Select one of your past uploads to generate the analytical review. Each report is per-currency, navigated by tabs at the top once open.</div>
@@ -711,8 +946,9 @@
                 </div>
             </div>
 
-            <!-- Period filter — populated by showReportView -->
-            <div id="reportFilterWrap" style="margin-bottom: 16px;"></div>
+            <!-- Step 3: period filter lifted to app-level (lives in the
+                 current-upload strip above the tab bar). No per-view
+                 filter container here any more. -->
 
             <!-- Currency tab strip -->
             <div class="ccy-tabs" id="reportCcyTabs"></div>
@@ -722,10 +958,45 @@
         </div>
     </div>
 
+    <!-- ── ALL SUPPLIERS TAB ── -->
+    <div id="tab-all-suppliers" class="tab-content hidden">
+        <div id="allSuppliersView">
+            <div class="all-sup-header">
+                <div class="all-sup-title-row">
+                    <div class="all-sup-title">All Suppliers</div>
+                    <div class="all-sup-subtitle" id="allSupSubtitle"></div>
+                </div>
+            </div>
+
+            <!-- Currency tab strip -->
+            <div class="ccy-tabs" id="allSupCcyTabs"></div>
+
+            <!-- Toolbar: search + filter pills + count -->
+            <div class="all-sup-toolbar">
+                <div class="all-sup-search-wrap">
+                    <input type="text" id="allSupSearch" class="all-sup-search" placeholder="Search supplier name or ID..." />
+                </div>
+                <div class="all-sup-pills">
+                    <button class="all-sup-pill" data-pill="top20">Top 20</button>
+                    <button class="all-sup-pill" data-pill="hasCns">Has CNs</button>
+                    <button class="all-sup-pill" data-pill="latePaid">Late-paid</button>
+                    <button class="all-sup-pill" data-pill="silent">Silent</button>
+                    <button class="all-sup-pill" data-pill="declining">Declining</button>
+                    <button class="all-sup-clear hidden" id="allSupClearBtn">Clear filters</button>
+                </div>
+                <div class="all-sup-count" id="allSupCountLabel"></div>
+            </div>
+
+            <!-- Table body — populated by renderAllSuppliersBody -->
+            <div id="allSupTableWrap"></div>
+        </div>
+    </div>
+
     <!-- ── TRENDS TAB ── -->
     <div id="tab-trends" class="tab-content hidden">
-        <!-- Picker view (shown when no trends surface open) -->
-        <div id="trendsPicker">
+        <!-- Step 2: deprecated picker, permanently hidden. Upload History
+             is the new home base. -->
+        <div id="trendsPicker" class="hidden">
             <div class="picker-card">
                 <div class="card-title">Pick an upload to explore</div>
                 <div class="card-subtitle">Trends is the exploratory view — time-series of volume, dilution, payment lateness, and concentration. Each chart shares the same x-axis so you can read patterns across them.</div>
@@ -758,7 +1029,7 @@
                     <button data-gran="quarterly">Quarterly</button>
                 </div>
                 <div class="ccy-tabs" id="trendsCcyTabs" style="margin-bottom: 0;"></div>
-                <div id="trendsFilterWrap"></div>
+                <!-- Step 3: period filter lifted to app-level strip. -->
             </div>
 
             <!-- Stacked chart blocks + supplier table -->
@@ -914,6 +1185,10 @@ function setupTabs() {
     var tabBtns = document.querySelectorAll('.tab-bar .tab-btn[data-tab]');
     tabBtns.forEach(function(btn) {
         btn.addEventListener('click', function() {
+            // Disabled tabs do nothing — pointer-events: not-allowed in CSS is
+            // visual only; the click can still fire, so guard here.
+            if (btn.classList.contains('disabled')) return;
+
             var tab = btn.getAttribute('data-tab');
             tabBtns.forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
@@ -921,29 +1196,44 @@ function setupTabs() {
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
             if (tab === 'reports') {
-                // If a report is already open, re-render its body. Chart instances
-                // share a global registry with Trends — opening a Trends view after
-                // a report destroys the report charts; coming back here needs to
-                // rebuild them. Re-render is cheap because the stats bundle is
-                // cached on window.__report.
-                if (window.__report && window.__report.uploadId && window.__report.activeCcy) {
-                    requestAnimationFrame(function() { renderReportBody(window.__report.activeCcy); });
-                } else {
-                    renderReportPicker();
+                // With Step 2 architecture: if an upload is loaded but no
+                // Reports view exists yet, open the Reports view automatically.
+                // The old per-tab picker is deprecated.
+                if (window.__upload) {
+                    if (window.__report && window.__report.activeCcy) {
+                        requestAnimationFrame(function() { renderReportBody(window.__report.activeCcy); });
+                    } else {
+                        // First navigation to Reports with an upload open — build the view
+                        showReportView(window.__upload);
+                    }
                 }
+                // If no upload, do nothing visible — the tab is disabled in
+                // the first place, but if somehow reached, the view stays hidden.
             }
             if (tab === 'trends') {
-                // Symmetric: rebuild trends body if a trends view is open. Without
-                // this, navigating Reports → Trends shows the trends DOM with dead
-                // canvases (the report render called destroyAllCharts on them).
-                if (window.__trends && window.__trends.uploadId && window.__trends.activeCcy) {
-                    requestAnimationFrame(function() { renderTrendsBody(); });
-                } else {
-                    renderTrendsPicker();
+                if (window.__upload) {
+                    if (window.__trends && window.__trends.activeCcy) {
+                        requestAnimationFrame(function() { renderTrendsBody(); });
+                    } else {
+                        showTrendsView(window.__upload);
+                    }
+                }
+            }
+            if (tab === 'all-suppliers') {
+                if (window.__upload) {
+                    // Re-render every time. Cheap — reads cached filteredStats.
+                    showAllSuppliersView(window.__upload);
                 }
             }
         });
     });
+
+    // Close-upload button (in the current-upload strip)
+    var closeBtn = document.getElementById('closeUploadBtn');
+    if (closeBtn) closeBtn.addEventListener('click', closeUpload);
+
+    // Start with view tabs disabled — no upload is open yet
+    setViewTabsEnabled(false);
 }
 
 // ================================================================
@@ -1429,24 +1719,18 @@ function renderUploadsHistory() {
             '<td class="mono">' + escHTML(dateRange) + '</td>' +
             '<td>' + formatDateTime(u.created_at) + '</td>' +
             '<td class="text-center" style="white-space:nowrap;">' +
-                '<button class="btn btn-xs btn-primary" data-view-report="' + u.id + '" style="margin-right:4px;">View Report</button>' +
-                '<button class="btn btn-xs btn-secondary" data-view-trends="' + u.id + '" style="margin-right:4px;">Trends</button>' +
-                '<button class="btn btn-xs btn-secondary" data-analyse="' + u.id + '" style="margin-right:4px;">Run Analysis (dev)</button>' +
+                '<button class="btn btn-xs btn-primary" data-open="' + u.id + '" style="margin-right:4px;">Open</button>' +
                 '<button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button>' +
             '</td>';
 
-        tr.querySelector('[data-view-report]').addEventListener('click', function() {
-            var reportsBtn = document.querySelector('.tab-btn[data-tab="reports"]');
-            if (reportsBtn) reportsBtn.click();
-            openReport(u.id);
-        });
-        tr.querySelector('[data-view-trends]').addEventListener('click', function() {
-            var trendsBtn = document.querySelector('.tab-btn[data-tab="trends"]');
-            if (trendsBtn) trendsBtn.click();
-            openTrends(u.id);
-        });
-        tr.querySelector('[data-analyse]').addEventListener('click', function() {
-            runAnalysis(u.id, u.buyer_label);
+        tr.querySelector('[data-open]').addEventListener('click', function() {
+            // Load the upload, then navigate to Reports (the default landing
+            // view). loadUpload populates __upload, refreshes the strip,
+            // enables view tabs. The Reports tab click triggers showReportView.
+            loadUpload(u.id, function() {
+                var reportsBtn = document.querySelector('.tab-btn[data-tab="reports"]');
+                if (reportsBtn) reportsBtn.click();
+            });
         });
         tr.querySelector('[data-del]').addEventListener('click', function() {
             if (confirm('Delete this upload and all associated invoices/credit notes? This cannot be undone.')) {
@@ -1483,7 +1767,7 @@ var _chartInstances = {};
 function renderReportPicker() {
     // If a report is already open, leave the view alone — operator may have
     // navigated to another tab and come back; they expect the report still up.
-    if (window.__report && window.__report.uploadId) return;
+    if (window.__upload && window.__report && window.__report.activeCcy) return;
 
     var list = document.getElementById('reportPickerList');
     var empty = document.getElementById('reportPickerEmpty');
@@ -1516,15 +1800,39 @@ function renderReportPicker() {
     });
 }
 
-function openReport(uploadId) {
+// ────────────────────────────────────────────────────────────────
+// UPLOAD LOAD — shared by Reports and Trends (and All Suppliers later)
+// ────────────────────────────────────────────────────────────────
+// loadUpload fetches the upload meta + invoice rows + CN rows from
+// Supabase, runs computeBuyerStats once, and populates window.__upload.
+// Both openReport() and openTrends() route through here. If the requested
+// upload is already loaded, the callback runs immediately with no fetch.
+// This is the foundation for Option C — both surfaces (and All Suppliers)
+// reuse the same loaded data.
+
+function loadUpload(uploadId, onLoaded) {
     if (!sbClient) { alert('Supabase not connected.'); return; }
     if (!window.BuyerAnalytics) { alert('Analytics module not loaded.'); return; }
+
+    // Already loaded? Reuse — refresh shell to ensure the strip + tab states
+    // are correct, then fire the callback.
+    if (window.__upload && window.__upload.uploadId === uploadId) {
+        refreshAppShellForUpload();
+        onLoaded(window.__upload);
+        return;
+    }
+
+    // Loading a different upload while one is open: clear the previous's
+    // view state so we don't render stale UI mid-transition.
+    if (window.__upload && window.__upload.uploadId !== uploadId) {
+        clearOpenViews();
+    }
 
     showProcessing(10, 'Loading upload…');
 
     sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
         if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
-        var uploadMeta = upRes.data;
+        var meta = upRes.data;
 
         updateProcessing(35, 'Fetching invoice rows…');
         fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
@@ -1535,26 +1843,196 @@ function openReport(uploadId) {
                 if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
 
                 updateProcessing(90, 'Computing analytics…');
-                var stats = window.BuyerAnalytics.computeBuyerStats(uploadMeta, invRows, cnRows);
+                var stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
 
+                // Single shared cache. Reports / Trends / All Suppliers all
+                // read meta, invRows, cnRows, stats from here.
+                //
+                // Step 3 — filter state is also app-level now (not per-tab).
+                // .filter is the current operator selection.
+                // .filteredXxx fields are the recomputed slices used by every
+                //  view. Initial values: no filter applied (filter kind = "all"),
+                //  so the filtered* fields mirror the upload-wide raw data.
+                window.__upload = {
+                    uploadId: uploadId,
+                    meta: meta,
+                    invRows: invRows || [],
+                    cnRows: cnRows || [],
+                    stats: stats,
+                    filter: { kind: 'all' },
+                    filteredFromDate: null,
+                    filteredToDate: null,
+                    filteredStats: stats,
+                    filteredInvRows: invRows || [],
+                    filteredCnRows: cnRows || []
+                };
+
+                refreshAppShellForUpload();
                 hideProcessing();
-                showReportView(uploadId, uploadMeta, stats, invRows, cnRows);
+                onLoaded(window.__upload);
             });
         });
     });
 }
 
-function showReportView(uploadId, meta, stats, invRows, cnRows) {
-    // Cache raw rows on __report. The supplier detail panel uses these
-    // (unfiltered — it needs the full supplier picture, not just a slice).
-    // The report rendering uses filteredStats, recomputed on each filter
-    // change.
+// Show the current-upload strip + render the filter control + enable the
+// view tabs. Called by loadUpload on success. Idempotent.
+function refreshAppShellForUpload() {
+    var u = window.__upload;
+    if (!u) return;
+    var strip = document.getElementById('currentUploadStrip');
+    document.getElementById('currentUploadName').textContent = u.meta.buyer_label || '(unnamed)';
+    refreshAppShellPeriodLabel();
+    strip.classList.remove('hidden');
+
+    // Render the filter control inside the strip and wire its handlers.
+    var wrap = document.getElementById('uploadFilterWrap');
+    wrap.innerHTML = renderPeriodFilterControl('uploadFilter', u.filter, u.meta.date_range_min, u.meta.date_range_max);
+    attachPeriodFilterHandlers('uploadFilter', u.filter, u.meta.date_range_min, u.meta.date_range_max, function(newFilter) {
+        applyUploadFilter(newFilter);
+    });
+    updatePeriodFilterActiveLabel('uploadFilter', u.filter, u.meta.date_range_min, u.meta.date_range_max);
+
+    setViewTabsEnabled(true);
+}
+
+// Refresh just the period label in the strip. Used after a filter change
+// (the active period shifts) and on initial load (shows the full upload
+// range).
+function refreshAppShellPeriodLabel() {
+    var u = window.__upload;
+    if (!u) return;
+    var from = u.filteredFromDate || u.meta.date_range_min;
+    var to = u.filteredToDate || u.meta.date_range_max;
+    var label = (from && to) ? (from + ' → ' + to) : '';
+    document.getElementById('currentUploadPeriod').textContent = label;
+}
+
+// Apply a new period filter at the app level. Recomputes filteredXxx fields
+// on __upload, invalidates the Trends per-supplier stats cache, then re-renders
+// whichever view is currently visible. Reports and Trends both read filter
+// state from __upload — there's no per-tab filter state any more.
+function applyUploadFilter(newFilter) {
+    var u = window.__upload;
+    if (!u) return;
+    u.filter = newFilter;
+
+    // Resolve filter to {fromDate, toDate, label} and filter the row arrays.
+    var resolved = resolvePeriodFilter(newFilter, u.meta.date_range_min, u.meta.date_range_max);
+    u.filteredFromDate = resolved.fromDate;
+    u.filteredToDate = resolved.toDate;
+    u.filteredInvRows = filterRowsByDate(u.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
+    u.filteredCnRows  = filterRowsByDate(u.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
+
+    // Re-derive the stats bundle from filtered rows. This is the slow step
+    // (~500ms on 50k rows). Reports + All Suppliers both consume this.
+    u.filteredStats = window.BuyerAnalytics.computeBuyerStats(u.meta, u.filteredInvRows, u.filteredCnRows);
+
+    // Trends caches per-supplier stats on its own state; invalidate so it
+    // re-derives from the new filtered slice on next render.
+    if (window.__trends) window.__trends._stats = null;
+
+    // Update the visible elements: strip period label, the active-filter
+    // text under the dropdown, and re-render whatever view is currently
+    // active. (If a view isn't visible, it'll re-render when next activated.)
+    refreshAppShellPeriodLabel();
+    updatePeriodFilterActiveLabel('uploadFilter', newFilter, u.meta.date_range_min, u.meta.date_range_max);
+
+    // Reports: refresh its meta line + rebuild ccy tabs (since per-currency
+    // counts may have shifted) + re-render body.
+    if (window.__report && window.__report.activeCcy) {
+        refreshReportMeta();
+        rebuildReportCurrencyTabs();
+    }
+    // Trends: refresh its meta line + rebuild ccy tabs.
+    if (window.__trends && window.__trends.activeCcy) {
+        refreshTrendsMeta();
+        rebuildTrendsCurrencyTabs();
+    }
+    // All Suppliers: rebuild ccy tabs + body. The active currency may have
+    // dropped out if the filter shifted the data.
+    if (window.__allSuppliers && window.__allSuppliers.activeCcy) {
+        // Subtitle on the All Suppliers header may include the filter range
+        document.getElementById('allSupSubtitle').textContent =
+            (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
+        rebuildAllSuppliersCurrencyTabs();
+    }
+}
+
+// Enable or disable the Reports + Trends view tabs (and All Suppliers
+// once it exists). When disabled, click is a no-op and the tooltip
+// explains why.
+function setViewTabsEnabled(enabled) {
+    ['reports', 'all-suppliers', 'trends'].forEach(function(tab) {
+        var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (!btn) return;
+        if (enabled) {
+            btn.classList.remove('disabled');
+            btn.removeAttribute('title');
+        } else {
+            btn.classList.add('disabled');
+            btn.setAttribute('title', 'Open an upload from Upload History first');
+        }
+    });
+}
+
+// Close the open upload. Tears down both views, hides the strip,
+// disables the view tabs, sends operator back to Upload History.
+function closeUpload() {
+    if (!window.__upload) return;
+    clearOpenViews();
+    window.__upload = null;
+    document.getElementById('currentUploadStrip').classList.add('hidden');
+    setViewTabsEnabled(false);
+    // Send the operator back to Upload History — the new home base.
+    var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
+    if (histBtn) histBtn.click();
+}
+
+// Helper: tear down whichever views are open. Called by closeUpload and
+// by loadUpload when switching between uploads.
+function clearOpenViews() {
+    if (window.__report) {
+        destroyAllCharts();
+        document.getElementById('reportView').classList.add('hidden');
+        var rp = document.getElementById('reportPicker');
+        if (rp) rp.classList.add('hidden');  // hide the now-deprecated picker
+        window.__report = null;
+    }
+    if (window.__trends) {
+        destroyAllCharts();
+        document.getElementById('trendsView').classList.add('hidden');
+        var tp = document.getElementById('trendsPicker');
+        if (tp) tp.classList.add('hidden');
+        window.__trends = null;
+    }
+    if (window.__allSuppliers) {
+        // No charts to destroy. Clear the table; preserve sort/search state
+        // is debatable — operator may reopen the same upload and expect their
+        // last sort. For now, fully reset to keep state clean.
+        document.getElementById('allSupTableWrap').innerHTML = '';
+        document.getElementById('allSupCcyTabs').innerHTML = '';
+        document.getElementById('allSupCountLabel').textContent = '';
+        window.__allSuppliers = null;
+    }
+    // Also close the supplier panel if open
+    if (typeof closeSupplierPanel === 'function' && _supplierPanelOpen) closeSupplierPanel();
+}
+
+function openReport(uploadId) {
+    loadUpload(uploadId, function(upload) {
+        showReportView(upload);
+    });
+}
+
+function showReportView(upload) {
+    // Per-tab UI state. Shared data (meta, invRows, cnRows, stats, filter,
+    // filtered*) all lives on window.__upload — read from there.
+    // __report holds only Reports-specific bits: which currency tab is active.
     window.__report = {
-        uploadId: uploadId, meta: meta, stats: stats, activeCcy: null,
-        invRows: invRows || [], cnRows: cnRows || [],
-        filter: { kind: 'all' },
-        filteredStats: stats  // initial value — no filter applied
+        activeCcy: null
     };
+    var meta = upload.meta;
 
     document.getElementById('reportPicker').classList.add('hidden');
     document.getElementById('reportView').classList.remove('hidden');
@@ -1562,40 +2040,15 @@ function showReportView(uploadId, meta, stats, invRows, cnRows) {
     document.getElementById('reportTitle').textContent = meta.buyer_label;
     refreshReportMeta();
 
-    // Render period filter control. Operator changes here re-compute filteredStats
-    // and re-render the body + currency tabs (since per-currency invoice counts
-    // depend on the filter).
-    var filterWrap = document.getElementById('reportFilterWrap');
-    filterWrap.innerHTML = renderPeriodFilterControl('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max);
-    attachPeriodFilterHandlers('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max, function(newFilter) {
-        window.__report.filter = newFilter;
-        recomputeReportFiltered();
-        rebuildReportCurrencyTabs();
-        refreshReportMeta();
-        updatePeriodFilterActiveLabel('reportFilter', newFilter, meta.date_range_min, meta.date_range_max);
-    });
-    updatePeriodFilterActiveLabel('reportFilter', window.__report.filter, meta.date_range_min, meta.date_range_max);
-
     rebuildReportCurrencyTabs();
-}
-
-// Recompute the stats bundle from filtered rows. Updates window.__report.filteredStats.
-// Called on filter change; not called on plain currency tab clicks.
-function recomputeReportFiltered() {
-    var r = window.__report;
-    var resolved = resolvePeriodFilter(r.filter, r.meta.date_range_min, r.meta.date_range_max);
-    var invF = filterRowsByDate(r.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
-    var cnF  = filterRowsByDate(r.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
-    r.filteredStats = window.BuyerAnalytics.computeBuyerStats(r.meta, invF, cnF);
-    r.filteredFromDate = resolved.fromDate;
-    r.filteredToDate = resolved.toDate;
 }
 
 // Rebuild the currency tab strip. Per-currency invoice counts come from
 // filteredStats. Currency ordering: highest filtered spend first.
 function rebuildReportCurrencyTabs() {
     var r = window.__report;
-    var stats = r.filteredStats || r.stats;
+    var u = window.__upload;
+    var stats = u.filteredStats || u.stats;
     var ccyTabs = document.getElementById('reportCcyTabs');
     ccyTabs.innerHTML = '';
 
@@ -1631,12 +2084,12 @@ function rebuildReportCurrencyTabs() {
 }
 
 // Refresh the meta line under the title. Shows filtered or full counts
-// depending on whether a filter is applied.
+// depending on whether a filter is applied. All filter state on __upload.
 function refreshReportMeta() {
-    var r = window.__report;
-    var stats = r.filteredStats || r.stats;
+    var u = window.__upload;
+    var stats = u.filteredStats || u.stats;
     var metaBits = [];
-    var fromTo = (r.filteredFromDate || r.meta.date_range_min) + ' → ' + (r.filteredToDate || r.meta.date_range_max);
+    var fromTo = (u.filteredFromDate || u.meta.date_range_min) + ' → ' + (u.filteredToDate || u.meta.date_range_max);
     metaBits.push(fromTo);
     metaBits.push(stats.overall.totalInvoices.toLocaleString() + ' invoices');
     metaBits.push(stats.overall.totalSuppliers.toLocaleString() + ' suppliers');
@@ -1645,18 +2098,21 @@ function refreshReportMeta() {
 }
 
 function closeReport() {
-    window.__report = null;
-    destroyAllCharts();
-    document.getElementById('reportView').classList.add('hidden');
-    document.getElementById('reportPicker').classList.remove('hidden');
-    renderReportPicker();
+    // Step 2: the back-button at the top of the report now closes the
+    // upload entirely (operator returns to Upload History — the new home
+    // base). The app-level strip's ✕ does the same thing; this is just
+    // the in-report shortcut. If we ever want to preserve "close report
+    // but keep upload loaded", we'd carve that out — but with no picker
+    // any more there's no natural "what do I show on Reports tab now"
+    // answer, so close-upload is the right move.
+    closeUpload();
 }
 
 document.addEventListener('click', function(e) {
     if (e.target && e.target.id === 'reportBackBtn') closeReport();
     if (e.target && e.target.id === 'reportViewTrendsBtn') {
-        if (!window.__report) return;
-        var uploadId = window.__report.uploadId;
+        if (!window.__upload) return;
+        var uploadId = window.__upload.uploadId;
         var trendsBtn = document.querySelector('.tab-btn[data-tab="trends"]');
         if (trendsBtn) trendsBtn.click();
         openTrends(uploadId);
@@ -1696,10 +2152,9 @@ function destroyAllCharts() {
 
 function renderReportBody(ccy) {
     destroyAllCharts();
-    // Read from filteredStats (filter-aware). Falls back to full stats if
-    // no filter has been applied yet (initial render path before
-    // recomputeReportFiltered runs).
-    var stats = window.__report.filteredStats || window.__report.stats;
+    // Read filteredStats (filter-aware) from __upload. Falls back to
+    // upload-wide stats if no filter has been applied yet.
+    var stats = window.__upload.filteredStats || window.__upload.stats;
     var c = stats.perCurrency[ccy];
     if (!c) {
         // Currency no longer present in the filtered slice — show empty state
@@ -2065,7 +2520,7 @@ function drawPaymentDistributionChart(ccy, c) {
 // ────────────────────────────────────────────────────────────────
 
 function renderSectionStressSignals(c, ccy) {
-    var meta = window.__report.meta;
+    var meta = window.__upload.meta;
     // Period end is the upload's date_range_max (date the buyer's extract ends).
     // We measure "is this supplier going quiet?" relative to that, not today.
     var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
@@ -2210,7 +2665,7 @@ function generateObservations(c, ccy) {
     }
 
     // Observation: stress signals (if any)
-    var meta = window.__report.meta;
+    var meta = window.__upload.meta;
     var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
     var silentSuppliers = c.suppliers.filter(function(s) {
         if (!s.lastInvoice) return false;
@@ -2290,7 +2745,7 @@ function pct(v) {
 // computeTimeSeries() afresh for the active currency at the chosen granularity.
 
 function renderTrendsPicker() {
-    if (window.__trends && window.__trends.uploadId) return;
+    if (window.__upload && window.__trends && window.__trends.activeCcy) return;
 
     var list = document.getElementById('trendsPickerList');
     var empty = document.getElementById('trendsPickerEmpty');
@@ -2324,66 +2779,26 @@ function renderTrendsPicker() {
 }
 
 function openTrends(uploadId) {
-    if (!sbClient) { alert('Supabase not connected.'); return; }
-    if (!window.BuyerAnalytics) { alert('Analytics module not loaded.'); return; }
-
-    showProcessing(10, 'Loading upload…');
-
-    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
-        if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
-        var uploadMeta = upRes.data;
-
-        updateProcessing(35, 'Fetching invoice rows…');
-        fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
-            if (invErr) { hideProcessing(); alert('Invoice fetch failed: ' + invErr); return; }
-
-            updateProcessing(70, 'Fetching credit note rows…');
-            fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
-                if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
-
-                hideProcessing();
-                showTrendsView(uploadId, uploadMeta, invRows, cnRows);
-            });
-        });
+    loadUpload(uploadId, function(upload) {
+        showTrendsView(upload);
     });
 }
 
-function showTrendsView(uploadId, meta, invRows, cnRows) {
-    // Cache rows on window. Filter is initially "all" — applies the full
-    // upload period. Filter changes invalidate _stats and re-render body
-    // with filtered rows passed through computeTimeSeries + computeBuyerStats.
+function showTrendsView(upload) {
+    // Trends UI state only — granularity choice, active currency tab, and the
+    // lazy per-supplier stats cache. Shared data (incl filter) lives on __upload.
     window.__trends = {
-        uploadId:  uploadId,
-        meta:      meta,
-        invRows:   invRows,
-        cnRows:    cnRows,
         granularity: 'monthly',
         activeCcy: null,
-        filter: { kind: 'all' },
-        _stats: null,            // cached per-currency buyer stats; invalidated on filter change
-        filteredInvRows: invRows,
-        filteredCnRows: cnRows
+        _stats: null   // cached per-currency stats; invalidated on filter change
     };
+    var meta = upload.meta;
 
     document.getElementById('trendsPicker').classList.add('hidden');
     document.getElementById('trendsView').classList.remove('hidden');
 
     document.getElementById('trendsTitle').textContent = meta.buyer_label;
     refreshTrendsMeta();
-
-    // Render period filter control. Operator changes here invalidate cached
-    // stats, recompute filtered rows, rebuild currency tabs (counts shift),
-    // and re-render the trends body.
-    var filterWrap = document.getElementById('trendsFilterWrap');
-    filterWrap.innerHTML = renderPeriodFilterControl('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max);
-    attachPeriodFilterHandlers('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max, function(newFilter) {
-        window.__trends.filter = newFilter;
-        recomputeTrendsFiltered();
-        rebuildTrendsCurrencyTabs();
-        refreshTrendsMeta();
-        updatePeriodFilterActiveLabel('trendsFilter', newFilter, meta.date_range_min, meta.date_range_max);
-    });
-    updatePeriodFilterActiveLabel('trendsFilter', window.__trends.filter, meta.date_range_min, meta.date_range_max);
 
     // Granularity toggle — independent of filter
     var granButtons = document.querySelectorAll('#trendsGranToggle button');
@@ -2403,23 +2818,12 @@ function showTrendsView(uploadId, meta, invRows, cnRows) {
     rebuildTrendsCurrencyTabs();
 }
 
-// Recompute filtered row arrays. Invalidates _stats so the supplier table
-// recomputes from the filtered slice on next render.
-function recomputeTrendsFiltered() {
-    var t = window.__trends;
-    var resolved = resolvePeriodFilter(t.filter, t.meta.date_range_min, t.meta.date_range_max);
-    t.filteredInvRows = filterRowsByDate(t.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
-    t.filteredCnRows  = filterRowsByDate(t.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
-    t.filteredFromDate = resolved.fromDate;
-    t.filteredToDate = resolved.toDate;
-    t._stats = null;  // force re-derivation in renderTrendsSupplierTable
-}
-
-// Rebuild Trends currency tabs. Recomputes per-currency invoice/spend totals
-// from filteredInvRows.
+// Rebuild Trends currency tabs. Per-currency invoice/spend totals come from
+// the filtered row slice on __upload.
 function rebuildTrendsCurrencyTabs() {
     var t = window.__trends;
-    var invRows = t.filteredInvRows || t.invRows;
+    var u = window.__upload;
+    var invRows = u.filteredInvRows || u.invRows;
 
     var ccyTotals = {};
     invRows.forEach(function(r) {
@@ -2464,12 +2868,12 @@ function rebuildTrendsCurrencyTabs() {
 }
 
 function refreshTrendsMeta() {
-    var t = window.__trends;
-    var invRows = t.filteredInvRows || t.invRows;
-    var cnRows = t.filteredCnRows || t.cnRows;
+    var u = window.__upload;
+    var invRows = u.filteredInvRows || u.invRows;
+    var cnRows = u.filteredCnRows || u.cnRows;
     var metaBits = [];
-    var from = t.filteredFromDate || t.meta.date_range_min;
-    var to = t.filteredToDate || t.meta.date_range_max;
+    var from = u.filteredFromDate || u.meta.date_range_min;
+    var to = u.filteredToDate || u.meta.date_range_max;
     if (from && to) metaBits.push(from + ' → ' + to);
     metaBits.push(invRows.length.toLocaleString() + ' invoices');
     // Supplier count from filtered rows (unique identifiers)
@@ -2481,11 +2885,8 @@ function refreshTrendsMeta() {
 }
 
 function closeTrends() {
-    window.__trends = null;
-    destroyAllCharts();   // shared registry with report
-    document.getElementById('trendsView').classList.add('hidden');
-    document.getElementById('trendsPicker').classList.remove('hidden');
-    renderTrendsPicker();
+    // Same model as closeReport — back-button closes the upload entirely.
+    closeUpload();
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -2495,11 +2896,12 @@ function closeTrends() {
 function renderTrendsBody() {
     destroyAllCharts();
     var t = window.__trends;
+    var u = window.__upload;
     var ccy = t.activeCcy;
-    // Pass filtered rows to computeTimeSeries. Falls back to raw if no
-    // filter has been applied yet.
-    var invRows = t.filteredInvRows || t.invRows;
-    var cnRows  = t.filteredCnRows  || t.cnRows;
+    // Pass filtered rows to computeTimeSeries. Falls back to upload-wide rows
+    // if no filter has been applied yet.
+    var invRows = u.filteredInvRows || u.invRows;
+    var cnRows  = u.filteredCnRows  || u.cnRows;
     var ts = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, t.granularity, ccy);
 
     var body = document.getElementById('trendsBody');
@@ -2780,13 +3182,15 @@ function chartCommonOptions(opts) {
 // ────────────────────────────────────────────────────────────────
 
 function renderTrendsSupplierTable(ts, ccy) {
-    // Per-supplier stats from filtered rows (or raw rows if no filter applied).
-    // Cached on window.__trends._stats; invalidated when filter changes.
+    // Per-supplier stats from filtered rows (or upload-wide rows if no filter).
+    // Cached on window.__trends._stats; applyUploadFilter invalidates this
+    // cache when the operator changes the period filter.
     if (!window.__trends._stats) {
-        var invRows = window.__trends.filteredInvRows || window.__trends.invRows;
-        var cnRows  = window.__trends.filteredCnRows  || window.__trends.cnRows;
+        var u = window.__upload;
+        var invRows = u.filteredInvRows || u.invRows;
+        var cnRows  = u.filteredCnRows  || u.cnRows;
         window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
-            window.__trends.meta, invRows, cnRows
+            u.meta, invRows, cnRows
         );
     }
     var stats = window.__trends._stats;
@@ -3047,11 +3451,13 @@ function nullableStr(v) {
 // ================================================================
 // PERIOD FILTER
 // ================================================================
-// A small filter that scopes the report/trends to a slice of the upload.
-// Filters by invoice_date (and cn_date for CNs). Filter selection lives
-// on window.__report.filter and window.__trends.filter so each surface
-// keeps its own. Changing the filter triggers re-render but no Supabase
-// fetch — rows are already cached client-side.
+// A small filter that scopes the report/trends/all-suppliers to a slice of
+// the upload. Filters by invoice_date (and cn_date for CNs).
+//
+// Step 3: filter state is APP-LEVEL — lives on window.__upload.filter
+// and is consumed by every view. There is no per-tab filter any more.
+// Changing the filter triggers re-render in whatever views are currently
+// active. No Supabase fetch — rows are already cached client-side.
 //
 // Options:
 //   all      — full upload period (no filter)
@@ -3320,20 +3726,12 @@ function closeSupplierPanel() {
 }
 
 function pickSupplierDataSource() {
-    // Visible Trends view wins if both are open and trends is the
-    // current tab (operator's intent).
-    var trendsVisible = window.__trends && window.__trends.uploadId
-        && !document.getElementById('trendsView').classList.contains('hidden')
-        && !document.getElementById('tab-trends').classList.contains('hidden');
-    var reportVisible = window.__report && window.__report.uploadId
-        && !document.getElementById('reportView').classList.contains('hidden')
-        && !document.getElementById('tab-reports').classList.contains('hidden');
-
-    if (trendsVisible && window.__trends.invRows) return window.__trends;
-    if (reportVisible && window.__report.invRows) return window.__report;
-    // Fallback: either set, whichever exists with raw rows
-    if (window.__trends && window.__trends.invRows && window.__trends.invRows.length) return window.__trends;
-    if (window.__report && window.__report.invRows && window.__report.invRows.length) return window.__report;
+    // Single source of truth: __upload holds the raw rows. Return that
+    // if any view has an upload loaded. Supplier panel uses raw (unfiltered)
+    // rows by design — it shows the full supplier picture, not a slice.
+    if (window.__upload && window.__upload.invRows && window.__upload.invRows.length) {
+        return window.__upload;
+    }
     return null;
 }
 
@@ -3480,22 +3878,21 @@ function populateSupplierPanel(name, supId, ccy, st, invRows, cnRows, meta) {
     document.getElementById('supPanel').scrollTop = 0;
 }
 
-// Look up share-of-currency from the cached per-currency stats. Used for
-// the tag and the at-a-glance stat. Returns null if no cached stats found.
+// Look up share-of-currency from the upload-wide stats. Used for
+// the tag and the at-a-glance stat. Returns null if no upload is loaded
+// or the supplier isn't in this currency's roster.
 function lookupShareOfCurrency(supId, ccy) {
-    var stats = null;
-    if (window.__report && window.__report.stats) stats = window.__report.stats;
-    else if (window.__trends && window.__trends._stats) stats = window.__trends._stats;
-    if (!stats || !stats.perCurrency[ccy]) return null;
+    if (!window.__upload || !window.__upload.stats) return null;
+    var stats = window.__upload.stats;
+    if (!stats.perCurrency[ccy]) return null;
     var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
     return found ? found.sharePct : null;
 }
 
 function lookupTrendLabel(supId, ccy) {
-    var stats = null;
-    if (window.__report && window.__report.stats) stats = window.__report.stats;
-    else if (window.__trends && window.__trends._stats) stats = window.__trends._stats;
-    if (!stats || !stats.perCurrency[ccy]) return null;
+    if (!window.__upload || !window.__upload.stats) return null;
+    var stats = window.__upload.stats;
+    if (!stats.perCurrency[ccy]) return null;
     var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
     if (!found || found.trendSlopeNormalised === null) return 'flat';
     if (found.trendSlopeNormalised > 0.10) return 'growing';
@@ -3692,6 +4089,371 @@ function daysBetween(fromDateStr, toDateStr) {
 }
 
 // ================================================================
+// ALL SUPPLIERS — sortable table across one currency at a time
+// ================================================================
+// Reads suppliers from window.__upload.filteredStats (same source as
+// Reports). Period filter applied app-level — this tab automatically
+// reflects it. No new analytics: re-uses computeBuyerStats output.
+//
+// State on window.__allSuppliers:
+//   activeCcy       — which currency tab is showing
+//   sortColumn      — 'name' | 'invoiceCount' | 'totalSpend' | 'sharePct' |
+//                     'dilutionRate' | 'avgDpd' | 'lastInvoice' | 'trend'
+//   sortDirection   — 'asc' | 'desc' (default desc on numeric, asc on name/date)
+//   searchText      — current search box value (lowercased)
+//   activeFilters   — Set of pill ids: 'top20', 'hasCns', 'latePaid',
+//                     'silent', 'declining'
+//
+// Each filter pill is additive (AND) — selecting Late-paid + Has CNs shows
+// suppliers matching BOTH conditions. The "Top 20" pill is special: it
+// caps the result after other filtering, sliced by sharePct desc.
+
+function showAllSuppliersView(upload) {
+    // Initialise (or preserve) UI state. We DON'T reset sortColumn/searchText
+    // on every showAllSuppliersView call — operator who returns to the tab
+    // mid-session expects their sort and filters to still be there.
+    if (!window.__allSuppliers) {
+        window.__allSuppliers = {
+            activeCcy: null,
+            sortColumn: 'sharePct',
+            sortDirection: 'desc',
+            searchText: '',
+            activeFilters: {}   // map pillId -> true
+        };
+    }
+
+    var u = upload;
+    document.getElementById('allSupSubtitle').textContent =
+        (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
+
+    // Wire toolbar events. We attach once and idempotently — the elements
+    // exist in DOM permanently, only the state changes.
+    wireAllSuppliersToolbar();
+    rebuildAllSuppliersCurrencyTabs();
+}
+
+function wireAllSuppliersToolbar() {
+    // Search box — re-render on input. Debounce light (50ms) is enough for
+    // a 200-row dataset; the render itself is fast. For larger datasets we'd
+    // want a longer debounce.
+    var search = document.getElementById('allSupSearch');
+    if (search && !search._wired) {
+        search._wired = true;
+        var t = null;
+        search.addEventListener('input', function() {
+            clearTimeout(t);
+            t = setTimeout(function() {
+                window.__allSuppliers.searchText = search.value.toLowerCase().trim();
+                renderAllSuppliersBody();
+            }, 80);
+        });
+    }
+
+    // Pill toggles — additive (AND between pills, each pill is a binary filter)
+    document.querySelectorAll('.all-sup-pill').forEach(function(pill) {
+        if (pill._wired) return;
+        pill._wired = true;
+        pill.addEventListener('click', function() {
+            var key = pill.getAttribute('data-pill');
+            var as = window.__allSuppliers;
+            if (as.activeFilters[key]) {
+                delete as.activeFilters[key];
+                pill.classList.remove('active');
+            } else {
+                as.activeFilters[key] = true;
+                pill.classList.add('active');
+            }
+            updateAllSupClearVisibility();
+            renderAllSuppliersBody();
+        });
+    });
+
+    // Clear-filters link
+    var clearBtn = document.getElementById('allSupClearBtn');
+    if (clearBtn && !clearBtn._wired) {
+        clearBtn._wired = true;
+        clearBtn.addEventListener('click', function() {
+            window.__allSuppliers.activeFilters = {};
+            document.querySelectorAll('.all-sup-pill').forEach(function(p) { p.classList.remove('active'); });
+            updateAllSupClearVisibility();
+            renderAllSuppliersBody();
+        });
+    }
+}
+
+function updateAllSupClearVisibility() {
+    var clearBtn = document.getElementById('allSupClearBtn');
+    var any = Object.keys(window.__allSuppliers.activeFilters).length > 0;
+    if (clearBtn) clearBtn.classList[any ? 'remove' : 'add']('hidden');
+}
+
+function rebuildAllSuppliersCurrencyTabs() {
+    var as = window.__allSuppliers;
+    var u = window.__upload;
+    var stats = u.filteredStats || u.stats;
+    var ccyTabs = document.getElementById('allSupCcyTabs');
+    ccyTabs.innerHTML = '';
+
+    var currencies = stats.overall.currencies.slice();
+    currencies.sort(function(a, b) {
+        var sa = stats.perCurrency[a].totals.totalSpend;
+        var sb = stats.perCurrency[b].totals.totalSpend;
+        if (sb !== sa) return sb - sa;
+        return a < b ? -1 : 1;
+    });
+
+    // Preserve active currency if still present after filter; otherwise pick first
+    var nextActive = (currencies.indexOf(as.activeCcy) > -1) ? as.activeCcy : (currencies[0] || null);
+
+    currencies.forEach(function(ccy) {
+        var c = stats.perCurrency[ccy];
+        var btn = document.createElement('button');
+        btn.className = 'ccy-tab' + (ccy === nextActive ? ' active' : '');
+        btn.textContent = ccy + '  ·  ' + c.totals.supplierCount + ' supp';
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#allSupCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            as.activeCcy = ccy;
+            renderAllSuppliersBody();
+        });
+        ccyTabs.appendChild(btn);
+    });
+
+    if (nextActive) {
+        as.activeCcy = nextActive;
+        renderAllSuppliersBody();
+    } else {
+        document.getElementById('allSupTableWrap').innerHTML =
+            '<div class="all-sup-empty">' +
+            '<div class="all-sup-empty-title">No data in the selected period</div>' +
+            '<div class="all-sup-empty-sub">Try a wider filter from the strip above.</div>' +
+            '</div>';
+    }
+}
+
+function renderAllSuppliersBody() {
+    var as = window.__allSuppliers;
+    var u = window.__upload;
+    var stats = u.filteredStats || u.stats;
+    var ccy = as.activeCcy;
+    var ccyStats = stats.perCurrency[ccy];
+
+    if (!ccyStats) {
+        document.getElementById('allSupTableWrap').innerHTML =
+            '<div class="all-sup-empty"><div class="all-sup-empty-title">No ' + ccy + ' data in the selected period</div></div>';
+        document.getElementById('allSupCountLabel').textContent = '';
+        return;
+    }
+
+    var allSuppliers = ccyStats.suppliers;
+    var totalCount = allSuppliers.length;
+
+    // Period end for "silent" badge computation (relative to filter slice if
+    // applied, otherwise the upload's period end).
+    var periodEndStr = u.filteredToDate || u.meta.date_range_max;
+    var periodEnd = periodEndStr ? new Date(periodEndStr + 'T00:00:00') : new Date();
+
+    // 1. Search filter
+    var filtered = allSuppliers;
+    if (as.searchText) {
+        var q = as.searchText;
+        filtered = filtered.filter(function(s) {
+            return (s.name || '').toLowerCase().indexOf(q) > -1 ||
+                   (s.identifier || '').toLowerCase().indexOf(q) > -1;
+        });
+    }
+
+    // 2. Pill filters — AND between selected pills
+    var pills = as.activeFilters;
+    if (pills.hasCns) {
+        filtered = filtered.filter(function(s) { return s.cnCount && s.cnCount > 0; });
+    }
+    if (pills.latePaid) {
+        filtered = filtered.filter(function(s) { return s.medianDaysPastDue !== null && s.medianDaysPastDue > 30 && s.paidCount >= 3; });
+    }
+    if (pills.silent) {
+        filtered = filtered.filter(function(s) {
+            if (!s.lastInvoice) return false;
+            var last = new Date(s.lastInvoice + 'T00:00:00');
+            var daysSince = Math.floor((periodEnd - last) / 86400000);
+            return daysSince >= 90 && s.activeMonths >= 2;
+        });
+    }
+    if (pills.declining) {
+        filtered = filtered.filter(function(s) { return s.trendSlopeNormalised !== null && s.trendSlopeNormalised < -0.10 && s.activeMonths >= 3; });
+    }
+
+    // 3. Sort
+    filtered = sortAllSuppliers(filtered.slice(), as.sortColumn, as.sortDirection, periodEnd);
+
+    // 4. Top 20 cap — applied AFTER sort so top 20 reflects the active sort
+    if (pills.top20) {
+        filtered = filtered.slice(0, 20);
+    }
+
+    // Count label
+    var countLabel = document.getElementById('allSupCountLabel');
+    if (filtered.length === totalCount) {
+        countLabel.textContent = totalCount.toLocaleString() + ' suppliers';
+    } else {
+        countLabel.textContent = filtered.length.toLocaleString() + ' of ' + totalCount.toLocaleString() + ' shown';
+    }
+
+    // Render table
+    document.getElementById('allSupTableWrap').innerHTML = renderAllSuppliersTable(filtered, ccy, periodEnd);
+
+    // Wire column-header sort clicks (must rewire each render — the elements
+    // are recreated)
+    wireAllSupSortHandlers();
+}
+
+function sortAllSuppliers(rows, col, dir, periodEnd) {
+    var mult = dir === 'asc' ? 1 : -1;
+    function silentDays(s) {
+        if (!s.lastInvoice) return -1;
+        return Math.floor((periodEnd - new Date(s.lastInvoice + 'T00:00:00')) / 86400000);
+    }
+    rows.sort(function(a, b) {
+        var va, vb;
+        switch (col) {
+            case 'name':         va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); break;
+            case 'invoiceCount': va = a.invoiceCount; vb = b.invoiceCount; break;
+            case 'totalSpend':   va = a.totalSpend;   vb = b.totalSpend;   break;
+            case 'sharePct':     va = a.sharePct;     vb = b.sharePct;     break;
+            case 'dilutionRate': va = a.dilutionRate; vb = b.dilutionRate; break;
+            case 'avgDpd':       va = (a.avgDaysPastDue === null ? -Infinity : a.avgDaysPastDue); vb = (b.avgDaysPastDue === null ? -Infinity : b.avgDaysPastDue); break;
+            case 'lastInvoice':  va = a.lastInvoice || ''; vb = b.lastInvoice || ''; break;
+            case 'silentDays':   va = silentDays(a); vb = silentDays(b); break;
+            case 'trend':        va = a.trendSlopeNormalised === null ? 0 : a.trendSlopeNormalised; vb = b.trendSlopeNormalised === null ? 0 : b.trendSlopeNormalised; break;
+            default:             va = a.sharePct; vb = b.sharePct;
+        }
+        if (va < vb) return -1 * mult;
+        if (va > vb) return 1 * mult;
+        return 0;
+    });
+    return rows;
+}
+
+function renderAllSuppliersTable(rows, ccy, periodEnd) {
+    if (rows.length === 0) {
+        return '<div class="all-sup-empty">' +
+            '<div class="all-sup-empty-title">No suppliers match</div>' +
+            '<div class="all-sup-empty-sub">Try clearing some filters or widening the search.</div>' +
+            '</div>';
+    }
+
+    var as = window.__allSuppliers;
+    var cols = [
+        { key: 'name',         label: 'Supplier' },
+        { key: 'invoiceCount', label: 'Invoices', cls: 'text-right' },
+        { key: 'totalSpend',   label: 'Spend',    cls: 'text-right' },
+        { key: 'sharePct',     label: 'Share',    cls: 'text-right' },
+        { key: 'dilutionRate', label: 'Dilution', cls: 'text-right' },
+        { key: 'avgDpd',       label: 'Avg DPD',  cls: 'text-right' },
+        { key: 'lastInvoice',  label: 'Last invoice', cls: 'text-right' },
+        { key: 'trend',        label: 'Trend',    cls: 'text-center' }
+    ];
+
+    var head = cols.map(function(c) {
+        var active = c.key === as.sortColumn;
+        var arrow = active ? (as.sortDirection === 'asc' ? '▲' : '▼') : '';
+        return '<th data-sort-col="' + c.key + '" class="' + (c.cls || '') + (active ? ' sort-active' : '') + '">' +
+            escHTML(c.label) +
+            (arrow ? '<span class="sort-arrow">' + arrow + '</span>' : '') +
+        '</th>';
+    }).join('');
+
+    var body = rows.map(function(s) {
+        // Archetype tags (same logic as supplier panel — kept inline so the
+        // table is self-contained)
+        var tags = [];
+        if (s.sharePct >= 0.20) tags.push({ cls: 'dominant', text: 'Dominant' });
+        if (s.dilutionRate >= 0.08 && s.invoiceCount >= 3) tags.push({ cls: 'quality', text: 'Quality' });
+        if (s.medianDaysPastDue !== null && s.medianDaysPastDue > 30 && s.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Late' });
+        var silentDaysVal = null;
+        if (s.lastInvoice) {
+            silentDaysVal = Math.floor((periodEnd - new Date(s.lastInvoice + 'T00:00:00')) / 86400000);
+            if (silentDaysVal >= 90 && s.activeMonths >= 2) {
+                tags.push({ cls: 'silent', text: 'Silent ' + silentDaysVal + 'd' });
+            }
+        }
+
+        var tagsHtml = tags.map(function(t) {
+            return '<span class="all-sup-arch-tag ' + t.cls + '">' + escHTML(t.text) + '</span>';
+        }).join('');
+
+        // Dilution colouring
+        var dilCls = 'all-sup-dil-low';
+        if (s.dilutionRate >= 0.08) dilCls = 'all-sup-dil-high';
+        else if (s.dilutionRate >= 0.03) dilCls = 'all-sup-dil-med';
+
+        // DPD colouring
+        var dpdCell;
+        if (s.avgDaysPastDue === null) {
+            dpdCell = '<span style="color:var(--muted);">—</span>';
+        } else {
+            var prefix = s.avgDaysPastDue >= 0 ? '+' : '';
+            if (s.avgDaysPastDue > 30)      dpdCell = '<span class="all-sup-dpd-veryLate">' + prefix + s.avgDaysPastDue + 'd</span>';
+            else if (s.avgDaysPastDue > 7)  dpdCell = '<span class="all-sup-dpd-late">' + prefix + s.avgDaysPastDue + 'd</span>';
+            else if (s.avgDaysPastDue <= 0) dpdCell = '<span class="all-sup-dpd-ontime">' + prefix + s.avgDaysPastDue + 'd</span>';
+            else                            dpdCell = prefix + s.avgDaysPastDue + 'd';
+        }
+
+        // Last-invoice / silent cell
+        var lastCell;
+        if (!s.lastInvoice) {
+            lastCell = '<span style="color:var(--muted);">—</span>';
+        } else if (silentDaysVal !== null && silentDaysVal >= 90) {
+            lastCell = '<span style="font-family:var(--mono); font-size:10px;">' + escHTML(s.lastInvoice) + '</span> <span class="all-sup-silent-badge">' + silentDaysVal + 'd</span>';
+        } else {
+            lastCell = '<span style="font-family:var(--mono); font-size:11px;">' + escHTML(s.lastInvoice) + '</span>';
+        }
+
+        // Trend chip
+        var trendLbl = '<span class="trend-label flat">flat</span>';
+        if (s.trendSlopeNormalised !== null) {
+            if (s.trendSlopeNormalised > 0.10) trendLbl = '<span class="trend-label growing">growing</span>';
+            else if (s.trendSlopeNormalised < -0.10) trendLbl = '<span class="trend-label declining">declining</span>';
+        }
+
+        return '<tr>' +
+            '<td>' +
+                '<span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span>' +
+                (tagsHtml ? '<span class="all-sup-archetype-tags">' + tagsHtml + '</span>' : '') +
+                '<div class="sup-id">' + escHTML(s.identifier) + '</div>' +
+            '</td>' +
+            '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
+            '<td class="text-right mono"><span class="' + dilCls + '">' + pct(s.dilutionRate) + '</span></td>' +
+            '<td class="text-right mono">' + dpdCell + '</td>' +
+            '<td class="text-right">' + lastCell + '</td>' +
+            '<td class="text-center">' + trendLbl + '</td>' +
+        '</tr>';
+    }).join('');
+
+    return '<table class="all-sup-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+}
+
+function wireAllSupSortHandlers() {
+    document.querySelectorAll('#allSupTableWrap th[data-sort-col]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var col = th.getAttribute('data-sort-col');
+            var as = window.__allSuppliers;
+            if (as.sortColumn === col) {
+                // Toggle direction
+                as.sortDirection = as.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                as.sortColumn = col;
+                // Sensible default per column: text/dates ascending, numbers descending
+                as.sortDirection = (col === 'name' || col === 'lastInvoice') ? 'asc' : 'desc';
+            }
+            renderAllSuppliersBody();
+        });
+    });
+}
+
+// ================================================================
 // LAYER 4 — PDF EXPORT
 // ================================================================
 // Architecture: a single beforeprint listener decides which builder to
@@ -3713,12 +4475,13 @@ window.addEventListener('beforeprint', function() {
     if (_printPathActive) return;
     _printPathActive = true;
     try {
-        // Detect active view. Trends takes priority if both are open
-        // (operator who's currently looking at Trends and hits Ctrl+P
-        // expects Trends output).
-        var trendsOpen = window.__trends && window.__trends.uploadId && window.__trends.activeCcy
+        // Need an upload loaded *and* a view active. Trends takes priority if
+        // both views are active (operator who's currently looking at Trends
+        // and hits Ctrl+P expects Trends output).
+        var hasUpload = !!(window.__upload && window.__upload.uploadId);
+        var trendsOpen = hasUpload && window.__trends && window.__trends.activeCcy
             && !document.getElementById('trendsView').classList.contains('hidden');
-        var reportOpen = window.__report && window.__report.uploadId && window.__report.activeCcy
+        var reportOpen = hasUpload && window.__report && window.__report.activeCcy
             && !document.getElementById('reportView').classList.contains('hidden');
 
         if (trendsOpen) {
@@ -3747,7 +4510,7 @@ window.addEventListener('afterprint', function() {
 // it's a thin wrapper around window.print() so the beforeprint listener
 // fires consistently regardless of entry path.
 function exportReportPDF() {
-    if (!window.__report || !window.__report.stats) {
+    if (!window.__upload || !window.__report || !window.__report.activeCcy) {
         alert('No report loaded.');
         return;
     }
@@ -3755,7 +4518,7 @@ function exportReportPDF() {
 }
 
 function exportTrendsPDF() {
-    if (!window.__trends || !window.__trends.uploadId) {
+    if (!window.__upload || !window.__trends || !window.__trends.activeCcy) {
         alert('No trends view loaded.');
         return;
     }
@@ -3767,18 +4530,18 @@ function exportTrendsPDF() {
 // ================================================================
 
 function buildReportPrintTree() {
-    var r = window.__report;
-    // Use filteredStats so the printed deliverable matches what the operator
-    // sees on screen. Falls back to full stats if no filter applied.
-    var stats = r.filteredStats || r.stats;
-    var meta = r.meta;
+    var u = window.__upload;
+    // Use filteredStats if a filter is applied; otherwise full upload stats.
+    // All filter state lives on __upload now (Step 3).
+    var stats = u.filteredStats || u.stats;
+    var meta = u.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
     var effective = {
-        fromDate: r.filteredFromDate || meta.date_range_min,
-        toDate:   r.filteredToDate   || meta.date_range_max,
-        label:    r.filter ? resolvePeriodFilter(r.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
+        fromDate: u.filteredFromDate || meta.date_range_min,
+        toDate:   u.filteredToDate   || meta.date_range_max,
+        label:    u.filter ? resolvePeriodFilter(u.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
     };
 
     // Cover page
@@ -4187,7 +4950,7 @@ function renderPrintSectionWhatThisMeans(c, ccy, meta) {
 
 function renderReportPrintCharts() {
     _printChartInstances = [];
-    var stats = window.__report.filteredStats || window.__report.stats;
+    var stats = window.__upload.filteredStats || window.__upload.stats;
     stats.overall.currencies.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
         drawPrintConcentration(ccy, c);
@@ -4236,14 +4999,15 @@ function drawPrintConcentration(ccy, c) {
 
 function buildTrendsPrintTree() {
     var t = window.__trends;
-    var meta = t.meta;
+    var u = window.__upload;
+    var meta = u.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
-    // Use filtered rows for both per-supplier stats and the time-series.
-    // Falls back to raw rows if no filter applied.
-    var invRows = t.filteredInvRows || t.invRows;
-    var cnRows  = t.filteredCnRows  || t.cnRows;
+    // Use filtered rows if a filter is applied; otherwise upload-wide rows.
+    // All filter state on __upload (Step 3).
+    var invRows = u.filteredInvRows || u.invRows;
+    var cnRows  = u.filteredCnRows  || u.cnRows;
 
     if (!t._stats) {
         t._stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
@@ -4252,9 +5016,9 @@ function buildTrendsPrintTree() {
     var granularity = t.granularity || 'monthly';
 
     var effective = {
-        fromDate: t.filteredFromDate || meta.date_range_min,
-        toDate:   t.filteredToDate   || meta.date_range_max,
-        label:    t.filter ? resolvePeriodFilter(t.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
+        fromDate: u.filteredFromDate || meta.date_range_min,
+        toDate:   u.filteredToDate   || meta.date_range_max,
+        label:    u.filter ? resolvePeriodFilter(u.filter, meta.date_range_min, meta.date_range_max).label : 'Full period'
     };
 
     // Cover page with Trends eyebrow and filtered range
