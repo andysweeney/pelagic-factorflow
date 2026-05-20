@@ -215,6 +215,13 @@
             ? trendSlope / mean(counts)
             : null;
 
+        // Median invoice size — better signal than the mean when a supplier
+        // has outsized one-off invoices. Mean of (99 × £1k + 1 × £100k)
+        // ≈ £2k. Median is £1k. Median tells you "what a typical invoice
+        // from this supplier looks like."
+        var amounts = invoices.map(function(inv) { return numericAmount(inv.amount); });
+        var medianInvoiceAmount = amounts.length > 0 ? round2(median(amounts)) : 0;
+
         return {
             identifier:           sup.identifier,
             name:                 sup.name,
@@ -222,6 +229,7 @@
             totalSpend:           round2(totalSpend),
             sharePct:             currencyTotalSpend > 0 ? totalSpend / currencyTotalSpend : 0,
             avgInvoiceAmount:     invoices.length > 0 ? round2(totalSpend / invoices.length) : 0,
+            medianInvoiceAmount:  medianInvoiceAmount,
             firstInvoice:         firstInvoice,
             lastInvoice:          lastInvoice,
             activeMonths:         months.length,
