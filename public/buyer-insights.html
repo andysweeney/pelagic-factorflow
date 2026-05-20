@@ -282,6 +282,9 @@
 
         /* Stat cards (At a glance) */
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+        /* Modifier used by Section 2 (Concentration) which has 6 narrow
+           numerical cards. Override the column count to fit them on one row. */
+        .stat-grid.stat-grid-6col { grid-template-columns: repeat(6, 1fr); gap: 10px; }
 
         /* Inline help icon next to a stat label. Uses the native `title`
            attribute for the tooltip — minimal cost, accessible, and survives
@@ -2310,7 +2313,7 @@ function renderSectionConcentration(c, ccy) {
             '<div class="section-title">Suppliers you depend on more than you realise</div>' +
             '<div class="section-lede">The share of your invoicing concentrated in your top suppliers. Pelagic\'s perspective — the dependency runs both ways: if you\'re a large share of a supplier\'s book, you carry mutual fragility.</div>' +
 
-            '<div class="stat-grid">' +
+            '<div class="stat-grid stat-grid-6col">' +
                 statCard('Top supplier', pct(conc.top1Pct), 'of total ' + ccy + ' spend') +
                 statCard('Top 3',  pct(conc.top3Pct),  '') +
                 statCard('Top 5',  pct(conc.top5Pct),  '') +
@@ -3240,7 +3243,6 @@ function renderTrendsSupplierTable(ts, ccy) {
 
     function supplierRow(s) {
         var sparkVol = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].volume : [];
-        var sparkSpend = ts.sparklines[s.identifier] ? ts.sparklines[s.identifier].spend : [];
 
         // Trend label from normalised slope.
         var trendLbl = '<span class="trend-label flat">flat</span>';
@@ -3258,7 +3260,6 @@ function renderTrendsSupplierTable(ts, ccy) {
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
             '<td class="sparkline-cell">' + renderSparkline(sparkVol, 90, 26, '#0EA5E9') + '</td>' +
-            '<td class="sparkline-cell">' + renderSparkline(sparkSpend, 90, 26, '#8B5CF6') + '</td>' +
             '<td class="text-right mono">' + pct(s.dilutionRate) + '</td>' +
             '<td class="text-right mono">' + dpdCell + '</td>' +
             '<td class="text-center">' + trendLbl + '</td>' +
@@ -3266,7 +3267,7 @@ function renderTrendsSupplierTable(ts, ccy) {
     }
 
     // Same expandable pattern as the consistently-late table. Hard cap render
-    // count: 200 suppliers × 2 SVG sparklines each is ~400 SVGs per render.
+    // count: 200 suppliers × 1 SVG sparkline each is ~200 SVGs per render.
     // Showing 10 by default keeps the page snappy. Toggle reveals the rest.
     var topSups = suppliers.slice(0, 10);
     var restSups = suppliers.slice(10);
@@ -3278,7 +3279,6 @@ function renderTrendsSupplierTable(ts, ccy) {
             '<th class="text-right">Spend</th>' +
             '<th class="text-right">Share</th>' +
             '<th>Volume</th>' +
-            '<th>Spend</th>' +
             '<th class="text-right">Dilution</th>' +
             '<th class="text-right">Avg DPD</th>' +
             '<th class="text-center">Trend</th>' +
@@ -4379,6 +4379,7 @@ function sortAllSuppliers(rows, col, dir, periodEnd) {
             case 'name':         va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); break;
             case 'invoiceCount': va = a.invoiceCount; vb = b.invoiceCount; break;
             case 'totalSpend':   va = a.totalSpend;   vb = b.totalSpend;   break;
+            case 'medianInvoiceAmount': va = a.medianInvoiceAmount; vb = b.medianInvoiceAmount; break;
             case 'sharePct':     va = a.sharePct;     vb = b.sharePct;     break;
             case 'dilutionRate': va = a.dilutionRate; vb = b.dilutionRate; break;
             case 'avgDpd':       va = (a.avgDaysPastDue === null ? -Infinity : a.avgDaysPastDue); vb = (b.avgDaysPastDue === null ? -Infinity : b.avgDaysPastDue); break;
@@ -4412,18 +4413,18 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
     // sortable:false means the column doesn't accept click-to-sort. Sparklines
     // are visual columns — there's no obvious thing to sort on.
     var cols = [
-        { key: 'name',         label: 'Supplier' },
-        { key: 'invoiceCount', label: 'Invoices', cls: 'text-right' },
-        { key: 'totalSpend',   label: 'Spend',    cls: 'text-right' },
-        { key: 'sharePct',     label: 'Share',    cls: 'text-right' },
-        { key: 'volSpark',     label: 'Volume',   cls: 'text-center',  sortable: false,
-          tooltip: 'Monthly invoice count over the period. Rising means more invoices, falling means fewer. Read together with Spend to spot price-vs-quantity changes.' },
-        { key: 'spendSpark',   label: 'Spend',    cls: 'text-center',  sortable: false,
-          tooltip: 'Monthly total invoice value (in supplier currency). Volume flat + Spend rising = price increase. Volume rising + Spend flat = smaller-average invoices.' },
-        { key: 'dilutionRate', label: 'Dilution', cls: 'text-right' },
-        { key: 'avgDpd',       label: 'Avg DPD',  cls: 'text-right' },
-        { key: 'lastInvoice',  label: 'Last invoice', cls: 'text-right' },
-        { key: 'trend',        label: 'Trend',    cls: 'text-center' }
+        { key: 'name',                label: 'Supplier' },
+        { key: 'invoiceCount',        label: 'Invoices',       cls: 'text-right' },
+        { key: 'totalSpend',          label: 'Spend',          cls: 'text-right' },
+        { key: 'medianInvoiceAmount', label: 'Median invoice', cls: 'text-right',
+          tooltip: 'Median (typical) invoice amount from this supplier. Less skewed by occasional outsized invoices than the mean. Useful for "what does a normal invoice look like from this supplier."' },
+        { key: 'sharePct',            label: 'Share',          cls: 'text-right' },
+        { key: 'volSpark',            label: 'Volume',         cls: 'text-center',  sortable: false,
+          tooltip: 'Monthly invoice count over the period. Rising means the supplier is invoicing more often; falling means fewer invoices — an early warning that the relationship may be tailing off.' },
+        { key: 'dilutionRate',        label: 'Dilution',       cls: 'text-right' },
+        { key: 'avgDpd',              label: 'Avg DPD',        cls: 'text-right' },
+        { key: 'lastInvoice',         label: 'Last invoice',   cls: 'text-right' },
+        { key: 'trend',               label: 'Trend',          cls: 'text-center' }
     ];
 
     var head = cols.map(function(c) {
@@ -4491,12 +4492,11 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             lastCell = '<span style="font-family:var(--mono); font-size:11px;">' + escHTML(s.lastInvoice) + '</span>';
         }
 
-        // Sparklines — pulled from cached time-series. Same colours as Trends
-        // table so the visual vocabulary matches across surfaces. Compressed
-        // to 60×22 since the table is wider here than Trends'.
-        var supSpark = sparklineMap[s.identifier] || { volume: [], spend: [] };
+        // Volume sparkline — pulled from cached time-series. 60×22 compressed
+        // since the table is dense. Spend sparkline removed: volume direction
+        // is the more useful single signal; spend rises/falls usually track it.
+        var supSpark = sparklineMap[s.identifier] || { volume: [] };
         var volSparkHtml = renderSparkline(supSpark.volume, 60, 22, '#0EA5E9');
-        var spendSparkHtml = renderSparkline(supSpark.spend, 60, 22, '#8B5CF6');
 
         // Trend chip
         var trendLbl = '<span class="trend-label flat">flat</span>';
@@ -4513,9 +4513,9 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             '</td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.medianInvoiceAmount, ccy) + '</td>' +
             '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
             '<td class="sparkline-cell text-center">' + volSparkHtml + '</td>' +
-            '<td class="sparkline-cell text-center">' + spendSparkHtml + '</td>' +
             '<td class="text-right mono"><span class="' + dilCls + '">' + pct(s.dilutionRate) + '</span></td>' +
             '<td class="text-right mono">' + dpdCell + '</td>' +
             '<td class="text-right">' + lastCell + '</td>' +
@@ -5210,7 +5210,6 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
 
     var rows = sups.map(function(s) {
         var sparkVol = (ts.sparklines && ts.sparklines[s.identifier]) ? ts.sparklines[s.identifier].volume : [];
-        var sparkSpend = (ts.sparklines && ts.sparklines[s.identifier]) ? ts.sparklines[s.identifier].spend : [];
         var dpdCell = s.avgDaysPastDue !== null
             ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd'
             : '—';
@@ -5219,7 +5218,6 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
             '<td class="text-right mono">' + pct(s.sharePct) + '</td>' +
             '<td class="sparkline-cell">' + renderSparkline(sparkVol, 60, 18, '#0EA5E9') + '</td>' +
-            '<td class="sparkline-cell">' + renderSparkline(sparkSpend, 60, 18, '#8B5CF6') + '</td>' +
             '<td class="text-right mono">' + pct(s.dilutionRate) + '</td>' +
             '<td class="text-right mono">' + dpdCell + '</td>' +
             '<td class="text-center">' + trendLabel(s) + '</td>' +
@@ -5231,7 +5229,7 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
             '<div class="print-currency-title"><span class="print-ccy-code">' + ccy + '</span> Trends C - Suppliers</div>' +
             '<div class="print-currency-meta">' +
                 sups.length + ' shown' + (c.suppliers.length > 30 ? ' of ' + c.suppliers.length : '') +
-                '  ·  sparklines at ' + granularity + ' granularity' +
+                '  ·  volume sparklines at ' + granularity + ' granularity' +
             '</div>' +
         '</div>';
 
@@ -5242,7 +5240,6 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
                 '<th class="text-right">Spend</th>' +
                 '<th class="text-right">Share</th>' +
                 '<th>Volume</th>' +
-                '<th>Spend</th>' +
                 '<th class="text-right">Dilution</th>' +
                 '<th class="text-right">Avg DPD</th>' +
                 '<th class="text-center">Trend</th>' +
