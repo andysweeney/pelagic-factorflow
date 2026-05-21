@@ -926,10 +926,16 @@
         <!-- Buyer label + save -->
         <div id="saveSection" class="card hidden">
             <div class="card-title">Step 4 — Label and Save</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
                 <div>
-                    <label class="form-label">Buyer label <span style="color:var(--danger);">*</span></label>
-                    <input id="buyerLabel" type="text" class="form-input" placeholder="e.g. Acme Plc — 2024 AP book" />
+                    <label class="form-label">Buyer <span style="color:var(--danger);">*</span></label>
+                    <select id="buyerSelect" class="form-input">
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Upload label <span style="color:var(--danger);">*</span></label>
+                    <input id="buyerLabel" type="text" class="form-input" placeholder="e.g. 2024 AP book" />
                 </div>
                 <div>
                     <label class="form-label">Notes (optional)</label>
@@ -1199,8 +1205,26 @@ function initApp() {
                         return;
                     }
                     window.__currentUser = result.data.session.user;
-                    showSignedInChrome(result.data.session.user);
-                    loadAllData();
+                    // PHASE 5c: fetch the user's role from user_profiles and apply
+                    // buyer UI mode if appropriate. Buyer mode hides upload-related
+                    // controls so buyer users see Reports/Trends/All Suppliers
+                    // only — same data, no operator chrome.
+                    sbClient.from('user_profiles')
+                        .select('role, full_name, buyer_id')
+                        .eq('id', result.data.session.user.id)
+                        .maybeSingle()
+                        .then(function(profileRes) {
+                            var profile = (profileRes && profileRes.data) || {};
+                            window.__currentProfile = profile;
+                            if (profile.role === 'buyer') {
+                                applyBuyerUIMode();
+                            } else {
+                                // Operators populate the buyer dropdown for uploads.
+                                loadBuyerOptions();
+                            }
+                            showSignedInChrome(result.data.session.user, profile);
+                            loadAllData();
+                        });
                 });
             } else if (sbRetries < 30) {
                 sbRetries++;
@@ -1216,13 +1240,14 @@ function initApp() {
 // ================================================================
 // SIGNED-IN CHROME (email indicator + sign-out button, top right)
 // ================================================================
-function showSignedInChrome(user) {
+function showSignedInChrome(user, profile) {
     if (document.getElementById('authChrome')) return;
     var bar = document.createElement('div');
     bar.id = 'authChrome';
     bar.style.cssText = 'position:fixed;top:10px;right:14px;z-index:9999;display:flex;align-items:center;gap:10px;font-size:12px;color:#555;background:rgba(255,255,255,0.9);padding:6px 10px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);';
     var label = document.createElement('span');
-    label.textContent = user.email || 'Signed in';
+    var name = (profile && profile.full_name) ? profile.full_name : (user.email || 'Signed in');
+    label.textContent = name;
     var btn = document.createElement('button');
     btn.textContent = 'Sign out';
     btn.style.cssText = 'border:1px solid #d8d8dc;background:#fff;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;';
@@ -1234,6 +1259,55 @@ function showSignedInChrome(user) {
     bar.appendChild(label);
     bar.appendChild(btn);
     document.body.appendChild(bar);
+}
+
+// ================================================================
+// BUYER UI MODE (Phase 5c)
+// ================================================================
+// Applied when the logged-in user has role 'buyer'. Hides operator-only
+// chrome — Upload tab, Upload History tab, the upload-related controls
+// inside the app. Buyers see Reports / All Suppliers / Trends only.
+//
+// We mutate the DOM (rather than ship a separate UI) to keep the buyer
+// app as similar as possible to operator mode. RLS already scopes the
+// data they can see to their buyer_id; this just removes the controls
+// that would 401/403 anyway.
+//
+// We mark the body for CSS targeting so any operator-only class can
+// be hidden via `body.buyer-mode .operator-only { display: none; }`.
+function applyBuyerUIMode() {
+    document.body.classList.add('buyer-mode');
+
+    // Hide operator-only tabs.
+    var hideTabs = ['upload', 'uploads-history'];
+    hideTabs.forEach(function(tab) {
+        var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+        if (btn) btn.style.display = 'none';
+    });
+
+    // Switch default tab to Reports (since Upload is now hidden).
+    // We wait for state.uploads to populate (loadAllData runs after auth),
+    // then either auto-open the single upload or land on the picker.
+    var attempts = 0;
+    function trySwitch() {
+        attempts++;
+        // Cap retries so a slow connection doesn't loop forever.
+        if (attempts > 50) return;
+        if (!state || !state.uploads) {
+            setTimeout(trySwitch, 100);
+            return;
+        }
+        // Activate Reports tab.
+        var reportsBtn = document.querySelector('.tab-btn[data-tab="reports"]');
+        if (reportsBtn) reportsBtn.click();
+
+        // If exactly one upload, open it automatically. With multiple,
+        // leave the picker visible so the buyer can choose.
+        if (state.uploads.length === 1) {
+            openReport(state.uploads[0].id);
+        }
+    }
+    setTimeout(trySwitch, 50);
 }
 
 // ================================================================
@@ -1532,12 +1606,46 @@ function isReadyToSave() {
     }
     var label = (document.getElementById('buyerLabel').value || '').trim();
     if (!label) return false;
+    // PHASE: Buyer must be selected (FK to buyers table).
+    var buyerSel = document.getElementById('buyerSelect');
+    if (!buyerSel || !buyerSel.value) return false;
     return true;
 }
 
 function setupProcessHandler() {
     document.getElementById('buyerLabel').addEventListener('input', refreshSaveSection);
+    var buyerSel = document.getElementById('buyerSelect');
+    if (buyerSel) buyerSel.addEventListener('change', refreshSaveSection);
     document.getElementById('processBtn').addEventListener('click', processAndSave);
+}
+
+// Populate the buyer dropdown by reading from the buyers table.
+// Called once after auth + Supabase init. RLS restricts what each user
+// can see: operators see all buyers, buyer-role users see only their own
+// (though they shouldn't reach the upload form anyway — buyer-mode hides it).
+function loadBuyerOptions() {
+    if (!sbClient) return;
+    var sel = document.getElementById('buyerSelect');
+    if (!sel) return;
+    sbClient.from('buyers')
+        .select('id, name')
+        .order('name', { ascending: true })
+        .then(function(res) {
+            if (res.error) {
+                sel.innerHTML = '<option value="">Error loading buyers</option>';
+                console.warn('Could not load buyers:', res.error.message);
+                return;
+            }
+            var rows = res.data || [];
+            if (rows.length === 0) {
+                sel.innerHTML = '<option value="">No buyers configured — create one in the main portal first</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">— Select a buyer —</option>' +
+                rows.map(function(b) {
+                    return '<option value="' + escHTML(b.id) + '">' + escHTML(b.name) + ' (' + escHTML(b.id) + ')</option>';
+                }).join('');
+        });
 }
 
 // ================================================================
@@ -1635,11 +1743,10 @@ function processAndSave() {
         supplier_count: Object.keys(distinctSuppliers).length,
         date_range_min: minDate,
         date_range_max: maxDate,
-        // Until per-buyer onboarding lands, all uploads belong to the internal
-        // demo bucket. When real buyer accounts arrive, this will be selected
-        // from a dropdown of known buyer_ids (or auto-populated from a
-        // "current buyer" choice the operator made earlier in the session).
-        buyer_id: 'pelagic-demo'
+        // PHASE: buyer_id is a FK to buyers(id). Selected from the dropdown
+        // in Step 4 of the upload form. RLS uses this to scope buyer logins
+        // to their own data.
+        buyer_id: document.getElementById('buyerSelect').value
     };
 
     updateProcessing(15, 'Creating upload record…');
@@ -1744,6 +1851,8 @@ function resetUploadForm() {
     document.getElementById('cnFile').value = '';
     document.getElementById('buyerLabel').value = '';
     document.getElementById('uploadNotes').value = '';
+    var buyerSel = document.getElementById('buyerSelect');
+    if (buyerSel) buyerSel.value = '';
     document.getElementById('mappingSection').classList.add('hidden');
     document.getElementById('previewSection').classList.add('hidden');
     document.getElementById('saveSection').classList.add('hidden');
