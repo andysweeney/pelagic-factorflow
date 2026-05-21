@@ -1195,7 +1195,7 @@ function initApp() {
                 // sent back here via the ?redirect= query parameter.
                 sbClient.auth.getSession().then(function(result) {
                     if (!result.data || !result.data.session) {
-                        window.location.href = '/login.html?redirect=/buyer-insights.html';
+                        window.location.href = '/login?redirect=/buyer-insights';
                         return;
                     }
                     window.__currentUser = result.data.session.user;
@@ -1228,7 +1228,7 @@ function showSignedInChrome(user) {
     btn.style.cssText = 'border:1px solid #d8d8dc;background:#fff;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;';
     btn.onclick = function() {
         if (sbClient) sbClient.auth.signOut().then(function() {
-            window.location.href = '/login.html';
+            window.location.href = '/login';
         });
     };
     bar.appendChild(label);
