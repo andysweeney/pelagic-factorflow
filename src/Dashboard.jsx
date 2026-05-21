@@ -6,7 +6,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 var LOGO_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCADrAd0DASIAAhEBAxEB/8QAHQABAAMBAQEBAQEAAAAAAAAAAAYHCAUEAgMBCf/EAGAQAAEDAwEEBQUHDA0LAgUFAAEAAgMEBREGBxIhMQgTQVFhFCJxgbEyNnKRobLRFRYjNTdCUnN0dbPBGCQzNDhVYoKTlLTS4RdGVFZjZISSosLDJ0QlJkOk8FNlg6PT/8QAGgEBAQEBAQEBAAAAAAAAAAAAAAUEAwEGAv/EADQRAAICAgAEAgkDBAIDAAAAAAABAgMEEQUSITFBcRMiMjM0UWGBkRSh8LHB0eEjQhVEUv/aAAwDAQACEQMRAD8AxkiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIvTa6GpuVwhoaRm/NM7daOzxJ8AMk+hepNvSPG0ltn5U8M1RM2GCJ8srzhrGNLnOPgAp1YtmldUNbLd6ptG3eGYY8PeRk5BOd1pxjBG9z48sKcaT0xb9PU/2AddVPbuy1DhhzhnOAPvR4DuGc4XdVzG4ZFLdvV/Ik38Qk3qvovmRWk2faYghEctJNUuznrJZ3B3/AEkD5F73aS026J0Zs9Nuu5kAg9vI8xz7F20VBY9S7RX4MLvsfeT/ACRSt2e6ZniDIqaekcHZ34p3Enw8/eGPV2KHah2dXShY6e2yi4RNBJYG7so5ngOTuAHI5JPAK3EXG3AosXs68jrXmWwfffmZue1zHuY9pa5pw5pGCD3L5V3az0jRX+nfNEyOnuIGWTgY3yBjdfjmOQzzGB6DTt5tldaK99DcKd8E7ADhw5tIyHA9oI7VCysSePLr1XzLGPkxuXTueNERZTQFMtmFitl8nr2XKB0oiawsw9zcZJzyPgoarF2Jfvu6fi4/a5asKKlfFSW1/oz5cnGltMkv+T/TH+hy/wBO/wClP8n+mP8AQ5f6d/0qZWulNdc6WhDww1EzIg4jO7vOAz8qn3+Suo/jmL+gP95XLY4lT1NJfYk1fqbVuDb+5R/+T/TH+hy/07/pX5zbPNNPaQ2GpiPeyY5+XKvUbKqjtvUX9XP95fhW7LrjHCXUlyp53jkx7CzPr4rl6TBfTS/B19FmLr1/JmvUOzaqp43T2epNU1oyYZAGv9R5H5FAZY3xSOjlY5j2nDmuGCD3ELTFfR1NBVyUlZA+CeM4cx4wR9I8VHb9oCn1lK5lCWU963CYHHg2oLRnq3eOAcO8MHmMZ8zAgoekqOuLmScuSwodF+1bTVFFVzUlXC+GoheY5I3jDmuBwQQvxUYqBERAEREAREQFn6E0lYbrpelrq2jdJPIXhzhK9ucPIHAHHIL9dWbPGzW6NulLJVVVcJgZGQl8jhHg5OCTwzu8fFdjZb7yKL4Un6RyuDYr76an8hf8+NX5UV/pOblW9Ijwtm8rl29bMfXe219ouMtuulJNR1cOOshlbuubkAjI9BB9a8isnpOfdy1F6af+zRKtlALAREQBERAEREAREQBERAEREAREQFjbN9L2W82CSruFK6WYVDmBwlc3gGtPIHxK6mpNnlNNaZG6ZstTU3EFpayJ75HbueJwSuHs71dbbLavqbVQVb5pakua6NjS3BDQObgezuWrdB6Juthvwr6yoopIhE5mInuLsnHe0KwpY36bXTm19yby3vI315dmI77ZrrYq7yG8UFRQ1O4H9VMzddunkceorwK4el5915/5vh9rlTyjlIIiIAiIgCIiAIiIAiIgCuDZTYW26zC5zs/bVa0ObkDLIvvQD4+6P83uVVWejNwu1JQhxb5RMyMuDcloJAJx4c1o6x2+W53FlmtMMctU2HrBTsc1pZEOG9gkBrc8M8s4HNVeGVx5nbLwJ2fOWlXHxPxRSb6wtWfxV/8AcRf3lzbvp692kF1wts8LAATIBvMGeA85uRnwyrUbq5PSkn9yXKmyK24v8HLREXQ5BERAEuOk6TXdmnsUgDbxDE6Wzzk4w8Zc6EnHuHjJ4kBpGRxccl+1DUyUVbBWQlokgkbKwuGRlpyM/EuORSrq3Bnai11TUkZsrqWooa2eirIXwVNPI6KaJ4w5j2nDmkd4IIX4q8+l1o6O06ppNW0MLo6W9NxUN3N0R1DQOfDgXN4455a8qjF8kz6QKxdiX77un4uP2uVdKxdiX77un4uP2uWzA+Ij/PAy5vuJfzxLh0p76bT+Ww/PC/Xpgajvun/rZ+ot1qqDr/Kut6l+7v7vVYz6Mn41+WlPfTafy2H54XP6cH+aX/Gf+Fa+Le1E4cM9iRSn+UfXX+tNz/pl8naLrnOfrpun9MVFkUgols7PNbX3UNzkt9+rn1z2Ql8M0gG+0AjLcjmOOePLj3qwbfUvoq+nrI/dwStkb6WnP6lTWx6nfJqiScA7kNO4uPiSAB7fiVvtBc4NaCSTgAdq+j4c3LH1L6kPO6X7RyOmLpSC36ht2q6KIMjujDFU7owOtYAQ70uaf+lUEtg9L+lY7ZHTOeBv09whc0+O49vsKyvpLT9VqG5eTQOEcTAHTSkZDG/rJ7Avn4wc5cse7Lc5KC5pHGHE4C9kVqukrd6K21j2ntbA4j2K77Bpq0WWJraSlY6YDjPIN6Rx789noGF2FWr4S2vXkTJ8SW/ViZxqKeopn7lRBLC78GRhaflX5LR1XTU9XCYKqCKeJ3NkjQ4H1FVprjQL6dslxsUT5IWgvlphxcwDmW9pHeOY9HLhk8NnVHmi9o60Z0bJcslpleIh4HBRTTeXZst95NF8KT9I5XBsV99NT+Qv+fGqf2W+8mi+FJ89yuHYr76Ko/7k757F9HP4L7Ihw+L+7M99Jz7uWovTT/2aJVsrJ6Tn3cdRemn/ALNEq2XzjLjC+o45JX7kbHPcexoyVYOhNCQ1tJFdLw4uhkAfDAx/um97iPYP8FZFDQ0VDF1dFSQU7O6Ngbn4lSo4bOxc0npGC7PhW+WK2UCLTdSzfFsrS3v6h2PYvJJHJE8skY5jhzDhgrSK81woKK4QmGupYahh7JGg49HctEuEdPVl+xxjxLr1iZ1RTzXGg5aAOr7LHJPSgEyQ+6fEBzI7S35R7IGpV1M6Zcsu5RqtjbHmiERS/Z1pQX2d9ZXB4oITjAODK78HPcO1eVVStmoR7ntlka480iLU1NU1T9ymp5Z3DsjYXH5F+9RabrTRmSotlbCwcS6SBzR8ZC0BR0tNR07aekgjgibyYxoAX7KuuELXWXUmPiT30iZsX9we4q4tZaHo7ux1Vbmx0lcBngMMl8Hdx8fjUwXGHCpuTUnrX7nWXEYqKaRmxFoS77GbxrsfXDQ3agpYYojCY5g/eJaSSeAx98s9qfdX6Kbhvsbqp88FLXc+oy9j2vZkOacgjsKnp2ybTxz1bW/0cf8AdUg2Oe9SX8rf81qmFVo2r13TSafoauCkmeBKJJgS3DSCRw4rYsD/AIPS83hvt/syfrf+b0XL467lCan1DedTXQ3O+18ldWFgj614AO6OQ4ADtXLUp2oaLrNBaoNhrqyCrmEDJushBDcOzw48exRZTjcF9wwyzP3IYnyO7mNJPyKxtD6Bilp47jfGuO+A6OlyRgd7+31fH3KxaSlpqSEQ0tPFBGOTY2Bo+RU6OGTsXNJ6MF2fCD1FbM/m0XYN3ja60N7zA7HsXjex7HFr2ua4cwRghaRXluNuoLjF1VdSQ1DMYG+wEj0HmPUu8uEdPVkcY8S6+tEzsinmttBS29j6+zCSelaMyQnznxjtI72/KPFQNSrqZ0y5Zoo1WxtjzRCIi5HQIiID3WI14usItsphqnBzWPBwWgtIcc9nAniOPdxVqbPLtetEsuEtqr2+XXB7HVFVJC18mG7x3QXg8CX5PaS1vLjmqrJWMoLnFVyMc9sYd5reZJaQParv2T6h2dRaYq7rrWjnqbqysHklDEyR29CAzDhxbG7JLs7zsEN4DvpYTpUdzTk99v50MGUrnPUHyrXf+dT863W2r6upfUS6lurXvOSIql0TPU1hDR6gu7b9retqZw664Q1beHmy07BwHi0A8fHK61TtY2WtljFPs+ZJGXfZHSW+mYWjB4gAnJzujGRwJPZg/DNSbD9Q1crJ7TcLJNOWsbOWGJjCeG81sb3MbjAzluOOePFbnbVJanV08kZFVbF7hb182eeu2g6QuzS/UFjqLLUHeca+3s62IcyN+McTnJJOOwecvt9pqX0IuNvkgulucCW1lC/rYsN55I4twcjzgORxleCs2f09ykqJtD6jtuoII3Y6hszW1DTkndx7l2G4JORnj5qilhuF40lepam1VFTbKtsm7UwgbrXlrsubJGeGcjBOA7mMhdKm+9Etr5Pw/n1Pxa+ur46fzXiSpF26DadYbjTbmrdLQ1FS4M62qomBj5CAMu5gjJHLe5cF1m6k2PmkM5oa1sgZvdQRNvk49znf3c9nPHiuv6ma9qt/bqfj0EH7Ni+/QiVPDNUTNgp4pJpXnDWMaXOcfADmrAsdkt2jLU/VWr3NjkhP7Wphhzt/73Azh0hxwHJo4kjGW8Ou2u2S1UXUaO00IJXNa10tWxrAN0jGQxxdJw3uJcCCc8eKruvuOpdcX+GKeaouVbO/dggbwYzIGd1vuWDDQSeHLJPMr8y9LctSXLHx+f8Ao9Tqpe4vml4fL/Z1uk3tFseoNFWvT0FP111mMVwmax+82iBYSGk/fOLXnhgcDk44LOS05qPZhbdBbGdVX+77lVfq2INMuN5tM2SVrWxs8eIBd6hw55jXzdmuZ67F6O9Lm7hWLsS/fd0/Fx+1yrpWLsS/fd0/Fx+1y04HxEf54GbN9xL+eJb2m5Y4NRW2eZ7Y446uJ73OOA0B4JJXj6XTTqf62vrfLbl5N5T13UODtze6rdz6d0/EvzRXMnDjkNOT7ErHy5UJpLuUP9aepP4nqv8AlXootEalqpQz6nOhaTxfM4NA/X8QV4L+rMuE1eLZ2fErPBI4WjNOwadtpgY/raiUh08uMbx7APAcfjKsHZxZ5LtqenJafJ6Vwnmd2cDlo9Zx6sr509oy+XiVpFK+kp8+dNO0tGPAHi71cPEK2KCksui9OyvknZT0sLTJUVEpALiBxJPsC/WTk10V+jr7/wBD3GxrLrPSWdv6lQ9NK7R0+irRZg4ddWV3XY/kRsIPyvaoDs9tLLVpimbuATVDRPKe3LhkD1DA+NQvbJraTaJtAdXR78dvjLaaijPMR590R3uJJ+IditRrQ1oa0YaBgDuWbhUE5yn8jtxOb0o/Ml2zvSY1DUvqatzmUEDgHbpwZHc90HsGOZ8fWJ3qW4aA0PQMmvDbXQMcN1gfE10kno5ucvLoS9WKz6KgZLcqUThr5ZIusAeXEk4xnnjAWRde/XrrHU9XfLnbK5z5nnqoyw7sTM+awdwAXLMsussaSekdsWFVVab1tl2al2i7Jb24stNVJQV3KN/kro4ZD3O4Ybn8Lh4rxQyPilZLG4texwc0jsI5FUF9a2ov4mrP6Mq69OmpNhofLI3R1AgYJWuGCHAYOVs4dZY04WJ/cx58a9qcNfY4fSG0LS0dDQa+sUDIbfc8NrIIx5sFRxyR3NJBHgR4ql1s63Wgas2J3+wStD3YlFOMcWvDWvZ/1rGKj5Nfo7ZRRUpnz1xl8y69lnvJo/hSfPcrj2Ke+aq/I3fPYqc2We8qj+HJ88q5Ninvkqz/ALmfnsVyfwX2RIr+M+7M8dJv7uOovhU/9niVbqyOkz93DUfwqf8As8SrdfOMtslWzvU4sN5hZcZqp1oeSKiKIgkZBw5oPDIOCe8Ba72cWvQdysEd6oKynvEZbmSacgBh7QYzwb68nxWHIo3yyNjjY573HAa0ZJ9Sktr0/rRlLPFQ0lfTw1LQyaPrOqEg54cCRn1rTXbe48kN6+hwnCmMueaWzWWp9r2yyxufQy1dLWub5roqWmEjR4HAwq+umutnGpKhjdOvnt9xe7Hk8kJZHKP5PY0+HDPpVGfWJqv+Kv8A7iL+8vbYNGanpL5QVUtu6uOGpje93XxnDQ4EnAdnku2OsmuxNRf4ZzvnRZBptfsXPR1ElLVRVMWN+NwcARkHwI7QeRChPSY2f0emrpRamsUIjs94G/1bfcwykb2B3BwOR6Cpgpjt6oIq3o2tmeAX0cFHPGT2HLGH/pc5beLRXLGRl4ZJ7lEx2r/0nQNtmnKGja0BzYgX+Ljxd8pKoKJu9I1p7SAtIgADA5LnwiK3KXke8Sk9RRMNm2lY7/VS1VcHeQ05DS1pwZH/AIOewAc/SFM9YX3Z9oaiYb222UbX8WQina6R/DmGgZPpX3ssMNHoQVTsMbvyyyO9Bxn4mhYj15qWu1bquvvtfI5z6mUmNpPCOPPmsHgBhZs7InK1rfRGrEphCpPXVmhb9tB2UX4BlmqJLdcTgRA0zo4pDn3J4YB7jw8V4Fm1ri1wc0kEHIPctItOWg94VDhd0rIyjJ70YeI1xjJSS7lv7LuGgKk/7Sb5oWDlvHZlw2e1J/lzfNCwcpOZ76XmU8f3MfIt/Y571Jfyt/zWq5tj/vwb+Tv/AFKmdjnvUl/K3/Narm2P+/Bv5O/9Ssr4L7En/wBz7lN9Lz7rz/zfD7XKBbN7Uy66pgZM3ehpwZ5ARwOMYHxkKe9Lz7rz/wA3w+1y4exKMGrucuOLY42g+ku+hR8SCnfGLKmXNwqk0WcrW0bs8oo6OOrvsZnqHgOEG8QyMdgOOZ7+zs4qv9HwNqdU2yF4y01LCR3gHP6lJulDrqs0foqGjtUxhuN1kdCyUc442jz3Dx4tHrVTiWROvUIvWzBw+iE9zkt6OpqnUmyTT8zqK7T2aOdvB0UbA6Rvp3eIUHr6/Z5e3B2kNR0wqccKKok3S/4Bd2+BWVpHvkkdJI5z3uJLnOOSSe0r5UqrLtrltMoWUV2LTRvnQuiaOz04rLgIqqtkZg5AdHE0jiB3kjmfUO3OUekZRaModoEsWj5WkYPlsUQzDFNniGH2jkD8niotrmtaTQ02k47pIYJHANqS4meOPBzGHdx4ceY4+qBEknJOSVztulbLml3OkK41x5Yo/iIi5H6CIiA+on9XI14AO6QcHkVLWOa9jXtOWuGQfBRBdmwVYLfJH8xksPh2j9a3YNqjLlfiY8ytyjzLwOuiIq5NPqGSWCoZUU80sE8edyWJ5Y9uRg4cMEZHBTu07SJauRkGvbVFqalaDu1LQIa2P3W6BI0tDm5cfNOB28SoEi5zqjJ77P5rufuNsorXdfLwLwtehtI6pZJNpHWrC8t+xUddDuyh2d3DnAggEjhhh4Ec1+/+RDVf8YWX+ml//wA1RC7FBqnU1BA2nodR3ilhaABHDWyMaAOAGAcJzZEe09+aHLjvvDXky5abYpdYRNPe7/aqCjhidI+ePek3ccSXbwYA0DJJzwx8Xrl1NojRxZp3QlbTT3aqeY6q+ShkzKKA4fJKX8GybrBkMb5uWedkjDqEu12ut3mbNdrnW18jButfUzulc0dwLicKztmGxCTV1mhvOo6qqt1BLI18FPG0CSpi/CJPuWnhunBzzxjBPDInPk3ZLf08P9nfHjDn1XHX1/nY5vSJ2qT6xtU1p01DL9bFPPHHVVzmECpm4uZGM9g3Se87ueQ40Mrf6S9dY7fd7doLS0DKe12JjnTsjJw+pkwXF34Tg0N87s3nDhjCqBRmVWFYuxL993T8XH7XKulYuxL993T8XH7XLXgfER/ngZM33Ev54lwaWa12prU1zQ5prYQQRkEb4VmbStcaQ2f+QfV6kx5d1nU9TTB3uN3OeH8oKtNKe+m0/lsPzwuf04P80v8AjP8AwrZxVtSjo4cN9iRKv2QOzEcqap/qX+C/rekRs5i4xU9a0/yaXCx8ik8zKRq2+dJ3T0MLhaLHX1c2PNMpbGz19vyKi9pm1HVOvZRHc6kQUDHb0dHBkRg95/CPpUGRebGz02n7aUn49nzgtFLN8EhimZK3mxwcPUVo2CVk0Ec0ZyyRoc094IyFZ4Q+k15Enia6xfmdGCz3aeJs0NrrpY3jLXsp3EEeBAX39Qr3/E9x/qz/AKFYenNUfUzZLXXWKAVU9lp5XvgzguDcvH/T2+BVWfspH/6pt/rP+C/VvEp1zcXHse18PhOClzdzofUK9/xPcf6s/wChPqFe/wCJ7j/Vn/Quf+ykf/qm3+s/4L+/so34z9aYx3+U/wCC5/8Alpf/ACfv/wAZD/6Lb2P0lZSWivhrKSencZg5oljLCRu44Z9Cw9qOnbSahuVK0YbDVyxgeAeR+paFPSkfj3pt/rP+Czxfq4XO+3C5Nj6oVdTJOGZzu77i7Hqypt9vpZufzN1dargoLwLe2V+8qk+HJ88q5difvirPyQ/PaqZ2V+8qk+HJ88q59ifvgrfyQ/Park/gvsiPX8Z92Z16TH3cNR/Dg/s8arynhkqKiOnhaXySvDGNHaScAKwukt927Ufw4P0EajOzmJsutbax4BAe53HvaxxHyhQa4c81H5ss2S5YuXyLX0lpui0/QsZGxklU5v2acjznHuHcPBSq2Wm53Mn6n0FRUgHBdGwloPieQXhV56lvdk2faJfcqwdTRUUYayNnupHHk0d7ifpX0GTesSCjBEXGoeVNymyrfrL1R/FE3/M36V+VTpLUdNTyVE9qmZFEwve4luA0DJPNRS69J+9vqXfU3TtHDCCd3rZS5xHjgYBXmp+kXqa7zx2mos9vZDWuFO9zS7Ia87pI9RWKPFLHJLSNkuHVJN7Z2FP9sfHo01n5upfnxqAKwNsP8Gms/N1N8+Nd+K+xE4cM9qXkYwp/3eP4Q9q0es2scWvDhzBytIxvbJG2Rpy1wBHoXPhH/f7f3P1xP/r9/wCxbWlyRsdrSDgilqv+5YTW5NGVLajZRd6Zn7pBDUMI78sLgfl+RYbU7LWrpebKGO90x8gtJR/ubfQFnKkhfU1UVPEC6SV4Y0d5JwFo4DAAHYqPCF7b8v7k/ib9n7/2Le2a8NnVSf5U3sWDlvHZxw2cVJ8Z/YsHKdme+l5lDH9zHyLf2Oe9SX8rf81qubY/78G/k7/1KmdjnvUl/K3/ADWq5tj/AL8G/k7/ANSsr4L7En/3PuU30vPuvP8AzfD7XLjbEf3S7eiH/vXZ6Xn3Xn/m+H2uUe2KztbdLhTE+dJC14/mux/3KTgvWTH+eBSzVumX88S79Be/G1/jwo503XE3XS7M8BBUket0f0Lq2Csbb75Q1rydyCdj3YH3oIz8mVyum0N+v0rUMIdFJBUBrhyPGM/rWviyfNF/Qz8Na9HJfUzmiL7gilnmbDBE+WV5w1jGkuce4Ac1IKJ8Iv6QQSCMEL+IAiIgCIiAL+tJa4OaSCDkEdi/iICTWKeS4skia0OnijMjgCAXNHMgduBxIHIAnkDj1KJ0801PPHUU8r4po3B8cjHFrmuByCCORCtbTestG6qmbTbQqCW33CSRv/xq2AR9Z5rsmePBaS5xBLw3JJ4kAcaNOdpas/Jhtw9vcCKordi2IyXikgrNIa0sl5ppA4ukeHRYwccNzrM8QeeOXav4Oj9rUylnl9iDQPd+US4P/wDXn5FtWTU/+xleNav+pUaK8bD0d7rJM437UFFTxNc0tbRMdK6RuTvDLwzcPLBw7ny4cbL05s32f6J6u4Op4pKmHLm1lylD3NIIcHAHDGubgYc1ocMc+JXOeZXHt1OkMOyXfoVVsh2MXG51NNfNVRSUFDFNvNoJosTVAaeT2u9wwkdoy4Z4AEOVnbd9pFPs80uHUohlvFYDHRQOPBuOcjgPvW55dpwFEtqvSFsdlhdQ6PdDebg4FpqOPk8OWgtcD9+ckcB3EEhZY1HfLtqK6yXS9V81bVycDJI7OB2ADkB4BTLr5WvbKNVUalqJ4Z5ZZ55J55HyyyOL3ve4lznE5JJPMkr4RFwP2FYuxL993T8XH7XKulNNlt7tdlqK99zquobKxgYerc7OCc+5B71qwpKN8XJ6X+jNlxcqZJIvLSnvptP5bD88Ln9OD/NL/jP/AAqTaF05ea6pst/paPrLbLLDUsm61gzHvB29uk73LsxlRnpwf5pf8Z/4Vr4nZGco8r2ceHwlCEuZaM0oiKUbwiIgCuLZZfY7jY2W6V/7aom7uCeLo/vSPRy9Q71Tq9Nsrqq21sdZRTOhmjOWuHsPePBacTIePZzeHiZ8mhXQ5fE0tbLjU28ziEtdFUROhnieMslY4YLXBVPcNl8pqHuoLnGIS4lrZmHeaOwEjn6cBWNs0q6PXVua2311LBeYx9nt8ztwu/lRuPuge44I5ceZk02jNTxHDrPOfglrvYVal+kyfWk1v8MmRWVR6qT1+SnLVsxp45A+53F0zQf3OFm6D6XH6FJ7tpa0V9jbaW0zKeOIEwOjHGJ3f457c8/lViUOgtT1Uga6gbTtP380jQB6hk/IpzpbZ5b7Y9lVc3trqlpyG4xEw+j771/EvxKWHRBpae/ufuNeVdJN9NfYxTrTS1z0vcGU9dDIIJ2dbSzlha2aM8nDP/56RgrgrWnSj1loV2mJtN1kcd0vBBdTCBwzSP8Aw3O7Pg9vyjJagS1voWNa7lw7IKpk2ljTgjfp53Bw8DxB+U/ErM0df5dOXc10cDahr4zHJGXbuQSDwPHByB2LNmkNQ1Onbl5TC0SxSDdmiJxvj9RHYVonSlnr9VWCnvVhjjraWYecGzMD4nDmx7SRg/GPFXcTJpspVdj14EfIx7YW+krX1Kw2/UAuOo7hrRsxjbXTxMFKWZLMRBud7PH3GeXaq/0pXstmo6GukOI45hvnuaeBPxErYmgtE1cd5kdqOyQS0ZgcGtnEcrd/ebjhk8cZ4rOPSYo6Sg2xXaloaWClgZHBuxQxhjRmJpOAOCnZSrquTq7LX1N9HPZU/S92WS0hzQ5pBBGQR2r1bZrxXa12YU1igiP1Sp6uKV5LgGzsa1zefY7LgccuHqVWbK9WtNXBYb3WxwU7/Mp6qXOI3djXn8Hx7PRyuybRGpGAPioG1MTuLJYJWOa4d445+RVHbjZkEpvT/BOjXkY0nyLaM2jQ2qS7d+pR/po8fOUi0js/uFPdaevuskMTIJBIImO3nOcDkZPIDOO9XZFo3U8jt1tnnB/lFrR8pUjt2zSt+p9TUXCVvlIgeaemhcOMm75u848OfZ8q4rGw6WpOW/v/AIOvpsq1cqjr7FeqwNsP8Gms/N1N8+NcBmi9SPqZaZlAx08TWukjFVFvNDs7pI3uGd0/EpJttp5qPo6XKlqGbk0NDTskbkHDg+MEZHBOJ2wnBcrTP1w+ucJS5k10MTq8tnd1ZdNL0p3gZqdoglHaC0YB9YwfjVGrr6Wv9Zp+4+VU2HxuwJoieEjf1HuKwYWT6Czb7M05dHpoaXdGk9MX6psVVLJHG2eCdnVzwPOGyN/UefHxKpO5bM7mK+b6n1dI6lLyYjK5zXhueAIAIzjxVwaVt9RqqxxXfTwZXwOH2RjHtEsLu1r2k5B9GQulDpDUsr9xtmqgf5QDR8Z4KvbXi5Hrtr8k2ueTSuVJ/gq7RmhYbLUtuNwqGVNVHxYGjEcfDnx5nx4YU0Vq6P2dQ0x8q1A2KpeR5tMOLG+LvwvRy9KqsjBIyDjtC6YkqesKuyPxkwtWp292W5s7+5tU/wD8/sWD1vHZ4CNmlST2icj4lg5Qcv30vNlqj3MfIt/Y571Jfyt/zWq5tj/vwb+Tv/UqD2Yajs1rsbqGurOpqJKpzms6p7sghoHEAjmFpXZvpa/WjUgrLjQ9TB1L273XMdxOMcASVVV1f6Pl5lvXzJvop/qubT1soLpefdef+b4fa5VnpO7Osl+pq8AljXbsrR2sPA/T6lZnS8+68/8AN8PtcqeUOMnCSku6K04qSaZo+mnhqaeOogkbJFI0OY9pyCD2rz67pJdW6WpbHWVG75DKZKOct3nRZGCznxae7swOwYVV7NtWtstcygussptUrsOc0bzqcn74DtHe34vHQNPpG519DFcLI+lu9DM3ejnpZmkEdmQcEHwX0EMrHyoctn7/AOSLLHvx5br/AGKMZsvrjJh91pgzvEbifi/xUx0rpC2afd18W9UVZGDPJzA7mjs9qn7dH6mLt0Wepz4gAfHldW07OL/VPHlghoI88S94e7HgG5+Uhewrw6HzJr87EpZVy5Wn+NFPar2eHUU8tTYoJDdXNLzDG3LZ8Ak8BycR28iefPKp2eKWCZ8M0bo5WOLXscMFpHMEL/QixWOyaRt0s/WMjw0merncASOfPsHgsfdInU2l9Ua8fW6Yo2sjYzcqKtvAVb/wgPDlnt9sbLnXZY5QWkVceuddaU31K1REWU7BERAEREAREQHrttzuVse99tuFXRPeMPdTzOjLh3HdIyppSbZdpdN1QbqureyLGGPYwggdh83J+NQBEBYdVtr2mzzulGqaiEOx5kcTA0cOzLSoffdQXy+zPmvF2ra5zpHSkTTFzQ48yG8h6gFzEQBERAEREAREQFq6d29a7sNiorNQi1eS0ULYYuspiXbrRgZO9xKjm0vaRqPaD5B9XxRftHrOp8nhLPd7u9nic+5ChqINhERAEREAREQH60lTUUlTHU0s8kE8Z3mSRuLXNPeCOStHS+33aBZYGU81ZT3OJowPKo8vx8IYVUogL8f0ntTGLdZYLc1/4XWOPyYUN1ftu1/qKN8DroLfTPGHR0bdzI8Xc/iwq1Re7Pdn09znvc97i5zjkknJJ718oi8PApBovWepNHVpqrBc5aUv/dI+ccnwmngVH0QF1QdJPXjIw2WmtMjh991BGflVZa91RX6y1RU6gubIY6qoDA5sQw0brQ0fIFwkQBTnRG1fXGkYGU1ruxkpGcG01S3rI2+jtHxqDIgL6pOk7qmOMCosdtmdji4PczPq4rnX/pH64r4HQ0EFBbA4YL2ML3j0E8viVLIvdnuye6K2t6y0pXXSuo6uCsqboYzUy1rDK47m9u44jHuz8i6GsduGttVabq7BdBbPI6tobL1VMWuwHBwwd49oCrJF4ebC9dpt1Zda6OioYTLM/sHIDtJPYF5FbmyWeyGzmGja2O4f+5Dzl7+4j+T4Dl8p04lCvsUW9HDJudUOZLZCbXddVbPdRvdbq2agq4zh24cxzN7OB4Oaf/zCtG1dJvVdPA1lfZrdWvAwXtc6PPq4roXa1W67U/UXCkiqGdm8POb6DzHqUcGznTnW7+7Vlv4HXcPZn5Vts4XYpeo+hlr4jDl9ddTuQbdNdawuEdqtdJS2qBxzUTRAveyPtwTyJ5BdNeO02u32mm8nt1LHTxniQ3m495J4n1qdbPNKTXuvZWVUZbbYXZc4jhKQfcDw7yt1FUcOpym+pkusll2JRROLZGLFslmlqMs6q3TVMmRgjLXP4+gH5FgZbR6UurINPbM6m1skArbwDSxMB4iP/wCo70bvD+cFi5fP2zc5OT8S3GKhFRXgfcL3RSskbjeY4OGe8K4f2SG0Xus39UP95U2i5npINf6vu2t7+b3evJ/KzE2L7BHuN3W5xwye9R9EQBSLR2ttUaRn62w3eopGk5dFnejd6Wngo6iAvO2dJjWMEQZXWy2VjgMbwDo8+1fdw6TWrpo3NorRbKV55OdvSY9XBUSi92e7JXrXaHq/WBLb5eJpYM5FOzzIh/NHP15UURF4eBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBeuz3GrtNyguNDJ1dRA7eYcZB7wR2gjIIPMEheREBpXZ9rLZ5rCGOnvE79NXfk5ok/a8zu9pdnHH73IVk02za2VBEkGohNEeI3I2k/HvfqWIV7qK73aiYGUV0raZo5CGocwfIVrjnXxWuY4PFpb24m6rfoHTFteJquR9UWnP7ZlAYPUMZ9eVzNfbXdFaKoXQtrYa2sY3EVFRkOI7gccGhYrqr9fKthZVXm4ztPMSVT3D5SucuNl87HuT2dYQhWtQWiSbRNZXfXGpJb1d5POd5sMLT5kLOxrf1ntUbRFyP0EREAREQBERAEREAREQBERAEREAXooKKqrpuqpYnSO7e4ek9i/lBSyVlZFTRDz5HY9A7SrIttFBQUjaeBuAOZ7XHvK3YWG8h7fRIx5eWqFpdWyOUej/NBrKvj2tiH6z9C97NKWto49e70v+gKe6S0dqDVEh+pNCXwtduvqJDuRNPpPM+AyVO6PYbeHxA1d7oYZO1sUbpB8Z3fYqkq8Kj1Za3+SdGWZd1jvX4KEm0nbXD7HJURn4QI9i5Nw0pWQgvpZWVDR97jdd9C0PddiepKdhfQV1BW4B8zeMbj6MjHxkKvb3ZrrZKs0l2oJ6ObsEjcB3iDyI8Qix8PI6Q7/QO7Lo6z7fUpuaKSGQxyxuje3m1wwQvhX/pTZTV7QrVW1Akhoo4W7lPUyMJ3pcg7oxx3QM5PeRwPHFQ690fe9E3x1ovlO2Kbd343NcHNkZnAcD3KLk0KmxwT2V8e121qbWiPIiLOdgiIgCIiAIiICbfWhQf6RU/G36FxL9YpqOsbHRQVdREYw4v3C7jk8MgeAU9WhdgEbDs3qHOY0nyubiR/IarvEMaquncY6eyPgX2226lLpoxEiIoRYCIiAIiIAiIgCIpfomjpKm2zPqKWGVwmIBewEgbo713x6HfPkT0cb7lTDnaIgis+LR02pH/UewW2ldcZ+MQw2P3PnO848vNBUP11pC+aKvEdp1BTxwVUkDahrWSB43C5zQcjxaV+snGePPlb2eY96vhzJaOAuvpi1wXSomjnfIwMYHDcI7/ELkLu6Pr6Sgqp31cvVtcwBp3ScnPgF5iqDtip9hkuaqbh3OtPpKjbBI6KaqfIGktaMHJxwHJRKopaqnANRTTQh3LfYW5+NaK2c6J1NcqyxajpLZ1tqfUw1An6+MZjEgJO6Xb3YeGMr39NljGWjTW4xrc1E+cDH3rVp4hGmLXotfY44LucW7d/czAiIpxtCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgJHoKIPuU0xGeriwPAk/4FWJp63m63+32zLm+V1McJc0cWhzgCfVnKr7Z/IBW1MWeLow4eo/4qxNL3P6jajt11LXObS1LJXNbzc0EZA9Iyvo+H/C+r36kHN1+p9bt0NM6nventm2iDWVDRT0FEwRQQs4ukd2NHe48yT4krLWsekFrq81T/qVUx2WlydxkDQ5+PFx5/Epj0yrzHcrXpF1uqWz26p8onD2HLXOHVgesBzuHiVnBfPSb31L+1roTJu1LaE2XrBqu473wh7MKRWzbfqSWmbbtWUtHqO2n3bKhm5KOzea9vuXYzxCqtF4pNPaPH1WmbO0bte2eU2zeWst0vkTLVTZdb5MCYuJwAPwi5x913nisma41NctX6nrL/dZN6oqXcGg+bGwe5Y3wA+lcREcm3tjstIIikOndOurmCqqy6OA+5aPdP+gLpTTO6XLBHO22NUeaTI8is2ltlvpWgQ0cLcdpbk/GeK9DoYnDDomEdxaFTXCJa6y/YnPikd9IlVIrEuFhtlWw5p2wvPJ8Q3T8XIqG3qz1Vrl+yDfhJwyUDgfA9xWPJwbKFt9UasfMruel0ZzURFjNZbA5LQ+wLhszqD/vU3zWrO7fcj0LRGwXhswnP+8TfNavpOJ+4+5C4X75+RiBEXQ07GyW9UscjGvYX8WuGQeBXzsI88lH5lucuWLl8jnorO+ptu/0Cl/oW/QvNqvZPqy2acqNYy0dKyyljKhjmTt3hHIRu+aOP3w4LXlYUseKbe9mXGy1kNpLWiukReq0ta+60jHtDmunYCCMgjeHBZIrmaRrk9Js8qKzvqbbv9Apf6Fv0L5vuyXVj7FVawpaKkbZWU5qQ5s7WkRtbx83n2HgtmVgyx4qTezJjZivk4paKzU20D9qpvx5+a1cDSEUU17ZHNEyRm47zXtBHLxU9gggp2lkEMcTSckMaGgn1LVwvHbfpd/QzcSvSXotfUnmwv7p9r+DN+heo70zfuqUP5mi/TTLwUNZV0FU2qoaqelqGZ3ZYZCx7cjBwRxHA4X8uVnvmv69lvikdcrzOzq6eWrm3nBrMvLd954DAccZ7T3rRxDEdrdifZf0OWDlqtKrXd/1KhRSLX2jb5oe8xWm/wAMUVVLTtqGtjlDxuFzmg5Hi0poengqKyobPBFKBGCA9gdjj4qJTU7bFBeJWus9FBzfgS/S23XXGm9P0VjtwtfklHH1cXWUxc7Gc8Tvcea4m0nabqXaBT0cF/FFuUb3Pi8nhLDlwAOeJzyXbgsNPcZmW+joKTymqcIYcxtHnuOG8ccOJCj20LZxqnQkFJNqKlghZVuc2IxztkyWgE5xy5hdsrFljtJvezljZKyE2lrRD0RdfT9kmujzI5xip2nBfjiT3BZ665Wy5YrbO1lka480n0OQisiis1tpGgR0kbnD7543j8q9vVRYx1bMd26FVjwiTXrSJsuKRT6RKqRWTWWe21bSJaSME/fMG674wohftP1FuzPDvT0o5vxxZ8L6VlyOH2ULm7o0UZ1dz5ezOKiIsJtCKwLDQUMlmpXyUVM97owS50TST8i/S7aRkulufW0DaGkgpHtbO5xDHOL87oa0cXHzXcBy5nA4qjLh01X6RPfbp5mCOfB2cjWu/wCxXaKxbZY7fQsG7C2WTtkkGT6u5e98ED27r4Y3DuLQV2hwibW5S0zlLikE/VjsqtFOrxpqkqoy+ja2mn7McGH0js9ShldSVNDUup6uF8MrcHdcOYPIjvB7wsOTizx3qRsx8mF63E/BEX60sEtTUMghbvSPOGhZ0m3pHdvS2z8kU6tWmaKmYHVTRUzdufcj0Dt9a7MVNTxDEcETB3NYAqlfCbJLcnom2cThF6itlWIrUkggkGJIY3juc0Fc6t09aqlp/a4hcfvovNx6uXyL9T4RNL1ZbPIcUg360dFeIu3e9O1VvY6eNwnpxzcBhzfSP1riKZbVOqXLNaZQrtjZHmi9hERczoEREB7LNXOt9xiqgCQ04e3vaeasimniqYGTwvD43jIIVVqSaE1DS2a5Nju1LJW2qU4miY/dezs32HscO48D2jgMUMHN/T+rLszDmYfp/Wj3JhXwx11CKGqDpacPMjYy44a4gAuHccADPgo/VaRo3kmnqZYj3OAcP1K7LRs/09qygFw0XrGmqWPaC2mq2bsjD3OLeIP81eG6bJtbUTvsduirWYyXU87T8jsH5FUdmHkdZa/oT1VmUezv+pR1TpKvjBMEsMw7s7p+Xh8q41ZQ1dG7dqqeSLuJHA+vkrduloutqeGXO21dGScDr4XMz6MjivBLGyVhjkY17DwLXDIK5WcLqmt1vX7o/cOI2werFv8AYqlFLbzpGoeyorLRE+aOFhlmgaCXMYObh3gZ49o8eOIkot1MqZuEu5XqtjbFSie+w0Qr7rDTuHmE7z/gjifo9asloDQGtAAHAAdihegGA3Gok7WxY+Mj6FY2l6WKu1Na6KZu9FUVkMTx3tc8A+1XOGQUKHP5/wBiNxGTncofL+5Z2zbZHHcrbDdtSyTxMmAfDSRHdcWdheeYzzwOOMcewSHUOhdlVthdDcKmK2SOGA91e4Pb44cSPjC9vSA1xLoPQD6u37rbjVyClo8jgwkEl+PAA+vCxDca6suVbJW19VLVVEp3nySuLnOPpKlWZt0pb5tFWGJTCPLypl6a207RWadk9nvNNeLbM4iOaFwLozz3X44ZxyPbg8Aubpx1tddoaW8wMntdU4QVbHkDDHcN8HsLfdAjuxyJVW6PqJIb7C1riGygseM8xjI+UBWArOHb+qoan5EfKrWNenDzIxtf0NV6B1jPZ5XOlpXjraOcj90iPL1jkfQoctTdKS2x3vY9p3VQYPKKbqHOdjj1c0YyP+bcWWV83Jcr0fQb31Ra7fcj0LRGwnhsunP+3n9gWd2+5HoWiNhnDZXMf9tP7AvouJ+4+5D4X75+X+DEC6Wmft9SfD/UVzV0dM/b6k+H+oqDR72Pmivd7uXkyx1eO1b+Cw/81UXzolRyvHat/BYf+aqL50StcW9iJL4V7cvIxsvXZvtvRflEfzgvIvVZ/ttR/j2fOCh1+2vMrWewyzlflZ/BfrvzFUex6oNX5WfwX678xVHservFvdx8yRwr3kvIxpbq2agqhUwbu+AQN4ZHFWVZ6htbpm31r9zymR0om3T3OwOGeHBVYproH7Vz/jz80LFwyyXpVDfTqauIwj6Jy11LL2WWah1BreitVyjdJSytkL2teWnzY3EcR4gK7KDSmz7R9/p65tTHRV8LS+IT1h5ODmk4J48CVU2wYZ2mUB7opv0blGemYf8A1VovzPF+lmXXid042cqfTR+eG1QdXM112fh0vbhQ3LaXQT2+rhqom2iJhfE8OAd1sxxkekKv9n/79qfxY9qjKk2z/wDftT+LHtWPB+IiaM33EiydFe/KyfnCD9I1THpufajTX5RP81qh2ivflZPzhB+kapj03PtRpr8on+a1bOL+1EzcK9iXmZjpYX1FTHAz3Ujg0esqz6OnjpKWOniGGRtwFAdJMD9QUoPIFx+JpVhrrwitckp+PY4cUm+ZQ+5Y+yvZm/VVKbtc6mSltm+WRiIDrJiOZBIwADwzg8QVYly2c7M7VTZuTW0wwT1k1c9p9PusfIuvertSbPtkxuTmb8dst7Axp4dZJgNaD8JxHxrDeqtRXjU93lul6rpaqokcT5zvNYD960cgPBYcjOtnNtS0ihTh1VwScU2XvrvS1hoYTcdKahprtRtOJoRM10sOeR4e6b2csjhz5iIUc5pqqOcRxy7h4xyN3mPHa1w7QRkHwKqq2VElLcIJ43FrmPHEHGR2j1jIVnqpw/IlfW4z66JefTGmxSh02eLbjs/g0rPb7/ZBI7T15jE1LvcTA4tDurcfQeHoPcq0Wtr1avrl6Ks7Jx1k1BBLUwuI4t6mRx4fzAW+grJKgXQ5LHH5Mt1y54KXzRZOnftHR/igpVovTtfqm+xWigc1hcOslkd7mNg5uI7eeAO8qK6d+0dH+KCvToxRMNVfpi0b7WQNB7QCXk/NC+kna6sVTXfSIFdStyeR9tskFn2RaStlDK++PfWOD3HrZJzE1jM8PckcccSoxqfRezmqjki07qmjpLi0EshlrA+N5HHBzxHpyfQVWHSj17c7zrms0zTVckVptjhEYmOwJZceeXd+CcY8FTChLNvUt8zLcsWhrl5UW3URSQTyQSt3ZI3FjxnOCDgqWR6Pg2ibMLhHDEPrh0/59JIBxmhcC4ROPbxa/HdwCrvScz5rDTmRxcW5ZknsBwB8WArv6M8+7qK7UnH7JSNkx8F4H/erOZq7E539GSMPdWVyeaMnEEHB4FSbQFO19TU1ThkxtDW+vOfZ8q+9r1qZZdp2orbE0Nijr5HRtHJrHnfaPUHBfez6RuKuHPnea4ejiPoUjh6TyI7/AJ0Kec2qJaLB0hYqnUmoqSzUr2xvqHHekcMhjQCXOx4AH0nAV/UmzTQViofKLhStnETfslRWznB9IBDfkVFbP9QnS2q6S8GF00Ue8yaNpALmOBBxntHP1L+dJTVdfra52+l0++okskNMHyRk7hM5cchzSeOAG45jiVS4i8jmSr3r6GHh/wCnUW5639SzLzU7A5pTFJc7VDJ7nepqpzQ34ju/GFGbloCz3OndV6D1RRXto/8AaumYJSPBwwHHwwFnKSz3SMedQTn4LM+xfjE+ut1S2aJ1RSTsOWvaSxw9B5qdDKyaXt7+5vnRj3LWl9jauzDZlQW3T8z9S0FPWVtezEsMrA5sEfMM+F2kjwA5ZOXNuVBo+16+q6DRr5HUkPmTt3t6NkoJ3msPMgcvSunQ7cNd0+kKvT0leKjrmdXHWP8A3eFp5gO7eHDPMKsiSSSTknmVmutlbJyl3O9dca4KEex/ERFyP2EREARfcEUs8zYYWOfI44a0cyv49rmPLHtLXA4IIwQvdPWzza3o/Sjq6qinE9HUzU0o5PieWOHrCnFg2w7RLMGsp9RTzxt5R1IEg+M8flUBReHpe1s6Sd+fAaXUOnrXdKeQbsrQCwOHblpyCubd9RaR1FVeWabpKi2Suy6ooJuLWH8KMjhu57M8OGOHKm1ItBxPddZJgDuMiIJ8SRgfIVuwLJxuik+5kzoRlS3LwLP0RXG26utdYMbrKljZARkFjjuvGPFpIXG6TehKbRut2VNshEVsurHTQxjlG8Eb7R4cQR6V7bDTuq75QUjc701THGMd7nAfrVl9NWmjdoWy1ZA6yO59W0+Donk/MC18XS5oszcKb5JIzts//fdV+LHtVlaF9+9h/OVP+laqy0A8C41Efa6LPxEfSrF0zVxW/Ulsr5jiKmrIpnnGcNa8E+xasDri6X1MuZ0ytv6Ey6b0jhSaWiB810lS4jxAjx7SsyLTPTdG/S6UkbxZvVXEcuIix7FmZfOvuX33Olpn7fUnw/1FWMq+0hC6a/QEDhGC93gMfSQrBX0HCU/Qt/UhcTf/ACpfQuzbExr+isM/e223kf8APCsdraG3mm+p3RsrKF3OnpKKH1tliH6li9QrXubZbitRSLXZ7gehaI2H8NlEx/2s/sWd2e4b6FojYj9yef8AGVHsV/ifuF5kThfvn5f4MQLo6a+3tJ+M/Uucvfp527fKMn/9UD4+Cg0e8j5osXe7l5MslXjtW/gsP/NVF86JUcrr2k1EVX0U5ZIHh7W26ljJHY5ksbXD1FpVri3u4+ZK4V7cvIx4vVaPttR/j2fOC8q9llY594o2tGT1zD6gQVDq9teZWs9hlmK/Kz+C/XfmKo9j1Qavys/gv135iqPY9XeLe7j5kjhXvJeRitTXQP2sn/Hf9oUKU10B9rZ/x3/aFP4Z8QvubOI+4ZcOwMZ2lUfhDN8wqKdMo52rUnhaIf0sqlmwH7pFN+Il+aoj0yD/AOq9N4WmH9JKv3xX332HDfcfcpZSbZ/+/an8WPaoypNs/wD37U/ix7VnwPiInTN9xIsnRXvysn5wg/SNUx6bn2o01+UT/Naodor35WT84QfpGqY9Nz7Uaa/KJ/mtW3i/tRM3CvYl5md9G++CD0P+aVYCrzSbwzUFKTyJc342lWGtPCX/AML8/wDBl4mv+VeX+S8OlRI5mw8tacCSema7xGc+0BY3WuukdWsuvR5o7jDxZK+kkPHO6TwIPoPBZFUCa1Jpl3e1tH3D+6s+EFaqq+2wuqLhBC0ZL5Gj5VaCtcIT5ZvyI3FX1ivM0DoBjZOj9Vxu4tdR1oPxyLEy3BoiF9LsBl65u4XW+rl4/gkyEH4sFYfUvKe7pebKtC1TDyX9CydO/aOj/FBXv0YP3XUHop//ACKiNO/aOj/FBXv0YP3XUHwaf/yK5k/BfZf2IuL8Z93/AHM1bYc/5VNUZ/jWo+eVFFLNsX3VdUfnSo+eVE182Xif6L+0EXw3e1XT0az/APPNaP8A9sf+liVLaM+0EPwne0q6OjZ7+q382SfpYl9JL4H7Igw+N+5T/SYYGbcNRhowN+A/HTxlQK1101vrG1MGMjgWnk4doU/6Tn3ctRemn/s0SrYceS+djJxltdy7KKkmmXNpW0XPVFkddbHSOro4yRPFCQ6WF3cWe6OeYIBB9OQlbaLtQtLq211tM0czNTuYPlCrPR+qb7pK6i52CvkpKjG67d4te3ucORCuywdJ+7QxNjvWnqapcBxlgkLCf5p+lVIcWml6y2TpcLrfstoiK+ZY45WFkrGvYebXDIKtAdJTR9bF1Vz0pXPDhh4c2KRvxE8VEdX6k0DqaWOs0jTT2+rB/bNI6EtjLccHtx5rcYwQOec9+dmPxGF0+Rx1syX8PlTDnUt6+xXF20bVVInqbHTvn6lhlmp2AlzWDm5veBniOz0ZxDjwOCtBbJJjBtHsrwM705jPDsc0tPyFRTpRaQpNK7RjLbYRDRXSHypsbRhrH7xDwPDOD/OU3iNEarfV7MoYFsrKty8OhVCIinm0IiICcaOtkNPRtrXOZJNMOBachje7096991s1DcvOmjLZcYEjDh3+Kimi7zS2e9RTXKnnq7cSRPBFLuOIII3geWRzHfjB4K7rXoul1TQG46FvtJd4wMvpJiIamI9jSDwJ8chXcXKxpVKqa15kbIxshWOyD35FNVWkathzTVEUo7nZaf1ryHTF3zjqYz49YFblw0bquglMdTp65Ajm5lO57f8AmbkfKuebNdw/cNqrt7u8nfn2Lo+H4suqf7n4Wbkx6NfsV9R6Rq3uBqqiKJvaGZcfoUqttBTW+mEFMzDeZJ4lx7ypPbtG6ruEojpdPXFxIyHPgdG3/mdgfKp/o/YtcJp46jU1THS04w400Dt+R3e0u5N7OW928ua/cI4uJ1T6/ln4l+qyujXT8I5mwPS8t21O2+TxftG2u3g4jg+bHmgejO94eb3rz9Ni8xeS6f0+x4MpkkrJG/ggDcafXl/xK5dR3/SmzTSQfUvhoqOmjxT0zD58p7mjm4k8yfElYi2i6sr9a6trNQXDzXTHdiiByIox7lg9HtJUbLyHfPm8CzjUKivl8Tl2Ks8gukNQc7gOH/BPAqyWuDmhzSCCMgjtVUKV6HvEQqorXcatlPTyHdiqJAd2InkHEcQ3x449HLTw7MjTuE+zMmdiO3U4d0WBry81Ordn9Fp+ubvVtrmD6KqJ91Hu7pjf6sYcPwQCO1VjHpW6OeGuELG9ri/PsVt3HRmp6INkfZqqeF43o56ZnXRvb3hzMjB8Vz47HepH7kdouD3fgtpnk+xb5YWLa+dP8MxRy8mtcrX5RHbDaIbVC4Nd1kz8b7yPkHgp1sw05LqXWFHSdVv0kTxNVuLctEbTkg/C9z6/Be/TGy7Vt6ljMtA620zj501WNwgZwcM90TzxwAPeFeulNOWHQVgm6uVsbAOsq6ycgOfgHiT2AccDs9JJPmRlVY9fo6u/9D94+LbfZ6S3t/Ur3phXeOh2XxWzf+y3GtjYG97GZeT6iG/Gseqx+kDtA+v3WjpaNx+pNADBRA/fjPnSY/lED1AKuF88y4y06ORs1JDK05a9gcPWFamy/aJbdPaVrLFdYKk773vglhaHAbzQN1wJB5jOePNUJou8ND4rTUua3ffuwyOdgAk8GknkM9p4DtwFZFRpDVUEpjk07dSR2spXvafQ4Ag+or6WNlOXUlJnzzhdi2uUUUxd7bPbKhsFQ6NznM3xuEkYyR2gdy8sMjopmSs90xwcPSFrjZXsw09edOVNXrDS7n18dU6OLypkkburDGEYGRwyXcfSsjzACV4HABxAUDIhGu1qHZFumUp1Jy7stCjnZVUsVRGcskaHBSi3anlZoa86Or2OnttxheInA+dTy4y1wB4Fu8ASOHafTUek70KGYUlU/FLI73eCerJ7fR349StKo0tqGKKOdtpqqinlYHxVFNGZontPIhzcj9avV305dXLPv8iJOm7Fs5odiqjpa6h+7uwkfhdZw+ld/Tmn226Tymoe2Soxhu77lnf6SppQaZ1FXTNhpLHcZXOOOFO4AekkYHrVnWDZM6h0hdrlfKc1N1NDMaSjiJd1T+rJb7n3T84wBkelcvQYuNJS3t+HU7KzJyU460vHoU0r8rP4L9d+Yqj2PVJ0ljvVXV1NHSWe4VFTSFoqYYqZ7nwl2d3faBlucHGeeCrxvFNU0fRouVNV08tPPHY6gPjlYWuad13Ag8QvzxScZVrT8T9cLjKM5bXgYmUx2fyA0lVFni2QO+Mf4KHLoWG5vtdcJg3fjcN2RvePDxUvDuVNylLsb8up21OK7l0bPNQt0vq2jvEsT5oY95srGY3i1zSDjPaM59S4fSRuVNq3VjdS2vfbRw0MUDmzt3ZN4PdngMjHnjt717LPZbvebRDdrTbKuvo5iQ2SmiMu64c2uDclp8DhSbZ9oaqumr6Gg1Lpqvdapes68VFNJGzhG4ty7Ax5wb2qzl1UXQdm+qXzJeLZfVJV66N/IzipNs//AH7U/ix7VMulHpmxaV2gUVu0/bo6Clktcczo4ySC8yygu4k9jR8ShGh6inp6uodUTxQgxgAveG54+Kj4LSyI7KmYm6ZJFnaK9+Vk/OEH6RqmPTc+1Gmvyif5rVH9A2K91N/sdzprPcZqF1bBIKmOme6IsEgy7fAxjgeOVIOm59qNNflE/wA1q2cVkpSjpmbhkXGEtozHTSvgqI54z50bg4ekFWdRVMdXSR1MRyyRuR4eCq1dvSt5+p1W2Gpc80Ujvsm6Mln8oDt9HauHD8tUSal2Z0zcV3RTj3RbL9Qy1Ozu6aJrozLQ1Q6ymkB86mlDg8YHa0uAyOHMnwNTnS11393dhxn3XWcFbb9IX99vhuVvonXW3zgGKqoPszHDGeQ85vd5wHFeA2S8h+59SK/e7vJn59iqWYuNe+ff4ZPhk5NK5NdvmiJ6d0+y2v8AKJpBLUYwMDzWd+O/0qVWG11d6vFLaqFm9UVMgYzPId5PgBknwC7tg2d6vvMobDZp6aMnBlq2mFrfHzuJHoBV6bNtA27RlK+pklbVXGRpEtU5u6GN57rR2DvPM/IFmRTiV8lff+dz2rGuyrOazt/Ox49r1TS6R2IXiCF25HFbfIYMniS9oib6+OVhRXp0qNpVNqa4w6WslQJrbQSF9TKw+bNMBgAHtDQT6z4Ki187J7ey99EWTp37R0f4oK9+jB+66g+DT/8AkVDaQc2to6C3UbhU1sjA1lPEd+Rx7g0cSVobo6Wi7WqS+G52utoetEHV+U07o9/HWZxvAZxkfGvoMicXh6T8F/YhY0JLL3rxf9zL22L7quqPzpUfPKialm2L7quqPzpUfPKia+dLhP8ARn2gh+E75xV0dGz39Vv5sk/SxKlNFTwPtlLRMmjdVSSFjIQ4F7nF3ABvMk9gV+dH6xXu2ayq57lZ7jRQutz2NkqKZ8bS7rIzjLgBnAPDwX0Upx/Ra34IhQhL9ZvXiUh0nPu5ai9NP/ZolydH2YQRNuFS37K8ZiafvWnt9JXW6Tn3ctRemn/s0SjWhrxS0l0ipbzV1ENrfkPfFH1joiQcODcjIBwSBzGccVIw7K67eaxFTLrssrca2de76Zo6wulpz5NMeJwPNJ8R2epR6o0zdonEMhZMO9jx+vCu5+z29VVE25adlpdQW6QbzJ6KUE47nMJBB8BlcOfTuoIDiexXSL4dJIPaFXnjYmR60X+GS435VHqtfkqqHTd3kcAaYRjve8fTlSvTlmbaoXl7xJPJjecOQA7ApRBYL9P+42S5S/ApXn2BSjTeyrV13kY6ei+plM7BdLVndcB24Z7rOOwgekL2rGxsZ8/N1+rPLL8nJXJy9Poj+7CrVPcdoVJUMZmCha6eZ2DgeaWtHp3iPiPcvN03JIzetMwjHWNp6hzvQXMx7Cr60npyxaC0/M2OZrGAGWrrJyAX4HMnkAByH6ySccbd9aM1ztCqrnTOJoKdopqPPbG0nzvWST6CFJzchX2cy7FbEodFXK+5AkRFiNAREQBeu1XK4WqsbWWytqKOobykhkLXfJ2LyIgLi0r0iNdWhjIbh5Ld4mjH2du5If5w+hTmh6UdMYx5dpWVr+3qZwR8uFmRF7s92aiqelFaww+T6YrC7s6yZoHyKI6k6S2rK6N8VntlDbA7hvkmVw9GcAFUWibGzp6jv951HcXXC93Gorql2fOldnHgByA8AuYiLw8CIiAsDZ1td1jomJlJQ1jau3t5UtSN5rR/JPNvsVtW3pR05iH1R0tK2Tt6icEfLhZlRe7Pdml7r0o2dS4WvS7jIRwNROAB48Mqn9ou1HV2uT1V2ruqogctpKcbkfr/AAvWoQibGwiIvDwK3Nnm3vV2laCK21ccN5o4gGxtqHESMHdvjOR6VUaIDSX7KOUsw7SbASOOKo/Qs3vdvPc7lk5XyiAKwNme1vVmhGiloZ21duzk0dRxaPgnm1V+iA07RdKOjMI8t0tO2THEQzgtz68KOa06Sl/uVJLSaetkVqDxjyh79+QDwHIH41QqL3Z7ssrZDtbuOz6a8zi2Mu811fE+WSeoc1wLN/jnBznfPxKVav6Rlx1Fpa52KTS9JTsr6Z9O6VtU5xYHNIyBu8eaotF5sbCIiHhLtm20PUmgq989lqQYJSOupZRvRyeOOw+IVwU3SkrREBUaUgLwOJZVHB+RZxRNnuyb7Zdeu2iaop7263igMNG2l6sSb+d173Zz/P8AkUIREPC8ND9Ia4aW0lbtPxaZpallDD1QldVOaX8Sc43eHNRnbLtYq9pNJbqeps0FuFC97wY5y/f3gB2gY5KtUTZ7sIiIeEs2f7Q9U6HqTJY7g5sDjmSml8+J/wDN7D4hXPZulFI2FrbvpgOkA4vppuDvUeSzYi92e7NPV3SjohEfItLVDpOzrpwB8mVV20LbbrTV0D6I1DLXQP4OgpCQXDuc7mR8SrJE2NhEReHh3NB6ik0nq63ahipWVT6KXrBE5+6H8CMZ7Oau39lLdP8AVCj/AK47+6s7Imz3Z1NW3h+oNT3K+SQNgfX1L6h0TXbwYXOJxnt5rloiHh79O3J1nv8Ab7syITOoqmOoEZOA8scHYz2Zwr6/ZS3T/VCj/rjv7qzsibGyRbSNUS601pcNTTUbKOStMZMLHlwbuRtZzIGfc59ajqIgO7pHV2o9KVflNgu1RREnL2Ndlj/S08Crg0/0nNR00bY7zZKKvI4GSJ5iPxcQqCRNjZqOPpRWrc+yaYrQ7+TK3C5t06Uc5Y5ts0swOPJ09Ry9QCzci92z3bJrtB2oav1v9iu9w3KMHIpacbkfrHb61CkReHgREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQH//Z";
 var FAVICON_SVG = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#2B4C7E"/><path d="M16 28 Q24 24 32 28 Q40 32 48 28" stroke="#B8C7DB" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 34 Q24 30 32 34 Q40 38 48 34" stroke="#CBD5E1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 40 Q24 36 32 40 Q40 44 48 40" stroke="#E2E8F0" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>');
 var COUNTRIES = ["United Kingdom","United States","Germany","France","Netherlands","Ireland","Spain","Italy","Belgium","Switzerland","Canada","Australia","Japan","Singapore","Hong Kong","UAE","Other"];
-var EMPTY_ADDR = { street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
+var EMPTY_ADDR = { addressLine1: "", addressLine2: "", city: "", county: "", country: "United Kingdom", postcode: "", primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
 
 var SUPPLIERS_DB = [];
 
@@ -221,6 +221,484 @@ function isBuyerPaused(buyerId) {
   return b ? !!b.paused : false;
 }
 
+// Determines whether Pelagic has economic exposure to an invoice. Used as
+// the single source of truth for splitting payment/CN allocation flows
+// between funded-recovery (Pelagic recovers capital/interest) and
+// pass-through (collection agent for the supplier, no Pelagic exposure).
+//
+// An invoice is "funded" iff Pelagic has actually advanced capital against
+// it — either capitalDue is positive (capital still outstanding) OR
+// fundedDate is set (indicating capital was advanced at some point even
+// if now fully repaid). This bypasses the lifecycle-status string entirely
+// and gets the economics right for transitional states like
+// purchased-but-not-yet-funded (which is economically a pass-through).
+function isFundedInvoice(inv) {
+  if (!inv) return false;
+  if ((inv.capitalDue || 0) > 0.01) return true;
+  if (inv.fundedDate) return true;
+  return false;
+}
+
+// Returns true if the given entity has KYC marked passed. Null-safe across
+// entity shapes. Suppliers and buyers gate unpause on this; service providers
+// carry the same field but don't gate. Branch entities don't have their own
+// KYC — they inherit the parent supplier's KYC state.
+function kycIsPassed(entity) {
+  if (!entity) return false;
+  return !!(entity.kyc && entity.kyc.passed);
+}
+
+// Inspects the audit log to determine *why* and *when* the entity was most
+// recently paused, and by whom. Used by the entity-detail Pause banner to
+// give operators a clear "why is this paused?" answer without making them
+// dig through the audit tab themselves.
+//
+// Returns { pausedAt, pausedBy, source, context } when paused, or null when
+// the audit trail shows the entity is currently unpaused (or no pause events
+// exist). source is one of:
+//   "auto_program_add" — last pause came from first-program addition
+//                        (Supplier/Buyer Added to Program with forcePaused).
+//   "manual"           — last pause came from the Pause toggle.
+//   "unknown"          — entity.paused is true but no matching audit entry
+//                        was found (legacy data, or audit not yet hydrated).
+function getPauseContext(entityId) {
+  if (!entityId) return null;
+  // Walk audit entries newest-first. Stop on first event that touches pause
+  // state for this entity — its kind determines our answer.
+  for (var i = AUDIT_LOG.length - 1; i >= 0; i--) {
+    var e = AUDIT_LOG[i];
+    var ctx = e.context || {};
+    if (ctx.entityId !== entityId && ctx.supplierId !== entityId && ctx.buyerId !== entityId) continue;
+    if (e.action === "Entity Unpaused") return null;
+    if (e.action === "Entity Paused") {
+      return {
+        pausedAt: e.timestamp,
+        pausedDisplay: e.displayTime,
+        pausedBy: ctx.userEmail || ctx.userName || "unknown user",
+        source: "manual",
+        context: ctx
+      };
+    }
+    if ((e.action === "Supplier Added to Program" || e.action === "Buyer Added to Program") && ctx.forcePaused === true) {
+      return {
+        pausedAt: e.timestamp,
+        pausedDisplay: e.displayTime,
+        pausedBy: ctx.userEmail || ctx.userName || "unknown user",
+        source: "auto_program_add",
+        context: ctx
+      };
+    }
+  }
+  return null;
+}
+
+// ======== Entity files (Supabase Storage) ========
+// Files for suppliers/buyers/service_providers live in the entity-files
+// bucket (private, signed URLs only). Each entity row stores metadata
+// only — fileName, label, notes, storagePath, uploadedAt, size, uploadedBy.
+// The storagePath is the bucket-relative path; we hand it to signed-URL
+// generation when the user wants to download.
+
+var ENTITY_FILES_BUCKET = "entity-files";
+var ENTITY_FILES_MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
+
+// Sanitise a filename for use in a storage path. Strips characters that
+// confuse signed-URL generation or the Storage API (slashes, control
+// chars, leading dots) and trims to a sensible length. Preserves the
+// extension where possible.
+function sanitiseFileName(name) {
+  if (!name) return "file";
+  // Strip path separators, control chars, and other weirdness.
+  var cleaned = String(name).replace(/[\\/\x00-\x1f\x7f]/g, "_").replace(/^\.+/, "");
+  // Collapse runs of whitespace; replace spaces with underscores for URL friendliness.
+  cleaned = cleaned.replace(/\s+/g, "_");
+  // Cap length so the full path stays comfortably under any backend limit.
+  if (cleaned.length > 120) {
+    var dot = cleaned.lastIndexOf(".");
+    if (dot > 0 && dot > cleaned.length - 12) {
+      var ext = cleaned.slice(dot);
+      cleaned = cleaned.slice(0, 120 - ext.length) + ext;
+    } else {
+      cleaned = cleaned.slice(0, 120);
+    }
+  }
+  return cleaned || "file";
+}
+
+// Build the storage path for a new entity file. The UUID prefix prevents
+// collisions when the same filename gets uploaded twice. Path shape:
+//   {entity_type}/{entity_id}/{uuid}-{filename}
+function makeEntityFilePath(entityType, entityId, fileName) {
+  // Tiny v4-ish UUID; not crypto-grade, just unique enough for filename collisions
+  var uid = "xxxxxxxx-xxxx".replace(/[x]/g, function() { return ((Math.random() * 16) | 0).toString(16); });
+  return entityType + "/" + entityId + "/" + uid + "-" + sanitiseFileName(fileName);
+}
+
+// Upload a file to the entity-files bucket. Returns a promise that
+// resolves to the storage path on success or rejects with a clear error.
+async function uploadEntityFile(entityType, entityId, file) {
+  if (!file) throw new Error("No file provided");
+  if (file.size > ENTITY_FILES_MAX_BYTES) {
+    throw new Error("File exceeds " + Math.floor(ENTITY_FILES_MAX_BYTES / (1024 * 1024)) + " MB limit");
+  }
+  var path = makeEntityFilePath(entityType, entityId, file.name);
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+    contentType: file.type || "application/octet-stream"
+  });
+  if (res.error) throw new Error(res.error.message || "Upload failed");
+  return path;
+}
+
+// Generate a short-lived signed URL for downloading a stored file. Default
+// expiry 60 minutes — long enough to click-and-fetch but not lingering.
+async function getEntityFileSignedUrl(storagePath, expirySeconds) {
+  if (!storagePath) throw new Error("No storage path");
+  var ttl = expirySeconds || 3600;
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).createSignedUrl(storagePath, ttl);
+  if (res.error) throw new Error(res.error.message || "Could not generate download link");
+  return res.data.signedUrl;
+}
+
+// Delete a stored file. Idempotent — non-existent paths return success.
+async function deleteEntityFile(storagePath) {
+  if (!storagePath) return;
+  var res = await supabase.storage.from(ENTITY_FILES_BUCKET).remove([storagePath]);
+  if (res.error) {
+    // Don't throw — caller still wants to remove the metadata row even
+    // if the storage object is already gone (manual cleanup, retention
+    // expiry, etc.). Just log so it shows up in console.
+    console.warn("[deleteEntityFile] Storage delete failed:", res.error.message, "path:", storagePath);
+  }
+}
+
+// ======== Schema mapping helpers (Stage 3) ========
+// All Supabase rows use ID-based columns: supplier_id (parent only), supplier_entity_id
+// (parent or composite "SUP-001:BR-001"). supplier_name / buyer_name no longer exist.
+// In-memory keeps supplierName / buyerName as denormalised display fields, populated
+// from SUPPLIERS_DB / BUYERS_DB at load time.
+
+// Resolve a (parent supplier ID, entity ID) tuple from a supplier_id-shaped value
+// that might be either a parent ID or a composite. Returns { supplierId, entityId }.
+function resolveSupplierIds(rowSupplierId, rowSupplierEntityId) {
+  // Prefer the explicit entity_id column when present; fall back to supplier_id when
+  // the entity column is missing (legacy data, optional columns).
+  var entityId = rowSupplierEntityId || rowSupplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  return { supplierId: parentId, entityId: entityId };
+}
+function resolveBuyerIds(rowBuyerId, rowBuyerEntityId) {
+  var entityId = rowBuyerEntityId || rowBuyerId || "";
+  var parentId = entityId.indexOf(":") > -1 ? entityId.split(":")[0] : (entityId || "");
+  return { buyerId: parentId, entityId: entityId };
+}
+
+// Format an audit log timestamp for display, mirroring the formatter used by
+// _auditLog at write time. If the row's context carries an asOfDate (entries
+// recorded under a scrubbed As-Of date), the display uses that instead, with
+// a " (as of)" suffix — preserving the legacy displayTime semantics.
+function formatAuditDisplayTime(createdAt, ctx) {
+  ctx = ctx || {};
+  if (ctx.asOfDate) {
+    var asOf = new Date(ctx.asOfDate + "T12:00:00");
+    return asOf.toLocaleString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    }) + " (as of)";
+  }
+  if (!createdAt) return "";
+  var d = new Date(createdAt);
+  return d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+  });
+}
+
+// Build an audit_log INSERT row from an in-memory entry. Pulls explicit ID columns
+// out of the JSONB context so RLS can match them directly. The DB fills created_at
+// itself (DEFAULT now()), so we only override it for As-Of entries that need to
+// carry their original recording moment if present.
+function auditEntryToDbRow(entry) {
+  var ctx = entry.context || {};
+  var row = {
+    event_type: entry.action,
+    details: entry.details,
+    context: ctx,
+    actor: ctx.userEmail || ctx.actor || null
+  };
+  // Entity scope columns (all nullable in the schema)
+  if (ctx.supplierId) {
+    var s = resolveSupplierIds(null, ctx.supplierId);
+    row.supplier_id = s.supplierId || null;
+    row.supplier_entity_id = s.entityId || null;
+  }
+  if (ctx.buyerId) {
+    var b = resolveBuyerIds(null, ctx.buyerId);
+    row.buyer_id = b.buyerId || null;
+    row.buyer_entity_id = b.entityId || null;
+  }
+  if (ctx.invoiceId) row.invoice_id = ctx.invoiceId;
+  return row;
+}
+
+// Build an in-memory audit entry from a DB row. The shape matches the legacy
+// in-memory format exactly — { timestamp, displayTime, action, details, context }
+// — so the seven UI render sites need no changes.
+function auditDbRowToEntry(row) {
+  var ctx = row.context || {};
+  return {
+    timestamp: row.created_at,
+    displayTime: formatAuditDisplayTime(row.created_at, ctx),
+    action: row.event_type,
+    details: row.details,
+    context: ctx
+  };
+}
+
+// Pack an in-memory SPQ entry into the new schema shape: 14 explicit columns
+// plus a metadata JSONB carrying every legacy field. Inverse of unpackSpqRow.
+function packSpqRow(item) {
+  // Compute the parent + entity IDs from whatever the in-memory entry has.
+  // After Stage 3, item.supplierId is always parent (no colon); item.entityId
+  // (if present) is parent-or-composite. During the transition, supplierId may
+  // still hold a composite — handle both.
+  var entityId = item.supplierEntityId || item.entityId || item.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  // Defensive fallback: if no supplier resolved from the SPQ entry's own fields,
+  // walk to the invoice (single or first of bundle) and use ITS supplierId. The
+  // DB column is NOT NULL so sending null would reject the upsert. Without this,
+  // bugs that fail to populate supplierId at SPQ creation time become silent
+  // bundle-NOT-NULL violations at save time. Logged so the bug remains visible.
+  if (!parentId) {
+    var fallbackInvId = item.invoiceId || (Array.isArray(item.invoiceIds) ? item.invoiceIds[0] : null) || item.sourceInvoiceId || null;
+    if (fallbackInvId) {
+      var fallbackInv = INVOICES_DB.find(function(x) { return x.id === fallbackInvId; });
+      if (fallbackInv && fallbackInv.supplierId) {
+        var fbEntityId = fallbackInv.supplierId;
+        var fbParentId = parseEntityId(fbEntityId).supplierId || fbEntityId;
+        console.warn("[packSpqRow] Falling back to invoice supplier for SPQ " + item.id + ": " + fbParentId + " (entry had no supplierId — investigate creation path)");
+        entityId = fbEntityId;
+        parentId = fbParentId;
+      }
+    }
+  }
+  return {
+    id: item.id,
+    type: item.type,
+    status: item.status || "Pending",
+    amount: item.amount,
+    currency: item.currency,
+    date: item.date || null,
+    supplier_id: parentId || null,
+    supplier_entity_id: entityId || null,
+    invoice_id: item.invoiceId || null,
+    invoice_ids: item.invoiceIds || [],
+    source_invoice_id: item.sourceInvoiceId || null,
+    source_payment_id: item.sourcePaymentId || null,
+    funding_program: item.programId || item.fundingProgram || null,
+    metadata: {
+      programName: item.programName || null,
+      bankName: item.bankName || null,
+      bankDetails: item.bankDetails || null,
+      hbPaymentId: item.hbPaymentId || null,
+      isBundle: !!item.isBundle,
+      holdbackIds: item.holdbackIds || [],
+      grossAmount: item.grossAmount != null ? item.grossAmount : null,
+      deductions: item.deductions || [],
+      deductionTotal: item.deductionTotal || 0,
+      notes: item.notes || [],
+      createdDisplay: item.createdDisplay || null,
+      executedAt: item.executedAt || null,
+      executedDisplay: item.executedDisplay || null,
+      cancelledAt: item.cancelledAt || null,
+      cancelledDisplay: item.cancelledDisplay || null,
+      failedAt: item.failedAt || null,
+      failedDisplay: item.failedDisplay || null
+    }
+  };
+}
+
+// Inverse of packSpqRow. Reconstructs the in-memory entry from a DB row,
+// pulling stuffed fields back out of the metadata JSONB. Resolves the
+// supplier display name from SUPPLIERS_DB.
+function unpackSpqRow(row) {
+  var meta = row.metadata || {};
+  var ids = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  return {
+    id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+    supplierName: getEntityDisplayName(ids.entityId),
+    supplierId: ids.entityId,            // composite when branch, parent when not — preserves prior in-memory shape
+    supplierEntityId: ids.entityId,
+    supplierParentId: ids.supplierId,
+    bankName: meta.bankName || null,
+    bankDetails: meta.bankDetails || null,
+    amount: parseFloat(row.amount) || 0,
+    currency: row.currency,
+    status: row.status,
+    programId: row.funding_program,
+    programName: meta.programName || null,
+    hbPaymentId: meta.hbPaymentId || null,
+    sourceInvoiceId: row.source_invoice_id || null,
+    isBundle: !!meta.isBundle,
+    holdbackIds: meta.holdbackIds || [],
+    grossAmount: meta.grossAmount != null ? parseFloat(meta.grossAmount) : null,
+    deductions: meta.deductions || [],
+    deductionTotal: parseFloat(meta.deductionTotal) || 0,
+    notes: meta.notes || [],
+    createdAt: row.created_at,
+    createdDisplay: meta.createdDisplay || null,
+    executedAt: meta.executedAt || null,
+    executedDisplay: meta.executedDisplay || null,
+    sourcePaymentId: row.source_payment_id || null,
+    cancelledAt: meta.cancelledAt || null,
+    cancelledDisplay: meta.cancelledDisplay || null,
+    failedAt: meta.failedAt || null,
+    failedDisplay: meta.failedDisplay || null,
+    date: row.date || null
+  };
+}
+
+// Map an invoices DB row into in-memory shape. supplier_name/buyer_name no longer
+// exist in the schema; resolve display names via SUPPLIERS_DB / BUYERS_DB.
+// Used by both the bulk loader and reloadInvoices and reloadForSupplier.
+function unpackInvoiceRow(row) {
+  var sIds = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  var bIds = resolveBuyerIds(row.buyer_id, row.buyer_entity_id);
+  return {
+    id: row.id,
+    supplierName: getEntityDisplayName(sIds.entityId),
+    supplierId: sIds.entityId,
+    supplierEntityId: sIds.entityId,
+    supplierParentId: sIds.supplierId,
+    buyerName: buyName(bIds.buyerId),
+    buyerId: bIds.buyerId,
+    buyerEntityId: bIds.entityId,
+    amount: parseFloat(row.amount) || 0, currency: row.currency,
+    capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
+    interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
+    daysToMaturity: row.days_to_maturity || 0,
+    advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
+    invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
+    createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    settledDate: row.settled_date,
+    invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
+    fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
+    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+    buyerRef: row.buyer_ref, supplierRef: row.supplier_ref, buyerReceivedDate: row.buyer_received_date,
+    invoiceStatusHistory: row.invoice_status_history || [],
+    adjustments: row.adjustments || [],
+    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+    pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
+    tranches: row.tranches || [],
+    voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
+    notes: row.notes || [],
+    csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
+    intendedPaymentDate: row.intended_payment_date || null
+  };
+}
+
+// Pack an in-memory invoice into a DB row — drops supplier_name/buyer_name, adds
+// *_entity_id columns. Used by saveInvoice and the bulk savePersistedData path.
+function packInvoiceRow(inv) {
+  var entityId = inv.supplierEntityId || inv.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  var bEntity = inv.buyerEntityId || inv.buyerId || "";
+  var bParent = bEntity.indexOf(":") > -1 ? bEntity.split(":")[0] : (bEntity || "");
+  return {
+    id: inv.id,
+    supplier_id: parentId,
+    supplier_entity_id: entityId,
+    buyer_id: bParent,
+    buyer_entity_id: bEntity,
+    amount: inv.amount, currency: inv.currency,
+    capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
+    interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
+    days_to_maturity: inv.daysToMaturity || 0,
+    advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
+    invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
+    created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+    settled_date: inv.settledDate || null,
+    invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
+    funding_program: inv.fundingProgram || null,
+    partial_approved_amount: inv.partialApprovedAmount || 0,
+    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+    buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null, buyer_received_date: inv.buyerReceivedDate || null,
+    invoice_status_history: inv.invoiceStatusHistory || [],
+    adjustments: inv.adjustments || [],
+    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+    pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
+    tranches: inv.tranches || [],
+    voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
+    current_invoice_status: inv.currentInvoiceStatus || null,
+    disputed_date: inv.disputedDate || null,
+    notes: inv.notes || []
+  };
+}
+
+// Pack derived persisted fields onto an invoice row dictionary in-place.
+// Used by saveInvoice (inline) — kept separate so persistDerivedFieldsForInvoices
+// can reuse the same logic if it ever calls a row-builder.
+function attachDerivedFieldsToRow(row, inv) {
+  row.capital_outstanding = (inv.capitalOutstanding === undefined || inv.capitalOutstanding === null) ? null : inv.capitalOutstanding;
+  row.interest_outstanding = (inv.interestOutstanding === undefined || inv.interestOutstanding === null) ? null : inv.interestOutstanding;
+  row.penalty_outstanding = (inv.penaltyOutstanding === undefined || inv.penaltyOutstanding === null) ? null : inv.penaltyOutstanding;
+  row.holdback_outstanding = (inv.holdbackOutstanding === undefined || inv.holdbackOutstanding === null) ? null : inv.holdbackOutstanding;
+  row.holdback_overdrawn = (inv.holdbackOverdrawn === undefined || inv.holdbackOverdrawn === null) ? null : inv.holdbackOverdrawn;
+  row.debt_balance = (inv.debtBalance === undefined || inv.debtBalance === null) ? null : inv.debtBalance;
+  row.balance_owed = (inv.balanceOwed === undefined || inv.balanceOwed === null) ? null : inv.balanceOwed;
+  row.amount_post_dilutions = (inv.amountPostDilutions === undefined || inv.amountPostDilutions === null) ? null : inv.amountPostDilutions;
+}
+
+// Pack a credit note in-memory entry into a DB row.
+function packCreditNoteRow(cn) {
+  var entityId = cn.supplierEntityId || cn.supplierId || "";
+  var parentId = parseEntityId(entityId).supplierId || entityId || "";
+  var bEntity = cn.buyerEntityId || cn.buyerId || "";
+  var bParent = bEntity.indexOf(":") > -1 ? bEntity.split(":")[0] : (bEntity || "");
+  return {
+    credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
+    date: cn.date, reference: cn.reference || "",
+    supplier_id: parentId, supplier_entity_id: entityId,
+    buyer_id: bParent, buyer_entity_id: bEntity,
+    allocations: cn.allocations || [], notes: cn.notes || [],
+    voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null,
+    created_display: cn.createdDisplay || null
+  };
+}
+
+// Unpack a credit_notes DB row into in-memory shape.
+function unpackCreditNoteRow(row) {
+  var sIds = resolveSupplierIds(row.supplier_id, row.supplier_entity_id);
+  var bIds = resolveBuyerIds(row.buyer_id, row.buyer_entity_id);
+  return {
+    creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
+    currency: row.currency, date: row.date, reference: row.reference || "",
+    supplierName: getEntityDisplayName(sIds.entityId),
+    supplierId: sIds.entityId,
+    supplierEntityId: sIds.entityId,
+    supplierParentId: sIds.supplierId,
+    buyerName: buyName(bIds.buyerId),
+    buyerId: bIds.buyerId,
+    buyerEntityId: bIds.entityId,
+    createdDisplay: row.created_display, allocations: row.allocations || [],
+    notes: row.notes || [],
+    voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
+  };
+}
+
+// Resolve the parent + entity ID for a given invoice ID, looking up INVOICES_DB.
+// Used to populate the denormalised supplier_id / supplier_entity_id columns
+// on payment_allocations and holdback_payment_allocations rows.
+function getSupplierIdsForInvoice(invoiceId) {
+  if (!invoiceId) return { supplierId: null, entityId: null };
+  var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+  if (!inv) return { supplierId: null, entityId: null };
+  var entityId = inv.supplierEntityId || inv.supplierId || "";
+  var parentId = inv.supplierParentId || parseEntityId(entityId).supplierId || entityId || "";
+  return { supplierId: parentId, entityId: entityId };
+}
+
 function getSupplierBankDetails(entityId, programId) {
   var sup = getSupplierById(entityId);
   if (!sup) return { bankName: "", bankDetails: "", bankVerified: false };
@@ -247,25 +725,91 @@ function getSupplierBankDetails(entityId, programId) {
   return { bankName: sup.bankName || "", bankDetails: sup.bankDetails || "", bankVerified: sup.bankVerified || false };
 }
 
-function getSupplierRate(entityId, asOfTimestamp) {
+// Look up a supplier's rate for a specific program at a given point in time.
+// Returns null if the supplier has no rates set for that program.
+// History is stored as supplier.programRates[programId] = [{annualRate, advanceRate, penaltyRate, effectiveDate, effectiveTimestamp}, ...].
+// We pick the most recent entry whose effectiveTimestamp <= asOfTimestamp (or now if not provided).
+function getSupplierRateForProgram(entityId, programId, asOfTimestamp) {
+  if (!programId) return null;
   var supplier = getSupplierById(entityId);
-  if (!supplier) {
-    // Backward compat: try by name
-    supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
-  }
-  if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
+  if (!supplier) supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
+  if (!supplier) return null;
+  var pr = supplier.programRates || {};
+  var arr = pr[programId];
+  if (!arr || arr.length === 0) return null;
   var ts = asOfTimestamp || new Date().toISOString();
-  var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
-  var rate = sorted[0];
+  var sorted = arr.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
+  var rate = null;
   for (var i = 0; i < sorted.length; i++) {
     var rts = sorted[i].effectiveTimestamp || sorted[i].effectiveDate;
     if (rts <= ts) rate = sorted[i];
   }
+  // If asOfTimestamp is before any rate's effectiveTimestamp, no rate was in effect → null.
+  // (For invoices funded before any rate was set, we shouldn't be funding them anyway.)
+  if (!rate) return null;
   return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
 }
 
+// Backward-compat: returns the rate of the first program the supplier has rates for, or
+// system defaults. Used by display code (cards, forms, summaries) where program context
+// may not be available. Eligibility checks should always use getSupplierRateForProgram.
+function getSupplierRate(entityId, asOfTimestamp) {
+  var supplier = getSupplierById(entityId);
+  if (!supplier) supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
+  if (!supplier) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
+  var pr = supplier.programRates || {};
+  var keys = Object.keys(pr);
+  for (var i = 0; i < keys.length; i++) {
+    var r = getSupplierRateForProgram(entityId, keys[i], asOfTimestamp);
+    if (r) return r;
+  }
+  return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
+}
+
+// Programs the given supplier ID participates in (member of eligible_suppliers).
+// Used to populate the program filter dropdown on the Suppliers view (Tweak #1).
+function programsForSupplier(supplierId) {
+  if (!supplierId) return [];
+  var parentId = getParentEntityId(supplierId) || supplierId;
+  return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    var elig = fp.eligibleSuppliers || [];
+    return elig.indexOf(supplierId) > -1 || elig.indexOf(parentId) > -1;
+  });
+}
+
+// Programs the given buyer ID participates in. Used for the Buyers view filter (Tweak #2).
+function programsForBuyer(buyerId) {
+  if (!buyerId) return [];
+  return FUNDING_PROGRAMS_DB.filter(function(fp) {
+    return (fp.eligibleBuyers || []).indexOf(buyerId) > -1;
+  });
+}
+
+// True if the invoice belongs to (or could belong to) the given program. Used by all
+// view filters that previously checked currency match. An invoice belongs to a program
+// scope if it's been funded by that program OR (it's not yet funded but) the program
+// would be eligible to fund it (currency match + supplier/buyer in eligible lists).
+function invInProgramScope(inv, programId) {
+  if (!programId) return true;
+  if (inv.fundingProgram === programId) return true;
+  // Unfunded invoices: include if program currency matches and supplier+buyer are eligible
+  if (!inv.fundingProgram) {
+    var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
+    if (!fp) return false;
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) return false;
+    var supId = inv.supplierId || "";
+    var supParent = getParentEntityId(supId) || supId;
+    var supEligible = (fp.eligibleSuppliers || []).indexOf(supId) > -1 || (fp.eligibleSuppliers || []).indexOf(supParent) > -1;
+    if (!supEligible) return false;
+    var buyEligible = (fp.eligibleBuyers || []).indexOf(inv.buyerId || "") > -1;
+    if (!buyEligible) return false;
+    return true;
+  }
+  return false;
+}
+
 function getEligiblePrograms(inv, supDilRates) {
-  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
+  var entityIdForRate = inv.supplierId || inv.supplierName;
   var parentId = getParentEntityId(inv.supplierId || "");
   var parentSup = getParentSupplierName(inv.supplierName);
   var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
@@ -287,6 +831,10 @@ function getEligiblePrograms(inv, supDilRates) {
       var buyerId = inv.buyerId || "";
       if (fp.eligibleBuyers.indexOf(buyerId) === -1) return false;
     }
+    // Per-program rate lookup. No rate = supplier hasn't been commercially configured for this
+    // program yet → ineligible. Falls through the gate at program-add time.
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    if (!supRate) return false;
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
     if (term > fp.maxInvoiceTerm) return false;
@@ -303,8 +851,87 @@ function getEligiblePrograms(inv, supDilRates) {
     if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
       if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
     }
+    // Single invoice limit per buyer per program (mirrors supplier rule). Lower of the two prevails by virtue of both being checked.
+    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
+    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) return false;
+    }
     return true;
   });
+}
+
+// Diagnostic counterpart of getEligiblePrograms — walks the same checks but
+// accumulates a human-readable reason for each rejection. Used by the
+// "Not eligible" tooltip on Unpurchased Invoices and the supplier portal.
+// Returns { eligibleCount, rejections: [{ programName, programId, reasons: [string] }] }.
+function getEligibilityReasons(inv, supDilRates) {
+  var entityIdForRate = inv.supplierId || inv.supplierName;
+  var parentId = getParentEntityId(inv.supplierId || "");
+  var parentSup = getParentSupplierName(inv.supplierName);
+  var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
+  var badInvStatuses = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
+  // Invoice-level rejection (applies to all programs at once)
+  if (badInvStatuses[inv.invoiceStatus]) {
+    return { eligibleCount: 0, invoiceLevelReason: "Invoice status \"" + inv.invoiceStatus + "\" is ineligible for funding", rejections: [] };
+  }
+  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
+  var eligibleCount = 0;
+  var rejections = [];
+  FUNDING_PROGRAMS_DB.forEach(function(fp) {
+    var reasons = [];
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) {
+      reasons.push("Currency mismatch (program is " + fp.currency + ", invoice is " + inv.currency + ")");
+    }
+    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
+      var entityId = inv.supplierId || "";
+      var idMatch = fp.eligibleSuppliers.indexOf(entityId) > -1 || fp.eligibleSuppliers.indexOf(parentId) > -1;
+      if (!idMatch) reasons.push("Supplier not on program's eligible list");
+    }
+    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
+      var buyerId = inv.buyerId || "";
+      if (fp.eligibleBuyers.indexOf(buyerId) === -1) reasons.push("Buyer not on program's eligible list");
+    }
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    if (!supRate) {
+      reasons.push("No commercial rate configured for this supplier on this program");
+    } else {
+      if (supRate.annualRate < fp.minInterestRate - 0.0001) {
+        reasons.push("Supplier rate " + (supRate.annualRate * 100).toFixed(2) + "% is below program minimum " + (fp.minInterestRate * 100).toFixed(2) + "%");
+      }
+      if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) {
+        reasons.push("Supplier advance rate " + (supRate.advanceRate * 100).toFixed(1) + "% exceeds program maximum " + (fp.maxAdvanceRate * 100).toFixed(1) + "%");
+      }
+    }
+    if (term > fp.maxInvoiceTerm) reasons.push("Invoice term " + term + "d exceeds program max " + fp.maxInvoiceTerm + "d");
+    if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) reasons.push("Invoice term " + term + "d below program min " + fp.minInvoiceTenor + "d");
+    if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) {
+      reasons.push("Invoice amount " + money(inv.amount, inv.currency) + " below program min " + money(fp.minInvoiceSize, fp.currency));
+    }
+    if (fp.maxSupDilLive && dr.dilRate > fp.maxSupDilLive) reasons.push("Supplier live dilution exceeds program limit");
+    if (fp.maxSupDil30 && dr.dil30 > fp.maxSupDil30) reasons.push("Supplier 30-day dilution exceeds program limit");
+    if (fp.maxSupDil90 && dr.dil90 > fp.maxSupDil90) reasons.push("Supplier 90-day dilution exceeds program limit");
+    if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) reasons.push("Funded live dilution exceeds program limit");
+    if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) reasons.push("Funded 30-day dilution exceeds program limit");
+    if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) reasons.push("Funded 90-day dilution exceeds program limit");
+    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
+    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) {
+        reasons.push("Invoice exceeds supplier's single-invoice limit (" + money(parentSupObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
+      }
+    }
+    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
+    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
+      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) {
+        reasons.push("Invoice exceeds buyer's single-invoice limit (" + money(buyerObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
+      }
+    }
+    if (reasons.length === 0) {
+      eligibleCount += 1;
+    } else {
+      rejections.push({ programId: fp.id, programName: fp.name, reasons: reasons });
+    }
+  });
+  return { eligibleCount: eligibleCount, rejections: rejections };
 }
 
 // Compute the maximum capital any eligible program could offer for this invoice
@@ -487,24 +1114,12 @@ async function saveInvoice(invId) {
   if (!inv) return;
   _isSaving = true;
   try {
-    var row = {
-      id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-      amount: inv.amount, currency: inv.currency,
-      capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-      interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-      days_to_maturity: inv.daysToMaturity || 0,
-      advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-      invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-      created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-      invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-      funding_program: inv.fundingProgram || null,
-      partial_approved_amount: inv.partialApprovedAmount || 0,
-      invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-      invoice_status_history: inv.invoiceStatusHistory || [],
-      adjustments: inv.adjustments || [],
-      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-      notes: inv.notes || []
-    };
+    var row = packInvoiceRow(inv);
+    // Derived columns, populated by processForDate via persistDerivedFieldsForInvoices.
+    // Nullable: rows that haven't been re-derived yet write null and the cron skips them.
+    // The cron reads these to evaluate time-based funding status transitions without
+    // re-implementing the balance / history-walk logic in SQL.
+    attachDerivedFieldsToRow(row, inv);
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
     if (upRes && upRes.error) { console.error("[SaveInvoice] Supabase error:", upRes.error); toast.error("Invoice save failed", upRes.error.message || "Database rejected the invoice record."); }
   } catch (e) { console.error("[SaveInvoice] Error:", e); toast.error("Invoice save error", e.message || String(e)); }
@@ -516,25 +1131,22 @@ async function saveSPQEntry(spqId) {
   if (!item) { console.error("[SaveSPQ] Item not found:", spqId); toast.error("Payment queue save failed", "Item " + spqId + " not found locally."); return; }
   _isSaving = true;
   try {
-    var row = {
-      id: item.id, type: item.type, invoice_id: item.invoiceId || null, invoice_ids: item.invoiceIds || [],
-      supplier_name: item.supplierName, supplier_id: item.supplierId || null,
-      bank_name: item.bankName || null, bank_details: item.bankDetails || null,
-      amount: item.amount, currency: item.currency, status: item.status || "Pending",
-      program_id: item.programId || null, program_name: item.programName || null,
-      created_at: item.createdAt || null, created_display: item.createdDisplay || null,
-      executed_at: item.executedAt || null, executed_display: item.executedDisplay || null,
-      source_payment_id: item.sourcePaymentId || null, source_invoice_id: item.sourceInvoiceId || null,
-      hb_payment_id: item.hbPaymentId || null, is_bundle: item.isBundle || false,
-      holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount || null,
-      deductions: item.deductions || [], deduction_total: item.deductionTotal || 0,
-      notes: item.notes || [],
-      cancelled_at: item.cancelledAt || null, cancelled_display: item.cancelledDisplay || null,
-      failed_at: item.failedAt || null, failed_display: item.failedDisplay || null
-    };
+    var row = packSpqRow(item);
     var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
     if (result.error) { console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue save failed", result.error.message || "Database rejected the queue entry."); }
   } catch (e) { console.error("[SaveSPQ] Error:", e); toast.error("Payment queue save error", e.message || String(e)); }
+  _isSaving = false;
+}
+
+// Delete an SPQ row from Supabase. Use after the row has been spliced out of
+// SUPPLIER_PAYMENT_QUEUE locally (e.g. HBP-disbursement cancellation). For
+// status flips (e.g. remittance cancel keeps the row), use saveSPQEntry.
+async function deleteSPQEntry(spqId) {
+  _isSaving = true;
+  try {
+    var result = await supabase.from("supplier_payment_queue").delete().eq("id", spqId);
+    if (result.error) { console.error("[DeleteSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue delete failed", result.error.message || "Database rejected the delete."); }
+  } catch (e) { console.error("[DeleteSPQ] Error:", e); toast.error("Payment queue delete error", e.message || String(e)); }
   _isSaving = false;
 }
 
@@ -565,19 +1177,112 @@ async function saveFundingProgram(progId) {
   _isSaving = false;
 }
 
+// Persist derived invoice state (fundingStatus, invoiceStatus, fullyRepaidDate,
+// settledDate, invoiceStatusHistory) back to Supabase after admin actions that
+// change balances. Without this, processForDate's derivations live only on the
+// in-memory processed copy and Supabase drifts away from current truth.
+//
+// This function fires from ADMIN EVENT HANDLERS (payment alloc/unalloc, CN alloc,
+// HB save). It does NOT fire from inside useMemo or render — that creates a
+// save→echo→re-render→save loop. Time-based transitions (funded → overdue across
+// midnight) are NOT caught here; those are handled by a server-side cron job
+// (separate work).
+//
+// CALLER PROVIDES:
+//   invoiceIds — array of IDs the action affected (not the whole book)
+//   viewDate   — date to derive against. In production always today; in test
+//                mode this respects the As-of Date so testing time-shifted
+//                scenarios (e.g. simulating an overdue invoice repayment in the
+//                future) writes the correct as-of-that-date state. A console
+//                warning fires when viewDate is not REF_DATE so accidental
+//                writes against a scrubbed historical date are noticeable.
+async function persistDerivedFieldsForInvoices(invoiceIds, viewDate) {
+  if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) return;
+  if (viewDate && viewDate !== REF_DATE) {
+    console.warn("[Persist] Writing invoice state derived against historical viewDate " + viewDate + " (REF_DATE is " + REF_DATE + "). DB will reflect as-of-that-date state, overwriting current. Affected invoices: " + invoiceIds.join(", "));
+  }
+  // Snapshot mutable raw fields BEFORE processForDate runs — it mutates them as
+  // side effects (fullyRepaidDate at line ~1900, settledDate / invoiceStatusHistory
+  // at line ~1923-25). Without this snapshot we can't tell if those changed.
+  var pre = {};
+  invoiceIds.forEach(function(id) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === id; });
+    if (!raw) return;
+    pre[id] = {
+      fullyRepaidDate: raw.fullyRepaidDate,
+      settledDate: raw.settledDate,
+      invoiceStatusHistoryLen: (raw.invoiceStatusHistory || []).length
+    };
+  });
+  // Re-derive. processForDate is deterministic (post-tranche-fix); calling it
+  // here gives the same answer the in-flight viewData useMemo would.
+  var derived = processForDate(viewDate || REF_DATE, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
+  var derivedById = {};
+  derived.invoices.forEach(function(p) { derivedById[p.id] = p; });
+  for (var i = 0; i < invoiceIds.length; i++) {
+    var id = invoiceIds[i];
+    var raw = INVOICES_DB.find(function(x) { return x.id === id; });
+    var d = derivedById[id];
+    var p = pre[id];
+    if (!raw || !d || !p) continue;
+    var dirty = false;
+    // fundingStatus and invoiceStatus live ONLY on the processed copy — write back.
+    if (raw.fundingStatus !== d.fundingStatus) {
+      raw.fundingStatus = d.fundingStatus;
+      dirty = true;
+    }
+    if (raw.invoiceStatus !== d.invoiceStatus) {
+      raw.invoiceStatus = d.invoiceStatus;
+      dirty = true;
+    }
+    // fullyRepaidDate / settledDate / invoiceStatusHistory were mutated on raw
+    // by processForDate above. Detect change via pre-snapshot comparison.
+    if (raw.fullyRepaidDate !== p.fullyRepaidDate) dirty = true;
+    if (raw.settledDate !== p.settledDate) dirty = true;
+    if ((raw.invoiceStatusHistory || []).length !== p.invoiceStatusHistoryLen) dirty = true;
+    if (dirty) {
+      // Sequential await — relies on _isSaving guard inside saveInvoice and
+      // avoids burst writes that could trip rate limits at scale.
+      await saveInvoice(id);
+    }
+  }
+}
+
 async function savePayment(paymentId) {
   var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === paymentId; });
   if (!pay) return;
   _isSaving = true;
   try {
     var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
+    // Optional payment-level supplier/buyer scope (set for outbound or remittance source pairs)
+    if (pay.buyerId) {
+      var bIds = resolveBuyerIds(pay.buyerId, pay.buyerEntityId);
+      row.buyer_id = bIds.buyerId || null;
+      row.buyer_entity_id = bIds.entityId || null;
+    }
+    if (pay.supplierId) {
+      var sIds = resolveSupplierIds(pay.supplierId, pay.supplierEntityId);
+      row.supplier_id = sIds.supplierId || null;
+      row.supplier_entity_id = sIds.entityId || null;
+    }
     var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
     if (upRes.error) { console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row); toast.error("Payment save failed", upRes.error.message || "Database rejected the payment record."); }
-    // Save allocations
+    // Save allocations — denormalise supplier_id + supplier_entity_id from each invoice
     var delRes = await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
     if (delRes.error) { console.error("[SavePayment] allocations delete error:", delRes.error); toast.error("Payment allocations save failed", delRes.error.message || "Could not clear existing allocations."); }
     if (pay.allocations.length > 0) {
-      var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
+      var allocRows = pay.allocations.map(function(a) {
+        var supIds = getSupplierIdsForInvoice(a.invoiceId);
+        return {
+          payment_id: pay.paymentId, invoice_id: a.invoiceId,
+          amount: a.amount, alloc_date: a.allocDate || null,
+          supplier_id: supIds.supplierId, supplier_entity_id: supIds.entityId,
+          // Stage 1.7: distinguishes funded-recovery from pass-through (legal
+          // collection-agent role). Default funded_recovery preserves backward
+          // compatibility for any allocation written without explicit kind.
+          kind: a.kind || "funded_recovery"
+        };
+      });
       var insRes = await supabase.from("payment_allocations").insert(allocRows);
       if (insRes.error) { console.error("[SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocation insert failed", insRes.error.message || "Could not write allocations."); }
     }
@@ -593,9 +1298,9 @@ async function saveSupplier(supId) {
     var row = {
       id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
       jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-      onboarding_date: s.onboardingDate || null, notes: s.notes || null,
-      street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
-      country: s.country || "United Kingdom", zip: s.zip || null,
+      onboarding_date: s.onboardingDate || null, notes: s.notes || [],
+      address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
+      country: s.country || "United Kingdom", postcode: s.postcode || null,
       primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
       secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
       contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
@@ -604,8 +1309,18 @@ async function saveSupplier(supId) {
       bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
       account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
       credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {},
+      program_rates: s.programRates || {},
       program_bank_accounts: s.programBankAccounts || {},
-      rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
+      rates: s.rates || [], branches: s.branches || [], paused: s.paused || false,
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: s.entitySource || "manual",
+      directors: s.directors || [],
+      company_status: s.companyStatus || null,
+      incorporation_date: s.incorporationDate || null,
+      sic_codes: s.sicCodes || [],
+      ch_last_updated: s.chLastUpdated || null,
+      entity_files: s.entityFiles || [],
+      kyc: s.kyc || { passed: false }
     };
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
@@ -621,15 +1336,26 @@ async function saveBuyer(buyId) {
     var row = {
       id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
       jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-      onboarding_date: b.onboardingDate || null, notes: b.notes || null,
-      street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
-      country: b.country || "United Kingdom", zip: b.zip || null,
+      onboarding_date: b.onboardingDate || null, notes: b.notes || [],
+      address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
+      country: b.country || "United Kingdom", postcode: b.postcode || null,
       primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
       secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
       contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
       contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
       contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-      paused: b.paused || false
+      paused: b.paused || false,
+      credit_limits: b.creditLimits || {},
+      single_invoice_limits: b.singleInvoiceLimits || {},
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: b.entitySource || "manual",
+      directors: b.directors || [],
+      company_status: b.companyStatus || null,
+      incorporation_date: b.incorporationDate || null,
+      sic_codes: b.sicCodes || [],
+      ch_last_updated: b.chLastUpdated || null,
+      entity_files: b.entityFiles || [],
+      kyc: b.kyc || { passed: false }
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -645,11 +1371,26 @@ async function saveServiceProvider(spId) {
     var row = {
       id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
       jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
-      role: sp.role || null, notes: sp.notes || null,
-      street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
-      country: sp.country || "United Kingdom", zip: sp.zip || null,
+      role: sp.role || null, onboarding_date: sp.onboardingDate || null, notes: sp.notes || [],
+      address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
+      country: sp.country || "United Kingdom", postcode: sp.postcode || null,
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
-      secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
+      secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false,
+      contact3_name: sp.contact3Name || null, contact3_email: sp.contact3Email || null, contact3_phone: sp.contact3Phone || null, contact3_signatory: sp.contact3Signatory || false,
+      contact4_name: sp.contact4Name || null, contact4_email: sp.contact4Email || null, contact4_phone: sp.contact4Phone || null, contact4_signatory: sp.contact4Signatory || false,
+      contact5_name: sp.contact5Name || null, contact5_email: sp.contact5Email || null, contact5_phone: sp.contact5Phone || null, contact5_signatory: sp.contact5Signatory || false,
+      bank_name: sp.bankName || null, account_name: sp.accountName || null, sort_code: sp.sortCode || null,
+      account_number: sp.accountNumber || null, iban: sp.iban || null, bic: sp.bic || null,
+      paused: sp.paused || false,
+      // Companies House persistence fields (added in stage 1.6)
+      entity_source: sp.entitySource || "manual",
+      directors: sp.directors || [],
+      company_status: sp.companyStatus || null,
+      incorporation_date: sp.incorporationDate || null,
+      sic_codes: sp.sicCodes || [],
+      ch_last_updated: sp.chLastUpdated || null,
+      entity_files: sp.entityFiles || [],
+      kyc: sp.kyc || { passed: false }
     };
     var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
@@ -662,12 +1403,7 @@ async function saveCreditNote(cnId) {
   if (!cn) return;
   _isSaving = true;
   try {
-    var row = {
-      credit_note_id: cn.creditNoteId, amount: cn.amount, date: cn.date, currency: cn.currency,
-      reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: cn.supplierId || "",
-      buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-      allocations: cn.allocations || [], notes: cn.notes || []
-    };
+    var row = packCreditNoteRow(cn);
     var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
   } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
@@ -679,14 +1415,28 @@ async function saveHoldbackPayment(hbpId) {
   if (!hbp) return;
   _isSaving = true;
   try {
-    var row = { hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId, amount: hbp.amount, date: hbp.date, currency: hbp.currency };
+    // Resolve denormalised supplier IDs from the source invoice (the only authoritative
+    // entity link we have on a holdback payment). This is what RLS uses.
+    var hbSup = getSupplierIdsForInvoice(hbp.sourceInvoiceId);
+    var row = {
+      hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId,
+      amount: hbp.amount, date: hbp.date, currency: hbp.currency,
+      supplier_id: hbSup.supplierId, supplier_entity_id: hbSup.entityId,
+      notes: hbp.notes || []
+    };
     var hbRes = await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
     if (hbRes && hbRes.error) { console.error("[SaveHBP] upsert error:", hbRes.error); toast.error("Holdback payment save failed", hbRes.error.message || "Database error."); }
-    // Save allocations
+    // Save allocations — denormalise supplier_id + supplier_entity_id from the source
+    // invoice (allocations on holdback payments share the parent's supplier scope).
     var hbDelRes = await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
     if (hbDelRes && hbDelRes.error) { console.error("[SaveHBP] allocations delete error:", hbDelRes.error); toast.error("Holdback allocation clear failed", hbDelRes.error.message || "Could not clear prior allocations."); }
     if (hbp.allocations && hbp.allocations.length > 0) {
-      var aRows = hbp.allocations.map(function(a) { return { hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount }; });
+      var aRows = hbp.allocations.map(function(a) {
+        return {
+          hb_payment_id: hbp.hbPaymentId, type: a.type, target_id: a.targetId || null, amount: a.amount,
+          supplier_id: hbSup.supplierId, supplier_entity_id: hbSup.entityId
+        };
+      });
       var hbInsRes = await supabase.from("holdback_payment_allocations").insert(aRows);
       if (hbInsRes && hbInsRes.error) { console.error("[SaveHBP] allocations insert error:", hbInsRes.error); toast.error("Holdback allocation write failed", hbInsRes.error.message || "Could not insert allocations."); }
     }
@@ -695,25 +1445,7 @@ async function saveHoldbackPayment(hbpId) {
 }
 
 function mapInvoiceRow(row) {
-  return {
-    id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-    amount: parseFloat(row.amount) || 0, currency: row.currency,
-    capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-    interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-    daysToMaturity: row.days_to_maturity || 0,
-    advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-    invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-    createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-    invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-    fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-    invoiceStatusHistory: row.invoice_status_history || [],
-    adjustments: row.adjustments || [],
-    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-    notes: row.notes || [],
-    csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
-    intendedPaymentDate: row.intended_payment_date || null
-  };
+  return unpackInvoiceRow(row);
 }
 
 async function loadPersistedData() {
@@ -775,8 +1507,8 @@ async function loadPersistedData() {
         SUPPLIERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
@@ -788,9 +1520,19 @@ async function loadPersistedData() {
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
-          rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
+          programRates: row.program_rates || {},
+          rates: row.rates || [],
           branches: row.branches || [],
-          paused: row.paused || false
+          paused: row.paused || false,
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
     }
@@ -801,14 +1543,25 @@ async function loadPersistedData() {
         BUYERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {},
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -819,11 +1572,27 @@ async function loadPersistedData() {
       spRes.data.forEach(function(row) {
         SERVICE_PROVIDERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
-          jurisdiction: row.jurisdiction, status: row.status, role: row.role, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          jurisdiction: row.jurisdiction, status: row.status, role: row.role,
+          onboardingDate: row.onboarding_date, notes: row.notes || [],
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
-          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false
+          secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
+          contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
+          contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
+          contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
+          accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
+          paused: row.paused || false,
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
     }
@@ -854,23 +1623,7 @@ async function loadPersistedData() {
     if (invData.length > 0) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
-        INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          amount: parseFloat(row.amount) || 0, currency: row.currency,
-          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-          daysToMaturity: row.days_to_maturity || 0,
-          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          invoiceStatusHistory: row.invoice_status_history || [],
-          adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          notes: row.notes || []
-        });
+        INVOICES_DB.push(unpackInvoiceRow(row));
       });
     }
     // Process payments + group allocations in memory (no more N+1 per-payment queries)
@@ -880,14 +1633,20 @@ async function loadPersistedData() {
       allAllocs.forEach(function(a) {
         var pid = a.payment_id;
         if (!allocsByPayment[pid]) allocsByPayment[pid] = [];
-        allocsByPayment[pid].push({ invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date });
+        allocsByPayment[pid].push({ invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date, kind: a.kind || "funded_recovery" });
       });
       payData.forEach(function(prow) {
         PAYMENTS_DB.push({
           paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
           date: prow.date, currency: prow.currency, reference: prow.reference || "",
           allocations: allocsByPayment[prow.payment_id] || [],
-          direction: prow.direction || "inbound"
+          direction: prow.direction || "inbound",
+          // Optional payment-level entity scope (set for outbound or remittance source pairs)
+          buyerId: prow.buyer_id || null,
+          buyerEntityId: prow.buyer_entity_id || null,
+          supplierId: prow.supplier_id || null,
+          supplierEntityId: prow.supplier_entity_id || null,
+          notes: prow.notes || []
         });
       });
     }
@@ -904,53 +1663,32 @@ async function loadPersistedData() {
         HOLDBACK_PAYMENTS_DB.push({
           hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
           amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency,
-          allocations: hbAllocsByHbp[hrow.hb_payment_id] || []
+          allocations: hbAllocsByHbp[hrow.hb_payment_id] || [],
+          supplierId: hrow.supplier_id || null,
+          supplierEntityId: hrow.supplier_entity_id || null,
+          notes: hrow.notes || []
         });
       });
     }
-    // Process supplier payment queue
+    // Process supplier payment queue (Stage 3 schema: 14 cols + metadata JSONB)
     if (spqRes.data && spqRes.data.length > 0) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
-          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
-          bankName: row.bank_name, bankDetails: row.bank_details,
-          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-          programId: row.program_id, programName: row.program_name,
-          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-          notes: row.notes || [],
-          createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display,
-          sourcePaymentId: row.source_payment_id || null,
-          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-        });
+        SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
       });
     }
     // Process credit notes
     if (cnRes.data && cnRes.data.length > 0) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
-          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
-          currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || []
-        });
+        CREDIT_NOTES_DB.push(unpackCreditNoteRow(row));
       });
     }
     // Process audit log
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
-        AUDIT_LOG.push({
-          timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
-        });
+        AUDIT_LOG.push(auditDbRowToEntry(row));
       });
     }
     _lastSavedAuditIndex = AUDIT_LOG.length;
@@ -1059,35 +1797,17 @@ async function reloadForSupplier(supplierId) {
   SUPPLIERS_DB.forEach(function(s) { if (s.id === parentId) supplierName = s.name; });
   if (!supplierName) { _supplierLoaded = false; return; }
   
-  // Load only this supplier's invoices
-  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName });
-  // Also load by supplier_id for branch matching
-  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId });
+  // Load only this supplier's invoices. Stage 3: filter by supplier_id (parent) and
+  // by supplier_entity_id (composite for branch users). supplier_name no longer exists.
+  var invDataParent = await fetchAllRows("invoices", { column: "supplier_id", value: parentId });
+  var invDataEntity = supplierId !== parentId ? await fetchAllRows("invoices", { column: "supplier_entity_id", value: supplierId }) : [];
   // Merge and deduplicate
   var seen = {};
   INVOICES_DB.length = 0;
-  invData.concat(invDataById).forEach(function(row) {
+  invDataParent.concat(invDataEntity).forEach(function(row) {
     if (seen[row.id]) return;
     seen[row.id] = true;
-    INVOICES_DB.push({
-      id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-      amount: parseFloat(row.amount) || 0, currency: row.currency,
-      capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-      interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-      daysToMaturity: row.days_to_maturity || 0,
-      advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-      invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-      createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-      invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-      fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-      invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-      invoiceStatusHistory: row.invoice_status_history || [],
-      adjustments: row.adjustments || [],
-      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-      notes: row.notes || [],
-      csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
-      intendedPaymentDate: row.intended_payment_date || null
-    });
+    INVOICES_DB.push(unpackInvoiceRow(row));
   });
   var invIdSet = {};
   INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
@@ -1097,27 +1817,12 @@ async function reloadForSupplier(supplierId) {
   // Load SPQ entries for this supplier FIRST so we can use them to decide
   // which payments to load (pass-through source payments might not have any
   // allocation to this supplier's invoices but are still relevant).
-  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName });
+  // Stage 3: filter by supplier_id (parent); branch users will be further scoped by RLS.
+  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_id", value: parentId });
   SUPPLIER_PAYMENT_QUEUE.length = 0;
   var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
-    SUPPLIER_PAYMENT_QUEUE.push({
-      id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-      supplierName: row.supplier_name, supplierId: row.supplier_id,
-      bankName: row.bank_name, bankDetails: row.bank_details,
-      amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-      programId: row.program_id, programName: row.program_name,
-      hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-      isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-      grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-      deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-      notes: row.notes || [],
-      createdAt: row.created_at, createdDisplay: row.created_display,
-      executedAt: row.executed_at, executedDisplay: row.executed_display,
-      sourcePaymentId: row.source_payment_id || null,
-      cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-      failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-    });
+    SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
     if (row.type === "remittance" && row.source_payment_id) passThroughSourcePayIds[row.source_payment_id] = true;
   });
   console.log("[Supplier Load] " + supplierName + ": " + SUPPLIER_PAYMENT_QUEUE.length + " SPQ entries loaded");
@@ -1131,7 +1836,7 @@ async function reloadForSupplier(supplierId) {
     var prow = payData[pi];
     var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
     var allocs = (allocRes.data || []).map(function(a) {
-      return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+      return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date, kind: a.kind || "funded_recovery" };
     });
     // Include if: at least one allocation is to this supplier's invoices, OR the payment has no allocations yet, OR it's a source of a pass-through to this supplier
     var hasSupplierAlloc = allocs.some(function(a) { return seen[a.invoiceId]; });
@@ -1141,7 +1846,9 @@ async function reloadForSupplier(supplierId) {
         paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
         date: prow.date, currency: prow.currency, reference: prow.reference || "",
         allocations: allocs, notes: prow.notes || [],
-        direction: prow.direction || "inbound"
+        direction: prow.direction || "inbound",
+        buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
+        supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null
       });
     }
   }
@@ -1160,7 +1867,9 @@ async function reloadForSupplier(supplierId) {
     HOLDBACK_PAYMENTS_DB.push({
       hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
       amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency,
-      allocations: hbAllocs
+      allocations: hbAllocs,
+      supplierId: hrow.supplier_id || null, supplierEntityId: hrow.supplier_entity_id || null,
+      notes: hrow.notes || []
     });
   }
   console.log("[Supplier Load] " + supplierName + ": " + HOLDBACK_PAYMENTS_DB.length + " holdback payments loaded");
@@ -1172,11 +1881,20 @@ async function reloadForSupplier(supplierId) {
   AUDIT_LOG.length = 0;
   auditData.forEach(function(row) {
     var ctx = row.context || {};
-    var relevant = ctx.supplierName === supplierName || ctx.supplier === supplierName ||
-      (ctx.supplierId && (ctx.supplierId === supplierId || parseEntityId(ctx.supplierId).supplierId === parentId)) ||
-      (ctx.invoiceId && invIdSet[ctx.invoiceId]);
+    // Stage 3: prefer the new explicit ID columns; fall back to legacy JSONB context
+    // for any rows still on the old shape (none after stage 1, but cheap to keep).
+    var rowSupId = row.supplier_id || ctx.supplierId || null;
+    var rowSupEntity = row.supplier_entity_id || ctx.supplierEntityId || null;
+    var rowParent = rowSupId ? parseEntityId(rowSupId).supplierId : (rowSupEntity ? parseEntityId(rowSupEntity).supplierId : null);
+    var rowInvoice = row.invoice_id || ctx.invoiceId || null;
+    var relevant =
+      (rowSupEntity && rowSupEntity === supplierId) ||
+      (rowParent && rowParent === parentId) ||
+      (rowInvoice && invIdSet[rowInvoice]) ||
+      // Legacy context-only matches (transitional)
+      (ctx.supplierName === supplierName) || (ctx.supplier === supplierName);
     if (relevant) {
-      AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+      AUDIT_LOG.push(auditDbRowToEntry(row));
     }
   });
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
@@ -1188,23 +1906,7 @@ async function reloadInvoices() {
     if (invData) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
-        INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          amount: parseFloat(row.amount) || 0, currency: row.currency,
-          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-          daysToMaturity: row.days_to_maturity || 0,
-          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
-          invoiceStatusHistory: row.invoice_status_history || [],
-          adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          notes: row.notes || []
-        });
+        INVOICES_DB.push(unpackInvoiceRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload invoices error:", e); }
@@ -1223,12 +1925,15 @@ async function reloadPayments() {
           var prow = payRes.data[pi];
           var allocRes = await supabase.from("payment_allocations").select("*").eq("payment_id", prow.payment_id);
           var allocs = (allocRes.data || []).map(function(a) {
-            return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date };
+            return { invoiceId: a.invoice_id, amount: parseFloat(a.amount) || 0, allocDate: a.alloc_date, kind: a.kind || "funded_recovery" };
           });
           newList.push({
             paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
             date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
-            direction: prow.direction || "inbound"
+            direction: prow.direction || "inbound",
+            buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
+            supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null,
+            notes: prow.notes || []
           });
         }
         // Swap atomically after all data is gathered
@@ -1256,7 +1961,9 @@ async function reloadHoldbackPayments() {
           });
           newList.push({
             hbPaymentId: hrow.hb_payment_id, sourceInvoiceId: hrow.source_invoice_id,
-            amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs
+            amount: parseFloat(hrow.amount) || 0, date: hrow.date, currency: hrow.currency, allocations: hbAllocs,
+            supplierId: hrow.supplier_id || null, supplierEntityId: hrow.supplier_entity_id || null,
+            notes: hrow.notes || []
           });
         }
         // Swap atomically after all data is gathered
@@ -1274,23 +1981,7 @@ async function reloadSPQ() {
     if (spqRes.data) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
-          id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
-          bankName: row.bank_name, bankDetails: row.bank_details,
-          amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-          programId: row.program_id, programName: row.program_name,
-          hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-          isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-          grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-          deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-          notes: row.notes || [],
-          createdAt: row.created_at, createdDisplay: row.created_display,
-          executedAt: row.executed_at, executedDisplay: row.executed_display,
-          sourcePaymentId: row.source_payment_id || null,
-          cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-          failedAt: row.failed_at || null, failedDisplay: row.failed_display || null
-        });
+        SUPPLIER_PAYMENT_QUEUE.push(unpackSpqRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload SPQ error:", e); }
@@ -1302,10 +1993,7 @@ async function reloadAuditLog() {
     if (auditData.length > 0) {
       AUDIT_LOG.length = 0;
       auditData.forEach(function(row) {
-        AUDIT_LOG.push({
-          timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
-        });
+        AUDIT_LOG.push(auditDbRowToEntry(row));
       });
       _lastSavedAuditIndex = AUDIT_LOG.length;
     }
@@ -1321,21 +2009,24 @@ async function reloadSuppliers() {
         SUPPLIERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          bank_name: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
+          bankName: row.bank_name || "", accountName: row.account_name || "", sortCode: row.sort_code || "",
           accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
+          programRates: row.program_rates || {},
           rates: row.rates || [], branches: row.branches || [],
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
           incorporationDate: row.incorporation_date || "", sicCodes: row.sic_codes || [], chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false },
           paused: row.paused || false
         });
       });
@@ -1352,14 +2043,25 @@ async function reloadBuyers() {
         BUYERS_DB.push({
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
-          street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
-          country: row.country || "United Kingdom", zip: row.zip || "",
+          addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
+          country: row.country || "United Kingdom", postcode: row.postcode || "",
           primaryContact: row.primary_contact || "", primaryEmail: row.primary_email || "", primaryPhone: row.primary_phone || "", primarySignatory: row.primary_signatory || false,
           secondaryContact: row.secondary_contact || "", secondaryEmail: row.secondary_email || "", secondaryPhone: row.secondary_phone || "", secondarySignatory: row.secondary_signatory || false,
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
-          paused: row.paused || false
+          paused: row.paused || false,
+          creditLimits: row.credit_limits || {},
+          singleInvoiceLimits: row.single_invoice_limits || {},
+          // Companies House persistence (stage 1.6)
+          entitySource: row.entity_source || "manual",
+          directors: row.directors || [],
+          companyStatus: row.company_status || null,
+          incorporationDate: row.incorporation_date || null,
+          sicCodes: row.sic_codes || [],
+          chLastUpdated: row.ch_last_updated || null,
+          entityFiles: row.entity_files || [],
+          kyc: row.kyc || { passed: false }
         });
       });
       BUYERS = BUYERS_DB.map(function(b) { return b.name; });
@@ -1400,12 +2102,7 @@ async function reloadCreditNotes() {
     if (cnRes.data) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
-          creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
-          currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
-          createdDisplay: row.created_display, allocations: row.allocations || []
-        });
+        CREDIT_NOTES_DB.push(unpackCreditNoteRow(row));
       });
     }
   } catch (e) { console.error("Realtime reload credit notes error:", e); }
@@ -1419,9 +2116,9 @@ async function savePersistedData() {
       return {
         id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
         jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-        onboarding_date: s.onboardingDate || null, notes: s.notes || null,
-        street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
-        country: s.country || "United Kingdom", zip: s.zip || null,
+        onboarding_date: s.onboardingDate || null, notes: s.notes || [],
+        address_line1: s.addressLine1 || null, address_line2: s.addressLine2 || null, city: s.city || null, county: s.county || null,
+        country: s.country || "United Kingdom", postcode: s.postcode || null,
         primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
         secondary_contact: s.secondaryContact || null, secondary_email: s.secondaryEmail || null, secondary_phone: s.secondaryPhone || null, secondary_signatory: s.secondarySignatory || false,
         contact3_name: s.contact3Name || null, contact3_email: s.contact3Email || null, contact3_phone: s.contact3Phone || null, contact3_signatory: s.contact3Signatory || false,
@@ -1430,10 +2127,20 @@ async function savePersistedData() {
         bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
         account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
         credit_limits: s.creditLimits || {},
+        program_rates: s.programRates || {},
         single_invoice_limits: s.singleInvoiceLimits || {},
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
-        paused: s.paused || false
+        paused: s.paused || false,
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: s.entitySource || "manual",
+        directors: s.directors || [],
+        company_status: s.companyStatus || null,
+        incorporation_date: s.incorporationDate || null,
+        sic_codes: s.sicCodes || [],
+        ch_last_updated: s.chLastUpdated || null,
+      entity_files: s.entityFiles || [],
+      kyc: s.kyc || { passed: false }
       };
     });
     if (supRows.length > 0) await supabase.from("suppliers").upsert(supRows, { onConflict: "id" });
@@ -1443,15 +2150,26 @@ async function savePersistedData() {
       return {
         id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
         jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-        onboarding_date: b.onboardingDate || null, notes: b.notes || null,
-        street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
-        country: b.country || "United Kingdom", zip: b.zip || null,
+        onboarding_date: b.onboardingDate || null, notes: b.notes || [],
+        address_line1: b.addressLine1 || null, address_line2: b.addressLine2 || null, city: b.city || null, county: b.county || null,
+        country: b.country || "United Kingdom", postcode: b.postcode || null,
         primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
         secondary_contact: b.secondaryContact || null, secondary_email: b.secondaryEmail || null, secondary_phone: b.secondaryPhone || null, secondary_signatory: b.secondarySignatory || false,
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
-        paused: b.paused || false
+        paused: b.paused || false,
+        credit_limits: b.creditLimits || {},
+        single_invoice_limits: b.singleInvoiceLimits || {},
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: b.entitySource || "manual",
+        directors: b.directors || [],
+        company_status: b.companyStatus || null,
+        incorporation_date: b.incorporationDate || null,
+        sic_codes: b.sicCodes || [],
+        ch_last_updated: b.chLastUpdated || null,
+      entity_files: b.entityFiles || [],
+      kyc: b.kyc || { passed: false }
       };
     });
     if (buyRows.length > 0) await supabase.from("buyers").upsert(buyRows, { onConflict: "id" });
@@ -1460,11 +2178,27 @@ async function savePersistedData() {
     var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
-        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
-        street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
-        country: sp.country || "United Kingdom", zip: sp.zip || null,
+        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
+        role: sp.role || null, onboarding_date: sp.onboardingDate || null, notes: sp.notes || [],
+        address_line1: sp.addressLine1 || null, address_line2: sp.addressLine2 || null, city: sp.city || null, county: sp.county || null,
+        country: sp.country || "United Kingdom", postcode: sp.postcode || null,
         primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
-        secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
+        secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false,
+        contact3_name: sp.contact3Name || null, contact3_email: sp.contact3Email || null, contact3_phone: sp.contact3Phone || null, contact3_signatory: sp.contact3Signatory || false,
+        contact4_name: sp.contact4Name || null, contact4_email: sp.contact4Email || null, contact4_phone: sp.contact4Phone || null, contact4_signatory: sp.contact4Signatory || false,
+        contact5_name: sp.contact5Name || null, contact5_email: sp.contact5Email || null, contact5_phone: sp.contact5Phone || null, contact5_signatory: sp.contact5Signatory || false,
+        bank_name: sp.bankName || null, account_name: sp.accountName || null, sort_code: sp.sortCode || null,
+        account_number: sp.accountNumber || null, iban: sp.iban || null, bic: sp.bic || null,
+        paused: sp.paused || false,
+        // Companies House persistence fields (added in stage 1.6)
+        entity_source: sp.entitySource || "manual",
+        directors: sp.directors || [],
+        company_status: sp.companyStatus || null,
+        incorporation_date: sp.incorporationDate || null,
+        sic_codes: sp.sicCodes || [],
+        ch_last_updated: sp.chLastUpdated || null,
+      entity_files: sp.entityFiles || [],
+      kyc: sp.kyc || { passed: false }
       };
     });
     if (spRows.length > 0) await supabase.from("service_providers").upsert(spRows, { onConflict: "id" });
@@ -1492,24 +2226,9 @@ async function savePersistedData() {
 
     // Save invoices
     var invRows = INVOICES_DB.map(function(inv) {
-      return {
-        id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-        amount: inv.amount, currency: inv.currency,
-        capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-        interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-        days_to_maturity: inv.daysToMaturity || 0,
-        advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-        invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-        created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-        invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-        funding_program: inv.fundingProgram || null,
-        partial_approved_amount: inv.partialApprovedAmount || 0,
-        invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-        invoice_status_history: inv.invoiceStatusHistory || [],
-        adjustments: inv.adjustments || [],
-        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-        notes: inv.notes || []
-      };
+      var row = packInvoiceRow(inv);
+      attachDerivedFieldsToRow(row, inv);
+      return row;
     });
     if (invRows.length > 0) {
       // Batch upsert in groups of 50 to avoid Supabase payload limits
@@ -1528,11 +2247,24 @@ async function savePersistedData() {
 
     // Save payments — delete and re-insert allocations
     var payRows = PAYMENTS_DB.map(function(p) {
-      return {
+      var row = {
         payment_id: p.paymentId, amount: p.amount, date: p.date,
         currency: p.currency, reference: p.reference || "",
-        direction: p.direction || "inbound"
+        direction: p.direction || "inbound",
+        notes: p.notes || []
       };
+      // Optional payment-level entity scope (set for outbound or remittance source pairs)
+      if (p.buyerId) {
+        var pbIds = resolveBuyerIds(p.buyerId, p.buyerEntityId);
+        row.buyer_id = pbIds.buyerId || null;
+        row.buyer_entity_id = pbIds.entityId || null;
+      }
+      if (p.supplierId) {
+        var psIds = resolveSupplierIds(p.supplierId, p.supplierEntityId);
+        row.supplier_id = psIds.supplierId || null;
+        row.supplier_entity_id = psIds.entityId || null;
+      }
+      return row;
     });
     if (payRows.length > 0) {
       var payUpRes = await supabase.from("payments").upsert(payRows, { onConflict: "payment_id" });
@@ -1540,8 +2272,12 @@ async function savePersistedData() {
       var payAllocRows = [];
       PAYMENTS_DB.forEach(function(p) {
         p.allocations.forEach(function(a) {
+          var sIds = getSupplierIdsForInvoice(a.invoiceId);
           payAllocRows.push({
-            payment_id: p.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null
+            payment_id: p.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null,
+            supplier_id: sIds.supplierId, supplier_entity_id: sIds.entityId,
+            // Stage 1.7: see savePayment for context.
+            kind: a.kind || "funded_recovery"
           });
         });
       });
@@ -1556,18 +2292,23 @@ async function savePersistedData() {
 
     // Save holdback payments — delete and re-insert allocations
     var hbRows = HOLDBACK_PAYMENTS_DB.map(function(h) {
+      var hsIds = getSupplierIdsForInvoice(h.sourceInvoiceId);
       return {
         hb_payment_id: h.hbPaymentId, source_invoice_id: h.sourceInvoiceId,
-        amount: h.amount, date: h.date, currency: h.currency
+        amount: h.amount, date: h.date, currency: h.currency,
+        supplier_id: hsIds.supplierId, supplier_entity_id: hsIds.entityId,
+        notes: h.notes || []
       };
     });
     if (hbRows.length > 0) {
       await supabase.from("holdback_payments").upsert(hbRows, { onConflict: "hb_payment_id" });
       var hbAllocRows = [];
       HOLDBACK_PAYMENTS_DB.forEach(function(h) {
+        var hsIds = getSupplierIdsForInvoice(h.sourceInvoiceId);
         (h.allocations || []).forEach(function(a) {
           hbAllocRows.push({
-            hb_payment_id: h.hbPaymentId, target_id: a.targetId, amount: a.amount, type: a.type || "interest"
+            hb_payment_id: h.hbPaymentId, target_id: a.targetId, amount: a.amount, type: a.type || "interest",
+            supplier_id: hsIds.supplierId, supplier_entity_id: hsIds.entityId
           });
         });
       });
@@ -1576,37 +2317,12 @@ async function savePersistedData() {
       if (hbAllocRows.length > 0) await supabase.from("holdback_payment_allocations").insert(hbAllocRows);
     }
 
-    // Save supplier payment queue
-    var spqRows = SUPPLIER_PAYMENT_QUEUE.map(function(q) {
-      return {
-        id: q.id, type: q.type, invoice_id: q.invoiceId || null, invoice_ids: q.invoiceIds || [],
-        supplier_name: q.supplierName, supplier_id: q.supplierId || null,
-        bank_name: q.bankName || null, bank_details: q.bankDetails || null,
-        amount: q.amount, currency: q.currency, status: q.status || "Pending",
-        program_id: q.programId || null, program_name: q.programName || null,
-        hb_payment_id: q.hbPaymentId || null, source_invoice_id: q.sourceInvoiceId || null,
-        is_bundle: q.isBundle || false, holdback_ids: q.holdbackIds || [],
-        gross_amount: q.grossAmount || null, deductions: q.deductions || [],
-        deduction_total: q.deductionTotal || 0,
-        notes: q.notes || [],
-        created_at: q.createdAt || null,
-        created_display: q.createdDisplay || null, executed_at: q.executedAt || null, executed_display: q.executedDisplay || null,
-        source_payment_id: q.sourcePaymentId || null,
-        cancelled_at: q.cancelledAt || null, cancelled_display: q.cancelledDisplay || null,
-        failed_at: q.failedAt || null, failed_display: q.failedDisplay || null
-      };
-    });
+    // Save supplier payment queue (Stage 3 schema: 14 cols + metadata JSONB)
+    var spqRows = SUPPLIER_PAYMENT_QUEUE.map(packSpqRow);
     if (spqRows.length > 0) await supabase.from("supplier_payment_queue").upsert(spqRows, { onConflict: "id" });
 
     // Save credit notes
-    var cnRows = CREDIT_NOTES_DB.map(function(cn) {
-      return {
-        credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
-        date: cn.date, reference: cn.reference || "",
-        supplier_name: cn.supplierName, supplier_id: cn.supplierId || "", buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
-        created_display: cn.createdDisplay || null, allocations: cn.allocations || []
-      };
-    });
+    var cnRows = CREDIT_NOTES_DB.map(packCreditNoteRow);
     if (cnRows.length > 0) await supabase.from("credit_notes").upsert(cnRows, { onConflict: "credit_note_id" });
 
     // Save entity notes — full upsert
@@ -1624,12 +2340,7 @@ async function savePersistedData() {
 
     // Save audit log — append only (insert entries added since last save)
     if (AUDIT_LOG.length > _lastSavedAuditIndex) {
-      var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(function(a) {
-        return {
-          timestamp: a.timestamp, display_time: a.displayTime,
-          action: a.action, details: a.details, context: a.context || {}
-        };
-      });
+      var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(auditEntryToDbRow);
       if (newAuditRows.length > 0) {
         var auditOk = true;
         var firstAuditErr = null;
@@ -1664,11 +2375,8 @@ function _auditLog(action, details, context, dateOverride) {
     context: ctx
   };
   AUDIT_LOG.push(entry);
-  // Save directly to Supabase
-  supabase.from("audit_log").insert([{
-    timestamp: entry.timestamp, display_time: entry.displayTime,
-    action: entry.action, details: entry.details, context: entry.context
-  }]).then(function(result) {
+  // Save directly to Supabase using Stage 3 schema (event_type, explicit ID columns)
+  supabase.from("audit_log").insert([auditEntryToDbRow(entry)]).then(function(result) {
     if (result.error) console.error("[AuditSave] Error:", result.error.message, result.error.details);
   });
 }
@@ -1682,20 +2390,39 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (effDate > viewDate) return;
       if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
       allocsByInvoice.get(a.invoiceId).push({
-        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency
+        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency,
+        // Stage 1.7: pass-through allocations are buyer payments to invoices Pelagic
+        // didn't fund. They count toward settlement but never recover capital/interest.
+        kind: a.kind || "funded_recovery"
       });
     });
   });
   // Credit notes only reduce invoice amount (dilution) — they do NOT flow through the payment waterfall
   var cnDilutionByInvoice = new Map();
+  // Stage 1.7: pass-through CN allocations are CN amounts applied against unfunded
+  // invoices — they reduce the buyer's debt to the supplier but do not represent a
+  // Pelagic loss. Tracked separately so supplier dilution rates can exclude them.
+  var cnPassThroughDilutionByInvoice = new Map();
   var cnUnallocBySupplier = new Map(); // supplier -> unallocated CN total
   var cnUnallocBySupBuyer = new Map(); // "supplier|buyer" -> unallocated CN total
   var cnUnallocByBuyer = new Map(); // buyer -> unallocated CN total
   CREDIT_NOTES_DB.forEach(function(cn) {
     if (cn.date > viewDate) return;
+    // Voided credit notes are kept in CREDIT_NOTES_DB for audit but disregarded everywhere
+    // calculations are done. (Voiding requires unallocated state, so dilution maps wouldn't
+    // pick this CN up anyway — but the early return makes the contract explicit and protects
+    // against any future change that allowed voiding allocated CNs.)
+    if (cn.voided) return;
     var allocated = 0;
     if (cn.allocations) cn.allocations.forEach(function(a) {
       cnDilutionByInvoice.set(a.invoiceId, (cnDilutionByInvoice.get(a.invoiceId) || 0) + a.amount);
+      // Stage 1.7: pass-through CN allocations reduce the invoice's amountPostDilutions
+      // (the buyer's debt to the supplier is genuinely smaller) but should not feed the
+      // supplier dilution rate, because Pelagic isn't bearing the loss — the supplier is.
+      // Track separately so supDilRates can exclude these.
+      if (a.kind === "pass_through") {
+        cnPassThroughDilutionByInvoice.set(a.invoiceId, (cnPassThroughDilutionByInvoice.get(a.invoiceId) || 0) + a.amount);
+      }
       allocated += a.amount;
     });
     var unalloc = r2(cn.amount - allocated);
@@ -1730,10 +2457,24 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
   });
   INVOICES_DB.forEach(function(rawInv) {
     if (rawInv.invoiceDate > viewDate) return;
+    // Voided invoices are kept in INVOICES_DB for audit but disregarded everywhere
+    // calculations / gates / dashboards read from viewData. Voiding is restricted to
+    // never-funded invoices (gated in voidInvoice), so there's no exposure to unwind.
+    if (rawInv.voided) return;
     // Backfill tranches array for legacy invoices that pre-date the tranche model.
     // Idempotent — re-running is safe. Persisted on next save (tranches field roundtrips through Supabase).
     if ((!Array.isArray(rawInv.tranches) || rawInv.tranches.length === 0) && rawInv.fundedDate && rawInv.capitalDue > 0) {
       rawInv.tranches = synthesizeTranches(rawInv);
+    }
+    // Reset tranche repayment state at the START of each per-invoice block.
+    // Tranches are mutated in-place by applyCapitalRepaymentFIFO during the payment
+    // waterfall below; without this reset, a second processForDate call on the same
+    // invoice would see capitalRepaid still at its post-waterfall value, causing
+    // tranchesActiveCapital to return 0, which then corrupts capitalDue, advanceRate,
+    // holdback, etc. This reset MUST run before the tranche-derived field reads
+    // immediately below.
+    if (Array.isArray(rawInv.tranches)) {
+      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
     }
     // Derive capitalDue and interestCharged from tranches (tranches are source of truth).
     // For invoices not yet funded (no tranches), keep the legacy values from the raw record.
@@ -1770,16 +2511,21 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     else if (rawInv.dueDate < viewDate) penaltyStartDate = rawInv.dueDate;
     var penaltyDays = penaltyStartDate ? daysBetween(penaltyStartDate, viewDate) : 0;
     function cleanBal() { if (Math.abs(penBal) < 0.01) penBal = 0; if (Math.abs(intBal) < 0.01) intBal = 0; if (Math.abs(capBal) < 0.01) capBal = 0; if (Math.abs(hbBal) < 0.01) hbBal = 0; }
-    // Reset tranche repayment state — viewData recomputes it deterministically from payments
-    if (Array.isArray(rawInv.tranches)) {
-      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
-    }
+    // (Tranche capitalRepaid/status reset has been moved to the top of this per-invoice
+    // block — it must run BEFORE tranchesActiveCapital reads tranche state.)
     function applyPay(pay, allowPen) {
       var rem = pay.amount, toI = 0, toP = 0, toC = 0, toH = 0;
-      if (allowPen && rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
-      if (rem > 0 && intBal > 0.005) { var x2 = Math.min(rem, intBal); intBal -= x2; rem -= x2; toI = x2; }
-      if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
-      if (rem > 0 && hbBal > 0.005) { var x4 = Math.min(rem, hbBal); hbBal -= x4; rem -= x4; toH = x4; hbRecd += x4; }
+      // Pass-through allocations are buyer payments to invoices Pelagic didn't fund.
+      // They count toward settlement (totalBuyerPaid below) but never recover capital
+      // or interest, because there is no Pelagic exposure to recover. The pay is
+      // still annotated so audit/payment-link rendering shows it on the invoice.
+      var isPassThrough = pay.kind === "pass_through";
+      if (!isPassThrough) {
+        if (allowPen && rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
+        if (rem > 0 && intBal > 0.005) { var x2 = Math.min(rem, intBal); intBal -= x2; rem -= x2; toI = x2; }
+        if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
+        if (rem > 0 && hbBal > 0.005) { var x4 = Math.min(rem, hbBal); hbBal -= x4; rem -= x4; toH = x4; hbRecd += x4; }
+      }
       cleanBal();
       // Apply capital portion to tranches FIFO (oldest first). Updates capitalRepaid and tranche status.
       if (toC > 0.005 && Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
@@ -1787,7 +2533,8 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       }
       annotatedPays.push(Object.assign({}, pay, {
         appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH),
-        postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal)
+        postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal),
+        passThrough: isPassThrough
       }));
     }
     var invPenaltyRate = rawInv.penaltyRate || PENALTY_RATE;
@@ -1869,6 +2616,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (amtPostDil < effectiveAmt) effectiveAmt = amtPostDil;
 
     if (rawInv.fundingStatus === "historic") fs = "historic";
+    else if (rawInv.fundingStatus === "pending" && terminalInvStatus) fs = "historic";
     else if (rawInv.fundingStatus === "pending") fs = "pending";
     else if (rawInv.fundingStatus === "purchased" && !terminalInvStatus) fs = "purchased";
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
@@ -1907,6 +2655,19 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       rawInv.fullyRepaidDate = null;
     }
     // Remember status for next tick (used for transition-based audit events)
+    // Backfill settledDate from history for invoices that are already Settled
+    // (per statusAsOfDate) but whose raw.settledDate is missing. Handles the
+    // historical case of invoices Settled before saveInvoice persisted the
+    // field. Without this, processForDate's existing auto-settle block won't
+    // populate it because that block is gated on statusAsOfDate !== "Settled".
+    if (statusAsOfDate === "Settled" && !rawInv.settledDate && Array.isArray(rawInv.invoiceStatusHistory)) {
+      for (var sh = 0; sh < rawInv.invoiceStatusHistory.length; sh++) {
+        if (rawInv.invoiceStatusHistory[sh].status === "Settled") {
+          rawInv.settledDate = rawInv.invoiceStatusHistory[sh].date;
+          break;
+        }
+      }
+    }
     rawInv.priorFundingStatus = fs;
     var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
     // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
@@ -1923,10 +2684,36 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         rawInv.settledDate = settlePayDate;
         rawInv.invoiceStatusHistory = rawInv.invoiceStatusHistory || [];
         rawInv.invoiceStatusHistory.push({ status: "Settled", date: settlePayDate });
+        // Stage 1.7: emit a global audit event when an invoice transitions to
+        // Settled. The inner-if guard means this fires exactly once per invoice
+        // (per session) — subsequent processForDate runs see settledDate set and
+        // skip the block. Splits funded vs pass-through settlement for clarity.
+        var settledFunded = 0, settledPassThrough = 0;
+        paysForInv.forEach(function(p) {
+          if (p.kind === "pass_through") settledPassThrough += p.amount || 0;
+          else settledFunded += p.amount || 0;
+        });
+        var settledKind = settledPassThrough > 0.01 ? (settledFunded > 0.01 ? "mixed" : "pass_through") : "funded_recovery";
+        var dilNote = (cnDilutionByInvoice.get(rawInv.id) || 0) > 0.01 ? " (settle threshold reduced by " + r2(cnDilutionByInvoice.get(rawInv.id)) + " in credit notes)" : "";
+        auditLog("Invoice Settled", rawInv.id + " marked Settled on " + settlePayDate + " — buyer paid " + r2(totalBuyerPaid) + " " + rawInv.currency + " against threshold " + r2(settleThreshold) + dilNote, {
+          invoiceId: rawInv.id, supplierId: rawInv.supplierId, supplierName: rawInv.supplierName,
+          buyerId: rawInv.buyerId, buyerName: rawInv.buyerName,
+          amount: rawInv.amount, currency: rawInv.currency,
+          settledDate: settlePayDate, settleThreshold: r2(settleThreshold),
+          totalBuyerPaid: r2(totalBuyerPaid),
+          fundedRecoveryAmount: r2(settledFunded), passThroughAmount: r2(settledPassThrough),
+          settlementKind: settledKind,
+          cnDilutionApplied: r2(cnDilutionByInvoice.get(rawInv.id) || 0),
+          fundingProgram: rawInv.fundingProgram || null,
+          wasUnfunded: !isFunded
+        });
       }
       statusAsOfDate = "Settled";
       // Re-evaluate funding status since settled with balance triggers recovery
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
+      // Pending (never-funded) invoices that just auto-Settled are no longer fundable.
+      // Mirror the rule at the top of the chain: pending + terminal Invoice Status -> historic.
+      if (fs === "pending") fs = "historic";
     }
     // For unfunded invoices, compute max available capital from eligible programs.
     // buyerCollected reduces fundable headroom — the portion already paid by the buyer
@@ -1947,6 +2734,23 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       }
     }
     var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
+    // Mutate rawInv with the 10 derived fields that processForDate computes but
+    // that don't otherwise live on raw. Persisted to Supabase by saveInvoice so
+    // the server-side cron (time-based status transitions) can read them without
+    // re-implementing the balance and history-walk logic in SQL.
+    // Mirrors the existing side-effect pattern for fullyRepaidDate / settledDate /
+    // invoiceStatusHistory above. Confined to the persistence path — processForDate's
+    // return shape is unchanged, in-memory consumers still read off the processed copy.
+    rawInv.capitalOutstanding = r2(capBal);
+    rawInv.interestOutstanding = r2(intBal);
+    rawInv.penaltyOutstanding = r2(penBal);
+    rawInv.holdbackOutstanding = r2(hbBal);
+    rawInv.holdbackOverdrawn = r2(holdbackOverdrawn);
+    rawInv.debtBalance = r2(debtBal);
+    rawInv.balanceOwed = r2(balOwed);
+    rawInv.amountPostDilutions = r2(amtPostDil);
+    rawInv.currentInvoiceStatus = statusAsOfDate;
+    rawInv.disputedDate = disputedDate || null;
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
@@ -1963,6 +2767,11 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       writeOffPenalty: r2(woTotalPen), writeOffInterest: r2(woTotalInt), writeOffCapital: r2(woTotalCap), writeOffHoldback: r2(woTotalHb),
       adjCreditTotal: r2(adjCreditPen + adjCreditInt + adjCreditCap), adjDebitTotal: r2(adjDebitPen + adjDebitInt + adjDebitCap),
       dilutionTotal: r2(cnDilutionByInvoice.get(rawInv.id) || 0),
+      // Stage 1.7: portion of dilutionTotal that came from pass-through CN allocations.
+      // Reduces amountPostDilutions like a normal CN does (the supplier owes the buyer
+      // less now), but supDilRates excludes this from the supplier dilution numerator
+      // because Pelagic isn't bearing this loss.
+      passThroughDilutionTotal: r2(cnPassThroughDilutionByInvoice.get(rawInv.id) || 0),
       amountPostDilutions: r2(rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0)),
       totalFundsApplied: r2(annotatedPays.reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0)),
       paymentsToInvoice: r2(Math.min(totalBuyerPaid, settleThreshold)),
@@ -1988,9 +2797,68 @@ var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", bord
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
 var FUND_STATUSES = ["pending", "purchased", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
 
-function Badge(p) { return <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
-function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
-function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" }} labelStyle={{ color: "#94A3B8" }} /></AreaChart></ResponsiveContainer></div>); }
+function Badge(p) { return <span title={p.title || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace", cursor: p.title ? "help" : undefined }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
+
+// Hover tooltip explaining why an invoice is ineligible for funding. Renders an
+// Info icon next to the label; on hover the tooltip card appears immediately
+// (no native title-attribute lag) with the rejection reasons grouped by program.
+// Props:
+//   diag: { eligibleCount, invoiceLevelReason?, rejections: [{ programName, reasons: [string] }] }
+//   label: optional string to render alongside the icon (default: just icon)
+//   placement: "right" (default) | "left"
+function IneligibilityIndicator(p) {
+  var diag = p.diag || { rejections: [] };
+  var hov = useState(false), hovered = hov[0], setHovered = hov[1];
+  // Build the tooltip content
+  var tooltipBody;
+  if (diag.invoiceLevelReason) {
+    tooltipBody = <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.5 }}>{diag.invoiceLevelReason}</div>;
+  } else if (!diag.rejections || diag.rejections.length === 0) {
+    tooltipBody = <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>No funding programs are configured.</div>;
+  } else {
+    tooltipBody = <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {diag.rejections.map(function(r, ri) {
+        return <div key={ri}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{r.programName}</div>
+          <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc", display: "flex", flexDirection: "column", gap: 2 }}>
+            {r.reasons.map(function(reason, idx) {
+              return <li key={idx} style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.4 }}>{reason}</li>;
+            })}
+          </ul>
+        </div>;
+      })}
+    </div>;
+  }
+  var placement = p.placement || "right";
+  var tooltipPosition = placement === "left"
+    ? { right: "calc(100% + 8px)", left: "auto" }
+    : { left: "calc(100% + 8px)", right: "auto" };
+  return <span style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 4 }} onMouseEnter={function() { setHovered(true); }} onMouseLeave={function() { setHovered(false); }}>
+    {p.label && <span>{p.label}</span>}
+    <Info size={13} style={{ color: "#EF4444", cursor: "help", flexShrink: 0 }} />
+    {hovered && <div style={Object.assign({
+      position: "absolute",
+      top: "50%",
+      transform: "translateY(-50%)",
+      zIndex: 1000,
+      background: "var(--card)",
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+      padding: "12px 14px",
+      minWidth: 280,
+      maxWidth: 380,
+      whiteSpace: "normal",
+      pointerEvents: "none"
+    }, tooltipPosition)}>
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#EF4444", marginBottom: 8 }}>Ineligibility reasons</div>
+      {tooltipBody}
+    </div>}
+  </span>;
+}
+
+function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28,  color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
+function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0EA5E9" stopOpacity={0.2} /><stop offset="100%" stopColor="#0EA5E9" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#0EA5E9" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }} labelStyle={{ color: "#64748B" }} /></AreaChart></ResponsiveContainer></div>); }
 
 export default function FactoringDashboard() {
   // Auth state
@@ -2008,6 +2876,22 @@ export default function FactoringDashboard() {
   var sptS = useState("all"), spTypeFilter = sptS[0], setSpTypeFilter = sptS[1];
   var sppS = useState(""), spProgFilter = sppS[0], setSpProgFilter = sppS[1];
   var sppgS = useState(0), spPage = sppgS[0], setSpPage = sppgS[1];
+  // Funding Balance / Statement view
+  var spStPS = useState("MTD"), spStPreset = spStPS[0], setSpStPreset = spStPS[1]; // "MTD" | "QTD" | "YTD" | "ALL" | "CUSTOM"
+  var spStFS = useState(""), spStFrom = spStFS[0], setSpStFrom = spStFS[1];        // YYYY-MM-DD (Custom only)
+  var spStTS = useState(""), spStTo = spStTS[0], setSpStTo = spStTS[1];            // YYYY-MM-DD (Custom only)
+  var spStQS = useState(""), spStQuery = spStQS[0], setSpStQuery = spStQS[1];      // search filter
+  // Expanded-months tracking. Keyed by month string "YYYY-MM". null means "not yet
+  // initialised, auto-expand the most recent" — checked at render time. Separate
+  // state for portal and admin views so they expand independently.
+  var spStEMS = useState(null), spStExpandedMonths = spStEMS[0], setSpStExpandedMonths = spStEMS[1];
+  var adStEMS = useState(null), adStExpandedMonths = adStEMS[0], setAdStExpandedMonths = adStEMS[1];
+  // Admin Funding Balance period preset (parity with portal). Defaults to MTD so
+  // the table opens narrow rather than rendering years of history on first paint.
+  var adStPS = useState("MTD"), adStPreset = adStPS[0], setAdStPreset = adStPS[1];
+  var adStFS = useState(""), adStFrom = adStFS[0], setAdStFrom = adStFS[1];
+  var adStTS = useState(""), adStTo = adStTS[0], setAdStTo = adStTS[1];
+  var adStQS = useState(""), adStQuery = adStQS[0], setAdStQuery = adStQS[1];
 
   // Toast subscriber — pulls from module-level TOAST_QUEUE so any save function can push
   var toastS = useState([]), toasts = toastS[0], setToasts = toastS[1];
@@ -2036,16 +2920,22 @@ export default function FactoringDashboard() {
         setUserProfile(result.data);
         // If data is already loaded, bump dataVer to re-render with new profile context
         if (_dataLoaded) setDataVer(function(v) { return v + 1; });
-        // If supplier user and suppliers not loaded yet, force a reload
+        // If supplier user and suppliers not loaded yet, force a reload.
+        // Stage 2 split user_profiles.supplier_id into supplier_id (parent) + branch_id
+        // (suffix). Compose them back into the composite entity ID that reloadForSupplier
+        // expects and that downstream scoping uses.
         if (result.data.role === "supplier") {
+          var rdSup = result.data.supplier_id || "";
+          var rdBranch = result.data.branch_id || "";
+          var entityIdForReload = rdBranch ? (rdSup + ":" + rdBranch) : rdSup;
           if (SUPPLIERS_DB.length === 0) {
             loadPersistedData().then(function() {
-              reloadForSupplier(result.data.supplier_id).then(function() {
+              reloadForSupplier(entityIdForReload).then(function() {
                 setDataVer(function(v) { return v + 1; });
               });
             });
           } else {
-            reloadForSupplier(result.data.supplier_id).then(function() {
+            reloadForSupplier(entityIdForReload).then(function() {
               setDataVer(function(v) { return v + 1; });
             });
           }
@@ -2104,6 +2994,214 @@ export default function FactoringDashboard() {
     }
     _auditLog(action, details, ctx, viewDate !== REF_DATE ? viewDate : undefined);
   }
+
+  // Step E/F/G/I: Round-trip prospect conversion. Called from saveEntity after a new supplier
+  // is created via deep link from Prospects. Writes converted_supplier_id back to prospect_suppliers,
+  // migrates invoices, credit notes, and notes, and clears the deep-link state.
+  async function completeProspectConversion(deepLink, newSupplierId, newSupplierName) {
+    try {
+      // 1. Read the prospect_supplier row to get mapped_buyer_id and metadata
+      var psRes = await supabase.from("prospect_suppliers").select("*").eq("id", deepLink.prospectId).maybeSingle();
+      if (psRes.error || !psRes.data) {
+        console.error("[Conversion] Cannot find prospect_supplier:", deepLink.prospectId, psRes.error);
+        toast.error("Prospect link broken", "Could not find the prospect record. Conversion incomplete.");
+        return;
+      }
+      var ps = psRes.data;
+
+      // 2. Update prospect_suppliers with the round-trip
+      var updates = {
+        status: "converted",
+        company_name: newSupplierName,
+        converted_at: new Date().toISOString(),
+        converted_supplier_id: newSupplierId
+      };
+      var upRes = await supabase.from("prospect_suppliers").update(updates).eq("id", deepLink.prospectId);
+      if (upRes.error) {
+        console.error("[Conversion] Round-trip update failed:", upRes.error);
+        toast.error("Prospect round-trip failed", upRes.error.message);
+        return;
+      }
+
+      // 3. System note on the prospect
+      await supabase.from("prospect_notes").insert({
+        prospect_supplier_id: deepLink.prospectId,
+        note_type: "system",
+        content: "Supplier converted to FactorFlow as \"" + newSupplierName + "\" (CH: " + (ps.company_number || "?") + ", ID: " + newSupplierId + ")"
+      });
+
+      // 4. Migrate notes (Step G)
+      var notesMigrated = 0;
+      var pnRes = await supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", deepLink.prospectId).order("created_at", { ascending: true });
+      if (!pnRes.error && pnRes.data && pnRes.data.length > 0) {
+        var entityNotes = [{
+          entity_id: newSupplierId,
+          entity_type: "supplier",
+          note_type: "system",
+          content: "Notes imported from Prospect Pipeline \u2014 " + pnRes.data.length + " notes transferred during conversion."
+        }];
+        pnRes.data.forEach(function(pn) {
+          entityNotes.push({
+            entity_id: newSupplierId,
+            entity_type: "supplier",
+            note_type: pn.note_type,
+            content: "[Prospect] " + pn.content,
+            created_at: pn.created_at,
+            prospect_note_id: pn.id,
+            source: "prospect"
+          });
+        });
+        var enRes = await supabase.from("entity_notes").insert(entityNotes);
+        if (enRes.error) console.error("[Conversion] Notes migration failed:", enRes.error);
+        else notesMigrated = pnRes.data.length;
+      }
+
+      // 5. Migrate invoices (Step F)
+      var invoicesMigrated = 0;
+      if (ps.mapped_buyer_id) {
+        var invRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", deepLink.prospectId).eq("excluded", false);
+        if (!invRes.error && invRes.data && invRes.data.length > 0) {
+          var buyer = BUYERS_DB.find(function(b) { return b.id === ps.mapped_buyer_id; });
+          var buyerName = buyer ? buyer.name : "";
+          var ffInvoices = invRes.data.map(function(p) {
+            var preservedNotes = [];
+            if (p.payments_to_invoice) preservedNotes.push("Payments to invoice (from prospect): " + p.payments_to_invoice);
+            if (p.amount_paid_to_date) preservedNotes.push("Amount paid to date (from prospect): " + p.amount_paid_to_date);
+            var notesArr = [];
+            if (preservedNotes.length > 0) {
+              notesArr.push({
+                id: "note-mig-" + p.id,
+                text: preservedNotes.join(". "),
+                author: "system",
+                timestamp: new Date().toISOString(),
+                source: "prospect"
+              });
+            }
+
+            // Derive invoice_status from prospect dates. Priority: terminal states first.
+            var amt = p.invoice_amount || 0;
+            var apprAmt = p.approved_amount || 0;
+            var amountPaid = p.amount_paid_to_date != null ? parseFloat(p.amount_paid_to_date) : null;
+            var invStatus;
+            if (p.settled_date) invStatus = "Settled";
+            else if (p.cancelled_date) invStatus = "Cancelled";
+            else if (p.declined_date) invStatus = "Declined";
+            else if (p.disputed_date) invStatus = "Disputed";
+            else if (p.approval_date && apprAmt > 0 && apprAmt < amt - 0.01) invStatus = "Approved in Part";
+            else if (p.approval_date) invStatus = "Approved in Full";
+            else invStatus = "Received";
+
+            // Determine if invoice should be marked historic. Mirrors the CSV import rules
+            // (line ~17504): any terminal status, past due date, or fully paid by buyer.
+            // historic short-circuits processForDate's derivation (line ~1975) so the
+            // saved status sticks rather than being re-derived to fully_repaid etc.
+            var nowStr = new Date().toISOString().split("T")[0];
+            var isHistoric = false;
+            if (p.cancelled_date || p.declined_date || p.disputed_date || p.settled_date) isHistoric = true;
+            if (p.due_date && p.due_date < nowStr) isHistoric = true;
+            if (amountPaid !== null && amt > 0 && amountPaid >= amt - 0.01) isHistoric = true;
+
+            // Reconstruct invoice_status_history from populated dates, sorted chronologically.
+            var historyEvents = [];
+            if (p.invoice_date) historyEvents.push({ status: "Received", date: p.invoice_date });
+            if (p.approval_date) {
+              var apprStatus = (apprAmt > 0 && apprAmt < amt - 0.01) ? "Approved in Part" : "Approved in Full";
+              historyEvents.push({ status: apprStatus, date: p.approval_date });
+            }
+            if (p.declined_date) historyEvents.push({ status: "Declined", date: p.declined_date });
+            if (p.disputed_date) historyEvents.push({ status: "Disputed", date: p.disputed_date });
+            if (p.cancelled_date) historyEvents.push({ status: "Cancelled", date: p.cancelled_date });
+            if (p.settled_date) historyEvents.push({ status: "Settled", date: p.settled_date });
+            historyEvents.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+
+            return {
+              id: "INV-" + p.id.substring(0, 8).toUpperCase() + "-" + p.reference_number,
+              supplier_id: newSupplierId,
+              supplier_entity_id: newSupplierId,
+              buyer_id: ps.mapped_buyer_id,
+              buyer_entity_id: ps.mapped_buyer_id,
+              amount: amt,
+              currency: p.currency || "GBP",
+              advance_rate: 0, annual_rate: 0, penalty_rate: 0,
+              invoice_date: p.invoice_date,
+              due_date: p.due_date,
+              funded_date: null,
+              created_date: p.invoice_date,
+              approved_date: p.approval_date,
+              fully_repaid_date: p.settled_date || null,
+              settled_date: p.settled_date || null,
+              invoice_status: invStatus,
+              funding_status: isHistoric ? "historic" : "pending",
+              funding_program: null,
+              partial_approved_amount: apprAmt,
+              invoice_reference: p.reference_number,
+              purchase_order: p.purchase_order,
+              buyer_ref: p.buyer_invoice_ref,
+              supplier_ref: p.supplier_invoice_ref,
+              buyer_received_date: p.buyer_received_date,
+              invoice_status_history: historyEvents,
+              adjustments: [],
+              do_not_fund: false, do_not_advance: false,
+              pending_top_up_amount: 0, pending_top_up_rate: null, pending_top_up_date: null,
+              tranches: [],
+              notes: notesArr
+            };
+          });
+          var insRes = await supabase.from("invoices").upsert(ffInvoices, { onConflict: "id" });
+          if (insRes.error) {
+            console.error("[Conversion] Invoice migration failed:", insRes.error);
+            toast.error("Invoice migration failed", insRes.error.message);
+          } else {
+            invoicesMigrated = ffInvoices.length;
+          }
+        }
+
+        // 6. Migrate credit notes
+        var cnRes = await supabase.from("prospect_credit_notes").select("*").eq("prospect_supplier_id", deepLink.prospectId);
+        if (!cnRes.error && cnRes.data && cnRes.data.length > 0) {
+          var buyer2 = BUYERS_DB.find(function(b) { return b.id === ps.mapped_buyer_id; });
+          var buyerName2 = buyer2 ? buyer2.name : "";
+          var ffCns = cnRes.data.map(function(p) {
+            return {
+              credit_note_id: "CN-" + p.id.substring(0, 8).toUpperCase() + "-" + (p.reference_number || ""),
+              amount: p.credit_note_amount || 0,
+              date: p.cn_date || p.invoice_date,
+              currency: p.currency || "GBP",
+              reference: p.reference_number || "",
+              supplier_id: newSupplierId,
+              supplier_entity_id: newSupplierId,
+              buyer_id: ps.mapped_buyer_id,
+              buyer_entity_id: ps.mapped_buyer_id,
+              allocations: [],
+              notes: []
+            };
+          });
+          var cnIns = await supabase.from("credit_notes").upsert(ffCns, { onConflict: "credit_note_id" });
+          if (cnIns.error) console.error("[Conversion] CN migration failed:", cnIns.error);
+        }
+      } else {
+        console.warn("[Conversion] No mapped_buyer_id on prospect; invoice migration skipped.");
+      }
+
+      // 7. Audit log entry on FF side (Step I)
+      auditLog("Prospect Converted", "Supplier " + newSupplierId + " (" + newSupplierName + ") created from prospect " + deepLink.prospectId + ". Migrated " + invoicesMigrated + " invoice(s) and " + notesMigrated + " note(s).", {
+        entityId: newSupplierId,
+        entityName: newSupplierName,
+        prospectId: deepLink.prospectId,
+        uploadId: deepLink.uploadId,
+        companyNumber: ps.company_number,
+        invoicesMigrated: invoicesMigrated,
+        notesMigrated: notesMigrated,
+        source: "prospect_conversion"
+      });
+
+      toast.success("Prospect converted", newSupplierName + " \u2014 " + invoicesMigrated + " invoice(s), " + notesMigrated + " note(s) migrated");
+      setProspectDeepLink(null);
+    } catch (e) {
+      console.error("[Conversion] Unexpected error:", e);
+      toast.error("Conversion error", e.message || String(e));
+    }
+  }
   var vws = useState("company"), view = vws[0], setView = vws[1];
   var is1 = useState("all"), isf = is1[0], setIsf = is1[1];
   var fs1 = useState("all"), fsf = fs1[0], setFsf = fs1[1];
@@ -2116,22 +3214,54 @@ export default function FactoringDashboard() {
   var ap1 = useState(null), allocPay = ap1[0], setAllocPay = ap1[1];
   var al1 = useState([]), allocs = al1[0], setAllocs = al1[1];
   var as1 = useState(""), allocSearch = as1[0], setAllocSearch = as1[1];
+  // Stage 1.7: separate state for pass-through allocations to unpurchased / purchased-
+  // but-unfunded invoices, plus filter controls for both sections of the Phase 2 modal.
+  var pta1 = useState([]), passThroughAllocs = pta1[0], setPassThroughAllocs = pta1[1];
+  var afs1 = useState(""), allocFundedSearch = afs1[0], setAllocFundedSearch = afs1[1];
+  var afdr1 = useState("all"), allocFundedDueRange = afdr1[0], setAllocFundedDueRange = afdr1[1];
+  var afsort1 = useState("dueDate-asc"), allocFundedSort = afsort1[0], setAllocFundedSort = afsort1[1];
+  var apts1 = useState(""), allocPtSearch = apts1[0], setAllocPtSearch = apts1[1];
+  var aptdr1 = useState("all"), allocPtDueRange = aptdr1[0], setAllocPtDueRange = aptdr1[1];
+  var aptsort1 = useState("dueDate-asc"), allocPtSort = aptsort1[0], setAllocPtSort = aptsort1[1];
   var sm1 = useState(null), successMsg = sm1[0], setSuccessMsg = sm1[1];
   var dv1 = useState(0), dataVer = dv1[0], setDataVer = dv1[1];
 
-  // Load persisted data on mount
+  // Step D/E: Prospect deep-link state. Set when arriving from Prospects with ?action=create-supplier&...
+  // Cleared on successful conversion (Step E saveEntity round-trip).
+  var pdl1 = useState(null), prospectDeepLink = pdl1[0], setProspectDeepLink = pdl1[1];
+
+  // Load persisted data on mount — but only after auth is established.
+  //
+  // Why this is gated on `session`: the data load and the auth handshake
+  // are two independent useEffects that fire in parallel on mount. If the
+  // load completes before auth settles, every Supabase query is rejected
+  // by RLS and returns an empty result, safeFetch swallows the rejection,
+  // _dataLoaded flips to true on empty arrays, and the in-memory DBs stay
+  // empty for the rest of the session. The user sees the app render with
+  // no suppliers, buyers, programs, etc. — a hard refresh worked because
+  // a cached session populated more quickly on the second load and won
+  // the race.
+  //
+  // Waiting for session before loading guarantees RLS-allowed queries
+  // and removes the race entirely. The useEffect re-fires whenever the
+  // session object changes; _dataLoaded acts as a one-shot guard so a
+  // mid-session token refresh doesn't trigger a redundant reload.
   useEffect(function() {
+    if (!session) return;
     if (_dataLoaded) { setStorageLoading(false); return; }
     loadPersistedData().then(function() {
       _dataLoaded = true;
       setStorageLoading(false);
-      // Re-sync state with loaded data
-      if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
-      if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].name);
+      // Re-sync state with loaded data. selectedSupplier / selectedBuyer hold IDs
+      // (every onChange/setter elsewhere writes IDs); writing names here was a latent
+      // bug — programsForSupplier / programsForBuyer match by ID, so a name-valued
+      // selection silently breaks program filtering.
+      if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].id);
+      if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].id);
       setDataVer(function(v) { return v + 1; });
       if (CSV_REVIEW_QUEUE_DB.length > 0) setCsvReviewQueue(CSV_REVIEW_QUEUE_DB);
     });
-  }, []);
+  }, [session]);
 
   // dataVer changes trigger re-render only, NOT automatic saves
   // Individual operations (fund, execute, etc.) use targeted saves (saveInvoice, saveSPQEntry, etc.)
@@ -2198,8 +3328,12 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var row = payload.new || payload.old;
           if (row) {
-            var matchesSup = row.supplier_name === sf.supplierName ||
-              (row.supplier_id && (row.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(row.supplier_id).supplierId === sf.parentId)));
+            // Stage 3: name column is gone; match on supplier_id (parent) and supplier_entity_id (composite)
+            var rowEntity = row.supplier_entity_id || row.supplier_id || "";
+            var rowParent = rowEntity ? parseEntityId(rowEntity).supplierId : "";
+            var matchesSup =
+              (rowEntity && rowEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId);
             if (!matchesSup) return;
             // Keep supplier invoice-id set in sync so later audit-log realtime
             // relevance checks find invoices that arrived after the initial load
@@ -2217,55 +3351,50 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var spqRow = payload.new || payload.old;
           if (spqRow) {
-            var matches = spqRow.supplier_name === sf.supplierName ||
-              (spqRow.supplier_id && (spqRow.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(spqRow.supplier_id).supplierId === sf.parentId)));
+            // Stage 3: name column is gone; match on supplier_id (parent) and supplier_entity_id
+            var rowEntity = spqRow.supplier_entity_id || spqRow.supplier_id || "";
+            var rowParent = rowEntity ? parseEntityId(rowEntity).supplierId : "";
+            var matches =
+              (rowEntity && rowEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId);
             if (!matches) return;
           }
         }
-        if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
-          return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-            supplierName: row.supplier_name, supplierId: row.supplier_id || "",
-            bankName: row.bank_name, bankDetails: row.bank_details,
-            amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
-            programId: row.program_id, programName: row.program_name,
-            hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
-            isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
-            grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
-            deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
-            notes: row.notes || [],
-            createdAt: row.created_at, createdDisplay: row.created_display,
-            executedAt: row.executed_at, executedDisplay: row.executed_display,
-            sourcePaymentId: row.source_payment_id || null,
-            cancelledAt: row.cancelled_at || null, cancelledDisplay: row.cancelled_display || null,
-            failedAt: row.failed_at || null, failedDisplay: row.failed_display || null };
-        })) scheduleRender();
+        if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", unpackSpqRow)) scheduleRender();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "audit_log" }, function(payload) {
         if (payload.eventType === "INSERT" && payload.new && !_isSaving) {
           var row = payload.new;
           var ctx = row.context || {};
-          // If running as a supplier, only accept entries relevant to that supplier
+          // If running as a supplier, only accept entries relevant to that supplier.
+          // Stage 3: prefer explicit ID columns; legacy ctx.supplierId/Name fallback for any
+          // pre-stage-3 rows that linger.
           if (_supplierFilter) {
             var sf = _supplierFilter;
-            var relevant = ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName ||
-              (ctx.supplierId && (ctx.supplierId === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(ctx.supplierId).supplierId === sf.parentId))) ||
-              (ctx.invoiceId && sf.invIds && sf.invIds[ctx.invoiceId]);
+            var rowSupId = row.supplier_id || ctx.supplierId || null;
+            var rowSupEntity = row.supplier_entity_id || ctx.supplierEntityId || null;
+            var rowParent = rowSupId ? parseEntityId(rowSupId).supplierId : (rowSupEntity ? parseEntityId(rowSupEntity).supplierId : null);
+            var rowInvoice = row.invoice_id || ctx.invoiceId || null;
+            var relevant =
+              (rowSupEntity && rowSupEntity === sf.supplierId) ||
+              (rowParent && rowParent === sf.parentId) ||
+              (rowInvoice && sf.invIds && sf.invIds[rowInvoice]) ||
+              ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName;
             if (!relevant) return;
           }
-          // Time-tolerant dedupe: Supabase timestamptz returns strings with microsecond
-          // precision and a "+00:00" offset, while in-memory entries use millisecond
-          // toISOString() with a "Z" suffix, so string === comparison fails and the
-          // entry gets added twice. Normalise to epoch ms (and tolerate 1ms skew from
-          // precision truncation) and also match on action+details as a secondary key.
-          var rowMs = Date.parse(row.timestamp);
+          // Time-tolerant dedupe. Stage 3: read created_at instead of timestamp,
+          // event_type instead of action.
+          var rowTs = row.created_at || row.timestamp;
+          var rowEvent = row.event_type || row.action;
+          var rowMs = Date.parse(rowTs);
           var exists = AUDIT_LOG.some(function(a) {
-            if (a.action !== row.action) return false;
+            if (a.action !== rowEvent) return false;
             if (a.details !== row.details) return false;
             var aMs = Date.parse(a.timestamp);
             return Math.abs(aMs - rowMs) < 2;
           });
           if (!exists) {
-            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+            AUDIT_LOG.push(auditDbRowToEntry(row));
             scheduleRender();
           }
         }
@@ -2308,7 +3437,7 @@ export default function FactoringDashboard() {
     if (document.getElementById("ff-tooltip-styles")) return;
     var s = document.createElement("style");
     s.id = "ff-tooltip-styles";
-    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:50%;left:-12px;transform:translateY(-50%);border:6px solid transparent;border-right-color:#1A2744}";
+    s.textContent = ".ff-tip{position:relative;cursor:pointer;display:inline-block}.ff-tip .ff-tipbox{display:none;position:absolute;z-index:9999;left:calc(100% + 10px);top:50%;transform:translateY(-50%);min-width:280px;max-width:400px;padding:0;border-radius:10px;pointer-events:none;opacity:0;transition:opacity 0.15s}.ff-tip:hover .ff-tipbox{display:block;opacity:1;pointer-events:auto}.ff-tipbox::after{content:'';position:absolute;top:50%;left:-12px;transform:translateY(-50%);border:6px solid transparent;border-right-color:#FFFFFF}";
     document.head.appendChild(s);
   }, []);
 
@@ -2375,6 +3504,8 @@ export default function FactoringDashboard() {
   var ilfund1 = useState(""), invlFundStFilter = ilfund1[0], setInvlFundStFilter = ilfund1[1];
   var ildnf1 = useState(""), invlDnfFilter = ildnf1[0], setInvlDnfFilter = ildnf1[1];
   var ildna1 = useState(""), invlDnaFilter = ildna1[0], setInvlDnaFilter = ildna1[1];
+  // Voided filter for top-level Invoices view: "" = hide voided (default), "yes" = show only voided, "all" = show both
+  var ilvoid1 = useState(""), invlVoidedFilter = ilvoid1[0], setInvlVoidedFilter = ilvoid1[1];
   var ildf1 = useState(""), invlDateFrom = ildf1[0], setInvlDateFrom = ildf1[1];
   var ildt1 = useState(""), invlDateTo = ildt1[0], setInvlDateTo = ildt1[1];
   var ilpg1 = useState(0), invlPage = ilpg1[0], setInvlPage = ilpg1[1];
@@ -2411,8 +3542,11 @@ export default function FactoringDashboard() {
   var batchConfirm1 = useState(null), batchConfirm = batchConfirm1[0], setBatchConfirm = batchConfirm1[1]; // { type: "funding"|"disbursal", items: [] }
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].id : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
-  var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
-  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
+  // supProgram: the active funding program filter for the Suppliers view. Defaults to the
+  // first program this supplier is eligible for; recomputed in an effect when supplier changes.
+  // No "all" option — UI lists only programs the supplier participates in.
+  var sc1 = useState(""), supProgram = sc1[0], setSupProgram = sc1[1];
+  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
   var hd1 = useState(null), hbDisburseInv = hd1[0], setHbDisburseInv = hd1[1];
   var ha1 = useState([]), hbAllocs = ha1[0], setHbAllocs = ha1[1];
   var hs1 = useState(""), hbSupplierAmt = hs1[0], setHbSupplierAmt = hs1[1];
@@ -2427,6 +3561,12 @@ export default function FactoringDashboard() {
   var fpe1 = useState(null), fundPayExp = fpe1[0], setFundPayExp = fpe1[1];
   var bnd1 = useState(null), bundleDialog = bnd1[0], setBundleDialog = bnd1[1];
   var rc1 = useState(false), showRateChange = rc1[0], setShowRateChange = rc1[1];
+  // Modal for adding supplier to program with required commercial terms (Tweak: rate gate at program assignment).
+  // null = closed; otherwise { supplierId, supplierName, programId, programName, programCcy, advanceRate, annualRate, penaltyRate, creditLimit, singleInvoiceLimit }
+  var atpm1 = useState(null), addToProgramModal = atpm1[0], setAddToProgramModal = atpm1[1];
+  // Shared void/un-void prompt: { kind: "invoice"|"creditNote", action: "void"|"unvoid", id: <id>, name: <display>, amount, currency }
+  var vp1 = useState(null), voidPrompt = vp1[0], setVoidPrompt = vp1[1];
+  var vpr1 = useState(""), voidPromptReason = vpr1[0], setVoidPromptReason = vpr1[1];
   var rn1 = useState(""), newRateAnnual = rn1[0], setNewRateAnnual = rn1[1];
   var rp1 = useState(""), newRatePenalty = rp1[0], setNewRatePenalty = rp1[1];
   var ra1 = useState(""), newRateAdvance = ra1[0], setNewRateAdvance = ra1[1];
@@ -2449,12 +3589,23 @@ export default function FactoringDashboard() {
   var cns1 = useState(""), cnSearch = cns1[0], setCnSearch = cns1[1];
   var cnp1 = useState(""), cnProgFilter = cnp1[0], setCnProgFilter = cnp1[1];
   var cnsup1 = useState(""), cnSupFilter = cnsup1[0], setCnSupFilter = cnsup1[1];
+  // Stage 1.7: pass-through allocations on the CN modal (CN reduces buyer-side
+  // receivable on unpurchased / purchased-but-unfunded invoices). Plus filter
+  // controls for both sections of the modal.
+  var cnpta1 = useState([]), cnPassThroughAllocs = cnpta1[0], setCnPassThroughAllocs = cnpta1[1];
+  var cnfd1 = useState("all"), cnFundedDueRange = cnfd1[0], setCnFundedDueRange = cnfd1[1];
+  var cnfs1 = useState("dueDate-asc"), cnFundedSort = cnfs1[0], setCnFundedSort = cnfs1[1];
+  var cnpts1 = useState(""), cnPtSearch = cnpts1[0], setCnPtSearch = cnpts1[1];
+  var cnptd1 = useState("all"), cnPtDueRange = cnptd1[0], setCnPtDueRange = cnptd1[1];
+  var cnptsort1 = useState("dueDate-asc"), cnPtSort = cnptsort1[0], setCnPtSort = cnptsort1[1];
   // Credit Notes LIST filters (separate from allocation modal filters above)
   var cnls1 = useState(""), cnlSearch = cnls1[0], setCnlSearch = cnls1[1];
   var cnlc1 = useState(""), cnlCcyFilter = cnlc1[0], setCnlCcyFilter = cnlc1[1];
   var cnlsup1 = useState(""), cnlSupFilter = cnlsup1[0], setCnlSupFilter = cnlsup1[1];
   var cnlbuy1 = useState(""), cnlBuyFilter = cnlbuy1[0], setCnlBuyFilter = cnlbuy1[1];
   var cnlst1 = useState(""), cnlStatusFilter = cnlst1[0], setCnlStatusFilter = cnlst1[1];
+  // Voided filter for top-level Credit Notes view: "" = hide voided (default), "yes" = show only voided, "all" = show both
+  var cnlvoid1 = useState(""), cnlVoidedFilter = cnlvoid1[0], setCnlVoidedFilter = cnlvoid1[1];
   var cnldf1 = useState(""), cnlDateFrom = cnldf1[0], setCnlDateFrom = cnldf1[1];
   var cnldt1 = useState(""), cnlDateTo = cnldt1[0], setCnlDateTo = cnldt1[1];
   var cnlpg1 = useState(0), cnlPage = cnlpg1[0], setCnlPage = cnlpg1[1];
@@ -2543,7 +3694,8 @@ export default function FactoringDashboard() {
   var sb1 = useState(BUYERS_DB.length > 0 ? BUYERS_DB[0].id : ""), selectedBuyer = sb1[0], setSelectedBuyer = sb1[1];
   var mob1 = useState(false), sidebarOpen = mob1[0], setSidebarOpen = mob1[1];
   var bt1 = useState("overview"), buyTab = bt1[0], setBuyTab = bt1[1];
-  var bc1 = useState("all"), buyCurrency = bc1[0], setBuyCurrency = bc1[1];
+  // buyProgram: same pattern as supProgram for the Buyers view.
+  var bc1 = useState(""), buyProgram = bc1[0], setBuyProgram = bc1[1];
   var bas1 = useState(""), baSearch = bas1[0], setBaSearch = bas1[1];
   var baf1 = useState(""), baDateFilter = baf1[0], setBaDateFilter = baf1[1];
   var bae1 = useState(null), baExp = bae1[0], setBaExp = bae1[1];
@@ -2607,6 +3759,53 @@ export default function FactoringDashboard() {
   var ch3 = useState(""), chError = ch3[0], setChError = ch3[1];
   var chLive1 = useState(null), chLiveData = chLive1[0], setChLiveData = chLive1[1];
   var chLive2 = useState(false), chLiveLoading = chLive2[0], setChLiveLoading = chLive2[1];
+
+  // Step D: Detect prospect deep-link on mount. Format:
+  //   ?action=create-supplier&company_number=12345678&prospect_id=...&upload_id=...
+  // Stash params, navigate to Manage > Suppliers > New Entity, populate company number.
+  useEffect(function() {
+    if (typeof window === "undefined" || !window.location) return;
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("action") !== "create-supplier") return;
+    var coNum = params.get("company_number");
+    if (!coNum) return;
+    var deepLink = {
+      companyNumber: coNum,
+      prospectId: params.get("prospect_id") || null,
+      uploadId: params.get("upload_id") || null,
+      contactName: params.get("contact_name") || "",
+      contactEmail: params.get("contact_email") || "",
+      contactPhone: params.get("contact_phone") || ""
+    };
+    setProspectDeepLink(deepLink);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Step D: Once deep-link state is set AND data loaded, navigate to suppliers > new entity
+  useEffect(function() {
+    if (!prospectDeepLink || storageLoading) return;
+    setView("manage");
+    setManageTab("suppliers");
+    setShowNewEntity(true);
+    setManageEdit(null);
+    setManageFields(Object.assign({}, EMPTY_ADDR, {
+      name: "",
+      companyNumber: prospectDeepLink.companyNumber,
+      incorporationDate: "",
+      companyStatus: "",
+      directors: [],
+      bankName: "",
+      bankDetails: "",
+      primaryContact: prospectDeepLink.contactName || "",
+      primaryEmail: prospectDeepLink.contactEmail || "",
+      primaryPhone: prospectDeepLink.contactPhone || ""
+    }));
+    setChImportStep("lookup");
+    setChCompanyNo(prospectDeepLink.companyNumber);
+    setChError("");
+  }, [prospectDeepLink, storageLoading]);
   var aps1 = useState(""), allocProgFilter = aps1[0], setAllocProgFilter = aps1[1];
   var ass1 = useState(""), allocSupFilter = ass1[0], setAllocSupFilter = ass1[1];
   var payR1 = useState([]), payRoutings = payR1[0], setPayRoutings = payR1[1]; // [{counterpartyType:'supplier'|'service_provider', supplierId, supplierName, serviceProviderId, serviceProviderName, programId, programName, amount}]
@@ -2718,21 +3917,23 @@ export default function FactoringDashboard() {
     var fbadFS = { "write_off": true, "recovery_mode": true };
     Object.keys(bySupplier).forEach(function(sup) {
       var invs = bySupplier[sup];
-      // Current supplier dilution
+      // Current supplier dilution. Stage 1.7: pass-through CN allocations (against
+      // unfunded invoices) reduce inv.dilutionTotal but not the funder's exposure —
+      // exclude them from the numerator so dilution rate reflects Pelagic's risk.
       var dN = 0, dD = 0;
-      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
+      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
       // Add unallocated credit note amounts for this supplier
       var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(sup) || 0) : 0;
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
       var fN = 0, fD = 0;
-      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; fN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) fN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") fN += a; });
+      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; fN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) fN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") fN += a; });
       if (supUnalloc > 0) fN += supUnalloc;
       // Period dilutions
       function pDil(days, useInvDate) {
         var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
         var n = 0, d = 0, inc = {};
-        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (badStatuses[inv.invoiceStatus]) n += a; });
+        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (badStatuses[inv.invoiceStatus]) n += a; });
         if (!useInvDate) invs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
         return d > 0.01 ? (n / d) * 100 : 0;
       }
@@ -2759,7 +3960,8 @@ export default function FactoringDashboard() {
     if (isB && selectedBuyer) {
       d = d.filter(function(x) { return x.buyerId === selectedBuyer || x.buyerName === selectedBuyer; });
     }
-    if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
+    if (isS && supProgram) d = d.filter(function(x) { return invInProgramScope(x, supProgram); });
+    if (isB && buyProgram) d = d.filter(function(x) { return invInProgramScope(x, buyProgram); });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
     if (bf !== "all") d = d.filter(function(x) { return x.buyerName === bf; });
@@ -2767,7 +3969,32 @@ export default function FactoringDashboard() {
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
     return sorted;
-  }, [viewData, isf, fsf, bf, q, sf, sd, isS, isB, selectedSupplier, selectedBuyer, supCurrency]);
+  }, [viewData, isf, fsf, bf, q, sf, sd, isS, isB, selectedSupplier, selectedBuyer, supProgram, buyProgram]);
+
+  // Default supProgram to first eligible program when supplier changes (Tweak #1).
+  // Also clears the selection if the current program is no longer valid for the new supplier.
+  useEffect(function() {
+    if (!isS) return;
+    var progs = programsForSupplier(selectedSupplier);
+    var ids = progs.map(function(p) { return p.id; });
+    if (supProgram && ids.indexOf(supProgram) === -1) {
+      setSupProgram(progs.length > 0 ? progs[0].id : "");
+    } else if (!supProgram && progs.length > 0) {
+      setSupProgram(progs[0].id);
+    }
+  }, [selectedSupplier, isS, dataVer]);
+
+  // Default buyProgram to first eligible program when buyer changes (Tweak #2).
+  useEffect(function() {
+    if (!isB) return;
+    var progs = programsForBuyer(selectedBuyer);
+    var ids = progs.map(function(p) { return p.id; });
+    if (buyProgram && ids.indexOf(buyProgram) === -1) {
+      setBuyProgram(progs.length > 0 ? progs[0].id : "");
+    } else if (!buyProgram && progs.length > 0) {
+      setBuyProgram(progs[0].id);
+    }
+  }, [selectedBuyer, isB, dataVer]);
 
   var paged = filtered.slice(pg * PS, (pg + 1) * PS);
   var tp = Math.ceil(filtered.length / PS) || 1;
@@ -2821,7 +4048,16 @@ export default function FactoringDashboard() {
     return rows;
   }
 
-  function buildSupplierStatement(invoices) {
+  function buildSupplierStatement(invoices, opts) {
+    // opts: { from: "YYYY-MM-DD", to: "YYYY-MM-DD" } — both optional
+    // If `opts` is undefined: legacy mode — returns rows array (no Previous Balance).
+    // If `opts` is an object (even {}): structured mode — returns
+    //   { rows, openingBalance, fundingInPeriod, paymentsInPeriod, closingBalance, currentPosition }.
+    var structured = !!opts;
+    opts = opts || {};
+    var from = opts.from || null;
+    var to = opts.to || null;
+
     var entries = [];
     invoices.forEach(function(inv) {
       if (!inv.fundedDate) return;
@@ -2834,32 +4070,83 @@ export default function FactoringDashboard() {
     });
     // Sort chronologically
     entries.sort(function(a, b) { return a.sortDate < b.sortDate ? -1 : a.sortDate > b.sortDate ? 1 : 0; });
-    // Build statement with running balances
-    // Track per-invoice balances so we can sum accurately
+
+    // Build statement with running balances. Track per-invoice balances so we can sum accurately.
     var invBals = {};
-    var rows = [];
+    var allRows = [];
     function totalBals() { var c = 0, i = 0, p = 0, h = 0; Object.keys(invBals).forEach(function(k) { var b = invBals[k]; c += b.cap; i += b.int; p += b.pen; h += b.hb; }); return { cap: r2(c), int: r2(i), pen: r2(p), hb: r2(h) }; }
+
+    // Track period aggregates while iterating
+    var openingBalance = { cap: 0, int: 0, pen: 0, hb: 0, total: 0 };
+    var openingCaptured = !from; // if no `from`, opening = zero (start of history)
+    var fundingInPeriod = 0;
+    var paymentsInPeriod = 0; // sum of |cap+int+pen| applied during period (positive number representing reductions)
+    // Closing balance: snapshot of running totals taken at the *end* of the period.
+    // Captured the moment we first encounter an entry strictly after the period; if no such
+    // entry exists, closing = final running totals (handled after the loop).
+    var closingBalance = null;
+
+    function inPeriod(dateStr) {
+      if (from && dateStr < from) return false;
+      if (to && dateStr > to) return false;
+      return true;
+    }
+    function afterPeriod(dateStr) {
+      return !!(to && dateStr > to);
+    }
+
     entries.forEach(function(e) {
+      // Capture opening balance the first time we hit an entry on/after `from`
+      if (!openingCaptured && from && e.date >= from) {
+        var t0 = totalBals();
+        openingBalance = { cap: t0.cap, int: t0.int, pen: t0.pen, hb: t0.hb, total: r2(t0.cap + t0.int + t0.pen) };
+        openingCaptured = true;
+      }
+      // Capture closing balance the moment we step past the period (only once)
+      if (closingBalance === null && afterPeriod(e.date)) {
+        var tC = totalBals();
+        closingBalance = { cap: tC.cap, int: tC.int, pen: tC.pen, hb: tC.hb, total: r2(tC.cap + tC.int + tC.pen) };
+      }
+
       if (e.type === "funding") {
         if (!invBals[e.invoiceId]) invBals[e.invoiceId] = { cap: 0, int: 0, pen: 0, hb: 0 };
         invBals[e.invoiceId].cap = r2(invBals[e.invoiceId].cap + e.cap);
         invBals[e.invoiceId].int = r2(invBals[e.invoiceId].int + e.int);
         invBals[e.invoiceId].hb = r2(invBals[e.invoiceId].hb + e.hb);
         var t = totalBals();
-        rows.push({ date: e.date, event: e.event, cap: t.cap, int: t.int, pen: t.pen, hb: t.hb, type: "funding" });
+        var total = r2(t.cap + t.int + t.pen);
+        if (inPeriod(e.date)) {
+          allRows.push({ date: e.date, event: e.event, cap: t.cap, int: t.int, pen: t.pen, hb: t.hb, total: total, type: "funding", invoiceId: e.invoiceId });
+          fundingInPeriod = r2(fundingInPeriod + (e.cap || 0));
+        }
       } else {
-        // Previous balance
-        var prevT = totalBals();
-        rows.push({ date: e.date, event: "Previous Balance", cap: prevT.cap, int: prevT.int, pen: prevT.pen, hb: prevT.hb, type: "balance" });
         // Update per-invoice balances from snapshot
         invBals[e.invoiceId] = { cap: e.postCapBal, int: e.postIntBal, pen: e.postPenBal, hb: e.postHbBal };
-        // Payment applied row
-        rows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, type: "payment" });
-        // Closing balance
-        var closeT = totalBals();
-        rows.push({ date: e.date, event: "Closing Balance", cap: closeT.cap, int: closeT.int, pen: closeT.pen, hb: closeT.hb, type: "closing" });
+        if (inPeriod(e.date)) {
+          // Payment applied row
+          allRows.push({ date: e.date, event: e.event, cap: e.cap, int: e.int, pen: e.pen, hb: e.hb, total: r2(e.cap + e.int + e.pen), type: "payment", invoiceId: e.invoiceId });
+          // Closing balance after this payment
+          var closeT = totalBals();
+          allRows.push({ date: e.date, event: "Closing Balance", cap: closeT.cap, int: closeT.int, pen: closeT.pen, hb: closeT.hb, total: r2(closeT.cap + closeT.int + closeT.pen), type: "closing" });
+          // Track payment magnitude (cap+int+pen reductions; e.cap/int/pen are negative for payments)
+          paymentsInPeriod = r2(paymentsInPeriod + Math.abs((e.cap || 0) + (e.int || 0) + (e.pen || 0)));
+        }
       }
     });
+
+    // If `from` was set but no entries fell on/after it, opening = current totals (everything happened before period)
+    if (!openingCaptured && from) {
+      var tEnd = totalBals();
+      openingBalance = { cap: tEnd.cap, int: tEnd.int, pen: tEnd.pen, hb: tEnd.hb, total: r2(tEnd.cap + tEnd.int + tEnd.pen) };
+      openingCaptured = true;
+    }
+
+    // If we never crossed past the period (no entries after `to`), closing = final running balance
+    if (closingBalance === null) {
+      var finalT = totalBals();
+      closingBalance = { cap: finalT.cap, int: finalT.int, pen: finalT.pen, hb: finalT.hb, total: r2(finalT.cap + finalT.int + finalT.pen) };
+    }
+
     // Current position as of viewDate — sum actual outstanding from all invoices
     var curCap = 0, curInt = 0, curPen = 0, curHb = 0;
     invoices.forEach(function(inv) {
@@ -2869,8 +4156,103 @@ export default function FactoringDashboard() {
       curPen += inv.penaltyInterest || 0;
       curHb += inv.holdbackOutstanding || 0;
     });
-    rows.push({ date: viewDate, event: "Current Position", cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), type: "current" });
-    return rows;
+    var curTotal = r2(curCap + curInt + curPen);
+
+    // Always append the Current Position row at end (regardless of period — pinned summary)
+    allRows.push({ date: viewDate, event: "Current Position", cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), total: curTotal, type: "current" });
+
+    // Backward-compat: legacy callers (no opts) get just the rows array
+    if (!structured) return allRows;
+
+    return {
+      rows: allRows,
+      openingBalance: openingBalance,
+      fundingInPeriod: fundingInPeriod,
+      paymentsInPeriod: paymentsInPeriod,
+      closingBalance: closingBalance,
+      currentPosition: { cap: r2(curCap), int: r2(curInt), pen: r2(curPen), hb: r2(curHb), total: curTotal }
+    };
+  }
+
+  // Group statement rows into per-month buckets for the collapsed Funding Balance view.
+  // Each bucket carries the events for that month plus precomputed summary aggregates
+  // (funding advanced, payments received, opening balance brought forward from the
+  // previous month, closing balance at month-end) so the collapsed row can render
+  // without re-walking the events. Used by both the Admin and Supplier Portal Funded
+  // Balance views (the supplier-facing one previously rendered all rows as a flat
+  // ledger and got unwieldy past a few months of trading).
+  //
+  // Excludes the "current" row (Current Position) since that's pinned separately at
+  // the top of the tab. The bucket order is oldest-first to preserve the bank-statement
+  // narrative (opening → events → closing); reversing order would break the running-
+  // balance semantics that the table column depends on.
+  function groupStatementByMonth(rows, initialOpening) {
+    var buckets = []; // ordered array
+    var byKey = {};   // key → bucket
+    // Running running-balance carry. Tracks the last running balance we observed,
+    // which is also the next month's opening. Seeded with the period's opening
+    // balance (if provided) so the first month in a filtered period correctly
+    // shows the balance carried from before the period started.
+    var lastTotal = initialOpening ? {
+      cap: initialOpening.cap || 0,
+      int: initialOpening.int || 0,
+      pen: initialOpening.pen || 0,
+      hb: initialOpening.hb || 0,
+      total: initialOpening.total || 0
+    } : { cap: 0, int: 0, pen: 0, hb: 0, total: 0 };
+    rows.forEach(function(r) {
+      // Skip the pinned Current Position row — it's not a real ledger event.
+      if (r.type === "current") return;
+      // Month key from row date (YYYY-MM-DD → YYYY-MM)
+      var key = (r.date || "").slice(0, 7);
+      if (!key) return;
+      var bucket = byKey[key];
+      if (!bucket) {
+        // Use the running balance from the previous month as this month's opening.
+        bucket = {
+          key: key,
+          // Human-readable label: "March 2026". Computed from key.
+          label: (function() {
+            var parts = key.split("-");
+            var y = parts[0];
+            var mi = parseInt(parts[1], 10) - 1;
+            var names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            return (names[mi] || "Month") + " " + y;
+          })(),
+          opening: { cap: lastTotal.cap, int: lastTotal.int, pen: lastTotal.pen, hb: lastTotal.hb, total: lastTotal.total },
+          fundingAdvanced: 0,
+          paymentsReceived: 0,
+          // closing is updated as we walk events; ends as the last-seen running total
+          closing: { cap: lastTotal.cap, int: lastTotal.int, pen: lastTotal.pen, hb: lastTotal.hb, total: lastTotal.total },
+          events: []
+        };
+        buckets.push(bucket);
+        byKey[key] = bucket;
+      }
+      // Update aggregates and closing balance from this row's data.
+      if (r.type === "funding") {
+        // Funding rows in stRows are post-event running totals; cap/int/pen/hb fields
+        // ARE the running balances, not deltas. The delta is the capital amount of the
+        // event, which lives in the source `entries` array but isn't carried on the
+        // row — we infer it from the change in running balance.
+        var deltaCap = r2((r.cap || 0) - bucket.closing.cap);
+        bucket.fundingAdvanced = r2(bucket.fundingAdvanced + Math.max(0, deltaCap));
+        bucket.closing = { cap: r.cap || 0, int: r.int || 0, pen: r.pen || 0, hb: r.hb || 0, total: r.total || 0 };
+      } else if (r.type === "payment") {
+        // Payment rows carry the *delta* in cap/int/pen/hb (negative numbers for reductions);
+        // the running balance is on the following "closing" row.
+        bucket.paymentsReceived = r2(bucket.paymentsReceived + Math.abs((r.cap || 0) + (r.int || 0) + (r.pen || 0)));
+      } else if (r.type === "closing") {
+        // Closing rows ARE the post-event running balance for the prior payment row.
+        bucket.closing = { cap: r.cap || 0, int: r.int || 0, pen: r.pen || 0, hb: r.hb || 0, total: r.total || 0 };
+      }
+      bucket.events.push(r);
+      // Track lastTotal from any row carrying a running total (funding rows and closing rows do).
+      if (r.type === "funding" || r.type === "closing") {
+        lastTotal = { cap: r.cap || 0, int: r.int || 0, pen: r.pen || 0, hb: r.hb || 0, total: r.total || 0 };
+      }
+    });
+    return buckets;
   }
 
   function confirmAllocation() {
@@ -2946,10 +4328,16 @@ export default function FactoringDashboard() {
       auditLog("Remittance Queued", spqId + ": " + money(r2(a.amount), allocPay.currency) + " from unfunded " + a.invoiceId + " queued for remittance to " + displayName, { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(a.amount), currency: allocPay.currency, spqId: spqId, unfunded: true, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     });
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
-    setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
+    setAllocPay(null); setAllocs([]); setPassThroughAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
+    // Persist derived state for affected invoices: every invoice in the working
+    // set (including zeroed-out ones, which need cleanup) plus any displaced by
+    // re-allocation. Fire-and-forget — saveInvoice is sequential internally.
+    var affectedIds = Object.keys(aff);
+    later.forEach(function(l) { l.invs.forEach(function(invId) { if (affectedIds.indexOf(invId) < 0) affectedIds.push(invId); }); });
+    persistDerivedFieldsForInvoices(affectedIds, viewDate);
     setTimeout(function() { setSuccessMsg(null); }, 12000);
   }
-  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); } }
+  function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); persistDerivedFieldsForInvoices(oldAllocs.map(function(a) { return a.invoiceId; }), viewDate); } }
   function createPayment() {
     if (!newPayAmt || parseFloat(newPayAmt) <= 0) return;
     var payAmt = r2(parseFloat(newPayAmt));
@@ -2965,7 +4353,7 @@ export default function FactoringDashboard() {
     // For outgoing payments, jump straight into the routing wizard
     if (wasOutbound) {
       setAllocPay(newPayObj);
-      setAllocs([]); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter("");
+      setAllocs([]); setPassThroughAllocs([]); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter("");
       setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null);
       setRouteProgV(""); setRouteSupV(""); setRouteSpV(""); setRouteAmtV("");
       setRouteCpType("supplier");
@@ -3051,7 +4439,7 @@ export default function FactoringDashboard() {
   function startEdit(inv) {
     setEditInv(inv.id);
     setEditFields({
-      buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", poNumber: inv.poNumber || "",
+      buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", purchaseOrder: inv.purchaseOrder || "",
       buyerReceivedDate: inv.buyerReceivedDate || "", pelagicReceivedDate: inv.createdDate || "",
       cancelledDate: inv.cancelledDate || "",
       declinedDate: inv.declinedDate || "", disputedDate: inv.disputedDate || "",
@@ -3069,7 +4457,7 @@ export default function FactoringDashboard() {
     var fields = [
       { key: "buyerRef", label: "Buyer Invoice Ref" },
       { key: "supplierRef", label: "Supplier Invoice Ref" },
-      { key: "poNumber", label: "Purchase Order No." },
+      { key: "purchaseOrder", label: "Purchase Order No." },
       { key: "buyerReceivedDate", label: "Buyer Received Date" }
     ];
     fields.forEach(function(fd) {
@@ -3177,12 +4565,97 @@ export default function FactoringDashboard() {
     }
 
     if (statusChanges.length > 0) changes.push("Status: " + statusChanges.join(", "));
-    saveInvoice(editInv);
+    // Route through persistDerivedFieldsForInvoices first so derivation-driven
+    // side effects (settledDate from history, fullyRepaidDate, balances,
+    // current_invoice_status, etc.) get computed on raw. Then unconditionally
+    // saveInvoice — the persist call's dirty-detection compares in-memory pre
+    // vs post and can miss the case where raw was already correct (e.g.
+    // populated by a render-path processForDate call) but Supabase is stale.
+    // An explicit Save click expects the write to happen.
+    persistDerivedFieldsForInvoices([editInv], viewDate).then(function() {
+      saveInvoice(editInv);
+    });
     auditLog("Invoice Edited", editInv + " edited: " + (changes.length > 0 ? changes.join("; ") : "no field changes"), { invoiceId: editInv, changes: changes });
     setEditInv(null); setEditFields({});
     setDataVer(function(v) { return v + 1; });
   }
   function cancelEdit() { setEditInv(null); setEditFields({}); }
+
+  // Compute current credit limit exposure for a supplier on a program.
+  // Exposure = sum of (capitalOutstanding + interestOutstanding + penaltyInterest)
+  // for live invoices, plus pendingTopUpAmount for queued top-ups, plus capitalDue
+  // for purchased invoices (capital queued but not yet deployed). Excluding the
+  // invoice currently being funded (excludeInvoiceId) lets the caller compute
+  // headroom without double-counting that invoice's existing exposure.
+  function getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return 0;
+    var parentId = getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId;
+    var exposure = 0;
+    viewData.invoices.forEach(function(inv) {
+      if (inv.fundingProgram !== programId) return;
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
+      // Match supplier — accept either an exact entity-id match (branch-level) or
+      // a parent-level match so credit limits set on the parent supplier roll up
+      // exposure across all branches.
+      var invSupId = inv.supplierEntityId || inv.supplierId;
+      if (!invSupId) return;
+      var invParentId = getParentEntityId ? getParentEntityId(invSupId) : invSupId;
+      if (invSupId !== supplierEntityId && invParentId !== parentId) return;
+      // Skip pending invoices (no exposure committed yet — they go through the popup which gates them)
+      if (inv.fundingStatus === "pending") return;
+      // Live exposure: capital + interest + penalty outstanding
+      exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
+      // Queued capital that hasn't yet executed (purchased state OR top-up pending)
+      if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
+      exposure += inv.pendingTopUpAmount || 0;
+    });
+    return r2(exposure);
+  }
+
+  // Returns headroom under credit limit, or Infinity if no limit set.
+  // limit value of 0 / undefined / null = no limit (not "zero allowed").
+  function getSupplierProgramCreditHeadroom(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return Infinity;
+    var sup = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId); });
+    if (!sup || !sup.creditLimits) return Infinity;
+    var limit = sup.creditLimits[programId];
+    if (!limit || limit <= 0) return Infinity;
+    var exposure = getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId);
+    return r2(Math.max(0, limit - exposure));
+  }
+
+  // Buyer-side exposure/headroom — mirrors getSupplierProgramExposure but
+  // matches inv.buyerId. Buyers don't have branches so no parent rollup.
+  // Same "live exposure" semantics: cap+int+pen O/S, plus queued capital, plus pending top-up.
+  function getBuyerProgramExposure(buyerId, programId, excludeInvoiceId) {
+    if (!buyerId || !programId) return 0;
+    var exposure = 0;
+    viewData.invoices.forEach(function(inv) {
+      if (inv.fundingProgram !== programId) return;
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
+      if (inv.buyerId !== buyerId) return;
+      // Skip pending invoices (no exposure committed yet — gated via popup)
+      if (inv.fundingStatus === "pending") return;
+      // Live exposure: capital + interest + penalty outstanding
+      exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
+      // Queued capital that hasn't yet executed
+      if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
+      exposure += inv.pendingTopUpAmount || 0;
+    });
+    return r2(exposure);
+  }
+
+  // Returns headroom under buyer credit limit, or Infinity if no limit set.
+  // limit value of 0 / undefined / null = no limit (not "zero allowed").
+  function getBuyerProgramCreditHeadroom(buyerId, programId, excludeInvoiceId) {
+    if (!buyerId || !programId) return Infinity;
+    var buy = BUYERS_DB.find(function(b) { return b.id === buyerId; });
+    if (!buy || !buy.creditLimits) return Infinity;
+    var limit = buy.creditLimits[programId];
+    if (!limit || limit <= 0) return Infinity;
+    var exposure = getBuyerProgramExposure(buyerId, programId, excludeInvoiceId);
+    return r2(Math.max(0, limit - exposure));
+  }
 
   function getProgramAvailableBalance(programId) {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
@@ -3323,6 +4796,9 @@ export default function FactoringDashboard() {
       var totalCap = tranchesActiveCapital(raw.tranches);
       auditLog("Funding Topped Up", invId + " topped up via " + progName + ": +" + money(deltaCap, raw.currency) + " advanced as tranche T" + nextTrancheNum + " at " + (topupRate * 100).toFixed(2) + "% (now " + money(totalCap, raw.currency) + " total across " + raw.tranches.length + " tranches) \u2014 " + raw.supplierName + " (" + cpIdTU + ")", { invoiceId: invId, deltaCapital: deltaCap, trancheId: "T" + nextTrancheNum, trancheRate: topupRate, trancheTerm: termDays, totalCapital: totalCap, totalTranches: raw.tranches.length, currency: raw.currency, supplierId: raw.supplierId, supplier: raw.supplierName, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpIdTU });
       setDataVer(function(v) { return v + 1; });
+      // Top-up changes capital_due — derived fields are now stale until the
+      // next persister call. Same pattern as the initial-funding path.
+      persistDerivedFieldsForInvoices([invId], viewDate);
       return;
     }
     // Initial funding: purchased → funded
@@ -3351,6 +4827,12 @@ export default function FactoringDashboard() {
       if (prog) saveFundingProgram(prog.id);
       auditLog("Invoice Funded (Zero Capital)", invId + " transitioned to funded with zero capital via " + progName + " \u2014 " + raw.supplierName, { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: 0, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName });
       setDataVer(function(v) { return v + 1; });
+      // Same persistence call as the regular funding path — ensures derived
+      // fields are populated so the cron is aware of the invoice. A zero-cap
+      // invoice's debt_balance will immediately resolve to <0.005, so the
+      // cron will transition it to fully_repaid on its next run rather than
+      // leaving it stuck at 'funded' in the database.
+      persistDerivedFieldsForInvoices([invId], viewDate);
       return;
     }
     var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
@@ -3373,6 +4855,13 @@ export default function FactoringDashboard() {
     saveSPQEntry(cpId);
     auditLog("Invoice Funded", invId + " funded via " + progName + ": capital " + money(raw.capitalDue, raw.currency) + " advanced to " + raw.supplierName + " (" + cpId + ") — " + (bankInfo.bankName ? bankInfo.bankName + " " + bankInfo.bankDetails : "No bank on file"), { invoiceId: invId, amount: raw.amount, currency: raw.currency, capitalDue: raw.capitalDue, supplierId: raw.supplierId, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, fundedDate: raw.fundedDate, fundingProgram: raw.fundingProgram, fundingProgramName: progName, completedPaymentId: cpId, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
     setDataVer(function(v) { return v + 1; });
+    // Populate derived fields (debt_balance, capital_outstanding, etc.) so
+    // the server-side time-transition cron can pick this invoice up. Without
+    // this, derived fields stay NULL until the next operator interaction —
+    // the cron's `debt_balance IS NOT NULL` guard skips the invoice in that
+    // window, leaving funding_status stuck at 'funded' in the DB even when
+    // the invoice should have transitioned to overdue/at_risk by date.
+    persistDerivedFieldsForInvoices([invId], viewDate);
   }
 
   function confirmFundPopup() {
@@ -3490,11 +4979,50 @@ export default function FactoringDashboard() {
     // Committed = executed capital + any queued top-up not yet executed
     var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
+    // Credit limit gate — both supplier-side and buyer-side caps on total exposure for this program.
+    // Compute each headroom excluding this invoice (its existing exposure is captured by currentCap).
+    // Spec: when both apply, the LOWER remaining limit prevails — i.e. take the min of both headrooms.
+    var creditHeadroom = getSupplierProgramCreditHeadroom(raw.supplierEntityId || raw.supplierId, prog.id, raw.id);
+    var creditLimitApplied = 0;
+    var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId(raw.supplierEntityId || raw.supplierId)); });
+    if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[prog.id] > 0) {
+      creditLimitApplied = supForLimit.creditLimits[prog.id];
+    }
+    var buyerCreditHeadroom = getBuyerProgramCreditHeadroom(raw.buyerId, prog.id, raw.id);
+    var buyerCreditLimitApplied = 0;
+    var buyForLimit = BUYERS_DB.find(function(b) { return b.id === raw.buyerId; });
+    if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[prog.id] > 0) {
+      buyerCreditLimitApplied = buyForLimit.creditLimits[prog.id];
+    }
+    var supBlocked = creditLimitApplied > 0 && creditHeadroom <= 0.01;
+    var buyBlocked = buyerCreditLimitApplied > 0 && buyerCreditHeadroom <= 0.01;
+    if (supBlocked || buyBlocked) {
+      var msgParts = ["Cannot fund " + raw.id + "."];
+      if (supBlocked && buyBlocked) {
+        msgParts.push("\nBoth supplier and buyer credit limits are fully consumed on " + prog.name + ".");
+      } else if (supBlocked) {
+        msgParts.push("\nSupplier credit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + ".");
+      } else {
+        msgParts.push("\nBuyer credit limit fully consumed for " + (raw.buyerName || raw.buyerId) + " on " + prog.name + ".");
+      }
+      if (creditLimitApplied > 0) {
+        msgParts.push("\nSupplier limit: " + money(creditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(creditLimitApplied - creditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, creditHeadroom), raw.currency));
+      }
+      if (buyerCreditLimitApplied > 0) {
+        msgParts.push("\nBuyer limit: " + money(buyerCreditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(buyerCreditLimitApplied - buyerCreditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, buyerCreditHeadroom), raw.currency));
+      }
+      msgParts.push("\n\nReduce outstanding exposure or raise the limit before funding more.");
+      alert(msgParts.join(""));
+      return;
+    }
+    // Cap headroom to the lower of program maxAdvance headroom, supplier credit-limit headroom, and buyer credit-limit headroom.
+    if (creditLimitApplied > 0 && creditHeadroom < headroom) headroom = creditHeadroom;
+    if (buyerCreditLimitApplied > 0 && buyerCreditHeadroom < headroom) headroom = buyerCreditHeadroom;
     if (headroom <= 0) { alert("No funding headroom for " + raw.id + ".\n\nInvoice amount: " + money(raw.amount, raw.currency) + "\nEffective base: " + money(effectiveBase, raw.currency) + "\nMax capital @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(maxCap, raw.currency) + "\nAlready committed: " + money(currentCap, raw.currency)); return; }
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds });
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied, creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0, creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0, buyerCreditLimitApplied: buyerCreditLimitApplied, buyerCreditExposure: buyerCreditLimitApplied > 0 ? r2(buyerCreditLimitApplied - buyerCreditHeadroom) : 0, buyerCreditHeadroom: buyerCreditLimitApplied > 0 ? buyerCreditHeadroom : 0 });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -3563,6 +5091,12 @@ export default function FactoringDashboard() {
       if (raw.doNotAdvance) { skipped.push({ id: invId, reason: "marked Do Not Advance" }); return; }
       if (r2(raw.capitalDue || 0) > 0.01) { skipped.push({ id: invId, reason: "already has capital queued" }); return; }
       if (!raw.fundingProgram) { skipped.push({ id: invId, reason: "no program allocated" }); return; }
+      // Pause gates — match the single-invoice fund popup's behaviour.
+      // Without these, Fund at Max bypasses the pause gate that openFundPopupFor
+      // enforces at line ~5749, letting an operator fund invoices for a paused
+      // supplier or buyer simply by routing through the bulk path. Closes that hole.
+      if (isEntityPaused(raw.supplierEntityId || raw.supplierId)) { skipped.push({ id: invId, reason: "supplier paused" }); return; }
+      if (isBuyerPaused(raw.buyerId)) { skipped.push({ id: invId, reason: "buyer paused" }); return; }
       var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
       if (!prog) { skipped.push({ id: invId, reason: "program not found" }); return; }
       // Compute effective base
@@ -3580,14 +5114,40 @@ export default function FactoringDashboard() {
     });
     // Sort eligible by invoice ID (deterministic, oldest-allocated first)
     eligible.sort(function(a, b) { return a.raw.id < b.raw.id ? -1 : 1; });
-    // Walk eligible, fitting each within program available balance
+    // Walk eligible, fitting each within program available balance AND BOTH supplier and buyer credit limit headroom.
+    // Track per-supplier-per-program AND per-buyer-per-program credit headroom across the bulk run so multiple invoices
+    // sharing a credit limit consume it cumulatively rather than each seeing the starting headroom.
     var totalCapitalQueued = 0;
     var perProgramRemaining = {};
+    var creditHeadroomMap = {}; // key = supplierParentId + ":" + programId
+    var buyerCreditHeadroomMap = {}; // key = buyerId + ":" + programId
     eligible.forEach(function(e) {
       var progId = e.prog.id;
       if (perProgramRemaining[progId] === undefined) perProgramRemaining[progId] = getProgramAvailableBalance(progId);
       if (perProgramRemaining[progId] < e.maxCap - 0.01) {
         skipped.push({ id: e.raw.id, reason: "insufficient program balance (need " + money(e.maxCap, e.raw.currency) + ", available " + money(perProgramRemaining[progId], e.raw.currency) + ")" });
+        return;
+      }
+      // Supplier credit-limit gate
+      var supEntId = e.raw.supplierEntityId || e.raw.supplierId;
+      var supParent = getParentEntityId(supEntId);
+      var clKey = supParent + ":" + progId;
+      if (creditHeadroomMap[clKey] === undefined) {
+        creditHeadroomMap[clKey] = getSupplierProgramCreditHeadroom(supEntId, progId, null);
+      }
+      var clHeadroom = creditHeadroomMap[clKey];
+      if (clHeadroom !== Infinity && clHeadroom < e.maxCap - 0.01) {
+        skipped.push({ id: e.raw.id, reason: "supplier credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (clHeadroom <= 0.01 ? "no headroom" : "only " + money(clHeadroom, e.raw.currency) + " available") + ")" });
+        return;
+      }
+      // Buyer credit-limit gate (mirrors supplier; lower of the two prevails by virtue of both being checked)
+      var buyKey = e.raw.buyerId + ":" + progId;
+      if (buyerCreditHeadroomMap[buyKey] === undefined) {
+        buyerCreditHeadroomMap[buyKey] = getBuyerProgramCreditHeadroom(e.raw.buyerId, progId, null);
+      }
+      var buyHeadroom = buyerCreditHeadroomMap[buyKey];
+      if (buyHeadroom !== Infinity && buyHeadroom < e.maxCap - 0.01) {
+        skipped.push({ id: e.raw.id, reason: "buyer credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (buyHeadroom <= 0.01 ? "no headroom" : "only " + money(buyHeadroom, e.raw.currency) + " available") + ")" });
         return;
       }
       // Fund at max
@@ -3608,6 +5168,8 @@ export default function FactoringDashboard() {
       e.raw.intendedPaymentDate = fundingDate;
       saveInvoice(e.raw.id);
       perProgramRemaining[progId] -= e.maxCap;
+      if (clHeadroom !== Infinity) creditHeadroomMap[clKey] -= e.maxCap;
+      if (buyHeadroom !== Infinity) buyerCreditHeadroomMap[buyKey] -= e.maxCap;
       totalCapitalQueued += e.maxCap;
       funded.push({ id: e.raw.id, amount: e.maxCap, currency: e.raw.currency });
     });
@@ -3656,6 +5218,97 @@ export default function FactoringDashboard() {
     saveInvoice(invId);
     auditLog("Invoice Approval Cancelled", invId + " rejected for funding" + (progName ? " from " + progName : "") + ", returned to purchase queue" + (removed.length > 0 ? " (removed queue: " + removed.join(", ") + ")" : ""), { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, previousProgram: oldProg, previousProgramName: progName, removedQueueEntries: removed });
     setDataVer(function(v) { return v + 1; });
+  }
+
+  // Void an invoice. The row remains for audit but is filtered out of viewData.invoices
+  // (which is what every calculation, gate, and dashboard reads). Voiding is restricted to
+  // never-funded invoices (fundingStatus === "pending", no fundedDate, no payments) to
+  // guarantee no unwind work is needed. Reason text is required.
+  function voidInvoice(invId, reason) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+    if (!raw) return false;
+    if (raw.voided) { alert("Invoice " + invId + " is already voided."); return false; }
+    // Strict gate: only invoices that have no operational footprint can be voided.
+    if (raw.fundingStatus !== "pending") {
+      alert("Cannot void " + invId + ": funding status is " + (FST[raw.fundingStatus] && FST[raw.fundingStatus].label || raw.fundingStatus) + ". Voiding is only permitted on invoices that have never been allocated to a funding program.");
+      return false;
+    }
+    if (raw.fundedDate) { alert("Cannot void " + invId + ": this invoice has been funded. Voiding is not permitted on funded invoices."); return false; }
+    var payCount = (raw.payments && raw.payments.length) || 0;
+    if (payCount > 0) { alert("Cannot void " + invId + ": " + payCount + " buyer payment(s) recorded against this invoice. Voiding is not permitted once any economic activity has occurred."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to void " + invId + "."); return false; }
+    var nowIso = new Date().toISOString();
+    raw.voided = true;
+    raw.voidedAt = nowIso;
+    raw.voidedBy = (typeof currentUser !== "undefined" && currentUser && currentUser.email) ? currentUser.email : "admin";
+    raw.voidReason = trimmedReason;
+    saveInvoice(invId);
+    auditLog("Invoice Voided", invId + " voided. Reason: " + trimmedReason, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, voidReason: trimmedReason, voidedAt: nowIso, voidedBy: raw.voidedBy });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  // Un-void an invoice. Restores the row to active state. Audit log captures who/when.
+  // Reason text is required (e.g. "voided in error").
+  function unvoidInvoice(invId, reason) {
+    var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
+    if (!raw) return false;
+    if (!raw.voided) { alert("Invoice " + invId + " is not voided."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to un-void " + invId + "."); return false; }
+    var prevVoid = { voidedAt: raw.voidedAt, voidedBy: raw.voidedBy, voidReason: raw.voidReason };
+    raw.voided = false;
+    raw.voidedAt = null;
+    raw.voidedBy = null;
+    raw.voidReason = null;
+    saveInvoice(invId);
+    auditLog("Invoice Un-voided", invId + " un-voided. Reason: " + trimmedReason, { invoiceId: invId, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, unvoidReason: trimmedReason, previousVoid: prevVoid });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  // Void a credit note. Same audit-vs-disregarded model as invoices. Allocated CNs
+  // must be unallocated first — voiding doesn't auto-unwind, the user has to do that
+  // explicitly so the audit trail of un-allocation is clean.
+  function voidCreditNote(cnId, reason) {
+    var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
+    if (!cn) return false;
+    if (cn.voided) { alert("Credit note " + cnId + " is already voided."); return false; }
+    var allocCount = (cn.allocations || []).filter(function(a) { return (a.amount || 0) > 0.01; }).length;
+    if (allocCount > 0) {
+      var allocList = (cn.allocations || []).filter(function(a) { return (a.amount || 0) > 0.01; }).map(function(a) { return a.invoiceId; }).join(", ");
+      alert("Cannot void " + cnId + ": still allocated to " + allocCount + " invoice(s) (" + allocList + "). Unallocate first, then void.");
+      return false;
+    }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to void " + cnId + "."); return false; }
+    var nowIso = new Date().toISOString();
+    cn.voided = true;
+    cn.voidedAt = nowIso;
+    cn.voidedBy = (typeof currentUser !== "undefined" && currentUser && currentUser.email) ? currentUser.email : "admin";
+    cn.voidReason = trimmedReason;
+    saveCreditNote(cnId);
+    auditLog("Credit Note Voided", cnId + " voided. Reason: " + trimmedReason, { creditNoteId: cnId, amount: cn.amount, currency: cn.currency, supplierId: cn.supplierId, supplierName: cn.supplierName, supplier: cn.supplierName, buyerId: cn.buyerId, buyer: cn.buyerName, voidReason: trimmedReason, voidedAt: nowIso, voidedBy: cn.voidedBy });
+    setDataVer(function(v) { return v + 1; });
+    return true;
+  }
+
+  function unvoidCreditNote(cnId, reason) {
+    var cn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === cnId; });
+    if (!cn) return false;
+    if (!cn.voided) { alert("Credit note " + cnId + " is not voided."); return false; }
+    var trimmedReason = (reason || "").trim();
+    if (!trimmedReason) { alert("A reason is required to un-void " + cnId + "."); return false; }
+    var prevVoid = { voidedAt: cn.voidedAt, voidedBy: cn.voidedBy, voidReason: cn.voidReason };
+    cn.voided = false;
+    cn.voidedAt = null;
+    cn.voidedBy = null;
+    cn.voidReason = null;
+    saveCreditNote(cnId);
+    auditLog("Credit Note Un-voided", cnId + " un-voided. Reason: " + trimmedReason, { creditNoteId: cnId, amount: cn.amount, currency: cn.currency, supplierId: cn.supplierId, supplierName: cn.supplierName, supplier: cn.supplierName, buyerId: cn.buyerId, buyer: cn.buyerName, unvoidReason: trimmedReason, previousVoid: prevVoid });
+    setDataVer(function(v) { return v + 1; });
+    return true;
   }
 
   function executeAdjustment(invId, type) {
@@ -3731,26 +5384,6 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
-  function cancelHbPayment(hbpId) {
-    var idx = HOLDBACK_PAYMENTS_DB.findIndex(function(x) { return x.hbPaymentId === hbpId; });
-    if (idx === -1) return;
-    var hbp = HOLDBACK_PAYMENTS_DB[idx];
-    // Remove associated supplier payment queue entries
-    var spqToRemove = [];
-    SUPPLIER_PAYMENT_QUEUE.forEach(function(spq, i) { if (spq.hbPaymentId === hbpId) spqToRemove.push(i); });
-    for (var ri = spqToRemove.length - 1; ri >= 0; ri--) SUPPLIER_PAYMENT_QUEUE.splice(spqToRemove[ri], 1);
-    // Remove the HBP record
-    HOLDBACK_PAYMENTS_DB.splice(idx, 1);
-    var logParts = [];
-    hbp.allocations.forEach(function(a) {
-      if (a.type === "disbursement") logParts.push(money(a.amount, hbp.currency) + " supplier return reversed");
-      else logParts.push(money(a.amount, hbp.currency) + " to " + a.targetId + " reversed");
-    });
-    saveHoldbackPayment(hbpId);
-    auditLog("Holdback Payment Cancelled", hbpId + " cancelled from " + hbp.sourceInvoiceId + ": " + logParts.join("; ") + " (" + money(hbp.amount, hbp.currency) + " restored to holdback available)", { hbPaymentId: hbpId, sourceInvoiceId: hbp.sourceInvoiceId, amount: hbp.amount, currency: hbp.currency, allocations: hbp.allocations, removedQueueEntries: spqToRemove.length });
-    setDataVer(function(v) { return v + 1; });
-  }
-
   function cancelQueuedPayment(spqId) {
     var spqIdx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(x) { return x.id === spqId; });
     if (spqIdx === -1) return;
@@ -3785,7 +5418,7 @@ export default function FactoringDashboard() {
     }
     // Remove the queue entry
     SUPPLIER_PAYMENT_QUEUE.splice(spqIdx, 1);
-    saveSPQEntry(spqId);
+    deleteSPQEntry(spqId);
     auditLog("Supplier Payment Cancelled", spqId + " cancelled: " + money(spq.amount, spq.currency) + " to " + spq.supplierName + " — restored to holdback available on " + spq.sourceInvoiceId, { queueId: spqId, hbPaymentId: spq.hbPaymentId, sourceInvoiceId: spq.sourceInvoiceId, supplierName: spq.supplierName, amount: spq.amount, currency: spq.currency });
     setDataVer(function(v) { return v + 1; });
   }
@@ -3825,6 +5458,7 @@ export default function FactoringDashboard() {
     setHbSuccessMsg({ hbId: hbId, sourceId: hbDisburseInv.id, supplierAmt: supAmt, lines: [], currency: hbDisburseInv.currency, total: supAmt });
     setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt("");
     setDataVer(function(v) { return v + 1; });
+    persistDerivedFieldsForInvoices([hbDisburseInv.id], viewDate);
     setTimeout(function() { setHbSuccessMsg(null); }, 12000);
   }
 
@@ -3880,11 +5514,49 @@ export default function FactoringDashboard() {
   }
   cols.push({ key: "_x", label: "" });
 
-  var rootStyle = { "--bg": "#586076", "--card": "#131C2E", "--card-hover": "#1F2940", "--border": "#3D4760", "--text": "#E2E8F0", "--text-secondary": "#CBD5E1", "--muted": "#94A3B8", "--accent": "#0EA5E9", "--accent-hover": "#0284C7", "--sidebar-bg": "#3A4358", "--sidebar-text": "#CBD5E1", "--sidebar-active": "#0EA5E9", "--danger": "#EF4444", "--warning": "#F59E0B", "--success": "#10B981", "--purple": "#8B5CF6", minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif", fontSize: 14, padding: 0, margin: 0, lineHeight: 1.5 };
+  var rootStyle = {
+    /* Light theme palette. Sky-blue accent unchanged from the previous dark
+       palette (it matches the Pelagic wave in the logo and was already used
+       throughout the codebase). Sidebar uses its own variables so it can be
+       deeper navy than the workspace background — a maritime contrast that
+       anchors the brand while keeping the workspace open and readable. */
+    "--bg": "#F8FAFC",
+    "--card": "#FFFFFF",
+    "--card-hover": "#F1F5F9",
+    "--border": "#E2E8F0",
+    "--text": "#0F172A",
+    "--text-secondary": "#475569",
+    "--muted": "#64748B",
+    "--accent": "#0EA5E9",
+    "--accent-hover": "#0284C7",
+    "--brand-navy": "#1E40AF",
+    "--sidebar-bg": "#1E293B",
+    "--sidebar-text": "#CBD5E1",
+    "--sidebar-text-active": "#FFFFFF",
+    "--sidebar-active-bg": "#0F172A",
+    "--sidebar-active-accent": "#38BDF8",
+    "--danger": "#EF4444",
+    "--warning": "#F59E0B",
+    "--success": "#10B981",
+    "--purple": "#8B5CF6",
+    minHeight: "100vh",
+    background: "var(--bg)",
+    color: "var(--text)",
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+    fontSize: 14,
+    padding: 0,
+    margin: 0,
+    lineHeight: 1.5
+  };
 
   return (
     <div style={rootStyle}>
-      <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      {/* Web fonts are self-hosted via @font-face declarations injected in the
+          style blocks below. No external font CDN is loaded — keeps privacy
+          intact, avoids a third-party round-trip on first paint, and means
+          the platform works the same on networks where Google Fonts is
+          blocked. Place WOFF2 files at /public/fonts/inter/* and
+          /public/fonts/jetbrains-mono/* in the Vite project. */}
       {/* Toast container — fixed bottom-right overlay, stacks upward */}
       <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 9999, display: "flex", flexDirection: "column-reverse", gap: 8, pointerEvents: "none", maxWidth: 420 }}>
         {toasts.map(function(t) {
@@ -3902,8 +5574,234 @@ export default function FactoringDashboard() {
           </div>;
         })}
       </div>
-      <style>{"@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
+      <style>{"@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'); }@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/Inter-Medium.woff2') format('woff2'); }@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'); }@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'); }@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2'); }@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-SemiBold.woff2') format('woff2'); }@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }@keyframes ffLogoPulse { 0%, 100% { filter: drop-shadow(0 0 10px rgba(14,165,233,0.35)) drop-shadow(0 0 3px rgba(255,255,255,0.6)); transform: scale(1); } 50% { filter: drop-shadow(0 0 18px rgba(14,165,233,0.7)) drop-shadow(0 0 6px rgba(255,255,255,0.9)); transform: scale(1.03); } }@keyframes ffShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }@keyframes ffCaption { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }"}</style>
       {/* GLOBAL Fund Popup Modal — renders regardless of view */}
+      {/* Add Entity to Program — modal captures rates (suppliers) + limits before adding to eligibleSuppliers/eligibleBuyers.
+          Backwards compatible: callers without `entityKind` are treated as supplier (legacy `supplierId`/`supplierName` props). */}
+      {addToProgramModal && (function() {
+        var m = addToProgramModal;
+        var entityKind = m.entityKind || "supplier";
+        var isBuyer = entityKind === "buyer";
+        var entityId = m.entityId || m.supplierId;
+        var entityName = m.entityName || m.supplierName;
+        var entityLabel = isBuyer ? "Buyer" : "Supplier";
+        // Both flows now require programId (was only checked for buyers; the supplier
+        // path silently saved with empty programId, corrupting program_rates keys).
+        // Suppliers additionally require rates; buyers don't have a rate model.
+        var canSubmit = !!(entityId && m.programId) && (isBuyer || !!(m.advanceRate && m.annualRate && m.penaltyRate));
+        return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
+        <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add {entityLabel} to Program</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 16 }}><strong>{entityName}</strong> &rarr; <strong>{m.programName || "this program"}</strong> ({m.programCcy})</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{isBuyer ? "Set credit limits for this buyer on this program. Limits are optional (blank means no limit)." : "Set commercial terms for this supplier on this program. Rates are required; limits are optional (blank means no limit)."}</div>
+
+          {!isBuyer && <>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Rates</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
+              <input type="number" step="1" value={m.advanceRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
+              <input type="number" step="0.1" value={m.annualRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
+              <input type="number" step="0.1" value={m.penaltyRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+          </div>
+          </>}
+
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Limits (optional)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Credit Limit</label>
+              <input type="number" step="0.01" value={m.creditLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { creditLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Single Invoice Limit</label>
+              <input type="number" step="0.01" value={m.singleInvoiceLimit} placeholder="No limit" onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { singleInvoiceLimit: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button onClick={function() { setAddToProgramModal(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button onClick={async function() {
+              if (isBuyer) {
+                // Buyer flow: no rates, just limits + add to fp.eligibleBuyers.
+                var buy = BUYERS_DB.find(function(b) { return b.id === entityId; });
+                if (!buy) { alert("Buyer not found."); return; }
+                if (m.creditLimit) {
+                  if (!buy.creditLimits) buy.creditLimits = {};
+                  buy.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                }
+                if (m.singleInvoiceLimit) {
+                  if (!buy.singleInvoiceLimits) buy.singleInvoiceLimits = {};
+                  buy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                }
+                // Stage 1.9: force-pause buyers when they transition from "on zero
+                // programs" to "on at least one program". This is the onboarding
+                // moment — Admin must KYC them before they can be unpaused.
+                // Subsequent program additions don't re-pause an already-active buyer.
+                var buyerWasOnNoPrograms = programsForBuyer(entityId).length === 0;
+                var buyerForcePaused = false;
+                if (buyerWasOnNoPrograms && !buy.paused) {
+                  buy.paused = true;
+                  buyerForcePaused = true;
+                }
+                await saveBuyer(entityId);
+                var fpB = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+                if (fpB) {
+                  var fpArrB = (fpB.eligibleBuyers || []).slice();
+                  if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
+                  fpB.eligibleBuyers = fpArrB;
+                  await saveFundingProgram(fpB.id);
+                }
+                // Mirror into manageFields if currently editing this buyer
+                if (manageEdit === entityId) {
+                  setManageFields(function(prev) {
+                    var next = Object.assign({}, prev);
+                    if (m.creditLimit) {
+                      next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                      next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                    }
+                    if (m.singleInvoiceLimit) {
+                      next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                      next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                    }
+                    return next;
+                  });
+                }
+                // Reflect in program edit form if visible
+                setProgFields(function(p) {
+                  if (!p) return p;
+                  var arr = (p.eligibleBuyers || []).slice();
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                  return Object.assign({}, p, { eligibleBuyers: arr });
+                });
+                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program") + (buyerForcePaused ? " \u2014 paused pending KYC" : ""), { buyerId: entityId, buyer: entityName, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: buyerForcePaused });
+                setAddToProgramModal(null);
+                setDataVer(function(v) { return v + 1; });
+                return;
+              }
+              // Supplier flow (unchanged)
+              if (!m.advanceRate || !m.annualRate || !m.penaltyRate) { alert("Rates are required."); return; }
+              // Resolve the supplier record. For branch entities, write to the parent supplier (rates/limits are parent-level).
+              var parentId = getParentEntityId(entityId) || entityId;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
+              if (!sup) { alert("Supplier not found."); return; }
+              // Set rate
+              if (!sup.programRates) sup.programRates = {};
+              if (!sup.programRates[m.programId]) sup.programRates[m.programId] = [];
+              var now = new Date();
+              sup.programRates[m.programId].push({
+                effectiveDate: now.toISOString().split("T")[0],
+                effectiveTimestamp: now.toISOString(),
+                effectiveDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
+                advanceRate: parseFloat(m.advanceRate) / 100,
+                annualRate: parseFloat(m.annualRate) / 100,
+                penaltyRate: parseFloat(m.penaltyRate) / 100
+              });
+              // Set limits if provided
+              if (m.creditLimit) {
+                if (!sup.creditLimits) sup.creditLimits = {};
+                sup.creditLimits[m.programId] = parseFloat(m.creditLimit);
+              }
+              if (m.singleInvoiceLimit) {
+                if (!sup.singleInvoiceLimits) sup.singleInvoiceLimits = {};
+                sup.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+              }
+              // Stage 1.9: force-pause suppliers transitioning from "on zero programs"
+              // to "on at least one program". Parent-level pause (branches inherit).
+              // KYC tick required to unpause. Subsequent program additions don't re-pause
+              // an already-active supplier.
+              var supWasOnNoPrograms = programsForSupplier(parentId).length === 0;
+              var supForcePaused = false;
+              if (supWasOnNoPrograms && !sup.paused) {
+                sup.paused = true;
+                supForcePaused = true;
+              }
+              await saveSupplier(parentId);
+              // Also mutate the in-memory program record + persist, so eligible_suppliers
+              // is saved to Supabase atomically with the rates. User doesn't need a separate
+              // "Save Program" click — the modal completes the whole add operation.
+              var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+              if (fp) {
+                var fpArr = (fp.eligibleSuppliers || []).slice();
+                if (m.isBranch) {
+                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
+                } else {
+                  fpArr = fpArr.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
+                }
+                fp.eligibleSuppliers = fpArr;
+                await saveFundingProgram(fp.id);
+              }
+              // If we're currently editing this supplier in the manage form, mirror the changes
+              // into manageFields so the form's display refreshes without needing a reload.
+              if (manageEdit === parentId) {
+                setManageFields(function(prev) {
+                  var nextPR = Object.assign({}, prev.programRates || {});
+                  nextPR[m.programId] = (sup.programRates[m.programId] || []).slice();
+                  var next = Object.assign({}, prev, { programRates: nextPR });
+                  if (m.creditLimit) {
+                    next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                    next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                  }
+                  if (m.singleInvoiceLimit) {
+                    next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                    next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                  }
+                  return next;
+                });
+              }
+              // Add to eligible list in program edit form. Updates progFields' eligible_suppliers
+              // so the program-edit UI immediately reflects the addition. Has no observable effect
+              // when the modal was opened from supplier edit (program form isn't visible).
+              setProgFields(function(p) {
+                if (!p) return p;
+                var arr = (p.eligibleSuppliers || []).slice();
+                if (m.isBranch) {
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                } else {
+                  arr = arr.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                }
+                return Object.assign({}, p, { eligibleSuppliers: arr });
+              });
+              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
+              setAddToProgramModal(null);
+              setDataVer(function(v) { return v + 1; });
+            }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>Add to Program</button>
+          </div>
+        </div>
+      </div>;
+      })()}
+
+      {/* Void / Un-void prompt — shared modal for invoices and credit notes. Reason is required.
+          Only opened from detail panels by buttons that are themselves gated to safe states. */}
+      {voidPrompt && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setVoidPrompt(null); setVoidPromptReason(""); }}>
+        <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 480, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: voidPrompt.action === "void" ? "#DC2626" : "var(--accent)", marginBottom: 4 }}>{voidPrompt.action === "void" ? "Void" : "Un-void"} {voidPrompt.kind === "invoice" ? "Invoice" : "Credit Note"}</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginBottom: 12 }}><strong>{voidPrompt.id}</strong>{voidPrompt.name ? " \u2014 " + voidPrompt.name : ""}{voidPrompt.amount ? " \u2014 " + money(voidPrompt.amount, voidPrompt.currency) : ""}</div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{voidPrompt.action === "void" ? "Voided records remain in the system for audit but are disregarded in calculations, balances, dilution, and credit-limit gates. Use this for data-entry mistakes." : "Un-voiding restores this record so it counts in calculations again."}</div>
+          <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Reason (required)</label>
+          <textarea value={voidPromptReason} onChange={function(e) { setVoidPromptReason(e.target.value); }} placeholder={voidPrompt.action === "void" ? "e.g. Duplicate entry; wrong supplier; keyed against wrong buyer" : "e.g. Voided in error"} rows={3} style={{ marginTop: 4, marginBottom: 16, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit", resize: "vertical" }} />
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button onClick={function() { setVoidPrompt(null); setVoidPromptReason(""); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            <button onClick={function() {
+              var ok = false;
+              if (voidPrompt.kind === "invoice" && voidPrompt.action === "void") ok = voidInvoice(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "invoice" && voidPrompt.action === "unvoid") ok = unvoidInvoice(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "creditNote" && voidPrompt.action === "void") ok = voidCreditNote(voidPrompt.id, voidPromptReason);
+              else if (voidPrompt.kind === "creditNote" && voidPrompt.action === "unvoid") ok = unvoidCreditNote(voidPrompt.id, voidPromptReason);
+              if (ok) { setVoidPrompt(null); setVoidPromptReason(""); }
+            }} disabled={!voidPromptReason.trim()} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: !voidPromptReason.trim() ? "var(--border)" : (voidPrompt.action === "void" ? "#DC2626" : "var(--accent)"), color: !voidPromptReason.trim() ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 700, cursor: !voidPromptReason.trim() ? "default" : "pointer" }}>{voidPrompt.action === "void" ? "Void" : "Un-void"}</button>
+          </div>
+        </div>
+      </div>}
+
       {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>{fundPopup.isTopup ? "Fund Purchased Invoice" : "Fund Invoice"}: {fundPopup.inv.id}</div>
@@ -3925,11 +5823,26 @@ export default function FactoringDashboard() {
                 var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
                 var currentCap = fundPopup.currentCapital || 0;
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
+                // Re-apply credit-limit gate for new program (both supplier and buyer)
+                var newCreditHeadroom = getSupplierProgramCreditHeadroom(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId, newProgId, fundPopup.inv.id);
+                var newCreditLimitApplied = 0;
+                var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId); });
+                if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[newProgId] > 0) {
+                  newCreditLimitApplied = supForLimit.creditLimits[newProgId];
+                  if (newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
+                }
+                var newBuyerCreditHeadroom = getBuyerProgramCreditHeadroom(fundPopup.inv.buyerId, newProgId, fundPopup.inv.id);
+                var newBuyerCreditLimitApplied = 0;
+                var buyForLimit = BUYERS_DB.find(function(b) { return b.id === fundPopup.inv.buyerId; });
+                if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[newProgId] > 0) {
+                  newBuyerCreditLimitApplied = buyForLimit.creditLimits[newProgId];
+                  if (newBuyerCreditHeadroom < newHeadroom) newHeadroom = newBuyerCreditHeadroom;
+                }
                 var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
-                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault) }); });
+                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), creditLimitApplied: newCreditLimitApplied, creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0, creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0, buyerCreditLimitApplied: newBuyerCreditLimitApplied, buyerCreditExposure: newBuyerCreditLimitApplied > 0 ? r2(newBuyerCreditLimitApplied - newBuyerCreditHeadroom) : 0, buyerCreditHeadroom: newBuyerCreditLimitApplied > 0 ? newBuyerCreditHeadroom : 0 }); });
               }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
                 {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
               </select>
@@ -3938,7 +5851,17 @@ export default function FactoringDashboard() {
           })()}
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
-          {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies {"\u2014"} max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
+          {(fundPopupFields.creditLimitApplied > 0 || fundPopupFields.buyerCreditLimitApplied > 0) && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>
+            {fundPopupFields.creditLimitApplied > 0 && <>
+              <div style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
+            </>}
+            {fundPopupFields.buyerCreditLimitApplied > 0 && <>
+              <div style={{ fontWeight: 700, marginTop: fundPopupFields.creditLimitApplied > 0 ? 6 : 0, marginBottom: 3 }}>Buyer credit limit applies on this program</div>
+              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.buyerCreditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.buyerCreditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.buyerCreditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
+            </>}
+            <div style={{ marginTop: 6 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong>{fundPopupFields.creditLimitApplied > 0 && fundPopupFields.buyerCreditLimitApplied > 0 ? <span style={{ fontSize: 10, opacity: 0.85 }}>{" \u2014 capped by the lower of the two limits"}</span> : null}</div>
+          </div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
               <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Face Value</div>
@@ -3983,36 +5906,58 @@ export default function FactoringDashboard() {
             </div>;
           })()}
           <div style={{ display: "flex", gap: 10 }}>
-            {(function() { var blocked = isEntityPaused(fundPopup.inv.supplierId) || isBuyerPaused(fundPopup.inv.buyerId); var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0; var progAvail = getProgramAvailableBalance(fundPopup.prog.id); var insufficientBal = capNeeded > progAvail + 0.01; var disabled = blocked || insufficientBal; var label = insufficientBal ? "Insufficient Program Balance" : (fundPopup.isTopup ? "Advance Funding" : "Approve for Funding"); return <button onClick={confirmFundPopup} disabled={disabled} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{label}</button>; })()}
+            {(function() {
+              // Determine each blocker independently so the button label can name
+              // the actual reason rather than just turning grey. Operator-facing
+              // diagnostic: tells the user exactly what to fix without them having
+              // to inspect the entity, the audit log, or the program balance.
+              var supPaused = isEntityPaused(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId);
+              var buyPaused = isBuyerPaused(fundPopup.inv.buyerId);
+              var blocked = supPaused || buyPaused;
+              var capNeeded = parseFloat(fundPopupFields.capitalDue) || 0;
+              var progAvail = getProgramAvailableBalance(fundPopup.prog.id);
+              var insufficientBal = capNeeded > progAvail + 0.01;
+              var disabled = blocked || insufficientBal;
+              // Label precedence (most actionable first): pause reasons, then balance,
+              // then the normal action label. Pause reasons are surfaced explicitly
+              // because they point the operator straight at the fix (tick KYC + unpause).
+              var label;
+              if (supPaused && buyPaused) label = "Supplier & Buyer Paused";
+              else if (supPaused) label = "Supplier Paused";
+              else if (buyPaused) label = "Buyer Paused";
+              else if (insufficientBal) label = "Insufficient Program Balance";
+              else label = fundPopup.isTopup ? "Advance Funding" : "Approve for Funding";
+              return <button onClick={confirmFundPopup} disabled={disabled} title={disabled ? (supPaused || buyPaused ? "Unpause the entity (tick KYC if required) before funding." : "Program does not have enough available balance for this advance.") : ""} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: disabled ? "var(--border)" : "#38BDF8", color: disabled ? "var(--muted)" : "#fff", fontSize: 13, fontWeight: 600, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 2px 14px #818cf840" }}>{label}</button>;
+            })()}
             <button onClick={function() { setFundPopup(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
           </div>
         </div>
       </div>}
-      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #F8FAFC 0%, #E2E8F0 70%)" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
-        <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
+        <div style={{ width: 180, height: 3, background: "#CBD5E1", borderRadius: 2, overflow: "hidden", position: "relative" }}>
           <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "40%", background: "linear-gradient(90deg, transparent 0%, #0EA5E9 50%, transparent 100%)", animation: "ffShimmer 1.6s ease-in-out infinite" }} />
         </div>
         <div style={{ fontSize: 11, fontWeight: 500, color: "#64748B", letterSpacing: "0.14em", textTransform: "uppercase", animation: "ffCaption 2s ease-in-out infinite" }}>{authLoading ? "Authenticating" : "Loading Portfolio"}</div>
-      </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#0F172A", flexDirection: "column" }}>
-        <div style={{ width: 380, padding: "40px 36px", background: "#1E293B", borderRadius: 16, border: "1px solid #334155", boxShadow: "0 25px 50px rgba(0,0,0,0.5)" }}>
+      </div> : !session ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "#F8FAFC", flexDirection: "column" }}>
+        <div style={{ width: 380, padding: "40px 36px", background: "#FFFFFF", borderRadius: 16, border: "1px solid #E2E8F0", boxShadow: "0 20px 40px rgba(15, 23, 42, 0.08), 0 6px 12px rgba(15, 23, 42, 0.04)" }}>
           <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, marginBottom: 16, filter: "drop-shadow(0 0 12px rgba(14,165,233,0.4)) drop-shadow(0 0 4px rgba(255,255,255,0.8))" }} />
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#E2E8F0", marginBottom: 4 }}>FactorFlow</div>
+            <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, marginBottom: 16 }} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#0F172A", marginBottom: 4 }}>FactorFlow</div>
             <div style={{ fontSize: 12, color: "#64748B" }}>Sign in to continue</div>
           </div>
-          {loginError && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#EF444420", border: "1px solid #EF444440", color: "#FCA5A5", fontSize: 12, marginBottom: 16, textAlign: "center" }}>{loginError}</div>}
+          {loginError && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#FEF2F2", border: "1px solid #FECACA", color: "#991B1B", fontSize: 12, marginBottom: 16, textAlign: "center" }}>{loginError}</div>}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Email</label>
-            <input type="email" value={loginEmail} onChange={function(e) { setLoginEmail(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="you@company.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Email</label>
+            <input type="email" value={loginEmail} onChange={function(e) { setLoginEmail(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="you@company.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#0F172A", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
           </div>
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 6 }}>Password</label>
-            <input type="password" value={loginPassword} onChange={function(e) { setLoginPassword(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #334155", background: "#0F172A", color: "#E2E8F0", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Password</label>
+            <input type="password" value={loginPassword} onChange={function(e) { setLoginPassword(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter") handleLogin(); }} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #CBD5E1", background: "#FFFFFF", color: "#0F172A", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
           </div>
           <button onClick={handleLogin} disabled={loggingIn || !loginEmail || !loginPassword} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: loggingIn ? "#0E7490" : "#0EA5E9", color: "#FFF", fontSize: 14, fontWeight: 700, cursor: loggingIn ? "not-allowed" : "pointer", opacity: (!loginEmail || !loginPassword) ? 0.5 : 1, transition: "all 0.15s" }}>{loggingIn ? "Signing in..." : "Sign In"}</button>
         </div>
-        <div style={{ marginTop: 24, fontSize: 11, color: "#475569" }}>Pelagic Solutions Ltd</div>
+        <div style={{ marginTop: 24, fontSize: 11, color: "#64748B" }}>Pelagic Solutions Ltd</div>
       </div> : userProfile && userProfile.role === "supplier" ? (function() {
         /* ====================================================================
            SUPPLIER PORTAL
@@ -4020,19 +5965,31 @@ export default function FactoringDashboard() {
         var spPortalTab = view;
         var spFont = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
         var spMono = "'JetBrains Mono', monospace";
-        var spBg = "#0B1120";
+        /* Supplier portal palette — light theme. Mirrors the admin app's palette
+           so the brand reads consistently when a customer compares what their
+           supplier sees with what they see internally. The sidebar still uses
+           the deep Pelagic navy. */
+        var spBg = "#F8FAFC";
 
-        var spCard = "#131C2E";
-        var spBorder = "#1C2A42";
-        var spText = "#E2E8F0";
+        var spCard = "#FFFFFF";
+        var spBorder = "#E2E8F0";
+        var spText = "#0F172A";
         var spMuted = "#64748B";
         var spAccent = "#0EA5E9";
         var spGreen = "#10B981";
         var spRed = "#EF4444";
         var spAmber = "#F59E0B";
+        /* Sidebar-specific palette for the supplier portal (deep navy + soft slate). */
+        var spSidebarBg = "#1E293B";
+        var spSidebarActiveBg = "#0F172A";
+        var spSidebarText = "#CBD5E1";
+        var spSidebarMuted = "#64748B";
 
-        // Entity ID from user profile: "SUP-001" = parent user, "SUP-001:BR-001" = branch user
-        var spRawId = userProfile.supplier_id || "";
+        // Entity ID from user profile: stage 2 split composite into supplier_id (parent only)
+        // + branch_id (suffix or null). Compose them for the in-memory entity ID.
+        var spParentIdRaw = userProfile.supplier_id || "";
+        var spBranchIdRaw = userProfile.branch_id || "";
+        var spRawId = spBranchIdRaw ? (spParentIdRaw + ":" + spBranchIdRaw) : spParentIdRaw;
         var spParsed = parseEntityId(spRawId);
         var spParentId = spParsed.supplierId || "";
         var spIsBranchUser = !!spParsed.branchId;
@@ -4102,14 +6059,24 @@ export default function FactoringDashboard() {
           spPrograms = spPrograms.concat([{ id: "_unassigned", name: "Unassigned", currency: spUnassignedInvs[0].currency || "GBP", _synthetic: true }]);
         }
 
-        // Auto-select first program if none selected
-        var activeProgId = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        // Auto-select first program if none selected. On Funding Balance tab, _all and _unassigned
+        // aren't valid selections; fall back to the first real program in that case.
+        var rawProgFilter = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        var isFundingBalanceTab = spPortalTab === "statement";
+        var firstRealProg = spPrograms.find(function(fp) { return !fp._synthetic; });
+        var activeProgId = rawProgFilter;
+        if (isFundingBalanceTab && (activeProgId === "_all" || activeProgId === "_unassigned")) {
+          activeProgId = firstRealProg ? firstRealProg.id : "";
+        }
         var activeProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === activeProgId; });
         var isUnassignedTab = activeProgId === "_unassigned";
+        var isShowAllTab = activeProgId === "_all";
 
         // Filter invoices by selected program
         var spInvs = spAllInvs;
-        if (isUnassignedTab) {
+        if (isShowAllTab) {
+          spInvs = spAllInvs; // no filter — show everything (assigned + unassigned)
+        } else if (isUnassignedTab) {
           spInvs = spUnassignedInvs;
         } else if (activeProgId) {
           spInvs = spAllInvs.filter(function(inv) {
@@ -4138,17 +6105,12 @@ export default function FactoringDashboard() {
         // Credit limit for active program
         var spCreditLimit = spSupplier && spSupplier.creditLimits && spSupplier.creditLimits[activeProgId] ? spSupplier.creditLimits[activeProgId] : 0;
 
-        // Parent-level outstanding balance for this program (credit limits are at parent level)
+        // Parent-level credit limit exposure for this program — must match the gating logic
+        // (capital + interest + penalty outstanding, plus queued capital). Computed via the
+        // shared helper so the displayed "used" figure can never drift from the gate's view.
         var spParentBalForProg = 0;
         if (spCreditLimit > 0 && activeProgId) {
-          viewData.invoices.forEach(function(inv) {
-            if (inv.fundingProgram !== activeProgId) return;
-            if (inv.fundingStatus === "pending") return;
-            var invParent = getParentEntityId(inv.supplierId || "");
-            if (invParent === spParentId || inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName) {
-              spParentBalForProg += inv.balanceOwed || 0;
-            }
-          });
+          spParentBalForProg = getSupplierProgramExposure(spParentId, activeProgId, null);
         }
 
         // Dilution rates for this supplier on this program
@@ -4331,32 +6293,43 @@ export default function FactoringDashboard() {
 
         return React.createElement("div", { style: { minHeight: "100vh", background: spBg, color: spText, fontFamily: spFont, display: "flex" } },
           /* Sidebar */
-          React.createElement("div", { style: { width: 220, background: "#0D1526", borderRight: "1px solid " + spBorder, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
-            React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spBorder } },
+          React.createElement("div", { style: { width: 220, background: spSidebarBg, display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, height: "100vh", zIndex: 50 }, className: "ff-sidebar-desktop" },
+            React.createElement("div", { style: { padding: "28px 20px 22px", borderBottom: "1px solid " + spSidebarActiveBg } },
               React.createElement("img", { src: LOGO_URL, alt: "Pelagic Solutions", style: { height: 32, filter: "drop-shadow(0 0 8px rgba(14,165,233,0.3))" } }),
-              React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
+              React.createElement("div", { style: { marginTop: 10, fontSize: 10, color: spSidebarMuted, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" } }, "Supplier Portal")
             ),
             React.createElement("nav", { style: { flex: 1, padding: "14px 10px", display: "flex", flexDirection: "column", gap: 2 } },
               spNavItems.map(function(item) {
                 var active = spPortalTab === item.k;
-                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1A2744" : "transparent", color: active ? spAccent : "#8896AB", transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
+                return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setSpSearch(""); setSpFsFilter("all"); setSpBuyerFilter("all"); setSpUnallocOnly(false); setSpTypeFilter("all"); setExp(null); setSpPage(0); }, style: { display: "flex", alignItems: "center", gap: 11, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? spSidebarActiveBg : "transparent", color: active ? "#38BDF8" : spSidebarText, transition: "all 0.15s", textAlign: "left", width: "100%", fontFamily: spFont } }, item.icon, item.l);
               })
             ),
-            React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spBorder } },
-              React.createElement("div", { style: { fontSize: 12, color: "#CBD5E1", fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
-              React.createElement("div", { style: { fontSize: 10, color: spMuted, marginBottom: 10, fontFamily: spFont } }, spDisplayIdentity),
-              React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
+            React.createElement("div", { style: { padding: "14px 16px", borderTop: "1px solid " + spSidebarActiveBg } },
+              React.createElement("div", { style: { fontSize: 12, color: spSidebarText, fontWeight: 500, marginBottom: 2, fontFamily: spFont } }, userProfile.full_name || userProfile.email),
+              React.createElement("div", { style: { fontSize: 10, color: spSidebarMuted, marginBottom: 10, fontFamily: spFont } }, spDisplayIdentity),
+              React.createElement("button", { onClick: handleLogout, style: { width: "100%", padding: "7px 0", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: spSidebarText, fontSize: 11, fontWeight: 500, cursor: "pointer", fontFamily: spFont } }, "Sign Out")
             )
           ),
           /* Main content */
           React.createElement("div", { style: { flex: 1, marginLeft: 220, padding: "0", maxWidth: 1200 } },
             /* Top bar with date picker */
-            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0D1526", position: "sticky", top: 0, zIndex: 30 } },
+            React.createElement("div", { style: { padding: "18px 36px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", background: spCard, position: "sticky", top: 0, zIndex: 30 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
                 React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, fontFamily: spFont } }, { company: "Overview", supplier: "Invoices", payments: "Payments to Pelagic", program: "Payments to You", manage: "Your Information", creditnotes: "Your History", statement: "Funding Balance" }[spPortalTab] || ""),
-                spPrograms.length > 0 ? React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
-                  spPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp._synthetic ? fp.name : fp.name + " (" + fp.currency + ")"); })
-                ) : null
+                spPrograms.length > 0 ? (function() {
+                  // Funding Balance tab requires a specific program (balances are program-scoped).
+                  // All other tabs offer Show All + Unassigned + each eligible program.
+                  var isFundingBalance = spPortalTab === "statement";
+                  var dropdownPrograms = isFundingBalance
+                    ? spPrograms.filter(function(fp) { return !fp._synthetic; })
+                    : spPrograms;
+                  return React.createElement("select", { value: activeProgId, onChange: function(e) { setSpProgFilter(e.target.value); }, style: { padding: "6px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spAccent, fontSize: 12, fontWeight: 600, fontFamily: spFont, outline: "none", cursor: "pointer" } },
+                    [].concat(
+                      isFundingBalance ? [] : [React.createElement("option", { key: "_all", value: "_all" }, "Show All")],
+                      dropdownPrograms.map(function(fp) { return React.createElement("option", { key: fp.id, value: fp.id }, fp._synthetic ? fp.name : fp.name + " (" + fp.currency + ")"); })
+                    )
+                  );
+                })() : null
               ),
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
                 React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "View as of"),
@@ -4390,12 +6363,16 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 26, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.02em", lineHeight: 1 } }, money(r2(spBalanceOwed), spDisplayCcy)),
                     (spCreditLimit > 0 || spSingleInvLimit > 0) ? React.createElement("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 3 } },
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Company Limit"),
+                        React.createElement("span", { style: { color: spMuted } }, "Credit Limit"),
                         React.createElement("span", { style: { color: spText, fontFamily: spMono, fontWeight: 600 } }, money(spCreditLimit, spDisplayCcy))
                       ) : null,
                       spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
-                        React.createElement("span", { style: { color: spMuted } }, "Company Balance"),
+                        React.createElement("span", { style: { color: spMuted } }, "Currently Used"),
                         React.createElement("span", { style: { color: r2(spParentBalForProg) > spCreditLimit * 0.9 ? spRed : spText, fontFamily: spMono, fontWeight: 600 } }, money(r2(spParentBalForProg), spDisplayCcy))
+                      ) : null,
+                      spCreditLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
+                        React.createElement("span", { style: { color: spMuted } }, "Remaining"),
+                        React.createElement("span", { style: { color: r2(spCreditLimit - spParentBalForProg) <= 0.01 ? spRed : spGreen, fontFamily: spMono, fontWeight: 700 } }, money(r2(Math.max(0, spCreditLimit - spParentBalForProg)), spDisplayCcy))
                       ) : null,
                       spSingleInvLimit > 0 ? React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: spFont } },
                         React.createElement("span", { style: { color: spMuted } }, "Max Invoice Size"),
@@ -4469,6 +6446,7 @@ export default function FactoringDashboard() {
                   });
                   // Unallocated credit notes
                   CREDIT_NOTES_DB.filter(function(cn) {
+                    if (cn.voided) return false; // voided CNs are admin-audit only; supplier portal hides them
                     return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
                   }).forEach(function(cn) {
                     var totalAlloc = (cn.allocations || []).reduce(function(s, a) { return s + (a.amount || 0); }, 0);
@@ -4526,7 +6504,7 @@ export default function FactoringDashboard() {
                   statusKeys.forEach(function(k) { byStatus[k] = 0; });
                   snapshot.invoices.filter(function(inv) {
                     if (inv.supplierId ? !spMatchesScope(inv.supplierId) : !spMatchesScopeByName(inv.supplierName)) return false;
-                    if (!activeProgId) return true; // all-programs view
+                    if (!activeProgId || isShowAllTab) return true; // all-programs view
                     if (isUnassignedTab) return inv.fundingStatus === "pending" || !inv.fundingProgram;
                     return inv.fundingProgram === activeProgId;
                   }).forEach(function(inv) {
@@ -4557,7 +6535,7 @@ export default function FactoringDashboard() {
                         React.createElement(CartesianGrid, { strokeDasharray: "3 3", stroke: "#1C2A4280", vertical: false }),
                         React.createElement(XAxis, { dataKey: "name", tick: { fontSize: 10, fill: "#64748B", fontFamily: "'Inter', sans-serif" }, axisLine: { stroke: "#1C2A42" }, tickLine: false, interval: "preserveStartEnd" }),
                         React.createElement(YAxis, { tick: { fontSize: 10, fill: "#64748B", fontFamily: "'JetBrains Mono', monospace" }, axisLine: false, tickLine: false, tickFormatter: function(v) { return v >= 1000000 ? (v / 1000000).toFixed(1) + "m" : v >= 1000 ? (v / 1000).toFixed(0) + "k" : v; } }),
-                        React.createElement(Tooltip, { contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val, name) { var fst = FST[name] || { label: name }; return [money(val, spDisplayCcy), fst.label]; } }),
+                        React.createElement(Tooltip, { contentStyle: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }, labelStyle: { color: "#94A3B8", fontFamily: "'Inter', sans-serif", marginBottom: 4 }, formatter: function(val, name) { var fst = FST[name] || { label: name }; return [money(val, spDisplayCcy), fst.label]; } }),
                         statusKeys.map(function(k) {
                           return React.createElement(Area, { key: k, type: "monotone", dataKey: k, stackId: "1", stroke: statusColors[k], strokeWidth: 1.5, fill: "url(#spGrad_" + k + ")", dot: false, activeDot: { r: 4, fill: statusColors[k], stroke: "#fff", strokeWidth: 2 } });
                         })
@@ -4618,15 +6596,15 @@ export default function FactoringDashboard() {
                         React.createElement(PieChart, null,
                           React.createElement(Pie, {
                             data: donutData, cx: "50%", cy: "50%", innerRadius: 55, outerRadius: 85,
-                            dataKey: "value", nameKey: "name", paddingAngle: 3, label: renderLabel, labelLine: { stroke: "#334155", strokeWidth: 1 },
-                            stroke: "#131C2E", strokeWidth: 2
+                            dataKey: "value", nameKey: "name", paddingAngle: 3, label: renderLabel, labelLine: { stroke: "#CBD5E1", strokeWidth: 1 },
+                            stroke: "#FFFFFF", strokeWidth: 2
                           },
                             donutData.map(function(d, i) { return React.createElement(Cell, { key: i, fill: d.color }); })
                           ),
                           React.createElement(Tooltip, {
-                            contentStyle: { background: "#131C2E", border: "1px solid #1C2A42", borderRadius: 8, fontSize: 12, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" },
-                            itemStyle: { color: "#E2E8F0" },
-                            labelStyle: { color: "#94A3B8" },
+                            contentStyle: { background: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" },
+                            itemStyle: { color: "#0F172A" },
+                            labelStyle: { color: "#64748B" },
                             formatter: function(val, name, props) {
                               var entry = props.payload;
                               return [money(val, spDisplayCcy) + " (" + entry.count + " invoice" + (entry.count !== 1 ? "s" : "") + ")", entry.name];
@@ -4713,9 +6691,10 @@ export default function FactoringDashboard() {
               var pageInvs = filteredSpInvs.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
               // Credit Notes for this supplier
               var spCreditNotes = CREDIT_NOTES_DB.filter(function(cn) {
+                if (cn.voided) return false; // voided CNs are admin-audit only; supplier portal hides them
                 return cn.supplierId ? spMatchesScope(cn.supplierId) : spMatchesScopeByName(cn.supplierName);
               });
-              if (activeProgId) {
+              if (activeProgId && !isShowAllTab) {
                 spCreditNotes = spCreditNotes.filter(function(cn) {
                   // Filter CNs that have allocations to invoices on this program, or unallocated ones
                   if (!cn.allocations || cn.allocations.length === 0) return true;
@@ -4802,7 +6781,7 @@ export default function FactoringDashboard() {
                           ),
                           isExpanded ? React.createElement("tr", null,
                             React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -4853,7 +6832,7 @@ export default function FactoringDashboard() {
                                   React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Status History"),
                                   React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
                                     inv.invoiceStatusHistory.map(function(h, hi) {
-                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#1A2744", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
+                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#F8FAFC", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
                                         React.createElement("span", { style: { color: spMuted, marginRight: 6 } }, fmt(h.date)),
                                         React.createElement("span", { style: { color: spText, fontWeight: 600 } }, h.status)
                                       );
@@ -4958,19 +6937,19 @@ export default function FactoringDashboard() {
                                                 var tipAllocs = srcPay.allocations.map(function(a) { return { label: a.invoiceId, amount: a.amount }; });
                                                 var tipRemits = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === p.paymentId && spq.type === "remittance"; }).map(function(spq) { return { label: "Pass-through \u2192 " + spq.supplierName, amount: spq.amount }; });
                                                 var tipAll = tipAllocs.concat(tipRemits);
-                                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, "Payment Breakdown \u2014 " + p.paymentId),
+                                                return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, "Payment Breakdown \u2014 " + p.paymentId),
                                                   React.createElement("div", { style: { padding: "6px 14px 10px" } },
                                                     tipAll.map(function(t, ti) {
                                                       var isRemit = t.label.indexOf("Pass-through") === 0;
-                                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipAll.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipAll.length - 1 ? "1px solid #E2E8F050" : "none" } },
                                                         React.createElement("span", { style: { fontSize: 11, color: isRemit ? "#8B5CF6" : "#0EA5E9", fontFamily: "'JetBrains Mono', monospace" } }, t.label),
                                                         React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, srcPay.currency))
                                                       );
                                                     }),
                                                     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
                                                       React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Total"),
-                                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(srcPay.amount, srcPay.currency))
+                                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace" } }, money(srcPay.amount, srcPay.currency))
                                                     )
                                                   )
                                                 );
@@ -5129,7 +7108,7 @@ export default function FactoringDashboard() {
                           ),
                           isCnExp ? React.createElement("tr", null,
                             React.createElement("td", { colSpan: 6, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                              React.createElement("div", { style: { padding: "20px 24px", background: "#0E1829" } },
+                              React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 /* CN Details */
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 16 } },
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -5266,7 +7245,7 @@ export default function FactoringDashboard() {
                         ),
                         isExpPTP ? React.createElement("tr", null,
                           React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
-                            React.createElement("div", { style: { padding: "16px 24px", background: "#0E1829" } },
+                            React.createElement("div", { style: { padding: "16px 24px", background: "#F1F5F9" } },
                               React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 10 } }, "Allocations"),
                               React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                                 React.createElement("thead", null,
@@ -5290,15 +7269,15 @@ export default function FactoringDashboard() {
                                             var tipInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }) || INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                                             if (!tipInv) return null;
                                             var daysToMat = tipInv.dueDate ? daysBetween(viewDate, tipInv.dueDate) : 0;
-                                            return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                              React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, a.invoiceId),
+                                            return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                              React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, a.invoiceId),
                                               React.createElement("div", { style: { padding: "10px 14px" } },
                                                 [{ l: "Invoice Date", v: fmt(tipInv.invoiceDate), c: "#E2E8F0" },
                                                  { l: "Invoice Amount", v: money(tipInv.amount, tipInv.currency), c: "#0EA5E9" },
                                                  { l: "Maturity Date", v: fmt(tipInv.dueDate), c: daysToMat < 0 ? "#EF4444" : "#10B981" },
                                                  { l: "Days to Maturity", v: daysToMat >= 0 ? daysToMat + " days" : Math.abs(daysToMat) + " days overdue", c: daysToMat < 0 ? "#EF4444" : "#10B981" },
                                                  { l: "Buyer", v: tipInv.buyerName, c: "#E2E8F0" }].map(function(r, ri) {
-                                                  return React.createElement("div", { key: ri, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: ri < 4 ? "1px solid #2A3A5C50" : "none" } },
+                                                  return React.createElement("div", { key: ri, style: { display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: ri < 4 ? "1px solid #E2E8F050" : "none" } },
                                                     React.createElement("span", { style: { fontSize: 10, color: "#64748B", fontWeight: 600 } }, r.l),
                                                     React.createElement("span", { style: { fontSize: 11, color: r.c, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, r.v)
                                                   );
@@ -5411,18 +7390,18 @@ export default function FactoringDashboard() {
                                   tipLines.push({ label: "Holdback from " + (spqEntry.sourceInvoiceId || "\u2014"), amount: spqEntry.amount, color: "#D97706" });
                                 }
                                 if (tipLines.length === 0) return null;
-                                return React.createElement("div", { style: { background: "#1A2744", border: "1px solid #2A3A5C", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
-                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #2A3A5C", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, p.type + " \u2014 " + p.id),
+                                return React.createElement("div", { style: { background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" } },
+                                  React.createElement("div", { style: { padding: "10px 14px", borderBottom: "1px solid #E2E8F0", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748B" } }, p.type + " \u2014 " + p.id),
                                   React.createElement("div", { style: { padding: "6px 14px 10px" } },
                                     tipLines.map(function(t, ti) {
-                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipLines.length - 1 ? "1px solid #2A3A5C50" : "none" } },
+                                      return React.createElement("div", { key: ti, style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: ti < tipLines.length - 1 ? "1px solid #E2E8F050" : "none" } },
                                         React.createElement("span", { style: { fontSize: 11, color: t.color, fontFamily: "'JetBrains Mono', monospace" } }, t.label),
                                         React.createElement("span", { style: { fontSize: 11, color: "#10B981", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" } }, money(t.amount, p.currency))
                                       );
                                     }),
                                     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "8px 0 2px", borderTop: "1px solid #0EA5E940", marginTop: 4 } },
                                       React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" } }, "Amount"),
-                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#E2E8F0", fontFamily: "'JetBrains Mono', monospace" } }, money(p.amount, p.currency))
+                                      React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace" } }, money(p.amount, p.currency))
                                     )
                                   )
                                 );
@@ -5473,7 +7452,7 @@ export default function FactoringDashboard() {
                     React.createElement("div", { style: { fontSize: 12, color: spMuted, marginBottom: 4 } }, "Address"),
                     React.createElement("div", { style: { fontSize: 13, color: spText, lineHeight: 1.6 } }, (function() {
                       var src = (spIsBranchUser && spBranchObj) ? spBranchObj : spSupplier;
-                      return [src.street1, src.street2, src.city, src.state, src.zip, src.country].filter(Boolean).join(", ") || "\u2014";
+                      return [src.addressLine1, src.addressLine2, src.city, src.county, src.postcode, src.country].filter(Boolean).join(", ") || "\u2014";
                     })())
                   )
                 ),
@@ -5542,20 +7521,30 @@ export default function FactoringDashboard() {
                           React.createElement("div", { style: { fontSize: 12, color: spText, fontFamily: spMono } }, val)
                         );
                       }
+                      // Mask sensitive bank identifiers: show only last 4 chars, mask the rest with bullets.
+                      // Applied only to the supplier's own (outgoing) details, not Pelagic's incoming
+                      // account — suppliers need full Pelagic details to send funds.
+                      function mask(val) {
+                        if (!val) return val;
+                        var s = String(val).replace(/\s+/g, "");
+                        if (s.length <= 4) return s;
+                        return "\u2022".repeat(Math.min(s.length - 4, 12)) + s.slice(-4);
+                      }
                       return React.createElement("div", { key: fpId, style: { marginBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, paddingBottom: progIds.indexOf(fpId) < progIds.length - 1 ? 24 : 0, borderBottom: progIds.indexOf(fpId) < progIds.length - 1 ? "1px solid " + spBorder : "none" } },
                         React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, marginBottom: 16, fontFamily: spFont } }, (prog ? prog.name : fpId) + " (" + ccy + ")"),
                         outgoing.bankName ? React.createElement("div", { style: { marginBottom: 16 } },
                           React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
                             React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: spAccent, fontFamily: spFont } }, spDisplayIdentity + " Bank Account Details"),
-                            outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified")
+                            outgoing.verified ? React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" } }, "\u2713 Verified") : React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: spRed, border: "1px solid #EF444430" } }, "Unverified"),
+                            React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spFont, fontStyle: "italic" } }, "\u2014 last 4 digits shown for security")
                           ),
                           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px 20px" } },
                             bankRow("Bank Name", outgoing.bankName),
-                            isGBP ? bankRow("Sort Code", outgoing.sortCode) : null,
-                            bankRow("Account Number", outgoing.accountNumber),
-                            isUSD ? bankRow("ABA/Routing", outgoing.aba) : null,
-                            bankRow("BIC/SWIFT", outgoing.bic),
-                            !isUSD ? bankRow("IBAN", outgoing.iban) : null
+                            isGBP ? bankRow("Sort Code", mask(outgoing.sortCode)) : null,
+                            bankRow("Account Number", mask(outgoing.accountNumber)),
+                            isUSD ? bankRow("ABA/Routing", mask(outgoing.aba)) : null,
+                            bankRow("BIC/SWIFT", mask(outgoing.bic)),
+                            !isUSD ? bankRow("IBAN", mask(outgoing.iban)) : null
                           )
                         ) : null,
                         incoming.bankName ? React.createElement("div", null,
@@ -5587,24 +7576,18 @@ export default function FactoringDashboard() {
                     return true;
                   });
                   if (entries.length === 0) return null;
-                  // Calculate outstanding balance per program across all parent invoices
-                  var parentAllInvs = viewData.invoices.filter(function(inv) {
-                    return inv.supplierId ? getParentEntityId(inv.supplierId) === spParentId : (inv.supplierName === spSupName || getParentSupplierName(inv.supplierName) === spSupName);
-                  });
+                  // Calculate exposure per program — must match the gating logic so the
+                  // displayed "used" figure can never drift from what the gate enforces.
                   var balByProg = {};
-                  parentAllInvs.forEach(function(inv) {
-                    var fpId = inv.fundingProgram;
-                    if (fpId && inv.fundingStatus !== "pending") {
-                      if (!balByProg[fpId]) balByProg[fpId] = 0;
-                      balByProg[fpId] += inv.balanceOwed || 0;
-                    }
+                  entries.forEach(function(fpId) {
+                    balByProg[fpId] = getSupplierProgramExposure(spParentId, fpId, null);
                   });
                   return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
                     React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Program Limits"),
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
-                          ["Program", "Currency", "Company Credit Limit", "Max Invoice Size"].map(function(h) {
+                          ["Program", "Currency", "Credit Limit", "Used", "Remaining", "Max Invoice Size"].map(function(h) {
                             return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
                           })
                         )
@@ -5613,13 +7596,55 @@ export default function FactoringDashboard() {
                         entries.map(function(fpId) {
                           var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
                           var ccy = prog ? prog.currency : "GBP";
-                          var progBal = r2(balByProg[fpId] || 0);
-                          var clDisplay = cl[fpId] > 0 ? money(cl[fpId], ccy) + " (Outstanding Balance for " + spSupName + " " + money(progBal, ccy) + ")" : "No limit";
+                          var limit = cl[fpId] || 0;
+                          var used = r2(balByProg[fpId] || 0);
+                          var rem = r2(Math.max(0, limit - used));
+                          var pct = limit > 0 ? (used / limit) * 100 : 0;
+                          var remColor = limit <= 0 ? spMuted : (pct >= 100 ? spRed : pct >= 80 ? "#D97706" : spGreen);
                           return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, ccy),
-                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: cl[fpId] > 0 ? spAccent : spMuted, fontWeight: cl[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, clDisplay),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: limit > 0 ? spAccent : spMuted, fontWeight: limit > 0 ? 600 : 400, fontFamily: spMono } }, limit > 0 ? money(limit, ccy) : "No limit"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spMono } }, limit > 0 ? money(used, ccy) : "\u2014"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: remColor, fontWeight: 700, fontFamily: spMono } }, limit > 0 ? money(rem, ccy) : "\u2014"),
                             React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: sil[fpId] > 0 ? spAccent : spMuted, fontWeight: sil[fpId] > 0 ? 600 : 400, fontFamily: spMono } }, sil[fpId] > 0 ? money(sil[fpId], ccy) : "No limit")
+                          );
+                        })
+                      )
+                    )
+                  );
+                })(),
+                /* Current Rates — per program */
+                (function() {
+                  if (!spSupplier) return null;
+                  var pr = spSupplier.programRates || {};
+                  var rateProgIds = Object.keys(pr).filter(function(k) {
+                    if (!pr[k] || pr[k].length === 0) return false;
+                    if (spIsBranchUser) return seenProgs[k];
+                    return true;
+                  });
+                  if (rateProgIds.length === 0) return null;
+                  return React.createElement("div", { style: { gridColumn: "1 / -1", background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "24px 28px" } },
+                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText, marginBottom: 20, fontFamily: spFont, borderBottom: "1px solid " + spBorder, paddingBottom: 12 } }, "Current Rates"),
+                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                      React.createElement("thead", null,
+                        React.createElement("tr", null,
+                          ["Program", "Advance Rate", "Interest Rate (p.a.)", "Penalty Rate (p.a.)", "Effective From"].map(function(h) {
+                            return React.createElement("th", { key: h, style: { textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "1px solid " + spBorder, fontFamily: spFont } }, h);
+                          })
+                        )
+                      ),
+                      React.createElement("tbody", null,
+                        rateProgIds.map(function(fpId) {
+                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                          var rate = getSupplierRateForProgram(spParentId, fpId);
+                          if (!rate) return null;
+                          return React.createElement("tr", { key: fpId, style: { borderBottom: "1px solid " + spBorder + "60" } },
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spText, fontFamily: spFont } }, prog ? prog.name : fpId),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spAccent, fontWeight: 600, fontFamily: spMono } }, (rate.advanceRate * 100).toFixed(0) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spAmber, fontWeight: 600, fontFamily: spMono } }, (rate.annualRate * 100).toFixed(2) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, color: spRed, fontWeight: 600, fontFamily: spMono } }, (rate.penaltyRate * 100).toFixed(2) + "%"),
+                            React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, color: spMuted, fontFamily: spFont } }, rate.effectiveDate ? fmt(rate.effectiveDate) : "\u2014")
                           );
                         })
                       )
@@ -5745,6 +7770,56 @@ export default function FactoringDashboard() {
               // Merge audit log with payment events, sorted newest first
               var mergedHist = displayAuditLog.concat(payAllocEvents);
               mergedHist.sort(function(a, b) { return (a.timestamp || "") > (b.timestamp || "") ? -1 : 1; });
+
+              // Program filter — respect the top-bar program selector.
+              // Build an invoiceId -> program lookup across ALL of this supplier's invoices
+              // (not just the program-filtered ones, so we can correctly classify events).
+              var invToProg = {};
+              spAllInvs.forEach(function(inv) { invToProg[inv.id] = inv.fundingProgram || ""; });
+              // Resolve an event to a program ID. Returns:
+              //   - the program id if the event is invoice-linked OR has explicit program info
+              //   - "_unassigned" if invoice-linked but the invoice has no fundingProgram
+              //   - "" (empty) if no program link at all (supplier-level event — e.g. bank update)
+              function eventProgramId(e) {
+                var c = e.context || {};
+                // Direct invoice link
+                var iid = c.invoiceId || c.sourceInvoiceId;
+                if (iid && invToProg.hasOwnProperty(iid)) {
+                  return invToProg[iid] || "_unassigned";
+                }
+                // Allocation list — multi-invoice payment event
+                if (c.allocations && Array.isArray(c.allocations)) {
+                  for (var ai = 0; ai < c.allocations.length; ai++) {
+                    var aiid = c.allocations[ai].invoiceId;
+                    if (aiid && invToProg.hasOwnProperty(aiid)) {
+                      // Take the first matching invoice's program — payments rarely span programs
+                      return invToProg[aiid] || "_unassigned";
+                    }
+                  }
+                }
+                // Synthetic Payments-to-You events carry a program *name* in their details string
+                // (and sometimes ctx). Try to match by name against the active program object.
+                if (e._synthetic && activeProg && (e.details || "").indexOf("(" + activeProg.name + ")") > -1) {
+                  return activeProg.id;
+                }
+                // Synthetic events for OTHER programs — try to detect and exclude
+                if (e._synthetic) {
+                  for (var pi = 0; pi < FUNDING_PROGRAMS_DB.length; pi++) {
+                    var fp = FUNDING_PROGRAMS_DB[pi];
+                    if ((e.details || "").indexOf("(" + fp.name + ")") > -1) return fp.id;
+                  }
+                }
+                // No determinable program link — treat as supplier-level
+                return "";
+              }
+              if (activeProgId && !isShowAllTab) {
+                mergedHist = mergedHist.filter(function(e) {
+                  var ep = eventProgramId(e);
+                  if (ep === "") return true;        // supplier-level events always show
+                  return ep === activeProgId;        // program-tagged events must match
+                });
+              }
+
               // Collect unique actions
               var histActions = [];
               var seenActions = {};
@@ -5792,7 +7867,7 @@ export default function FactoringDashboard() {
                         return React.createElement("tr", { key: ei },
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { fontSize: 11, color: spMuted, whiteSpace: "nowrap" }) }, e.displayTime),
                           React.createElement("td", { style: Object.assign({}, portalTd, { fontWeight: 600, color: spAccent, fontSize: 12 }) }, e.action),
-                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 12, color: "#94A3B8" }) }, e.details)
+                          React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 12, color: spMuted }) }, e.details)
                         );
                       })
                     )
@@ -5808,88 +7883,337 @@ export default function FactoringDashboard() {
               )
             ); })(),
             spPortalTab === "statement" && (function() {
-              var stRows = buildSupplierStatement(spInvs);
-              return React.createElement("div", { style: { padding: "28px 36px" } },
-                stRows.length === 0 ? React.createElement("div", { style: { padding: "40px 28px", textAlign: "center", color: spMuted, fontSize: 14 } }, "No funded invoices yet. Your statement will appear here once invoices are funded.") :
-                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
-                  React.createElement("div", { style: { padding: "16px 22px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between" } },
-                    React.createElement("div", { style: { fontSize: 14, fontWeight: 600, color: spText } }, "Combined Position Statement"),
-                    React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spMono } }, stRows.length + " entries")
+              // ---- Period from preset ----
+              var vDate = new Date(viewDate + "T12:00:00");
+              var ymd = function(d) { return d.toISOString().split("T")[0]; };
+              var periodFrom = "", periodTo = "";
+              if (spStPreset === "MTD") {
+                periodFrom = ymd(new Date(vDate.getFullYear(), vDate.getMonth(), 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "QTD") {
+                var qStart = Math.floor(vDate.getMonth() / 3) * 3;
+                periodFrom = ymd(new Date(vDate.getFullYear(), qStart, 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "YTD") {
+                periodFrom = ymd(new Date(vDate.getFullYear(), 0, 1));
+                periodTo = viewDate;
+              } else if (spStPreset === "CUSTOM") {
+                periodFrom = spStFrom || "";
+                periodTo = spStTo || "";
+              } // ALL: leave both empty
+
+              var stResult = buildSupplierStatement(spInvs, { from: periodFrom, to: periodTo });
+              var allRows = stResult.rows;
+              var hasPeriod = spStPreset !== "ALL";
+
+              // ---- Apply search filter ----
+              var displayRows = allRows;
+              if (spStQuery) {
+                var sq = spStQuery.toLowerCase();
+                displayRows = allRows.filter(function(r) {
+                  if (r.type === "current") return true; // always keep the pinned current row
+                  return (r.event || "").toLowerCase().indexOf(sq) > -1 || (r.date || "").indexOf(sq) > -1;
+                });
+              }
+
+              // ---- CSV export ----
+              function csvEsc(v) {
+                if (v === null || v === undefined) return "";
+                var s = String(v);
+                if (s.indexOf(",") > -1 || s.indexOf('"') > -1 || s.indexOf("\n") > -1) return '"' + s.replace(/"/g, '""') + '"';
+                return s;
+              }
+              function exportCsv() {
+                var lines = [];
+                lines.push(["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S", "Total Owed", "Currency"].map(csvEsc).join(","));
+                allRows.forEach(function(r) {
+                  if (r.type === "current") return; // skip the live current-position row from the period export
+                  lines.push([
+                    r.date,
+                    r.event,
+                    (r.cap || 0).toFixed(2),
+                    (r.int || 0).toFixed(2),
+                    (r.pen || 0).toFixed(2),
+                    (r.hb || 0).toFixed(2),
+                    (r.total || 0).toFixed(2),
+                    spDisplayCcy
+                  ].map(csvEsc).join(","));
+                });
+                var csv = lines.join("\n");
+                var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement("a");
+                a.href = url;
+                var fnFrom = periodFrom || "all";
+                var fnTo = periodTo || ymd(vDate);
+                a.download = "statement_" + (spDisplayIdentity || "supplier").replace(/[^A-Za-z0-9]+/g, "_") + "_" + fnFrom + "_to_" + fnTo + ".csv";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }
+
+              // ---- Styles ----
+              var presetBtnStyle = function(active) {
+                return { padding: "6px 12px", borderRadius: 6, border: "1px solid " + (active ? spAccent : spBorder), background: active ? spAccent + "18" : "transparent", color: active ? spAccent : spMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: spFont, transition: "all 0.15s" };
+              };
+              var dateInputStyle = { padding: "6px 10px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 11, fontFamily: spMono, outline: "none", cursor: "pointer" };
+
+              // ---- Summary card builder ----
+              function SumCard(label, value, color, sub) {
+                return React.createElement("div", { style: { background: spCard, borderRadius: 10, padding: "16px 20px", border: "1px solid " + spBorder, position: "relative", overflow: "hidden" } },
+                  React.createElement("div", { style: { position: "absolute", top: 0, left: 0, right: 0, height: 2, background: color } }),
+                  React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: spMuted, letterSpacing: "0.06em", marginBottom: 8, fontFamily: spFont, textTransform: "uppercase" } }, label),
+                  React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: spText, fontFamily: spMono, letterSpacing: "-0.01em", lineHeight: 1.1 } }, value),
+                  sub ? React.createElement("div", { style: { fontSize: 10, color: spMuted, marginTop: 6, fontFamily: spFont } }, sub) : null
+                );
+              }
+
+              // ---- Period label for header ----
+              var periodLabel;
+              if (spStPreset === "ALL") periodLabel = "All time";
+              else if (spStPreset === "CUSTOM") periodLabel = (periodFrom ? fmt(periodFrom) : "—") + " to " + (periodTo ? fmt(periodTo) : "—");
+              else periodLabel = ({ MTD: "Month to date", QTD: "Quarter to date", YTD: "Year to date" }[spStPreset]) + " (" + (periodFrom ? fmt(periodFrom) : "") + " – " + fmt(periodTo) + ")";
+
+              return React.createElement("div", null,
+                /* Title + period label */
+                React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 } },
+                  React.createElement("div", null,
+                    React.createElement("h1", { style: { fontSize: 22, fontWeight: 700, color: spText, margin: 0, fontFamily: spFont } }, "Funding Balance"),
+                    React.createElement("div", { style: { fontSize: 11, color: spMuted, marginTop: 4, fontFamily: spFont } }, periodLabel)
+                  )
+                ),
+
+                /* Period summary strip */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 } },
+                  SumCard("Opening Balance", money(stResult.openingBalance.total, spDisplayCcy), spMuted, "At start of period"),
+                  SumCard("Funding Advanced", money(stResult.fundingInPeriod, spDisplayCcy), spAccent, "Capital advanced in period"),
+                  SumCard("Payments Received", money(stResult.paymentsInPeriod, spDisplayCcy), spGreen, "Reductions during period"),
+                  SumCard("Closing Balance", money(stResult.closingBalance.total, spDisplayCcy), spAmber, "At end of period")
+                ),
+
+                /* Current position card — always shows live as-of-viewDate */
+                React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spAccent + "60", padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 } },
+                  React.createElement("div", null,
+                    React.createElement("div", { style: { fontSize: 10, fontWeight: 600, color: spAccent, letterSpacing: "0.06em", marginBottom: 4, fontFamily: spFont, textTransform: "uppercase" } }, "Current Position \u2014 as of " + fmt(viewDate)),
+                    React.createElement("div", { style: { display: "flex", gap: 18, flexWrap: "wrap", fontFamily: spMono } },
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Capital "), React.createElement("span", { style: { color: spText, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.cap, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Interest "), React.createElement("span", { style: { color: spAmber, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.int, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Penalty "), React.createElement("span", { style: { color: spRed, fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.pen, spDisplayCcy))),
+                      React.createElement("div", null, React.createElement("span", { style: { color: spMuted, fontSize: 10 } }, "Holdback "), React.createElement("span", { style: { color: "#8B5CF6", fontSize: 13, fontWeight: 600 } }, money(stResult.currentPosition.hb, spDisplayCcy)))
+                    )
                   ),
-                  React.createElement("div", { style: { overflowX: "auto" } },
-                    React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
-                      React.createElement("thead", null,
-                        React.createElement("tr", null,
-                          ["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) {
-                            return React.createElement("th", { key: h, style: { textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "2px solid " + spBorder } }, h);
-                          })
-                        )
-                      ),
-                      React.createElement("tbody", null,
-                        stRows.map(function(r, ri) {
-                          var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing" || r.type === "current";
-                          var isPay = r.type === "payment";
-                          var isClose = r.type === "closing" || r.type === "current";
-                          var isFunding = r.type === "funding";
-                          var borderStyle = r.type === "current" ? "none" : ri < stRows.length - 1 && stRows[ri + 1] && (stRows[ri + 1].type === "balance" || stRows[ri + 1].type === "funding") && r.type !== "funding" ? "2px solid " + spBorder : "1px solid " + spBorder + "60";
-                          function valStyle(v) { return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : isFunding ? spAccent : (v > 0.01 ? spText : spMuted) }; }
-                          return React.createElement("tr", { key: ri, style: { borderBottom: borderStyle, borderTop: r.type === "current" ? "3px solid " + spAccent : "none", background: r.type === "current" ? "#0EA5E910" : isClose ? "#1A274440" : isBal ? spCard : "transparent" } },
-                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: spText, whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 } }, fmt(r.date)),
-                            React.createElement("td", { style: { padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? spAccent : isFunding ? "#10B981" : spText, fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 } }, r.event),
-                            React.createElement("td", { style: valStyle(r.cap) }, isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), spDisplayCcy) : money(Math.abs(r.cap), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.int) }, isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), spDisplayCcy) : money(Math.abs(r.int), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.pen) }, isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), spDisplayCcy) : money(Math.abs(r.pen), spDisplayCcy)),
-                            React.createElement("td", { style: valStyle(r.hb) }, isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), spDisplayCcy) : money(Math.abs(r.hb), spDisplayCcy))
-                          );
-                        })
-                      )
+                  React.createElement("div", { style: { textAlign: "right" } },
+                    React.createElement("div", { style: { fontSize: 10, color: spMuted, letterSpacing: "0.06em", fontFamily: spFont, textTransform: "uppercase", marginBottom: 4 } }, "Total Owed"),
+                    React.createElement("div", { style: { fontSize: 22, color: spText, fontFamily: spMono, fontWeight: 700, letterSpacing: "-0.02em" } }, money(stResult.currentPosition.total, spDisplayCcy))
+                  )
+                ),
+
+                /* Controls */
+                React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+                    ["MTD", "QTD", "YTD", "ALL", "CUSTOM"].map(function(p) {
+                      return React.createElement("button", { key: p, onClick: function() { setSpStPreset(p); }, style: presetBtnStyle(spStPreset === p) }, p === "CUSTOM" ? "Custom" : p);
+                    }),
+                    spStPreset === "CUSTOM" ? React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginLeft: 8 } },
+                      React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spFont } }, "From"),
+                      React.createElement("input", { type: "date", value: spStFrom, onChange: function(e) { setSpStFrom(e.target.value); }, style: dateInputStyle }),
+                      React.createElement("span", { style: { fontSize: 10, color: spMuted, fontFamily: spFont } }, "to"),
+                      React.createElement("input", { type: "date", value: spStTo, onChange: function(e) { setSpStTo(e.target.value); }, style: dateInputStyle })
+                    ) : null
+                  ),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("input", { type: "text", value: spStQuery, onChange: function(e) { setSpStQuery(e.target.value); }, placeholder: "Filter rows...", style: { padding: "7px 12px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: spText, fontSize: 12, outline: "none", width: 180, fontFamily: spFont } }),
+                    React.createElement("button", { onClick: exportCsv, disabled: allRows.length <= 1, style: { padding: "7px 14px", borderRadius: 6, border: "1px solid " + spBorder, background: spCard, color: allRows.length <= 1 ? spMuted : spAccent, fontSize: 11, fontWeight: 600, cursor: allRows.length <= 1 ? "not-allowed" : "pointer", fontFamily: spFont, opacity: allRows.length <= 1 ? 0.5 : 1, display: "flex", alignItems: "center", gap: 6 } },
+                      React.createElement(Download, { size: 13 }), "Export CSV"
                     )
                   )
-                )
+                ),
+
+                /* Table — collapsed by month, oldest-first (bank-statement order).
+                   The pinned Current Position card above already shows the as-of-viewDate
+                   total, so the table doesn't include the "current" row. Each month rolls
+                   up into a clickable summary row with funding advanced / payments received /
+                   end-of-month balance; expanded months show the underlying chronological
+                   events plus an opening-balance and closing-balance row so the month reads
+                   as a self-contained statement. Most-recent month auto-expands on first paint. */
+                (function() {
+                  // Exclude the pinned "current" row — never in the body table.
+                  var bodyRows = displayRows.filter(function(r) { return r.type !== "current"; });
+                  var monthBuckets = groupStatementByMonth(bodyRows, stResult.openingBalance);
+                  var expandedMonths;
+                  if (spStExpandedMonths === null) {
+                    expandedMonths = {};
+                    if (monthBuckets.length > 0) expandedMonths[monthBuckets[monthBuckets.length - 1].key] = true;
+                  } else {
+                    expandedMonths = spStExpandedMonths;
+                  }
+                  function toggleMonth(key) {
+                    var next = Object.assign({}, expandedMonths);
+                    if (next[key]) delete next[key]; else next[key] = true;
+                    setSpStExpandedMonths(next);
+                  }
+                  function expandAll() {
+                    var next = {};
+                    monthBuckets.forEach(function(b) { next[b.key] = true; });
+                    setSpStExpandedMonths(next);
+                  }
+                  function collapseAll() { setSpStExpandedMonths({}); }
+
+                  if (monthBuckets.length === 0) {
+                    return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, padding: "40px 28px", textAlign: "center" } },
+                      React.createElement("div", { style: { fontSize: 14, color: spText, fontWeight: 600, marginBottom: 6 } }, hasPeriod ? "No activity in this period" : "No funded invoices yet"),
+                      React.createElement("div", { style: { fontSize: 12, color: spMuted, lineHeight: 1.6 } }, hasPeriod ? "Try a wider period or switch to All to see your full history." : "Your statement will populate here as invoices are funded and payments are applied.")
+                    );
+                  }
+
+                  // Inline expand-all / collapse-all controls right above the table.
+                  var expCtrlStyle = { padding: "5px 11px", borderRadius: 6, border: "1px solid " + spBorder, background: "transparent", color: spMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: spFont };
+
+                  return React.createElement("div", { style: { background: spCard, borderRadius: 10, border: "1px solid " + spBorder, overflow: "hidden" } },
+                    React.createElement("div", { style: { padding: "14px 22px", borderBottom: "1px solid " + spBorder, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 } },
+                      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+                        React.createElement("div", { style: { fontSize: 13, fontWeight: 600, color: spText, fontFamily: spFont } }, "Combined Position Statement"),
+                        React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spMono } }, monthBuckets.length + " " + (monthBuckets.length === 1 ? "month" : "months") + " \u00b7 " + bodyRows.length + " entries")
+                      ),
+                      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                        React.createElement("button", { onClick: expandAll, style: expCtrlStyle }, "Expand all"),
+                        React.createElement("button", { onClick: collapseAll, style: expCtrlStyle }, "Collapse all")
+                      )
+                    ),
+                    React.createElement("div", { style: { overflowX: "auto", maxHeight: "60vh", overflowY: "auto" } },
+                      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
+                        React.createElement("thead", null,
+                          React.createElement("tr", null,
+                            [["", "left", 32], ["Period / Event", "left", "auto"], ["Capital", "right", "auto"], ["Interest", "right", "auto"], ["Penalty", "right", "auto"], ["Holdback", "right", "auto"], ["Total", "right", "auto"]].map(function(h, hi) {
+                              return React.createElement("th", { key: hi, style: { textAlign: h[1], padding: "10px 12px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, borderBottom: "2px solid " + spBorder, position: "sticky", top: 0, background: spCard, zIndex: 1, whiteSpace: "nowrap", width: h[2] } }, h[0]);
+                            })
+                          )
+                        ),
+                        React.createElement("tbody", null,
+                          monthBuckets.reduce(function(acc, b) {
+                            var isExpanded = !!expandedMonths[b.key];
+                            // Month header row — same fix as Admin: balance columns
+                            // show end-of-month closing balances, flow info next to label.
+                            var flowParts = [];
+                            if (b.fundingAdvanced > 0.01) flowParts.push("+" + money(b.fundingAdvanced, spDisplayCcy) + " funded");
+                            if (b.paymentsReceived > 0.01) flowParts.push("\u2212" + money(b.paymentsReceived, spDisplayCcy) + " paid");
+                            var flowText = flowParts.length > 0 ? flowParts.join(" \u00b7 ") : b.events.length + " event" + (b.events.length === 1 ? "" : "s");
+                            acc.push(React.createElement("tr", {
+                              key: "mh-" + b.key,
+                              onClick: function() { toggleMonth(b.key); },
+                              style: { borderBottom: "1px solid " + spBorder, background: isExpanded ? spAccent + "10" : spCard, cursor: "pointer" }
+                            },
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 14, color: spAccent, textAlign: "center", fontWeight: 700, lineHeight: 1 } }, isExpanded ? "\u25BC" : "\u25B6"),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, fontWeight: 700, color: spText, fontFamily: spFont } },
+                                b.label,
+                                React.createElement("br", null),
+                                React.createElement("span", { style: { fontSize: 10, fontWeight: 400, color: spMuted, fontFamily: spMono } }, flowText)
+                              ),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? spText : spMuted } }, money(b.closing.cap, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? spText : spMuted } }, money(b.closing.int, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? spText : spMuted } }, money(b.closing.pen, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? spText : spMuted } }, money(b.closing.hb, spDisplayCcy)),
+                              React.createElement("td", { style: { padding: "10px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? spAccent : spMuted } }, money(b.closing.total, spDisplayCcy))
+                            ));
+                            if (isExpanded) {
+                              // Opening balance row
+                              acc.push(React.createElement("tr", { key: "mo-" + b.key, style: { borderBottom: "1px solid " + spBorder + "40", background: spCard + "60" } },
+                                React.createElement("td", null),
+                                React.createElement("td", { style: { padding: "8px 12px 8px 32px", fontSize: 11, color: spMuted, fontStyle: "italic", fontFamily: spFont } }, "Opening balance (brought forward)"),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 11, fontFamily: spMono, textAlign: "right", color: b.opening.cap > 0.01 ? spText : spMuted } }, money(b.opening.cap, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 11, fontFamily: spMono, textAlign: "right", color: b.opening.int > 0.01 ? spText : spMuted } }, money(b.opening.int, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 11, fontFamily: spMono, textAlign: "right", color: b.opening.pen > 0.01 ? spText : spMuted } }, money(b.opening.pen, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 11, fontFamily: spMono, textAlign: "right", color: b.opening.hb > 0.01 ? spText : spMuted } }, money(b.opening.hb, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 11, fontFamily: spMono, textAlign: "right", fontWeight: 600, color: b.opening.total > 0.01 ? spText : spMuted } }, money(b.opening.total, spDisplayCcy))
+                              ));
+                              // Event rows
+                              b.events.forEach(function(r, ri) {
+                                var isPay = r.type === "payment";
+                                var isClose = r.type === "closing";
+                                var isFunding = r.type === "funding";
+                                function valStyle(v) {
+                                  return { padding: "8px 12px", fontSize: isClose ? 12 : 11, fontFamily: spMono, textAlign: "right", fontWeight: isClose ? 700 : (isFunding ? 600 : 400), color: isPay ? (v < -0.001 ? spGreen : v > 0.001 ? spRed : spMuted) : isFunding ? spAccent : (Math.abs(v) > 0.01 ? spText : spMuted), whiteSpace: "nowrap" };
+                                }
+                                function fmtVal(v) {
+                                  if (isPay && v !== 0) return (v < 0 ? "\u2212" : "+") + money(Math.abs(v), spDisplayCcy);
+                                  return money(Math.abs(v), spDisplayCcy);
+                                }
+                                acc.push(React.createElement("tr", { key: "me-" + b.key + "-" + ri, style: { borderBottom: "1px solid " + spBorder + "40", background: isClose ? "#F1F5F9" : "transparent" } },
+                                  React.createElement("td", null),
+                                  React.createElement("td", { style: { padding: "8px 12px 8px 32px", fontSize: isClose ? 12 : 11, color: isPay ? spAccent : isFunding ? spGreen : spText, fontWeight: isClose ? 700 : (isFunding ? 600 : 400), fontFamily: spFont } },
+                                    React.createElement("span", { style: { color: spMuted, fontSize: 10, marginRight: 8, fontFamily: spMono } }, fmt(r.date)),
+                                    r.event
+                                  ),
+                                  React.createElement("td", { style: valStyle(r.cap) }, fmtVal(r.cap)),
+                                  React.createElement("td", { style: valStyle(r.int) }, fmtVal(r.int)),
+                                  React.createElement("td", { style: valStyle(r.pen) }, fmtVal(r.pen)),
+                                  React.createElement("td", { style: valStyle(r.hb) }, fmtVal(r.hb)),
+                                  React.createElement("td", { style: Object.assign({}, valStyle(r.total || 0), { fontWeight: 700, color: isPay ? ((r.total || 0) < -0.001 ? spGreen : (r.total || 0) > 0.001 ? spRed : spMuted) : (Math.abs(r.total || 0) > 0.01 ? spText : spMuted) }) }, fmtVal(r.total || 0))
+                                ));
+                              });
+                              // Closing balance row
+                              acc.push(React.createElement("tr", { key: "mc-" + b.key, style: { borderBottom: "2px solid " + spAccent + "40", background: spAccent + "10" } },
+                                React.createElement("td", null),
+                                React.createElement("td", { style: { padding: "8px 12px 8px 32px", fontSize: 12, fontWeight: 700, color: spAccent, fontFamily: spFont } }, "Closing balance (" + b.label + ")"),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? spText : spMuted } }, money(b.closing.cap, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? spText : spMuted } }, money(b.closing.int, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? spText : spMuted } }, money(b.closing.pen, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 12, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? spText : spMuted } }, money(b.closing.hb, spDisplayCcy)),
+                                React.createElement("td", { style: { padding: "8px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? spAccent : spMuted } }, money(b.closing.total, spDisplayCcy))
+                              ));
+                            }
+                            return acc;
+                          }, [])
+                        )
+                      )
+                    )
+                  );
+                })()
               );
             })()
             )
           ),
-          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
+          React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n/* Self-hosted webfonts. Duplicated from the admin tree so the supplier\n   portal also loads them on first paint without depending on admin\n   render order. Browsers de-duplicate identical @font-face entries. */\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/Inter-Medium.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-SemiBold.woff2') format('woff2'); }\nbody { font-feature-settings: 'tnum' 1, 'cv11' 1; }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #F1F5F9 !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" } })
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
         <div style={{ width: 240, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: sidebarOpen ? 0 : -240, height: "100vh", zIndex: 50, transition: "left 0.3s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.3)" : "none" }} className="ff-sidebar-mobile">
-          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
+          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid var(--sidebar-active-bg)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 36, filter: "drop-shadow(0 0 6px rgba(14,165,233,0.3)) drop-shadow(0 0 2px rgba(255,255,255,0.6))" }} />
-              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
+              <button onClick={function() { setSidebarOpen(false); }} style={{ display: "none", background: "none", border: "none", color: "var(--sidebar-text)", cursor: "pointer", padding: 4 }} className="ff-sidebar-close"><X size={18} /></button>
             </div>
-            <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
+            <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
-          <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
-            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
+            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "var(--sidebar-active-bg)", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
         </div>
         {sidebarOpen && <div onClick={function() { setSidebarOpen(false); }} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} className="ff-sidebar-overlay" />}
         {/* Desktop Sidebar (always visible) */}
         <div style={{ width: 240, flexShrink: 0, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", minHeight: "100vh" }} className="ff-sidebar-desktop">
-          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
+          <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid var(--sidebar-active-bg)" }}>
             <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 36, filter: "drop-shadow(0 0 6px rgba(14,165,233,0.3)) drop-shadow(0 0 2px rgba(255,255,255,0.6))" }} />
-            <div style={{ marginTop: 12, fontSize: 11, color: "#475569", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
+            <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "#1E293B" : "transparent", color: active ? "#0EA5E9" : "#94A3B8", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
-          <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
-            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
-            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
+            <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "var(--sidebar-active-bg)", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+            {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
-          <div style={{ padding: "12px 20px", borderTop: "1px solid #1E293B" }}>
-            <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
-            <div style={{ fontSize: 10, color: "#475569", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
-            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
+          <div style={{ padding: "12px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
+            <div style={{ fontSize: 11, color: "var(--sidebar-text)", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
+            <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
+            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
           </div>
         </div>
         {/* Main Content */}
@@ -5919,9 +8243,12 @@ export default function FactoringDashboard() {
             <select value={selectedSupplier} onChange={function(e) { setSelectedSupplier(e.target.value); setPg(0); setSelectedInvs({}); setSaPage(0); setSaExp(null); setShPage(0); setShExp(null); setRemSearch(""); setRemStatusFilter("all"); setSfPage(0); setSfSearch(""); setSfStatusFilter("all"); setSfDateFilter(""); setFundPayExp(null); setSupOverviewAuditPopup(null); setSupOverviewAuditFilter(""); setSupOverviewAuditAction("all"); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label + " (" + se.value + ")"}</option>; })}
             </select>
-            <select value={supCurrency} onChange={function(e) { setSupCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
-              <option value="all">All Currencies</option>
-              {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+            <select value={supProgram} onChange={function(e) { setSupProgram(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+              {(function() {
+                var progs = programsForSupplier(selectedSupplier);
+                if (progs.length === 0) return [<option key="none" value="">No programs</option>];
+                return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
+              })()}
             </select>
           </div>
         </div>}
@@ -5935,9 +8262,12 @@ export default function FactoringDashboard() {
             <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBaPage(0); setBaExp(null); setBaSearch(""); setBaDateFilter(""); setBhPage(0); setBhExp(null); setBhSearch(""); setBhDateFilter(""); setBfPage(0); setBfSearch(""); setBfStatusFilter("all"); setBfDateFilter(""); setFundPayExp(null); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
               {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
             </select>
-            <select value={buyCurrency} onChange={function(e) { setBuyCurrency(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
-              <option value="all">All Currencies</option>
-              {CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}
+            <select value={buyProgram} onChange={function(e) { setBuyProgram(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+              {(function() {
+                var progs = programsForBuyer(selectedBuyer);
+                if (progs.length === 0) return [<option key="none" value="">No programs</option>];
+                return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
+              })()}
             </select>
           </div>
         </div>}
@@ -6363,7 +8693,7 @@ export default function FactoringDashboard() {
           var supCapOS = filtered.reduce(function(s, inv) { return s + (inv.capitalOutstanding || 0); }, 0);
           var overdueCount = filtered.filter(function(inv) { return inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined" && inv.capitalOutstanding > 0.01; }).length;
           var pendingCount = filtered.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
-          var dc = supCurrency !== "all" ? supCurrency : "GBP";
+          var dc = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 22 }}>
             <StatCard label="Invoiced" value={money(r2(supTotal), dc)} sub={filtered.length + " invoice" + (filtered.length === 1 ? "" : "s")} accent="#0EA5E9" />
             <StatCard label="Cash Advanced" value={money(r2(supCapAdv), dc)} sub="to date" accent="#10B981" />
@@ -6396,7 +8726,7 @@ export default function FactoringDashboard() {
             <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: fsf !== "all" ? "var(--accent)" : undefined, color: fsf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
             <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{b + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
             {hasActive && <button onClick={clearAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters ({activeFilters.length})</button>}
-            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
+            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
             <div style={{ marginLeft: isS ? 0 : "auto", fontSize: 11.5, color: hasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: hasActive ? 600 : 400 }}>{hasActive && filtered.length !== totalCount ? filtered.length + " of " + totalCount : filtered.length} invoices</div>
           </div>;
         })()}
@@ -6473,9 +8803,14 @@ export default function FactoringDashboard() {
                       {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>}
                       <td style={Object.assign({}, tc, { color: "var(--text-secondary)" })}>{fmt(inv.invoiceDate)}</td>
                       <td style={Object.assign({}, tc, { color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400 })}>{fmt(inv.dueDate)}</td>
-                      <td style={{ padding: "8px 6px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
+                      <td style={{ padding: "8px 6px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase",  cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
                       <td style={{ padding: "8px 6px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: "#EF4444", background: "#DC262615", border: "1px solid #DC262640", letterSpacing: "0.06em" }} title="Do Not Purchase \u2014 this invoice is deliberately excluded from purchase">DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: "#94A3B8", background: "#6B728020", border: "1px solid #6B728040", letterSpacing: "0.06em" }} title="Do Not Advance \u2014 capital will not be advanced against this invoice">DNA</span>}</td>
-                      {(isS || isB) && <td style={Object.assign({}, mc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "\u2014" : "\u2014"}</td>}
+                      {/* Annual interest rate column. Display only when actually funded —
+                          annualRate is populated at allocation time (purchased state, before
+                          cash advance) so showing it then would imply interest is accruing
+                          when it isn't. Em-dash for pending, purchased-but-unfunded, and any
+                          other pre-funded state. */}
+                      {(isS || isB) && <td style={Object.assign({}, mc, { color: "#D97706" })}>{inv.fundedDate && inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</td>}
                       {!isS && !isB && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
                       <td style={{ padding: "8px 6px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
@@ -6497,7 +8832,7 @@ export default function FactoringDashboard() {
                                     {/* Section 1: Invoice Information */}
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: editInv === inv.id ? "2px solid var(--accent)" : "1px solid var(--border)", padding: "16px 18px" }}>
                                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>
-                                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--accent)" }}>Invoice Information</div>
+                                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)" }}>Invoice Information</div>
                                         {editInv === inv.id && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#fff", background: "var(--accent)", padding: "2px 6px", borderRadius: 4 }}>Editing</span>}
                                       </div>
                                       {(function() {
@@ -6523,7 +8858,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
-                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("poNumber") : <span style={val}>{inv.poNumber || "\u2014"}</span>}</div>
+                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
                                           <div style={sectionHeader}>Amounts</div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
@@ -6547,7 +8882,7 @@ export default function FactoringDashboard() {
                                     </div>
                                     {/* Section 2: Funding Information */}
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Funding Information</div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Funding Information</div>
                                       {(function() {
                                         var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600 };
                                         var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" };
@@ -6613,7 +8948,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>{inv.holdbackAvailable < -0.01 ? "Holdback Overdrawn" : "Holdback Available"}</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable < -0.01 ? "#DC2626" : inv.holdbackAvailable > 0 ? "#059669" : "var(--text)" })}>{inv.holdbackAvailable < -0.01 ? money(Math.abs(inv.holdbackAvailable), inv.currency) : money(inv.holdbackAvailable, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Disbursed</span><span style={val}>{money(inv.holdbackDisbursed, inv.currency)}</span></div>
-                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 700 }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#DC2626", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
+                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#DC2626", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
                                           {inv.writeOffTotal > 0 && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#78716c08", border: "1px solid #78716c20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Written Off: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#6B7280" }}>Pen {money(inv.writeOffPenalty, inv.currency)} | Int {money(inv.writeOffInterest, inv.currency)} | Cap {money(inv.writeOffCapital, inv.currency)} = {money(inv.writeOffTotal, inv.currency)}</span></div>}
                                         </div>;
                                       })()}
@@ -6622,6 +8957,9 @@ export default function FactoringDashboard() {
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
                                     {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {/* Void: only when invoice has no operational footprint (pending, no funded date, no payments). Hidden on funded invoices per spec. */}
+                                    {!inv.voided && inv.fundingStatus === "pending" && !inv.fundedDate && !((inv.payments || []).length > 0) && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "void", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this invoice as voided. It remains for audit but is disregarded everywhere else.">Void Invoice</button>}
+                                    {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
@@ -6633,7 +8971,7 @@ export default function FactoringDashboard() {
                                   </div>
                                   {/* Adjustment Panel */}
                                   {adjInv === inv.id && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid " + (adjType === "credit" ? "#059669" : "#D97706"), padding: "14px 18px", marginBottom: 14 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: adjType === "credit" ? "#059669" : "#D97706", marginBottom: 10 }}>{adjType === "credit" ? "Credit Adjustment" : "Debit Adjustment"} — {adjType === "credit" ? "Decreases" : "Increases"} Outstanding</div>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: adjType === "credit" ? "#059669" : "#D97706", marginBottom: 10 }}>{adjType === "credit" ? "Credit Adjustment" : "Debit Adjustment"} — {adjType === "credit" ? "Decreases" : "Increases"} Outstanding</div>
                                     {(function() {
                                       var maxPen = inv.penaltyInterest || 0;
                                       var maxInt = inv.interestOutstanding || 0;
@@ -6674,7 +9012,7 @@ export default function FactoringDashboard() {
                                     var stRows = buildInvoiceStatement(inv);
                                     if (stRows.length === 0) return null;
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>Position Statement</div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text)", marginBottom: 6 }}>Position Statement</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{stRows.map(function(r, ri) {
@@ -6698,7 +9036,7 @@ export default function FactoringDashboard() {
 
                                   {/* Payments from Buyer */}
                                   {inv.payments.length > 0 && <div style={{ marginBottom: 10 }}>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
                                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                       <thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                       <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
@@ -6712,10 +9050,10 @@ export default function FactoringDashboard() {
                                     if (supPayments.length === 0) return null;
                                     var totalToSup = supPayments.reduce(function(s, p) { return s + p.amount; }, 0);
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#0EA5E9", marginBottom: 6 }}>Payments to Supplier ({supPayments.length})</div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9", marginBottom: 6 }}>Payments to Supplier ({supPayments.length})</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Type", "Reference", "Date", "Amount", "Description"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                                        <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#0EA5E9" : sp.type === "Holdback Return" ? "#E2E8F0" : "#D97706"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
+                                        <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#0EA5E9" : sp.type === "Holdback Return" ? "#E2E8F0" : "#D97706"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
                                       </table>
                                     </div>;
                                   })()}
@@ -6730,7 +9068,7 @@ export default function FactoringDashboard() {
                                     if (invCNs.length === 0) return null;
                                     var totalDilution = invCNs.reduce(function(s, c) { return s + c.allocatedAmount; }, 0);
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 6 }}>Credit Notes Applied ({invCNs.length})</div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#D97706", marginBottom: 6 }}>Credit Notes Applied ({invCNs.length})</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["CN ID", "Date", "Reference", "CN Amount", "Applied to Invoice"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                                         <tbody>{invCNs.map(function(c, ci) { return <tr key={ci} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -6748,7 +9086,7 @@ export default function FactoringDashboard() {
                                     var invLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.invoiceId === inv.id || (e.context.allocations && e.context.allocations.some(function(a) { return a.invoiceId === inv.id; })) || e.context.sourceInvoiceId === inv.id); });
                                     if (invLogs.length === 0) return null;
                                     return <div style={{ marginBottom: 10 }}>
-                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({invLogs.length})</div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({invLogs.length})</div>
                                       <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}>
                                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{invLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table>
                                       </div>
@@ -6756,7 +9094,7 @@ export default function FactoringDashboard() {
                                   })()}
                                   {/* Notes */}
                                   <div>
-                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {inv.notes && inv.notes.length > 0 ? "(" + inv.notes.length + ")" : ""}</div>
+                                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Notes {inv.notes && inv.notes.length > 0 ? "(" + inv.notes.length + ")" : ""}</div>
                                     {inv.notes && inv.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>{inv.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "6px 10px", borderRadius: 6, background: "var(--card)", marginBottom: 4, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginBottom: 2 }}>{n.display}</div><div style={{ fontSize: 11.5, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}
                                     <div style={{ display: "flex", gap: 6 }}>
                                       <input type="text" value={exp === inv.id ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) addInvoiceNote(inv.id, noteText); }} placeholder="Add a note..." style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11.5, outline: "none" }} />
@@ -6794,8 +9132,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Overview Tab */}
         {isS && supTab === "overview" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supplier = getSupplierById(selectedSupplier) || getParentSupplier(selectedSupplier);
 
           // Compute balances (exclude pending)
@@ -6966,13 +9304,13 @@ export default function FactoringDashboard() {
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "22px 26px", display: "flex", flexDirection: "column" }}>
                 {/* Balance Owed hero */}
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)", fontWeight: 600 }}>Balance Owed</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-secondary)" }}>Balance Owed</div>
                   <div style={{ fontSize: 28, fontWeight: 700, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>{money(r2(balanceOwed), displayCcy)}</div>
                 </div>
                 {/* Collateral row */}
                 <div style={{ display: "flex", gap: 24, paddingBottom: 14, borderBottom: "1px solid var(--border)", marginBottom: 16 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 }}>Collateral Value</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>Collateral Value</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(collateralValue), displayCcy)}</div>
                   </div>
                   <div style={{ flex: 1.4 }}>
@@ -6986,7 +9324,7 @@ export default function FactoringDashboard() {
                       var fillPct = Math.min(100, (covPct / meterMax) * 100); // % of bar width
                       return <div>
                         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Collateral Cover</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Collateral Cover</div>
                           <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: meterColor }}>{collateralCover > 0 ? covPct.toFixed(1) + "%" : "\u2014"}</div>
                         </div>
                         <div style={{ position: "relative", height: 8, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)", overflow: "hidden" }}>
@@ -7007,42 +9345,61 @@ export default function FactoringDashboard() {
                 {/* 6 stat metrics in a 3x2 grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px", flex: 1 }}>
                   <div style={{ borderLeft: "3px solid #2B4C7E", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Outstanding Invoices</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25c8"} Outstanding Invoices</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{String(supInvs.filter(function(inv) { return inv.balanceOwed > 0.01 && inv.fundingStatus !== "pending"; }).length)}</div>
                   </div>
                   <div style={{ borderLeft: "3px solid var(--accent)", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25c6"} Capital O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
                   </div>
                   {(function() { var pendDecision = supInvs.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length; var pendDisbursal = supInvs.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length; return <>
                   <div onClick={pendDecision > 0 ? function() { var el = document.getElementById("sup-ov-pending"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); } : null} style={{ borderLeft: "3px solid #7BA0D4", paddingLeft: 12, cursor: pendDecision > 0 ? "pointer" : "default", transition: "opacity 0.15s ease" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u23f3"} Pending Decision{pendDecision > 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>{"\u2193"}</span>}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u23f3"} Pending Decision{pendDecision > 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>{"\u2193"}</span>}</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pendDecision > 0 ? "#38BDF8" : "var(--muted)" }}>{pendDecision}</div>
                   </div>
                   <div onClick={pendDisbursal > 0 ? function() { var el = document.getElementById("sup-ov-approved"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); } : null} style={{ borderLeft: "3px solid #9B80C4", paddingLeft: 12, cursor: pendDisbursal > 0 ? "pointer" : "default", transition: "opacity 0.15s ease" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b6"} Pending Disbursal{pendDisbursal > 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>{"\u2193"}</span>}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25b6"} Pending Disbursal{pendDisbursal > 0 && <span style={{ marginLeft: 6, color: "var(--accent)", fontSize: 10 }}>{"\u2193"}</span>}</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pendDisbursal > 0 ? "#8B5CF6" : "var(--muted)" }}>{pendDisbursal}</div>
                   </div>
                   </>; })()}
                   <div style={{ borderLeft: "3px solid #C08B30", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25b2"} Interest O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalIntOS), displayCcy)}</div>
                   </div>
                   <div style={{ borderLeft: "3px solid #C0392B", paddingLeft: 12 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u26a0"} Penalty O/S</div>
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
+                {/* Limits sub-row — Credit Limit + Max Invoice Size for the active program.
+                    Always shown so "no limit" is visible (informative, distinct from "unknown").
+                    Same visual style as the 3x2 stat grid above. */}
+                {(function() {
+                  if (!supProgram || !selectedSupplier) return null;
+                  var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
+                  var clVal = sup && sup.creditLimits && sup.creditLimits[supProgram] > 0 ? sup.creditLimits[supProgram] : null;
+                  var silVal = sup && sup.singleInvoiceLimits && sup.singleInvoiceLimits[supProgram] > 0 ? sup.singleInvoiceLimits[supProgram] : null;
+                  return <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px" }}>
+                    <div style={{ borderLeft: "3px solid #059669", paddingLeft: 12 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Credit Limit</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: clVal != null ? "var(--text)" : "var(--muted)" }}>{clVal != null ? money(clVal, displayCcy) : "\u2014"}</div>
+                    </div>
+                    <div style={{ borderLeft: "3px solid #0EA5E9", paddingLeft: 12 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Max Invoice Size</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: silVal != null ? "var(--text)" : "var(--muted)" }}>{silVal != null ? money(silVal, displayCcy) : "\u2014"}</div>
+                    </div>
+                  </div>;
+                })()}
               </div>
               {/* Right: 2 dilution cards side by side */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Supplier Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices in period"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Supplier Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices in period"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: dilutionRate > 10 ? "#DC2626" : dilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNumerator), displayCcy)}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNumerator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil30.rate > 10 ? "#DC2626" : dil30.rate > 5 ? "#D97706" : "#059669" }}>{dil30.rate > 0 ? dil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil30.numerator, displayCcy)} / {money(dil30.denominator, displayCcy)}</div></div>
@@ -7050,12 +9407,12 @@ export default function FactoringDashboard() {
                   </div>
                 </div>
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: fdilutionRate > 10 ? "#DC2626" : fdilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil30.rate > 10 ? "#DC2626" : fdil30.rate > 5 ? "#D97706" : "#059669" }}>{fdil30.rate > 0 ? fdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil30.numerator, displayCcy)} / {money(fdil30.denominator, displayCcy)}</div></div>
@@ -7064,6 +9421,34 @@ export default function FactoringDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Credit Limit Utilisation — full-width row below the top section.
+                Only shown when an active program with a credit limit exists. */}
+            {(function() {
+              if (!supProgram || !selectedSupplier) return null;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
+              if (!sup || !sup.creditLimits || !sup.creditLimits[supProgram] || sup.creditLimits[supProgram] <= 0) return null;
+              var limit = sup.creditLimits[supProgram];
+              var exposure = getSupplierProgramExposure(selectedSupplier, supProgram, null);
+              var headroom = r2(Math.max(0, limit - exposure));
+              var pct = limit > 0 ? (exposure / limit) * 100 : 0;
+              var fillPct = Math.min(100, pct);
+              var color = pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#059669";
+              return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "16px 22px", marginBottom: 22 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)" }}>Credit Limit Utilisation</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color }}>{pct.toFixed(1)}%</div>
+                </div>
+                <div style={{ position: "relative", height: 8, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{ width: fillPct + "%", height: "100%", background: color, transition: "width 0.25s ease" }}></div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                  <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(limit, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(exposure, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: color }}>{money(headroom, displayCcy)}</strong></span>
+                </div>
+              </div>;
+            })()}
 
             {/* Action row: Pending Invoices + Approved Awaiting + Holdback Available */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
@@ -7084,7 +9469,7 @@ export default function FactoringDashboard() {
                         <td style={Object.assign({}, mc, { padding: "6px 8px", color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                         <td style={Object.assign({}, mc, { padding: "6px 8px", fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : <span style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic" }}>No eligible programs</span>}</td>
+                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : (function() { var diag = getEligibilityReasons(inv, supDilRates); return <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic" }}>No eligible programs</span><IneligibilityIndicator diag={diag} placement="left" /></span>; })()}</td>
                         <td style={{ padding: "6px 8px" }}><button onClick={function() { fundInvoice(inv.id, selProg); }} disabled={!selProg} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: selProg ? "#38BDF8" : "var(--border)", color: selProg ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 600, cursor: selProg ? "pointer" : "default" }}>Approve</button></td>
                       </tr>;
                     })}</tbody>
@@ -7151,7 +9536,7 @@ export default function FactoringDashboard() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 22 }}>
               {/* Outstanding Balance Over Time */}
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Funded Volume by Month</div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 14 }}>Funded Volume by Month</div>
                 {fvChartData.length > 0 ? <svg width={barW} height={barH + 30} viewBox={"0 0 " + barW + " " + (barH + 30)} style={{ display: "block", maxWidth: "100%" }}>
                   {/* Grid lines */}
                   {[0, 0.25, 0.5, 0.75, 1].map(function(f, i) {
@@ -7173,7 +9558,7 @@ export default function FactoringDashboard() {
 
               {/* Funding Status Donut */}
               <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Invoice Funding Status</div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 14 }}>Invoice Funding Status</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
                   <div style={{ position: "relative", width: donutSize, height: donutSize, flexShrink: 0 }}>
                     <svg width={donutSize} height={donutSize} viewBox={"0 0 " + donutSize + " " + donutSize}>
@@ -7183,7 +9568,7 @@ export default function FactoringDashboard() {
                       })}
                     </svg>
                     <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center" }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, fontWeight: 600, color: "var(--text)" }}>{donutTotal}</div>
+                      <div style={{ fontSize: 22, fontWeight: 800,  color: "var(--text)" }}>{donutTotal}</div>
                       <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Invoices</div>
                     </div>
                   </div>
@@ -7233,7 +9618,7 @@ export default function FactoringDashboard() {
               var bw = Math.max(20, aiW / 8 - 8);
 
               return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "20px 22px", marginBottom: 22 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 14 }}>Ageing Analysis (Capital Outstanding)</div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 14 }}>Ageing Analysis (Capital Outstanding)</div>
                 <svg width={aw} height={ah} style={{ display: "block", width: "100%", height: "auto" }} viewBox={"0 0 " + aw + " " + ah}>
                   {[0, 0.25, 0.5, 0.75, 1].map(function(f) { var y = apT + aiH - f * aiH; return <g key={f}><line x1={apL} x2={aw - apR} y1={y} y2={y} stroke="#1C2A42" strokeWidth={1} /><text x={apL - 6} y={y + 3} textAnchor="end" fontSize={8} fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{money(r2(maxBal * f), displayCcy)}</text></g>; })}
                   <line x1={apL + 4 * (bw + 8) - 4} x2={apL + 4 * (bw + 8) - 4} y1={apT} y2={apT + aiH} stroke="var(--border)" strokeWidth={1} strokeDasharray="4,3" />
@@ -7285,7 +9670,7 @@ export default function FactoringDashboard() {
                 {/* ADDRESS section */}
                 <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 10, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Address</div>
                 <div style={{ marginBottom: 22 }}>
-                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{supplier ? ([supplier.street1, supplier.street2, supplier.city, supplier.state, supplier.zip, supplier.country].filter(Boolean).join(", ") || "\u2014") : "\u2014"}</div>
+                  <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{supplier ? ([supplier.addressLine1, supplier.addressLine2, supplier.city, supplier.county, supplier.postcode, supplier.country].filter(Boolean).join(", ") || "\u2014") : "\u2014"}</div>
                 </div>
 
                 {/* BANKING section */}
@@ -7306,31 +9691,38 @@ export default function FactoringDashboard() {
                 </div>
               </div>
 
-              {/* Rates & Balances */}
+              {/* Rates & Balances — scoped to the currently-selected program (supProgram) */}
               {(function() {
-                var curRate = getSupplierRate(selectedSupplier);
-                var rateHistory = supplier && supplier.rates ? supplier.rates.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); }) : [];
+                var curRate = getSupplierRateForProgram(selectedSupplier, supProgram);
+                var pr = (supplier && supplier.programRates) || {};
+                var rateHistory = pr[supProgram] ? pr[supProgram].slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); }) : [];
+                var selectedProgramObj = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; });
+                var selectedProgramName = selectedProgramObj ? selectedProgramObj.name : "this program";
 
                 function addRate() {
-                  if (!newRateAdvance || !newRateAnnual || !newRatePenalty) return;
-                  if (!supplier.rates) supplier.rates = [];
+                  if (!newRateAdvance || !newRateAnnual || !newRatePenalty || !supProgram) return;
+                  if (!supplier.programRates) supplier.programRates = {};
+                  if (!supplier.programRates[supProgram]) supplier.programRates[supProgram] = [];
                   var now = new Date();
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                  supplier.rates.push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
+                  supplier.programRates[supProgram].push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
                   saveSupplier(selectedSupplier);
-                    auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
+                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
                   setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
                 }
 
                 return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid #C08B30" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--text)" }}>Rates & Current Balances</div>
-                  <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>
+                  <div style={{ fontSize: 14, fontWeight: 700,  color: "var(--text)" }}>Rates & Current Balances <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>({selectedProgramName})</span></div>
+                  {curRate && <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>}
                 </div>
-                {showRateChange && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>New Rate for {getEntityDisplayName(selectedSupplier)}</div>
+                {!curRate && <div style={{ padding: "16px 18px", borderRadius: 10, background: "#C0392B14", border: "1px solid #DC262630", marginBottom: 14, fontSize: 12, color: "#EF4444" }}>
+                  No rates set for {selectedProgramName}. Add this supplier to the program (or use Manage to configure) to set rates.
+                </div>}
+                {showRateChange && curRate && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>New Rate for {getEntityDisplayName(selectedSupplier)} on {selectedProgramName}</div>
                   <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
@@ -7348,43 +9740,43 @@ export default function FactoringDashboard() {
                       <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Effective</label>
                       <span style={{ fontSize: 12, color: "var(--text-secondary)", padding: "6px 0" }}>Immediately on save</span>
                     </div>
-                    <button onClick={addRate} disabled={!newRateAdvance || !newRateAnnual || !newRatePenalty} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: newRateAdvance && newRateAnnual && newRatePenalty ? "var(--accent)" : "var(--border)", color: newRateAdvance && newRateAnnual && newRatePenalty ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, fontWeight: 600, cursor: newRateAdvance && newRateAnnual && newRatePenalty ? "pointer" : "default" }}>Save Rate</button>
+                    <button onClick={addRate} disabled={!newRateAdvance || !newRateAnnual || !newRatePenalty} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: newRateAdvance && newRateAnnual && newRatePenalty ? "var(--accent)" : "var(--border)", color: newRateAdvance && newRateAnnual && newRatePenalty ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700,  cursor: newRateAdvance && newRateAnnual && newRatePenalty ? "pointer" : "default" }}>Save Rate</button>
                   </div>
                 </div>}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
+                {curRate && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
                   <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Advance Rate</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Advance Rate</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{(curRate.advanceRate * 100).toFixed(0)}%</div>
                   </div>
                   <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Interest Rate (p.a.)</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Interest Rate (p.a.)</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{(curRate.annualRate * 100).toFixed(1)}%</div>
                   </div>
                   <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Penalty Rate (p.a.)</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Penalty Rate (p.a.)</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{(curRate.penaltyRate * 100).toFixed(1)}%</div>
                   </div>
                   <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Holdback Rate</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Holdback Rate</div>
                     <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{((1 - curRate.advanceRate) * 100).toFixed(0)}%</div>
                   </div>
-                </div>
+                </div>}
                 <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   <div style={{ textAlign: "center", padding: "12px 8px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Capital O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Capital O/S</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
                   </div>
                   <div style={{ textAlign: "center", padding: "12px 8px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Interest O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Interest O/S</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(totalIntOS), displayCcy)}</div>
                   </div>
                   <div style={{ textAlign: "center", padding: "12px 8px", borderRadius: 10, border: "1px solid var(--border)" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Penalty O/S</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Penalty O/S</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
                 {rateHistory.length > 0 && <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Rate History</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Rate History &mdash; {selectedProgramName}</div>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Effective From", "Advance Rate", "Interest Rate", "Penalty Rate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{rateHistory.map(function(r, ri) {
@@ -7628,8 +10020,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Payment Allocations Tab */}
         {isS && supTab === "allocations" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           var allSupPays = [];
@@ -7827,8 +10219,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Holdback Payments Tab */}
         {isS && supTab === "holdback" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           var allSupHbps = HOLDBACK_PAYMENTS_DB.filter(function(hbp) { return supInvIds[hbp.sourceInvoiceId]; });
@@ -8100,8 +10492,8 @@ export default function FactoringDashboard() {
 
         {/* Supplier Funding Payments Tab */}
         {isS && supTab === "funding" && (function() {
-          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && (supCurrency === "all" || inv.currency === supCurrency); });
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supInvIds = {};
           supInvs.forEach(function(inv) { supInvIds[inv.id] = true; });
           // A: Scope to funding-only (pass-throughs/holdbacks live on the Pass-through Payments tab)
@@ -8326,38 +10718,210 @@ export default function FactoringDashboard() {
             if (selBranchId) return inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier);
             return getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier);
           });
-          if (supCurrency !== "all") supInvs = supInvs.filter(function(inv) { return inv.currency === supCurrency; });
-          var stRows = buildSupplierStatement(supInvs);
-          var displayCcy = supCurrency !== "all" ? supCurrency : "GBP";
+          if (supProgram) supInvs = supInvs.filter(function(inv) { return invInProgramScope(inv, supProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supDisplayName = selectedSupplier ? getEntityDisplayName(selectedSupplier) : "";
 
+          // Resolve period preset → from/to dates (mirrors portal logic at ~7800).
+          var periodFrom = "", periodTo = "";
+          var todayD = new Date(viewDate + "T12:00:00");
+          if (adStPreset === "MTD") {
+            periodFrom = viewDate.slice(0, 7) + "-01";
+            periodTo = viewDate;
+          } else if (adStPreset === "QTD") {
+            var qStartMonth = Math.floor(todayD.getMonth() / 3) * 3;
+            periodFrom = todayD.getFullYear() + "-" + String(qStartMonth + 1).padStart(2, "0") + "-01";
+            periodTo = viewDate;
+          } else if (adStPreset === "YTD") {
+            periodFrom = todayD.getFullYear() + "-01-01";
+            periodTo = viewDate;
+          } else if (adStPreset === "ALL") {
+            periodFrom = ""; periodTo = "";
+          } else if (adStPreset === "CUSTOM") {
+            periodFrom = adStFrom || "";
+            periodTo = adStTo || "";
+          }
+          var stResult = buildSupplierStatement(supInvs, { from: periodFrom, to: periodTo });
+          var allRows = stResult.rows;
+          // Filter rows by query if active (search in event field).
+          var filteredRows = allRows;
+          if (adStQuery) {
+            var qq = adStQuery.toLowerCase();
+            filteredRows = filteredRows.filter(function(r) { return (r.event || "").toLowerCase().indexOf(qq) > -1; });
+          }
+          // Group into monthly buckets (excludes the pinned "current" row, which
+          // wouldn't naturally fit a month bucket and is shown in the dedicated card).
+          var monthBuckets = groupStatementByMonth(filteredRows, stResult.openingBalance);
+          // Auto-expand the most recent month on first render. Bucket order is oldest-first
+          // so the last entry is the most recent. When the user toggles, state becomes a
+          // Set-ish object and we honour it directly.
+          var expandedMonths;
+          if (adStExpandedMonths === null) {
+            // Initialise to most-recent-only.
+            expandedMonths = {};
+            if (monthBuckets.length > 0) expandedMonths[monthBuckets[monthBuckets.length - 1].key] = true;
+          } else {
+            expandedMonths = adStExpandedMonths;
+          }
+          function toggleMonth(key) {
+            var next = Object.assign({}, expandedMonths);
+            if (next[key]) delete next[key]; else next[key] = true;
+            setAdStExpandedMonths(next);
+          }
+          function expandAll() {
+            var next = {};
+            monthBuckets.forEach(function(b) { next[b.key] = true; });
+            setAdStExpandedMonths(next);
+          }
+          function collapseAll() { setAdStExpandedMonths({}); }
+          // Period label for the header
+          var periodLabel = adStPreset === "ALL" ? "All time" :
+            adStPreset === "MTD" ? "Month to date" :
+            adStPreset === "QTD" ? "Quarter to date" :
+            adStPreset === "YTD" ? "Year to date" :
+            (periodFrom || "—") + " to " + (periodTo || "—");
+          // Reusable button styles
+          var presetBtnStyleAd = function(active) {
+            return { padding: "6px 12px", borderRadius: 6, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" };
+          };
+
+          // SumCard helper for the four period-summary cards (parity with portal).
+          function SumCard(label, value, accentColour, sub) {
+            return <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 6 }}>{label}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: accentColour, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-0.01em" }}>{value}</div>
+              {sub ? <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{sub}</div> : null}
+            </div>;
+          }
+
           return <div>
+            {/* Current Position card — pinned at top of tab. Always shows the as-of-viewDate position.
+                Replaces the redundant inline "Current Position" row that used to live at the bottom
+                of the table; the table now only carries actual ledger events. */}
+            <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 12, padding: "16px 22px", marginBottom: 18, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", letterSpacing: "0.08em", marginBottom: 6, textTransform: "uppercase" }}>Current Position {"\u2014"} as of {fmt(viewDate)}</div>
+                <div style={{ display: "flex", gap: 22, flexWrap: "wrap", fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div><span style={{ color: "var(--muted)", fontSize: 11 }}>Capital </span><span style={{ color: "var(--text)", fontSize: 14, fontWeight: 600 }}>{money(stResult.currentPosition.cap, displayCcy)}</span></div>
+                  <div><span style={{ color: "var(--muted)", fontSize: 11 }}>Interest </span><span style={{ color: "#F59E0B", fontSize: 14, fontWeight: 600 }}>{money(stResult.currentPosition.int, displayCcy)}</span></div>
+                  <div><span style={{ color: "var(--muted)", fontSize: 11 }}>Penalty </span><span style={{ color: "#EF4444", fontSize: 14, fontWeight: 600 }}>{money(stResult.currentPosition.pen, displayCcy)}</span></div>
+                  <div><span style={{ color: "var(--muted)", fontSize: 11 }}>Holdback </span><span style={{ color: "#8B5CF6", fontSize: 14, fontWeight: 600 }}>{money(stResult.currentPosition.hb, displayCcy)}</span></div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Total Owed</div>
+                <div style={{ fontSize: 24, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, letterSpacing: "-0.02em" }}>{money(stResult.currentPosition.total, displayCcy)}</div>
+              </div>
+            </div>
+
+            {/* Period summary cards (parity with Supplier Portal) */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+              {SumCard("Opening Balance", money(stResult.openingBalance.total, displayCcy), "var(--muted)", "At start of period")}
+              {SumCard("Funding Advanced", money(stResult.fundingInPeriod, displayCcy), "var(--accent)", "Capital advanced in period")}
+              {SumCard("Payments Received", money(stResult.paymentsInPeriod, displayCcy), "#059669", "Reductions during period")}
+              {SumCard("Closing Balance", money(stResult.closingBalance.total, displayCcy), "#F59E0B", "At end of period")}
+            </div>
+
+            {/* Controls: period preset, filter, expand/collapse all */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {["MTD", "QTD", "YTD", "ALL", "CUSTOM"].map(function(p) {
+                  return <button key={p} onClick={function() { setAdStPreset(p); setAdStExpandedMonths(null); }} style={presetBtnStyleAd(adStPreset === p)}>{p === "CUSTOM" ? "Custom" : p}</button>;
+                })}
+                {adStPreset === "CUSTOM" ? <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+                  <span style={{ fontSize: 10, color: "var(--muted)" }}>From</span>
+                  <input type="date" value={adStFrom} onChange={function(e) { setAdStFrom(e.target.value); setAdStExpandedMonths(null); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                  <span style={{ fontSize: 10, color: "var(--muted)" }}>to</span>
+                  <input type="date" value={adStTo} onChange={function(e) { setAdStTo(e.target.value); setAdStExpandedMonths(null); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" }} />
+                </div> : null}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="text" value={adStQuery} onChange={function(e) { setAdStQuery(e.target.value); }} placeholder="Filter rows..." style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 180 }} />
+                <button onClick={expandAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Expand all</button>
+                <button onClick={collapseAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Collapse all</button>
+              </div>
+            </div>
+
+            {/* Table: collapsed by month (oldest-first, bank-statement order).
+                Each month row shows aggregate funding / payments / end-of-month balance and
+                can be clicked to reveal the original chronological events for that month.
+                Inside an expanded month, the first row is the carried-forward opening
+                balance so the month reads as a self-contained statement. */}
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
               <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>Combined Position Statement {"\u2014"} {supDisplayName}</div>
-                  <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{stRows.length} entries</span>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Funding Balance Statement {"\u2014"} {supDisplayName}</div>
+                  <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{monthBuckets.length} {monthBuckets.length === 1 ? "month" : "months"} {"\u00b7"} {filteredRows.length} entries {"\u00b7"} {periodLabel}</span>
                 </div>
               </div>
-              {stRows.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No funded invoices for this supplier.</div> :
+              {monthBuckets.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{supInvs.length === 0 ? "No funded invoices for this supplier." : "No activity in this period."}</div> :
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{["Date", "Event", "Capital O/S", "Interest O/S", "Penalty O/S", "Holdback O/S"].map(function(h) { return <th key={h} style={{ textAlign: h === "Date" || h === "Event" ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
-                  <tbody>{stRows.map(function(r, ri) {
-                    var isBal = r.type === "balance" || r.type === "funding" || r.type === "closing" || r.type === "current";
-                    var isPay = r.type === "payment";
-                    var isClose = r.type === "closing" || r.type === "current";
-                    var isFunding = r.type === "funding";
-                    var borderStyle = r.type === "current" ? "none" : ri < stRows.length - 1 && stRows[ri + 1] && (stRows[ri + 1].type === "balance" || stRows[ri + 1].type === "funding") && r.type !== "funding" ? "2px solid var(--border)" : "1px solid var(--border)";
-                    function vs(v) { return { padding: "8px 12px", fontSize: isClose ? 13 : 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isClose ? 700 : isBal ? 600 : 400, color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : isFunding ? "var(--accent)" : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
-                    return <tr key={ri} style={{ borderBottom: borderStyle, borderTop: r.type === "current" ? "3px solid var(--accent)" : "none", background: r.type === "current" ? "#0EA5E910" : isClose ? "var(--card-hover)" : isBal ? "var(--bg)" : "transparent" }}>
-                      <td style={{ padding: "8px 12px", fontSize: isClose ? 13 : 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontWeight: isClose ? 700 : 400 }}>{fmt(r.date)}</td>
-                      <td style={{ padding: "8px 12px", fontSize: isClose ? 13 : 12, color: isPay ? "var(--accent)" : isFunding ? "#059669" : "var(--text)", fontWeight: isClose ? 700 : isBal || isFunding ? 600 : 400 }}>{r.event}</td>
-                      <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), displayCcy) : money(Math.abs(r.cap), displayCcy)}</td>
-                      <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), displayCcy) : money(Math.abs(r.int), displayCcy)}</td>
-                      <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), displayCcy) : money(Math.abs(r.pen), displayCcy)}</td>
-                      <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), displayCcy) : money(Math.abs(r.hb), displayCcy)}</td>
-                    </tr>;
+                  <thead><tr>{["", "Period / Event", "Capital", "Interest", "Penalty", "Holdback", "Total"].map(function(h, hi) { return <th key={hi} style={{ textAlign: hi <= 1 ? "left" : "right", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "2px solid var(--border)", background: "var(--card)", whiteSpace: "nowrap", width: hi === 0 ? 32 : "auto" }}>{h}</th>; })}</tr></thead>
+                  <tbody>{monthBuckets.map(function(b, bi) {
+                    var isExpanded = !!expandedMonths[b.key];
+                    var monthRows = [];
+                    // Month header row — collapsed summary. Balance columns show the
+                    // END-OF-MONTH closing balance (so the table reads consistently
+                    // as a balance ledger). Flow info (funding advanced, payments
+                    // received) lives in the inline subtitle next to the month label
+                    // so the operator sees this-month-activity at a glance without the
+                    // column semantics being violated.
+                    var flowParts = [];
+                    if (b.fundingAdvanced > 0.01) flowParts.push("+" + money(b.fundingAdvanced, displayCcy) + " funded");
+                    if (b.paymentsReceived > 0.01) flowParts.push("\u2212" + money(b.paymentsReceived, displayCcy) + " paid");
+                    var flowText = flowParts.length > 0 ? flowParts.join(" \u00b7 ") : b.events.length + " event" + (b.events.length === 1 ? "" : "s");
+                    monthRows.push(<tr key={"mh-" + b.key} onClick={function() { toggleMonth(b.key); }} style={{ borderBottom: "1px solid var(--border)", background: isExpanded ? "var(--accent)" + "08" : "var(--bg)", cursor: "pointer" }}>
+                      <td style={{ padding: "10px 12px", fontSize: 14, color: "var(--accent)", textAlign: "center", fontWeight: 700, lineHeight: 1 }}>{isExpanded ? "\u25BC" : "\u25B6"}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{b.label}<br /><span style={{ fontSize: 10, fontWeight: 400, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{flowText}</span></td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.cap, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.int, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.pen, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.hb, displayCcy)}</td>
+                      <td style={{ padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? "var(--accent)" : "var(--muted)" }}>{money(b.closing.total, displayCcy)}</td>
+                    </tr>);
+                    if (isExpanded) {
+                      // Opening balance row — makes the month read self-contained
+                      monthRows.push(<tr key={"mo-" + b.key} style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" + "60" }}>
+                        <td></td>
+                        <td style={{ padding: "8px 12px 8px 32px", fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Opening balance (brought forward)</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.opening.cap > 0.01 ? "var(--text-secondary)" : "var(--muted)" }}>{money(b.opening.cap, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.opening.int > 0.01 ? "var(--text-secondary)" : "var(--muted)" }}>{money(b.opening.int, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.opening.pen > 0.01 ? "var(--text-secondary)" : "var(--muted)" }}>{money(b.opening.pen, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: b.opening.hb > 0.01 ? "var(--text-secondary)" : "var(--muted)" }}>{money(b.opening.hb, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 600, color: b.opening.total > 0.01 ? "var(--text-secondary)" : "var(--muted)" }}>{money(b.opening.total, displayCcy)}</td>
+                      </tr>);
+                      // Event rows
+                      b.events.forEach(function(r, ri) {
+                        var isPay = r.type === "payment";
+                        var isClose = r.type === "closing";
+                        var isFunding = r.type === "funding";
+                        function vs(v) { return { padding: "8px 12px", fontSize: isClose ? 12 : 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: isClose ? 700 : (isFunding ? 600 : 400), color: isPay ? (v < -0.001 ? "#059669" : v > 0.001 ? "#DC2626" : "var(--muted)") : isFunding ? "var(--accent)" : (v > 0.01 ? "var(--text)" : "var(--muted)") }; }
+                        monthRows.push(<tr key={"me-" + b.key + "-" + ri} style={{ borderBottom: "1px solid var(--border)" + "40", background: isClose ? "var(--card-hover)" : "transparent" }}>
+                          <td></td>
+                          <td style={{ padding: "8px 12px 8px 32px", fontSize: isClose ? 12 : 11, color: isPay ? "var(--accent)" : isFunding ? "#059669" : "var(--text)", fontWeight: isClose ? 700 : (isFunding ? 600 : 400) }}>
+                            <span style={{ color: "var(--muted)", fontSize: 10, marginRight: 8, fontFamily: "'JetBrains Mono', monospace" }}>{fmt(r.date)}</span>
+                            {r.event}
+                          </td>
+                          <td style={vs(r.cap)}>{isPay && r.cap !== 0 ? (r.cap < 0 ? "-" : "+") + money(Math.abs(r.cap), displayCcy) : money(Math.abs(r.cap), displayCcy)}</td>
+                          <td style={vs(r.int)}>{isPay && r.int !== 0 ? (r.int < 0 ? "-" : "+") + money(Math.abs(r.int), displayCcy) : money(Math.abs(r.int), displayCcy)}</td>
+                          <td style={vs(r.pen)}>{isPay && r.pen !== 0 ? (r.pen < 0 ? "-" : "+") + money(Math.abs(r.pen), displayCcy) : money(Math.abs(r.pen), displayCcy)}</td>
+                          <td style={vs(r.hb)}>{isPay && r.hb !== 0 ? (r.hb < 0 ? "-" : "+") + money(Math.abs(r.hb), displayCcy) : money(Math.abs(r.hb), displayCcy)}</td>
+                          <td style={Object.assign({}, vs(r.total || 0), { fontWeight: 700, color: isPay ? ((r.total || 0) < -0.001 ? "#059669" : (r.total || 0) > 0.001 ? "#DC2626" : "var(--muted)") : (Math.abs(r.total || 0) > 0.01 ? "var(--text)" : "var(--muted)") })}>{isPay && (r.total || 0) !== 0 ? ((r.total || 0) < 0 ? "-" : "+") + money(Math.abs(r.total || 0), displayCcy) : money(Math.abs(r.total || 0), displayCcy)}</td>
+                        </tr>);
+                      });
+                      // Closing balance row
+                      monthRows.push(<tr key={"mc-" + b.key} style={{ borderBottom: "2px solid var(--accent)" + "40", background: "var(--accent)" + "10" }}>
+                        <td></td>
+                        <td style={{ padding: "8px 12px 8px 32px", fontSize: 12, fontWeight: 700, color: "var(--accent)" }}>Closing balance ({b.label})</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.cap > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.cap, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.int > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.int, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.pen > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.pen, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.hb > 0.01 ? "var(--text)" : "var(--muted)" }}>{money(b.closing.hb, displayCcy)}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: b.closing.total > 0.01 ? "var(--accent)" : "var(--muted)" }}>{money(b.closing.total, displayCcy)}</td>
+                      </tr>);
+                    }
+                    return monthRows;
                   })}</tbody>
                 </table>
               </div>}
@@ -8367,8 +10931,8 @@ export default function FactoringDashboard() {
 
         {/* Buyer Overview Tab */}
         {isB && buyTab === "overview" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
           var buyer = BUYERS_DB.find(function(b) { return b.id === selectedBuyer; });
 
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
@@ -8511,6 +11075,31 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
+                {/* Buyer credit limit row — program-scoped, shows limit / used / remaining if a limit is set. Mirrors supplier overview. */}
+                {(function() {
+                  if (!buyProgram || !selectedBuyer) return null;
+                  if (!buyer || !buyer.creditLimits || !buyer.creditLimits[buyProgram] || buyer.creditLimits[buyProgram] <= 0) return null;
+                  var blimit = buyer.creditLimits[buyProgram];
+                  var bexposure = getBuyerProgramExposure(selectedBuyer, buyProgram, null);
+                  var bheadroom = r2(Math.max(0, blimit - bexposure));
+                  var bpct = blimit > 0 ? (bexposure / blimit) * 100 : 0;
+                  var bfillPct = Math.min(100, bpct);
+                  var bcolor = bpct >= 100 ? "#DC2626" : bpct >= 80 ? "#D97706" : "#059669";
+                  return <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Credit Limit Utilisation</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bcolor }}>{bpct.toFixed(1)}%</div>
+                    </div>
+                    <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 6 }}>
+                      <div style={{ width: bfillPct + "%", height: "100%", background: bcolor, transition: "width 0.25s ease" }}></div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
+                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(blimit, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(bexposure, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: bcolor }}>{money(bheadroom, displayCcy)}</strong></span>
+                    </div>
+                  </div>;
+                })()}
               </div>
               {/* Right: 2 dilution cards */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -8611,10 +11200,10 @@ export default function FactoringDashboard() {
                     </>}
 
                     {/* ADDRESS section */}
-                    {(buyer.street1 || buyer.city) && <>
+                    {(buyer.addressLine1 || buyer.city) && <>
                       <div style={sectionHeader}>Address</div>
                       <div style={{ marginBottom: 22 }}>
-                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{[buyer.street1, buyer.street2, buyer.city, buyer.state, buyer.zip, buyer.country].filter(Boolean).join(", ")}</div>
+                        <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>{[buyer.addressLine1, buyer.addressLine2, buyer.city, buyer.county, buyer.postcode, buyer.country].filter(Boolean).join(", ")}</div>
                       </div>
                     </>}
 
@@ -8650,9 +11239,9 @@ export default function FactoringDashboard() {
                 {buyer && exp === "buyerEdit" && (function() {
                   var f = manageFields;
                   var inpS = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
-                  var lblS = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 2 };
+                  var lblS = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 };
                   function bFld(label, key, type) { return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>{label}</label><input type={type || "text"} value={f[key] || ""} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={inpS} /></div>; }
-                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
+                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
                   return <div>
                     {/* Floating edit-mode bar */}
                     <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(14,165,233,0.15)" }}>
@@ -8670,12 +11259,12 @@ export default function FactoringDashboard() {
                       {bFld("Company Number", "companyNumber")}
                       {bFld("Company Status", "companyStatus")}
                       {bFld("Incorporation Date", "incorporationDate", "date")}
-                      {bFld("Street Address 1", "street1")}
-                      {bFld("Street Address 2", "street2")}
+                      {bFld("Address Line 1", "addressLine1")}
+                      {bFld("Address Line 2", "addressLine2")}
                       {bFld("City", "city")}
-                      {bFld("State / County", "state")}
+                      {bFld("County", "county")}
                       {bFld("Country", "country")}
-                      {bFld("ZIP / Postal Code", "zip")}
+                      {bFld("Postcode", "postcode")}
                       {bFld("Primary Contact", "primaryContact")}
                       {bFld("Primary Email", "primaryEmail", "email")}
                       {bFld("Primary Phone", "primaryPhone", "tel")}
@@ -8703,13 +11292,13 @@ export default function FactoringDashboard() {
               {/* Charts */}
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>Funded Volume by Month</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Funded Volume by Month</div>
                   {fvChartData.length > 0 ? <svg width={barW} height={barH} viewBox={"0 0 " + barW + " " + barH} style={{ display: "block", maxWidth: "100%" }}>
                     {fvChartData.map(function(d, i) { var bw = Math.max(8, (barW - 40) / fvChartData.length - 4); var bh = (d[1] / maxFv) * (barH - 30); var x = 30 + i * (bw + 4); return <g key={i}><rect x={x} y={barH - 20 - bh} width={bw} height={bh} rx={3} fill="#0EA5E9" opacity={0.75} /><text x={x + bw / 2} y={barH - 6} textAnchor="middle" fontSize={7} fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{d[0].substring(5)}</text></g>; })}
                   </svg> : <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", padding: "20px 0", textAlign: "center" }}>No funded invoices</div>}
                 </div>
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "16px 18px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>Ageing Analysis</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Ageing Analysis</div>
                   <svg width={barW} height={barH} viewBox={"0 0 " + barW + " " + barH} style={{ display: "block", maxWidth: "100%" }}>
                     {ageData.map(function(a, i) { var bw = Math.max(30, (barW - 40) / 5 - 6); var bh = maxAge > 0 ? (ageBuckets[i] / maxAge) * (barH - 30) : 0; var x = 30 + i * (bw + 6); return <g key={i}><rect x={x} y={barH - 20 - bh} width={bw} height={Math.max(bh, 1)} rx={3} fill={a.color} opacity={0.75} /><text x={x + bw / 2} y={barH - 6} textAnchor="middle" fontSize={7.5} fill="#94A3B8" fontFamily="'JetBrains Mono', monospace">{a.label}</text></g>; })}
                   </svg>
@@ -8721,12 +11310,12 @@ export default function FactoringDashboard() {
 
         {/* Buyer Invoices Tab */}
         {isB && buyTab === "invoices" && (function() {
-          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
 
           // Filter
           var buyInvs = allBuyInvs.slice();
-          if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
+          if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
           if (biIsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === biIsf; });
           if (biFsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.fundingStatus === biFsf; });
           if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.supplierName === biSupFilter; });
@@ -8837,7 +11426,7 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400, whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                       <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
-                      <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</td>
+                      <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.fundedDate && inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</td>
                       <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBuyExp ? "var(--accent)" : "var(--card-hover)", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBuyExp ? "\u25b4" : "\u25be"}</button></td>
                     </tr>
                     {isBuyExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
@@ -8857,7 +11446,7 @@ export default function FactoringDashboard() {
                               <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
                               {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Invoice Ref</span><span style={val}>{inv.buyerRef}</span></div>}
                               {inv.supplierRef && <div style={row}><span style={lbl}>Supplier Invoice Ref</span><span style={val}>{inv.supplierRef}</span></div>}
-                              {inv.poNumber && <div style={row}><span style={lbl}>Purchase Order No.</span><span style={val}>{inv.poNumber}</span></div>}
+                              {inv.purchaseOrder && <div style={row}><span style={lbl}>Purchase Order No.</span><span style={val}>{inv.purchaseOrder}</span></div>}
                               <div style={sectionHeader}>Amounts</div>
                               <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
@@ -8865,7 +11454,7 @@ export default function FactoringDashboard() {
                               <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
                               <div style={row}><span style={lbl}>Due Date</span><span style={Object.assign({}, val, { color: dp ? "#EF4444" : "var(--text)" })}>{fmt(inv.dueDate)}</span></div>
                               <div style={row}><span style={lbl}>Term</span><span style={val}>{inv.daysToMaturity ? inv.daysToMaturity + " days" : "\u2014"}</span></div>
-                              <div style={row}><span style={lbl}>Interest Rate p.a.</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</span></div>
+                              <div style={row}><span style={lbl}>Interest Rate p.a.</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.fundedDate && inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") ? "\u2014 set on funding" : "\u2014"}</span></div>
                             </div>;
                           })()}
                           {(function() {
@@ -8923,8 +11512,8 @@ export default function FactoringDashboard() {
 
         {/* Buyer Payment Allocations Tab */}
         {isB && buyTab === "allocations" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
-          var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
+          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
           var allBuyPays = [];
@@ -9093,7 +11682,7 @@ export default function FactoringDashboard() {
           </div>
 
           {!selectedProgram && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "40px 28px", textAlign: "center" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "var(--muted)", marginBottom: 8 }}>Select a Funding Program</div>
+            <div style={{ fontSize: 14, fontWeight: 700,  color: "var(--muted)", marginBottom: 8 }}>Select a Funding Program</div>
             <div style={{ fontSize: 12, color: "var(--muted)" }}>Choose a program from the dropdown above to view its details.</div>
           </div>}
 
@@ -9468,7 +12057,7 @@ export default function FactoringDashboard() {
 
                   var imc = { padding: "6px 16px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", verticalAlign: "top" };
                   var isub = { fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", marginTop: 2 };
-                  var ihdr = { padding: "8px 16px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "2px solid var(--border)", textAlign: "right" };
+                  var ihdr = { padding: "8px 16px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "2px solid var(--border)", textAlign: "right" };
 
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 22 }}>
                     <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
@@ -9815,7 +12404,7 @@ export default function FactoringDashboard() {
                           {donutArcs.map(function(arc, i) { return <circle key={i} cx={donutSize / 2} cy={donutSize / 2} r={donutR} fill="none" stroke={arc.color} strokeWidth={donutStroke} strokeDasharray={arc.dasharray} strokeDashoffset={arc.offset} strokeLinecap="butt" transform={"rotate(-90 " + donutSize / 2 + " " + donutSize / 2 + ")"} />; })}
                         </svg>
                         <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center" }}>
-                          <div style={{ fontSize: 22, fontWeight: 800, fontWeight: 600, color: "var(--text)" }}>{donutTotal}</div>
+                          <div style={{ fontSize: 22, fontWeight: 800,  color: "var(--text)" }}>{donutTotal}</div>
                           <div style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", fontWeight: 700 }}>Active</div>
                         </div>
                       </div>
@@ -9957,7 +12546,7 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ maxHeight: 300, overflowY: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{progLogs.slice().reverse().map(function(e, ei) {
                           return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "8px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td>
@@ -9978,7 +12567,7 @@ export default function FactoringDashboard() {
               var allProgInvsTab = progInvs.slice();
               var fInvs = allProgInvsTab.slice();
               // Apply filters
-              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
+              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
               if (piSupFilter) fInvs = fInvs.filter(function(inv) { return inv.supplierName === piSupFilter; });
               if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return inv.buyerName === piBuyFilter; });
               if (piInvStFilter) fInvs = fInvs.filter(function(inv) { return inv.invoiceStatus === piInvStFilter; });
@@ -10086,7 +12675,7 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-                        <thead><tr>{["", "Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h, hi) { return <th key={"h-" + hi} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, width: hi === 0 ? 30 : undefined }}>{hi === 0 ? (function() {
+                        <thead><tr>{["", "Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h, hi) { return <th key={"h-" + hi} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, width: hi === 0 ? 30 : undefined }}>{hi === 0 ? (function() {
                           // Select-all toggle (only checks rows that are eligible to toggle)
                           var allSelected = approvedInvs.length > 0 && approvedInvs.every(function(inv) { return progPurchSelected[inv.id]; });
                           var someSelected = approvedInvs.some(function(inv) { return progPurchSelected[inv.id]; });
@@ -10154,7 +12743,7 @@ export default function FactoringDashboard() {
                                         <div><span style={{ color: "var(--muted)" }}>Program: </span><span style={{ color: "#38BDF8", fontWeight: 600 }}>{prog.name}</span></div>
                                         {inv.buyerRef && <div><span style={{ color: "var(--muted)" }}>Buyer Ref: </span>{inv.buyerRef}</div>}
                                         {inv.supplierRef && <div><span style={{ color: "var(--muted)" }}>Supplier Ref: </span>{inv.supplierRef}</div>}
-                                        {inv.poNumber && <div><span style={{ color: "var(--muted)" }}>PO Number: </span>{inv.poNumber}</div>}
+                                        {inv.purchaseOrder && <div><span style={{ color: "var(--muted)" }}>PO Number: </span>{inv.purchaseOrder}</div>}
                                       </div>
                                     </div>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
@@ -10173,7 +12762,7 @@ export default function FactoringDashboard() {
                                     {rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>}
                                     {!inv.doNotAdvance && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingHeadroom || 0) > 0.01) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Top up funding. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>Top Up Funding</button>}
-                                    {inv.doNotAdvance ? <button onClick={function() { toggleDoNotAdvance(inv.id, false); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Clear Do Not Advance</button> : (r2(inv.capitalDue || 0) < 0.01 && <button onClick={function() { toggleDoNotAdvance(inv.id, true); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this invoice as collateral only \u2014 capital will not be advanced">Mark Do Not Advance</button>)}
+                                    {inv.doNotAdvance ? <button onClick={function() { toggleDoNotAdvance(inv.id, false); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Clear Do Not Advance</button> : (r2(inv.capitalDue || 0) < 0.01 && <button onClick={function() { toggleDoNotAdvance(inv.id, true); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 11,  cursor: "pointer" }} title="Mark this invoice as collateral only \u2014 capital will not be advanced">Mark Do Not Advance</button>)}
                                     <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>{inv.doNotAdvance ? "Collateral only \u2014 no capital will be advanced" : ((inv.capitalDue || 0) > 0.01 ? "Capital queued \u2014 execute funding payment via Outbound Queue" : "Purchased at zero capital \u2014 fund or reject")}</span>
                                   </div>
                                   {inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px" }}>
@@ -10292,7 +12881,7 @@ export default function FactoringDashboard() {
                               <td style={Object.assign({}, pimc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>
                               <td style={Object.assign({}, pimc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400 }}>{fmt(inv.dueDate)}</td>
-                              <td style={{ padding: "8px 8px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
+                              <td style={{ padding: "8px 8px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase",  cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
                               <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" }}>DNA</span>}</td>
                               <td style={Object.assign({}, pimc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
                               <td style={{ padding: "8px 8px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25b4" : "\u25be"}</button></td>
@@ -10340,7 +12929,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
-                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("poNumber") : <span style={val}>{inv.poNumber || "\u2014"}</span>}</div>
+                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
                                           <div style={sectionHeader}>Amounts</div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
@@ -10430,7 +13019,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>{inv.holdbackAvailable < -0.01 ? "Holdback Overdrawn" : "Holdback Available"}</span><span style={Object.assign({}, val, { color: inv.holdbackAvailable < -0.01 ? "#DC2626" : inv.holdbackAvailable > 0 ? "#059669" : "var(--text)" })}>{inv.holdbackAvailable < -0.01 ? money(Math.abs(inv.holdbackAvailable), inv.currency) : money(inv.holdbackAvailable, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Disbursed</span><span style={val}>{money(inv.holdbackDisbursed, inv.currency)}</span></div>
-                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 700 }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#DC2626", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
+                                          {inv.holdbackOverdrawn > 0.01 && <div style={{ marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#C0392B08", border: "1px solid #C0392B20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#DC2626" }}>Holdback Overdrawn: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(inv.holdbackOverdrawn, inv.currency)}</span><span style={{ fontSize: 9, color: "#DC2626", fontStyle: "italic", marginLeft: 6 }}>Supplier owes back — included in Balance Owed</span></div>}
                                           {inv.writeOffTotal > 0 && <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 6, background: "#78716c08", border: "1px solid #78716c20" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Written Off: </span><span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#6B7280" }}>Pen {money(inv.writeOffPenalty, inv.currency)} | Int {money(inv.writeOffInterest, inv.currency)} | Cap {money(inv.writeOffCapital, inv.currency)} = {money(inv.writeOffTotal, inv.currency)}</span></div>}
                                         </div>;
                                       })()}
@@ -10439,6 +13028,9 @@ export default function FactoringDashboard() {
                                   {/* Action buttons */}
                                   <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
                                     {inv.fundingStatus === "purchased" ? (rejectConfirm === inv.id ? <span style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ fontSize: 10, color: "#DC2626", fontWeight: 600 }}>Confirm reject?</span><button onClick={function() { cancelApproval(inv.id); setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Yes</button><button onClick={function() { setRejectConfirm(null); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>No</button></span> : <button onClick={function() { setRejectConfirm(inv.id); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #C0392B", background: "#C0392B10", color: "#DC2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Reject for Funding</button>) : <button onClick={function() { startEdit(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Edit Invoice</button>}
+                                    {/* Void: only when invoice has no operational footprint (pending, no funded date, no payments). Hidden on funded invoices per spec. */}
+                                    {!inv.voided && inv.fundingStatus === "pending" && !inv.fundedDate && !((inv.payments || []).length > 0) && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "void", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this invoice as voided. It remains for audit but is disregarded everywhere else.">Void Invoice</button>}
+                                    {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
@@ -10532,7 +13124,7 @@ export default function FactoringDashboard() {
                                       <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "#0EA5E9", marginBottom: 6 }}>Payments to Supplier ({supPayments.length})</div>
                                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                         <thead><tr>{["Type", "Reference", "Date", "Amount", "Description"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                                        <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#0EA5E9" : sp.type === "Holdback Return" ? "#E2E8F0" : "#D97706"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
+                                        <tbody>{supPayments.map(function(sp, si) { var typeColor = sp.type === "Cash Advance" ? "#0EA5E9" : sp.type === "Holdback Return" ? "#E2E8F0" : "#D97706"; return <tr key={si} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontWeight: 600, color: typeColor }}>{sp.type}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{sp.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(sp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(sp.amount, sp.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{sp.description}</td></tr>; })}<tr style={{ borderTop: "2px solid var(--border)" }}><td colSpan={3} style={{ padding: "5px 8px", fontSize: 11, fontWeight: 700, textAlign: "right", color: "var(--text)" }}>Total to Supplier:</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 700 }}>{money(r2(totalToSup), inv.currency)}</td><td></td></tr></tbody>
                                       </table>
                                     </div>;
                                   })()}
@@ -10615,30 +13207,87 @@ export default function FactoringDashboard() {
               var progInvIds = {};
               progInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
               var allProgPays = [];
+              var allProgPaysSeen = {}; // paymentId → index in allProgPays
               PAYMENTS_DB.forEach(function(p) {
                 var matchAllocs = p.allocations.filter(function(a) { return progInvIds[a.invoiceId]; });
-                if (matchAllocs.length > 0) allProgPays.push({ pay: p, allocs: matchAllocs });
+                if (matchAllocs.length > 0) {
+                  allProgPaysSeen[p.paymentId] = allProgPays.length;
+                  allProgPays.push({ pay: p, allocs: matchAllocs, passthroughRoutings: [] });
+                }
+              });
+              // Pass-through routings — completed remittance SPQs that flowed through this
+              // program, sourced from a buyer payment. The on-program-invoice loop above
+              // only catches them when the pass-through is allocated to an on-program
+              // invoice; routings against off-program (or unfunded) invoices were missed
+              // entirely. Walk the SPQ table once and surface them, attaching to an
+              // existing payment row if already present, otherwise creating a new row.
+              SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                if (spq.type !== "remittance") return;
+                if (!spq.sourcePaymentId) return;
+                if (spq.programId !== selectedProgram) return;
+                if (spq.status === "Cancelled" || spq.status === "Failed") return;
+                var srcPay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
+                if (!srcPay) return;
+                // Only inbound (incoming) source payments are pass-throughs in the
+                // operational sense. Outbound payments use remittance SPQs too but
+                // for a different reason (manual disbursements) and have their own
+                // surfaces.
+                if (srcPay.direction === "outbound") return;
+                var existingIdx = allProgPaysSeen[srcPay.paymentId];
+                if (existingIdx === undefined) {
+                  allProgPaysSeen[srcPay.paymentId] = allProgPays.length;
+                  allProgPays.push({ pay: srcPay, allocs: [], passthroughRoutings: [spq] });
+                } else {
+                  allProgPays[existingIdx].passthroughRoutings.push(spq);
+                }
               });
 
-              // Derived metrics
+              // Derived metrics. For a row that's pure pass-through (no on-program-invoice
+              // allocations), the payment amount may exceed the routed amount because part
+              // of the payment went elsewhere. Track pass-through routed amount separately
+              // to avoid inflating totalUnallocated.
               var totalAllocated = allProgPays.reduce(function(s, ep) { return s + ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0); }, 0);
+              var totalPassthrough = allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).reduce(function(s2, q) { return s2 + (q.amount || 0); }, 0); }, 0);
               var totalPayments = allProgPays.reduce(function(s, ep) { return s + (ep.pay.amount || 0); }, 0);
               var totalUnallocated = allProgPays.reduce(function(s, ep) {
                 var allocSum = ep.allocs.reduce(function(s2, a) { return s2 + a.amount; }, 0);
-                return s + Math.max(0, (ep.pay.amount || 0) - allocSum);
+                var ptSum = (ep.passthroughRoutings || []).reduce(function(s2, q) { return s2 + (q.amount || 0); }, 0);
+                return s + Math.max(0, (ep.pay.amount || 0) - allocSum - ptSum);
               }, 0);
 
               // Filter + sort + paginate
               var progPays = allProgPays.slice();
-              if (paSearch) progPays = progPays.filter(function(ep) { var s = paSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
-              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; }); });
+              if (paSearch) progPays = progPays.filter(function(ep) {
+                var s = paSearch.toLowerCase();
+                if (ep.pay.paymentId.toLowerCase().indexOf(s) > -1) return true;
+                if (ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; })) return true;
+                // Pass-through routings carry their own invoice and SPQ IDs.
+                if ((ep.passthroughRoutings || []).some(function(q) {
+                  if (q.id && q.id.toLowerCase().indexOf(s) > -1) return true;
+                  if (q.invoiceId && q.invoiceId.toLowerCase().indexOf(s) > -1) return true;
+                  if (q.supplierName && q.supplierName.toLowerCase().indexOf(s) > -1) return true;
+                  return false;
+                })) return true;
+                return false;
+              });
+              if (paSupFilter) progPays = progPays.filter(function(ep) {
+                if (ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; })) return true;
+                // Pass-through routings carry supplier name directly on the SPQ.
+                if ((ep.passthroughRoutings || []).some(function(q) { return q.supplierName === paSupFilter; })) return true;
+                return false;
+              });
               if (paDateFilter) progPays = progPays.filter(function(ep) { return ep.pay.date === paDateFilter; });
               progPays.sort(function(a, b) {
                 var av, bv;
                 if (paSort === "date") { av = a.pay.date; bv = b.pay.date; }
                 else if (paSort === "paymentId") { av = a.pay.paymentId; bv = b.pay.paymentId; }
                 else if (paSort === "amount") { av = a.pay.amount; bv = b.pay.amount; }
-                else if (paSort === "allocated") { av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0); bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0); }
+                else if (paSort === "allocated") {
+                  // Combine direct allocations + pass-through routings so pass-through-only
+                  // rows sort meaningfully alongside allocation-only rows.
+                  av = a.allocs.reduce(function(s, x) { return s + x.amount; }, 0) + (a.passthroughRoutings || []).reduce(function(s, x) { return s + (x.amount || 0); }, 0);
+                  bv = b.allocs.reduce(function(s, x) { return s + x.amount; }, 0) + (b.passthroughRoutings || []).reduce(function(s, x) { return s + (x.amount || 0); }, 0);
+                }
                 else { av = a.pay.date; bv = b.pay.date; }
                 if (av === bv) return 0;
                 var cmp = av > bv ? 1 : -1;
@@ -10649,8 +13298,14 @@ export default function FactoringDashboard() {
               var paPageItems = progPays.slice(paCurPage * paPerPage, (paCurPage + 1) * paPerPage);
               var paHasActive = !!paSearch || !!paSupFilter || !!paDateFilter;
 
+              // Supplier dropdown — include suppliers reached via direct allocation AND
+              // via pass-through routing (otherwise pass-through-only suppliers wouldn't
+              // be filterable).
               var paSups = []; var _pas = {};
-              allProgPays.forEach(function(ep) { ep.allocs.forEach(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); if (inv && !_pas[inv.supplierName]) { _pas[inv.supplierName] = true; paSups.push(inv.supplierName); } }); });
+              allProgPays.forEach(function(ep) {
+                ep.allocs.forEach(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); if (inv && inv.supplierName && !_pas[inv.supplierName]) { _pas[inv.supplierName] = true; paSups.push(inv.supplierName); } });
+                (ep.passthroughRoutings || []).forEach(function(q) { if (q.supplierName && !_pas[q.supplierName]) { _pas[q.supplierName] = true; paSups.push(q.supplierName); } });
+              });
               paSups.sort();
 
               var pamc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" };
@@ -10683,10 +13338,11 @@ export default function FactoringDashboard() {
 
               return <div>
                 {/* Filter-aware stat cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: 12, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 14 }}>
                   <StatCard label="Payments Touching Program" value={String(allProgPays.length)} sub={paHasActive && progPays.length !== allProgPays.length ? progPays.length + " shown" : (allProgPays.length === 0 ? "none" : "total")} accent={allProgPays.length > 0 ? "#0EA5E9" : "#94A3B8"} />
                   <StatCard label="Total Received" value={money(r2(totalPayments), displayCcy)} sub="gross of allocations" accent={totalPayments > 0 ? "#10B981" : "#94A3B8"} />
                   <StatCard label="Allocated to Invoices" value={money(r2(totalAllocated), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) + " allocation" + (allProgPays.reduce(function(s, ep) { return s + ep.allocs.length; }, 0) === 1 ? "" : "s")} accent={totalAllocated > 0 ? "#38BDF8" : "#94A3B8"} />
+                  <StatCard label="Pass-through Routed" value={money(r2(totalPassthrough), displayCcy)} sub={allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).length; }, 0) + " routing" + (allProgPays.reduce(function(s, ep) { return s + (ep.passthroughRoutings || []).length; }, 0) === 1 ? "" : "s")} accent={totalPassthrough > 0 ? "#8B5CF6" : "#94A3B8"} />
                   <StatCard label="Unallocated Portion" value={totalUnallocated > 0 ? money(r2(totalUnallocated), displayCcy) : "\u2014"} sub={totalUnallocated > 0 ? "excess over allocations" : "fully allocated"} accent={totalUnallocated > 0 ? "#D97706" : "#10B981"} />
                 </div>
 
@@ -10700,7 +13356,7 @@ export default function FactoringDashboard() {
                 </div>
 
                 <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
-                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated to this program's invoices."}</div>}
+                  {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated or routed through this program yet."}</div>}
                   {progPays.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <thead><tr>{paCols.map(function(col) {
@@ -10710,18 +13366,26 @@ export default function FactoringDashboard() {
                       {paPageItems.map(function(ep) {
                         var isExpPA = paExp === ep.pay.paymentId;
                         var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+                        var ptRoutings = ep.passthroughRoutings || [];
+                        var totalPt = ptRoutings.reduce(function(s, q) { return s + (q.amount || 0); }, 0);
+                        var hasPt = ptRoutings.length > 0;
+                        var hasAlloc = ep.allocs.length > 0;
                         return <tbody key={ep.pay.paymentId}>
                           <tr style={{ borderBottom: isExpPA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpPA ? "var(--card-hover)" : "transparent" }} onClick={function() { setPaExp(isExpPA ? null : ep.pay.paymentId); }}>
-                            <td style={Object.assign({}, pamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}</td>
+                            <td style={Object.assign({}, pamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}{hasPt && !hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Routed through this program via pass-through; no on-program-invoice allocation.">PASS-THROUGH</span>}{hasPt && hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Has both direct allocations and pass-through routings on this program.">MIXED</span>}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
                             <td style={Object.assign({}, pamc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{ep.pay.currency}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12 }}>
+                              {hasAlloc && <div><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></div>}
+                              {hasPt && <div><span style={{ color: "#8B5CF6", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalPt), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ptRoutings.length} routed)</span></div>}
+                              {!hasAlloc && !hasPt && <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}
+                            </td>
                             <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpPA ? "var(--accent)" : "var(--card-hover)", color: isExpPA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpPA ? "\u25b4" : "\u25be"}</button></td>
                           </tr>
                           {isExpPA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>
-                            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
+                            {hasAlloc && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>}
+                            {hasAlloc && <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
                               var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
                               var effDate = a.allocDate || ep.pay.date;
                               var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
@@ -10732,7 +13396,22 @@ export default function FactoringDashboard() {
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
                               </tr>;
-                            })}</tbody></table>
+                            })}</tbody></table>}
+                            {hasPt && <div>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#8B5CF6", marginBottom: 8 }}>Pass-through Routings ({ptRoutings.length})</div>
+                              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["SPQ ID", "Supplier", "Target Invoice", "Routed Amount", "Status", "Executed"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ptRoutings.map(function(q, qi) {
+                                var targetInvId = q.invoiceId || (q.invoiceIds && q.invoiceIds[0]) || "";
+                                var execDate = q.executedAt ? q.executedAt.split("T")[0] : "";
+                                return <tr key={qi} style={{ borderBottom: "1px solid var(--border)" }}>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{q.id}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11 }}>{q.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(q.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + q.supplierName}>{q.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{targetInvId ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(targetInvId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{targetInvId}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6", fontWeight: 600 }}>{money(q.amount || 0, q.currency || ep.pay.currency)}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: q.status === "Completed" ? "#10B98114" : q.status === "Pending" ? "#D9770614" : "#94A3B814", color: q.status === "Completed" ? "#10B981" : q.status === "Pending" ? "#D97706" : "#94A3B8", border: "1px solid " + (q.status === "Completed" ? "#10B98130" : q.status === "Pending" ? "#D9770630" : "#94A3B830"), letterSpacing: "0.04em", textTransform: "uppercase" }}>{q.status || "Unknown"}</span></td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{execDate ? fmt(execDate) : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                </tr>;
+                              })}</tbody></table>
+                            </div>}
                             {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === ep.pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 120, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
                             <div>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Notes {ep.pay.notes && ep.pay.notes.length > 0 ? "(" + ep.pay.notes.length + ")" : ""}</div>
@@ -10931,12 +13610,12 @@ export default function FactoringDashboard() {
         {/* Write-Off Modal */}
         {writeOffInv && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setWriteOffInv(null); }}>
           <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 500, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
-            <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: "#6B7280", marginBottom: 4 }}>Write-Off: {writeOffInv.id}</div>
+            <div style={{ fontSize: 16, fontWeight: 700,  color: "#6B7280", marginBottom: 4 }}>Write-Off: {writeOffInv.id}</div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>{writeOffInv.supplierName} / {writeOffInv.buyerName} — {money(writeOffInv.amount, writeOffInv.currency)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "14px 10px", alignItems: "end", marginBottom: 18 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#DC2626" }}>Penalty W/O</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#DC2626" }}>Penalty W/O</label>
                   <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>O/S: {money(writeOffInv.penaltyInterest, writeOffInv.currency)}</span>
                 </div>
                 <input type="number" step="0.01" min="0" value={woPenalty} onChange={function(e) { setWoPenalty(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
@@ -10946,7 +13625,7 @@ export default function FactoringDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706" }}>Interest W/O</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#D97706" }}>Interest W/O</label>
                   <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>O/S: {money(writeOffInv.interestOutstanding, writeOffInv.currency)}</span>
                 </div>
                 <input type="number" step="0.01" min="0" value={woInterest} onChange={function(e) { setWoInterest(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
@@ -10956,7 +13635,7 @@ export default function FactoringDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)" }}>Capital W/O</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text)" }}>Capital W/O</label>
                   <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>O/S: {money(writeOffInv.capitalOutstanding, writeOffInv.currency)}</span>
                 </div>
                 <input type="number" step="0.01" min="0" value={woCapital} onChange={function(e) { setWoCapital(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
@@ -10966,7 +13645,7 @@ export default function FactoringDashboard() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#0EA5E9" }}>Holdback W/O</label>
+                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Holdback W/O</label>
                   <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>O/S: {money(writeOffInv.holdbackOutstanding, writeOffInv.currency)}</span>
                 </div>
                 <input type="number" step="0.01" min="0" value={woHoldback} onChange={function(e) { setWoHoldback(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} />
@@ -10975,7 +13654,7 @@ export default function FactoringDashboard() {
               <button onClick={function() { setWoPenalty(String(writeOffInv.penaltyInterest)); setWoInterest(String(writeOffInv.interestOutstanding)); setWoCapital(String(writeOffInv.capitalOutstanding)); setWoHoldback(String(writeOffInv.holdbackOutstanding)); }} style={{ padding: "8px 10px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 10, fontWeight: 700, cursor: "pointer", marginBottom: 1 }}>Max All</button>
             </div>
             {(function() { var anyWo = (parseFloat(woPenalty) || 0) + (parseFloat(woInterest) || 0) + (parseFloat(woCapital) || 0) + (parseFloat(woHoldback) || 0); return anyWo > 0 ? <div style={{ padding: "12px 16px", borderRadius: 10, background: "#6B728010", border: "1px solid #78716c30", marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#6B7280", marginBottom: 6 }}>Write-Off Summary</div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "#6B7280", marginBottom: 6 }}>Write-Off Summary</div>
               {parseFloat(woPenalty) > 0 && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Penalty: <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(parseFloat(woPenalty)), writeOffInv.currency)}</span></div>}
               {parseFloat(woInterest) > 0 && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Interest: <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(parseFloat(woInterest)), writeOffInv.currency)}</span></div>}
               {parseFloat(woCapital) > 0 && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Capital: <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(parseFloat(woCapital)), writeOffInv.currency)}</span></div>}
@@ -10983,7 +13662,7 @@ export default function FactoringDashboard() {
               <div style={{ fontSize: 13, fontWeight: 700, color: "#6B7280", marginTop: 6, fontFamily: "'JetBrains Mono', monospace" }}>Total Write-Off: {money(r2(anyWo), writeOffInv.currency)}</div>
             </div> : null; })()}
             {(function() { var anyWo = (parseFloat(woPenalty) || 0) + (parseFloat(woInterest) || 0) + (parseFloat(woCapital) || 0) + (parseFloat(woHoldback) || 0); return <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={executeWriteOff} disabled={anyWo <= 0} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: anyWo > 0 ? "#6B7280" : "var(--border)", color: anyWo > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, fontWeight: 600, cursor: anyWo > 0 ? "pointer" : "default" }}>Confirm Write-Off</button>
+              <button onClick={executeWriteOff} disabled={anyWo <= 0} style={{ padding: "9px 22px", borderRadius: 8, border: "none", background: anyWo > 0 ? "#6B7280" : "var(--border)", color: anyWo > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700,  cursor: anyWo > 0 ? "pointer" : "default" }}>Confirm Write-Off</button>
               <button onClick={function() { setWriteOffInv(null); }} style={{ padding: "9px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>; })()}
           </div>
@@ -11511,8 +14190,8 @@ export default function FactoringDashboard() {
                                 <span style={{ color: "var(--muted)", fontWeight: 600 }}>Type</span><span><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 4, background: m.bg, color: m.color, border: "1px solid " + m.border, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.baseType}</span>{e.status && <span style={{ marginLeft: 6, display: "inline-block", padding: "2px 7px", borderRadius: 4, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{e.status}</span>}</span>
                                 <span style={{ color: "var(--muted)", fontWeight: 600 }}>Reference</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{e.ref}</span>
                                 <span style={{ color: "var(--muted)", fontWeight: 600 }}>Counterparty</span><span>{cpDrill ? <span onClick={cpDrill} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{e.counterparty}</span> : e.counterparty}</span>
-                                {e.credit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Credit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#10B981", fontWeight: 600 }}>{money(e.credit, e.currency)}</span></>}
-                                {e.debit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Debit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{money(e.debit, e.currency)}</span></>}
+                                {e.credit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Credit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#10B981" }}>{money(e.credit, e.currency)}</span></>}
+                                {e.debit > 0 && <><span style={{ color: "var(--muted)", fontWeight: 600 }}>Debit</span><span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(e.debit, e.currency)}</span></>}
                                 <span style={{ color: "var(--muted)", fontWeight: 600 }}>Balance</span><span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(e.balance, e.currency)}</span>
                                 <span style={{ color: "var(--muted)", fontWeight: 600 }}>Currency</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.currency}</span>
                               </div>
@@ -11569,7 +14248,7 @@ export default function FactoringDashboard() {
         {/* Holdback Disbursement Success */}
         {hbSuccessMsg && <div style={{ marginTop: 16, padding: "16px 22px", borderRadius: 12, background: "#2E8B5710", border: "1px solid #2E8B5740", display: "flex", gap: 16 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600, color: "#059669", marginBottom: 4 }}>Holdback {hbSuccessMsg.hbId} disbursed from {hbSuccessMsg.sourceId}</div>
+            <div style={{ fontSize: 14, fontWeight: 700,  color: "#059669", marginBottom: 4 }}>Holdback {hbSuccessMsg.hbId} disbursed from {hbSuccessMsg.sourceId}</div>
             {hbSuccessMsg.supplierAmt > 0 && <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Returned to Supplier: {money(hbSuccessMsg.supplierAmt, hbSuccessMsg.currency)}</div>}
             {hbSuccessMsg.lines.map(function(l) { return <div key={l.invoiceId} style={{ fontSize: 12, color: "var(--text-secondary)" }}>{l.invoiceId}: {money(l.amount, hbSuccessMsg.currency)}</div>; })}
             <div style={{ fontSize: 12, fontWeight: 600, color: "#059669", marginTop: 4 }}>Total: {money(hbSuccessMsg.total, hbSuccessMsg.currency)}</div>
@@ -11588,12 +14267,12 @@ export default function FactoringDashboard() {
           return <div id="hb-disburse-panel" style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid #2E8B57", overflow: "hidden" }}>
             <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Disburse Holdback: {srcInv.id}</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>Disburse Holdback: {srcInv.id}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Available: {money(pool, srcInv.currency)} from {srcInv.buyerName}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Remaining</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Remaining</div>
                   <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "#059669" : "var(--muted)" }}>{money(remaining, srcInv.currency)}</div>
                 </div>
                 <button onClick={cancelHbDisburse} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
@@ -11884,7 +14563,7 @@ export default function FactoringDashboard() {
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>
                           <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 9.5, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}><div onClick={function() { if (allDeqSelected) { setDeqSelected({}); } else { var n = {}; deqEligible.forEach(function(d) { n[d.flowId] = true; }); setDeqSelected(n); } }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allDeqSelected ? "#7C3AED" : "var(--border)"), background: allDeqSelected ? "#7C3AED" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{allDeqSelected ? "\u2713" : ""}</div></th>
-                          {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
+                          {["Disbursal ID", "Created", "Program", "Service Provider", "Amount", "CCY", "Date", "Reason", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}
                         </tr></thead>
                         <tbody>{pendingDisbursals.map(function(dis) {
                           var isSel = !!deqSelected[dis.flowId];
@@ -11927,7 +14606,7 @@ export default function FactoringDashboard() {
 
                     <div style={{ marginBottom: 16 }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", "Status"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{(batchConfirm.type === "outbound" ? ["Type", "ID", "Supplier", "Detail", "Amount", "CCY", "Program", "Bank", "Account", "Status"] : ["Disbursal", "Program", "Service Provider", "Amount", "CCY", "Date"]).map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{batchConfirm.items.map(function(item, ii) {
                           if (batchConfirm.type === "outbound") {
                             var typeLabel = item.rowType === "funding" ? "Funding" : "Holdback";
@@ -11942,7 +14621,7 @@ export default function FactoringDashboard() {
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{item.programName}</td>
                               <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.bankName || "\u2014"}</td>
                               <td style={{ padding: "6px 10px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.bankDetails || "\u2014"}</td>
-                              <td style={{ padding: "6px 10px" }}>{(function() { var bi = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId); return bi.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>{"\u2713"}</span> : <span style={{ fontSize: 9, fontWeight: 700, color: "#EF4444" }}>{"\u2717"}</span>; })()}</td>
+                              <td style={{ padding: "6px 10px" }}>{(function() { var bi = getSupplierBankDetails(item.supplierId || item.supplierName, item.programId); return bi.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>{"\u2713"}</span> : <span style={{ fontSize: 9,  color: "#EF4444" }}>{"\u2717"}</span>; })()}</td>
                             </tr>;
                           } else {
                             return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -11966,7 +14645,7 @@ export default function FactoringDashboard() {
                         return <div style={{ padding: "14px 18px", borderRadius: 10, background: bankInfo.bankVerified ? "#05966908" : "#F59E0B08", border: "1px solid " + (bankInfo.bankVerified ? "#05966930" : "#F59E0B30"), marginBottom: 14 }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Payment Destination</div>
-                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u26A0"} Unverified</span>}
+                            {bankInfo.bankVerified ? <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>{"\u2713"} Verified</span> : <span style={{ fontSize: 9,  padding: "2px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u26A0"} Unverified</span>}
                           </div>
                           {bankInfo.bankName ? <div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{bankInfo.bankName}</div>
@@ -12000,7 +14679,7 @@ export default function FactoringDashboard() {
                         var deductRemaining = r2(grossTotal - deductTotal);
 
                         return <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#DC2626", marginBottom: 8 }}>Deductions (Recovery Mode & Overdue)</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#DC2626", marginBottom: 8 }}>Deductions (Recovery Mode & Overdue)</div>
                           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>Deduct amounts against invoices in Recovery Mode or Overdue for this supplier and program before sending payment.</div>
                           {eligibleDeduct.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0", fontStyle: "italic", marginBottom: 10 }}>No eligible invoices for deduction.</div>}
                           {eligibleDeduct.length > 0 && <div style={{ maxHeight: 250, overflowY: "auto", marginBottom: 12 }}>
@@ -12257,9 +14936,15 @@ export default function FactoringDashboard() {
                               // Bundle semantic type: funding if any funding rows are present, else holdback
                               var hasFunding = (batchConfirm.fundingItems || []).length > 0;
                               var bundleType = hasFunding ? "funding" : "holdback";
+                              // Resolve the bundle's supplier from the first row. The batch is locked
+                              // to a single supplier (feqLockSup) so any row gives the right answer.
+                              // Without this populated, packSpqRow writes supplier_id as null and
+                              // the NOT NULL constraint on the column rejects the upsert.
+                              var bundleSupplierEntityId = firstRow.supplierId || "";
+                              var bundleSupplierParentId = getParentEntityId(bundleSupplierEntityId) || bundleSupplierEntityId;
                               SUPPLIER_PAYMENT_QUEUE.push({
                                 id: bundleId, type: bundleType, isBundle: true, invoiceIds: allInvIds, holdbackIds: allHbpIds,
-                                supplierName: firstRow.supplierName, supplierId: "",
+                                supplierName: firstRow.supplierName, supplierId: bundleSupplierParentId, supplierEntityId: bundleSupplierEntityId,
                                 bankName: firstRow.bankName, bankDetails: firstRow.bankDetails,
                                 amount: r2(netAmount), grossAmount: r2(batchConfirm.totalAmount), deductions: batchDeductions.slice(), deductionTotal: deductTotal,
                                 currency: batchConfirm.currency, status: "Completed",
@@ -12322,7 +15007,7 @@ export default function FactoringDashboard() {
 
                     <div style={{ marginBottom: 16 }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["", "Queue ID", "HBP ID", "Source Inv", "Amount", "Bank", "Account"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{["", "Queue ID", "HBP ID", "Source Inv", "Amount", "Bank", "Account"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{bundleDialog.items.map(function(bi) {
                           var isSel = !!bundleDialog.selected[bi.id];
                           var isTrigger = bi.id === bundleDialog.triggerId;
@@ -12355,7 +15040,7 @@ export default function FactoringDashboard() {
                             </div>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Consolidated Total</div>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Consolidated Total</div>
                             <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(r2(totalAmt), bundleDialog.currency)}</div>
                           </div>
                         </div>
@@ -12876,19 +15561,19 @@ export default function FactoringDashboard() {
             </div>
             {showNewPay && <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: newPayDirection === "outbound" ? "#7C3AED08" : "transparent", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: newPayDirection === "outbound" ? "#7C3AED" : "var(--muted)" }}>{newPayDirection === "outbound" ? "Outgoing Payment" : "Reference"}</label>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: newPayDirection === "outbound" ? "#7C3AED" : "var(--muted)" }}>{newPayDirection === "outbound" ? "Outgoing Payment" : "Reference"}</label>
                 <input type="text" value={newPayRef} onChange={function(e) { setNewPayRef(e.target.value); }} placeholder={newPayDirection === "outbound" ? "Wire reference / memo" : "Payment reference / notes"} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: 220 }} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Amount</label>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)" }}>Amount</label>
                 <input type="number" step="0.01" value={newPayAmt} onChange={function(e) { setNewPayAmt(e.target.value); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 130 }} />
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Currency</label>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)" }}>Currency</label>
                 <select value={newPayCcy} onChange={function(e) { setNewPayCcy(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
+                <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)" }}>Date</label>
                 <input type="date" value={newPayDate} onChange={function(e) { setNewPayDate(e.target.value); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none",  }} />
               </div>
               <button onClick={createPayment} disabled={!newPayAmt || parseFloat(newPayAmt) <= 0} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: newPayAmt && parseFloat(newPayAmt) > 0 ? (newPayDirection === "outbound" ? "#7C3AED" : "var(--accent)") : "var(--border)", color: newPayAmt && parseFloat(newPayAmt) > 0 ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: newPayAmt && parseFloat(newPayAmt) > 0 ? "pointer" : "default" }}>{newPayDirection === "outbound" ? "Create & Route Outgoing" : "Create Payment"}</button>
@@ -12932,7 +15617,105 @@ export default function FactoringDashboard() {
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rem > 0 ? "var(--accent)" : "var(--muted)" }}>{rem > 0 ? money(rem, pay.currency) : "\u2014"}</td>
                     <td style={{ padding: "8px 10px" }}><Badge label={status} bg={sc + "14"} color={sc} border={sc + "30"} /></td>
                     <td style={{ padding: "8px 10px" }}><div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={function(e) { e.stopPropagation(); var existingAllocs = pay.allocations.filter(function(a) { return !a.remittance; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null }; }); setAllocPay(pay); setAllocs(existingAllocs); setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter(""); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV(""); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
+                      <button onClick={function(e) {
+                        e.stopPropagation();
+                        // Block re-allocation if any SPQ remittance for this payment has
+                        // already been executed (Completed). The cash has left Pelagic;
+                        // editing the allocation would silently re-disburse to a different
+                        // supplier. Failed/Cancelled SPQs have released capacity and don't
+                        // block. Operator must either mark the SPQ Failed (if bank reversed)
+                        // or book the supplier's refund as a new inbound payment.
+                        var completedRems = SUPPLIER_PAYMENT_QUEUE.filter(function(sp) {
+                          return sp.type === "remittance" && sp.sourcePaymentId === pay.paymentId && sp.status === "Completed";
+                        });
+                        if (completedRems.length > 0) {
+                          var first = completedRems[0];
+                          var firstSupName = first.supplierName || first.supplierId;
+                          var extra = completedRems.length > 1 ? " and " + (completedRems.length - 1) + " more" : "";
+                          toast.error(
+                            "Cannot edit allocations \u2014 payment already remitted",
+                            money(first.amount, pay.currency) + " has been remitted via " + first.id + " to " + firstSupName + extra + ". Mark the SPQ as Failed if the bank reversed it, or book the supplier's refund as a new inbound payment."
+                          );
+                          return;
+                        }
+                        // Warn (do not block) if re-allocation could push HBP-released
+                        // invoices into overdrawn state. Only flag invoices this payment
+                        // is actually applied to as funded_recovery — pass-through
+                        // allocations don't move the HBP needle. The system already
+                        // tracks holdbackOverdrawn correctly post-reallocation; this is
+                        // informational so the operator isn't surprised when a supplier
+                        // suddenly owes funds back.
+                        var hbAffected = [];
+                        pay.allocations.forEach(function(a) {
+                          if (a.remittance) return;
+                          if (a.kind === "pass_through") return;
+                          var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                          if (!inv) return;
+                          if ((inv.holdbackDisbursed || 0) > 0.01) {
+                            hbAffected.push({ id: inv.id, hbDisbursed: inv.holdbackDisbursed, currency: inv.currency });
+                          }
+                        });
+                        if (hbAffected.length > 0) {
+                          var hbShown = hbAffected.slice(0, 3);
+                          var hbList = hbShown.map(function(h) { return h.id + " (HBP " + money(h.hbDisbursed, h.currency) + " disbursed)"; }).join(", ");
+                          var hbExtra = hbAffected.length > 3 ? " and " + (hbAffected.length - 3) + " more" : "";
+                          toast.warning(
+                            "HBP released on affected invoices",
+                            "Re-allocating may push these into overdrawn state: " + hbList + hbExtra + ". Suppliers will owe the overdrawn amount back."
+                          );
+                        }
+                        // Stage 1.7: rebuild routings from PENDING SPQ entries linked to
+                        // this payment. SPQ entries carry both supplierId and programId
+                        // explicitly, so this works for funded recovery (where the entry
+                        // was created with the routing's program) and pass-through (where
+                        // the entry was tagged to a specific invoice). Falls back to
+                        // deriving from funded allocs for legacy payments with no SPQ.
+                        var existingFunded = pay.allocations.filter(function(a) { return !a.remittance && a.kind !== "pass_through"; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null, kind: "funded_recovery" }; });
+                        var existingPt = pay.allocations.filter(function(a) { return a.kind === "pass_through"; }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, kind: "pass_through" }; });
+                        var routingMap = {};
+                        // Prefer SPQ-driven reconstruction: gives correct routing intent
+                        // even for pass-through (which has no fundingProgram on the invoice).
+                        SUPPLIER_PAYMENT_QUEUE.forEach(function(sp) {
+                          if (sp.type !== "remittance") return;
+                          if (sp.sourcePaymentId !== pay.paymentId) return;
+                          if (sp.status !== "Pending") return;
+                          var key = sp.supplierId + "|" + (sp.programId || "");
+                          if (!routingMap[key]) {
+                            var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === sp.programId; });
+                            routingMap[key] = { counterpartyType: "supplier", supplierId: sp.supplierId, supplierName: sp.supplierName, programId: sp.programId || "", programName: prog ? prog.name : (sp.programName || ""), amount: 0 };
+                          }
+                          routingMap[key].amount += sp.amount;
+                        });
+                        // Add funded-recovery allocations to the routing total. This block
+                        // handles two scenarios in a single pass:
+                        //  (a) Routing had only funded recovery (no pass-through, no SPQ
+                        //      remittance) — SPQ walk above produced nothing, this block
+                        //      seeds routingMap from the funded allocs.
+                        //  (b) Routing had mixed funded + pass-through — SPQ walk seeded
+                        //      routingMap with the pass-through portion, this block adds
+                        //      the funded portion on top.
+                        // Note: do NOT also run a separate legacy fallback that walks
+                        // existingFunded into routingMap — it would double-count case (a).
+                        existingFunded.forEach(function(a) {
+                          var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                          if (!inv || !inv.fundingProgram) return;
+                          var key = inv.supplierId + "|" + inv.fundingProgram;
+                          if (!routingMap[key]) {
+                            var prog2 = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === inv.fundingProgram; });
+                            routingMap[key] = { counterpartyType: "supplier", supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog2 ? prog2.name : "", amount: 0 };
+                          }
+                          routingMap[key].amount += a.amount;
+                        });
+                        var reconstructedRoutings = Object.keys(routingMap).map(function(k) { var r = routingMap[k]; r.amount = r2(r.amount); return r; });
+                        setAllocPay(pay);
+                        setAllocs(existingFunded);
+                        setPassThroughAllocs(existingPt);
+                        setAllocSearch(""); setAllocProgFilter(""); setAllocSupFilter("");
+                        setPayRoutings(reconstructedRoutings);
+                        setPayAllocPhase("route");
+                        setActiveRouting(null);
+                        setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
+                      }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
                     <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25b4" : "\u25be"}</button></td>
                   </tr>
@@ -12970,13 +15753,13 @@ export default function FactoringDashboard() {
                         return <div style={{ marginBottom: 12 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Pass-through Remittances</div>
                           <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["SPQ ID", "Supplier", "Amount", "Program", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                          <tbody>{payRemits.map(function(spq) { return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)" }}>{spq.supplierName}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td><td style={{ padding: "5px 8px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td></tr>; })}</tbody></table>
+                          <tbody>{payRemits.map(function(spq) { return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)" }}>{spq.supplierName}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td><td style={{ padding: "5px 8px" }}><span style={{ fontSize: 10,  color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td></tr>; })}</tbody></table>
                         </div>;
                       }
                       return <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 12 }}>No allocations yet</div>;
                     })()}
-                    {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card-hover)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { var extra = ""; if (e.context && e.context.allocations) { extra = " (" + e.context.allocations.map(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); return a.invoiceId + (inv ? " / " + inv.supplierName : ""); }).join(", ") + ")"; } else if (e.context && e.context.invoiceId) { var inv = INVOICES_DB.find(function(x) { return x.id === e.context.invoiceId; }); if (inv) extra = " (" + e.context.invoiceId + " / " + inv.supplierName + ")"; } return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}{extra && <span style={{ color: "var(--muted)", fontSize: 9 }}>{extra}</span>}</td></tr>; })}</tbody></table></div></div>; })()}
-                    <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Notes {pay.notes && pay.notes.length > 0 ? "(" + pay.notes.length + ")" : ""}</div>{pay.notes && pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={expPay === pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); savePayment(pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); savePayment(pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
+                    {(function() { var pLogs = AUDIT_LOG.filter(function(e) { return e.context && e.context.paymentId === pay.paymentId; }); if (pLogs.length === 0) return null; return <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({pLogs.length})</div><div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card-hover)" }}>{h}</th>; })}</tr></thead><tbody>{pLogs.slice().reverse().map(function(e, ei) { var extra = ""; if (e.context && e.context.allocations) { extra = " (" + e.context.allocations.map(function(a) { var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); return a.invoiceId + (inv ? " / " + inv.supplierName : ""); }).join(", ") + ")"; } else if (e.context && e.context.invoiceId) { var inv = INVOICES_DB.find(function(x) { return x.id === e.context.invoiceId; }); if (inv) extra = " (" + e.context.invoiceId + " / " + inv.supplierName + ")"; } return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}{extra && <span style={{ color: "var(--muted)", fontSize: 9 }}>{extra}</span>}</td></tr>; })}</tbody></table></div></div>; })()}
+                    <div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Notes {pay.notes && pay.notes.length > 0 ? "(" + pay.notes.length + ")" : ""}</div>{pay.notes && pay.notes.length > 0 && <div style={{ maxHeight: 100, overflowY: "auto", marginBottom: 8 }}>{pay.notes.slice().reverse().map(function(n, ni) { return <div key={ni} style={{ padding: "5px 8px", borderRadius: 6, background: "var(--card)", marginBottom: 3, border: "1px solid var(--border)" }}><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{n.display}</div><div style={{ fontSize: 11, color: "var(--text)" }}>{n.text}</div></div>; })}</div>}<div style={{ display: "flex", gap: 6 }}><input type="text" value={expPay === pay.paymentId ? noteText : ""} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim()) { if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); savePayment(pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11, outline: "none" }} /><button onClick={function() { if (!noteText.trim()) return; if (!pay.notes) pay.notes = []; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); pay.notes.push({ text: noteText.trim(), display: nd }); auditLog("Payment Note Added", pay.paymentId + ": " + noteText.trim(), { paymentId: pay.paymentId, note: noteText.trim() }); savePayment(pay.paymentId); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add</button></div></div>
                   </td></tr>}
                   </tbody>;
                 })}
@@ -13023,7 +15806,7 @@ export default function FactoringDashboard() {
             <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#059669" }}></div>
-                <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Holdback Payments</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>Holdback Payments</div>
                 <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{countAll} invoices with holdback</span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>{[
@@ -13041,7 +15824,7 @@ export default function FactoringDashboard() {
             {filteredHb.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{hbFilter === "all" ? "No invoices with holdback received yet." : hbFilter === "disbursed" ? "No fully disbursed holdback invoices." : "No invoices needing attention."}</div>}
             {filteredHb.length > 0 && <div style={{ maxHeight: 500, overflowY: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{["Invoice", "Buyer", "CCY", "Holdback Recd", "Disbursed", "Available", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                <thead><tr>{["Invoice", "Buyer", "CCY", "Holdback Recd", "Disbursed", "Available", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                 {filteredHb.map(function(d) {
                   var inv = d.inv, hbps = d.hbps;
                   var isHbExp = expHbPay === inv.id;
@@ -13080,7 +15863,7 @@ export default function FactoringDashboard() {
                             <tbody>{hbp.allocations.map(function(a, ai) {
                               var targetInv = a.type === "invoice" ? INVOICES_DB.find(function(x) { return x.id === a.targetId; }) : null;
                               return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
-                                <td style={{ padding: "6px 10px", fontSize: 12 }}>{a.type === "disbursement" ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text)", display: "inline-block" }}></span><span style={{ color: "var(--text)", fontWeight: 600 }}>Supplier Return</span></span> : <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#D97706", display: "inline-block" }}></span><span style={{ color: "#D97706", fontWeight: 600 }}>Invoice Allocation</span></span>}</td>
+                                <td style={{ padding: "6px 10px", fontSize: 12 }}>{a.type === "disbursement" ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text)", display: "inline-block" }}></span><span style={{ color: "var(--text)", fontWeight: 600 }}>Supplier Return</span></span> : <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#D97706", display: "inline-block" }}></span><span style={{ color: "#D97706" }}>Invoice Allocation</span></span>}</td>
                                 <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)" }}>{inv.supplierName}</span> : <span style={{ color: "var(--accent)" }}>{a.targetId}</span>}</td>
                                 <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td>
                                 <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{a.type === "disbursement" ? "Returned to supplier" : (targetInv ? targetInv.buyerName + " \u2014 Due: " + fmt(targetInv.dueDate) : "\u2014")}</td>
@@ -13089,7 +15872,7 @@ export default function FactoringDashboard() {
                           </table>
                         </div>;
                       })}
-                      {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.sourceInvoiceId === inv.id || (e.context.hbPaymentId && hbps.some(function(h) { return h.hbPaymentId === e.context.hbPaymentId; }))); }); if (hLogs.length === 0) return null; return <div style={{ marginTop: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card-hover)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
+                      {(function() { var hLogs = AUDIT_LOG.filter(function(e) { return e.context && (e.context.sourceInvoiceId === inv.id || (e.context.hbPaymentId && hbps.some(function(h) { return h.hbPaymentId === e.context.hbPaymentId; }))); }); if (hLogs.length === 0) return null; return <div style={{ marginTop: 14 }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Audit Trail ({hLogs.length})</div><div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 8 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Time", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card-hover)" }}>{h}</th>; })}</tr></thead><tbody>{hLogs.slice().reverse().map(function(e, ei) { return <tr key={ei} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{e.displayTime}</td><td style={{ padding: "4px 8px", fontSize: 10, fontWeight: 600, color: "var(--accent)" }}>{e.action}</td><td style={{ padding: "4px 8px", fontSize: 10, color: "var(--text-secondary)" }}>{e.details}</td></tr>; })}</tbody></table></div></div>; })()}
                     </td></tr>}
                   </tbody>;
                 })}
@@ -13192,10 +15975,31 @@ export default function FactoringDashboard() {
                       var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routeProgV; });
                       if (routeCpType === "supplier") {
                         var supName = getEntityDisplayName(routeSupV) || routeSupV;
-                        setPayRoutings(function(prev) { return prev.concat([{ counterpartyType: "supplier", supplierId: routeSupV, supplierName: supName, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]); });
+                        // Merge into an existing routing for the same (supplierId, programId)
+                        // rather than appending a duplicate. Two routings with the same key
+                        // can't be distinguished in pay.allocations (which only carries
+                        // invoiceId+amount), so allowing duplicates breaks Edit Allocations.
+                        setPayRoutings(function(prev) {
+                          var idx = prev.findIndex(function(r) { return r.counterpartyType === "supplier" && r.supplierId === routeSupV && r.programId === routeProgV; });
+                          if (idx >= 0) {
+                            var merged = prev.slice();
+                            merged[idx] = Object.assign({}, merged[idx], { amount: r2(merged[idx].amount + amt) });
+                            return merged;
+                          }
+                          return prev.concat([{ counterpartyType: "supplier", supplierId: routeSupV, supplierName: supName, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]);
+                        });
                       } else {
                         var sp = SERVICE_PROVIDERS_DB.find(function(x) { return x.id === routeSpV; });
-                        setPayRoutings(function(prev) { return prev.concat([{ counterpartyType: "service_provider", serviceProviderId: routeSpV, serviceProviderName: sp ? sp.name : routeSpV, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]); });
+                        // Merge into existing routing for same (serviceProviderId, programId).
+                        setPayRoutings(function(prev) {
+                          var idx = prev.findIndex(function(r) { return r.counterpartyType === "service_provider" && r.serviceProviderId === routeSpV && r.programId === routeProgV; });
+                          if (idx >= 0) {
+                            var merged = prev.slice();
+                            merged[idx] = Object.assign({}, merged[idx], { amount: r2(merged[idx].amount + amt) });
+                            return merged;
+                          }
+                          return prev.concat([{ counterpartyType: "service_provider", serviceProviderId: routeSpV, serviceProviderName: sp ? sp.name : routeSpV, programId: routeProgV, programName: prog ? prog.name : routeProgV, amount: amt }]);
+                        });
                       }
                       setRouteProgV(""); setRouteSupV(""); setRouteSpV(""); setRouteAmtV(String(r2(remaining - amt)));
                     }} style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: cpCanAllocate ? "var(--accent)" : "var(--border)", color: cpCanAllocate ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: cpCanAllocate ? "pointer" : "default", whiteSpace: "nowrap" }}>Allocate</button>
@@ -13327,7 +16131,38 @@ export default function FactoringDashboard() {
                     var first = payRoutings[firstSupIdx];
                     setAllocProgFilter(first.programId);
                     setAllocSupFilter(first.supplierName);
-                    setAllocs([]);
+                    // Per-routing preserve: if allocPay has prior allocs for this
+                    // (supplier, program), preload them. Mirrors the supplier-match
+                    // logic on the allocate-phase invoice filter so parent-entity
+                    // fallbacks line up.
+                    var preserved = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                      if (a.remittance) return false;
+                      if (a.kind === "pass_through") return false; // handled separately below
+                      var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                      if (!inv) return false;
+                      var supMatch = inv.supplierId === first.supplierId
+                        || getParentEntityId(inv.supplierId) === first.supplierId
+                        || inv.supplierName === first.supplierName
+                        || getParentSupplierName(inv.supplierName) === first.supplierName;
+                      if (!supMatch) return false;
+                      if (inv.fundingProgram !== first.programId) return false;
+                      return true;
+                    }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null, kind: "funded_recovery" }; }) : [];
+                    setAllocs(preserved);
+                    // Stage 1.7: also preserve any pass-through tags on this routing's
+                    // supplier (program scope doesn't apply to pass-through invoices).
+                    var preservedPt = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                      if (a.remittance) return false;
+                      if (a.kind !== "pass_through") return false;
+                      var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                      if (!inv) return false;
+                      var supMatch = inv.supplierId === first.supplierId
+                        || getParentEntityId(inv.supplierId) === first.supplierId
+                        || inv.supplierName === first.supplierName
+                        || getParentSupplierName(inv.supplierName) === first.supplierName;
+                      return supMatch;
+                    }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, kind: "pass_through" }; }) : [];
+                    setPassThroughAllocs(preservedPt);
                   } else {
                     // All routings were Service Provider — save payment + close
                     if (allocPay) {
@@ -13355,16 +16190,306 @@ export default function FactoringDashboard() {
             var routing = payRoutings[activeRouting];
             var allocPayForRouting = Object.assign({}, allocPay, { _routingAmount: routing.amount, _routingSupplierId: routing.supplierId, _routingSupplierName: routing.supplierName, _routingProgramId: routing.programId, _routingProgramName: routing.programName });
 
-            // Filter invoices for this supplier + program
-            var routingInvoices = viewData.invoices.filter(function(inv) {
-              if (inv.supplierId !== routing.supplierId && getParentEntityId(inv.supplierId) !== routing.supplierId && inv.supplierName !== routing.supplierName && getParentSupplierName(inv.supplierName) !== routing.supplierName) return false;
+            // Stage 1.7 split: funded invoices (Pelagic has capital exposure) vs pass-through
+            // invoices (unpurchased / purchased-but-unfunded — buyer is paying through Pelagic
+            // to the supplier, no Pelagic exposure). Same supplier scope on both. Pass-through
+            // section additionally scopes to the payment's buyer (a buyer's payment shouldn't
+            // be tagged against an invoice issued to a different buyer).
+            function matchesRoutingSupplier(inv) {
+              return inv.supplierId === routing.supplierId
+                  || getParentEntityId(inv.supplierId) === routing.supplierId
+                  || inv.supplierName === routing.supplierName
+                  || getParentSupplierName(inv.supplierName) === routing.supplierName;
+            }
+            var fundedInvoices = viewData.invoices.filter(function(inv) {
+              if (!matchesRoutingSupplier(inv)) return false;
+              if (!isFundedInvoice(inv)) return false;
+              // Funded invoices belong to a program; only show this routing's program.
               if (inv.fundingProgram && inv.fundingProgram !== routing.programId) return false;
-              if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return false;
+              return true;
+            });
+            // Pass-through scope: same supplier, NOT funded, NOT settled/cancelled/declined,
+            // NOT historic/write-off. Buyer scope: match the payment's buyer when set.
+            // (When allocPay.buyerId is null — older payments or untagged inbound — fall back
+            // to showing all of the supplier's pass-through invoices.)
+            var passThroughInvoices = viewData.invoices.filter(function(inv) {
+              if (!matchesRoutingSupplier(inv)) return false;
+              if (isFundedInvoice(inv)) return false;
+              if (inv.invoiceStatus === "Settled" || inv.invoiceStatus === "Cancelled" || inv.invoiceStatus === "Declined") return false;
+              if (inv.fundingStatus === "historic" || inv.fundingStatus === "write_off") return false;
+              if (allocPay.buyerId && inv.buyerId && inv.buyerId !== allocPay.buyerId && getParentEntityId(inv.buyerId) !== allocPay.buyerId) return false;
               return true;
             });
 
+            // Filter+sort pipeline shared between sections.
+            function applyFilterSort(list, search, dueRange, sortKey) {
+              var r = list.slice();
+              if (search) { var q = search.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) >= 0 || (inv.invoiceReference || "").toLowerCase().indexOf(q) >= 0 || (inv.buyerName || "").toLowerCase().indexOf(q) >= 0; }); }
+              if (dueRange === "overdue") r = r.filter(function(inv) { return inv.dueDate && inv.dueDate < viewDate; });
+              else if (dueRange === "30d") { var cutoff = new Date(viewDate + "T12:00:00"); cutoff.setDate(cutoff.getDate() + 30); var cutoffStr = cutoff.toISOString().split("T")[0]; r = r.filter(function(inv) { return inv.dueDate && inv.dueDate >= viewDate && inv.dueDate <= cutoffStr; }); }
+              else if (dueRange === "90d") { var cutoff90 = new Date(viewDate + "T12:00:00"); cutoff90.setDate(cutoff90.getDate() + 90); var cutoff90Str = cutoff90.toISOString().split("T")[0]; r = r.filter(function(inv) { return inv.dueDate && inv.dueDate >= viewDate && inv.dueDate <= cutoff90Str; }); }
+              var parts = (sortKey || "dueDate-asc").split("-");
+              var key = parts[0], dir = parts[1] === "desc" ? -1 : 1;
+              r.sort(function(a, b) {
+                var av, bv;
+                if (key === "dueDate") { av = a.dueDate || "9999-12-31"; bv = b.dueDate || "9999-12-31"; }
+                else if (key === "amount") { av = a.amount || 0; bv = b.amount || 0; }
+                else if (key === "outstanding") { av = a.totalOutstanding || 0; bv = b.totalOutstanding || 0; }
+                else { av = a.id; bv = b.id; }
+                return av < bv ? -dir : av > bv ? dir : 0;
+              });
+              return r;
+            }
+
+            // Pass-through "buyer outstanding": face value − dilutions − prior pass-through tagged
+            // payments. We compute this row-by-row in the render loop using viewData (which already
+            // has dilution + payment totals applied via processForDate).
+            function buyerOutstandingFor(inv) {
+              // amountPostDilutions accounts for credit notes already; totalBuyerPaid is the sum
+              // of ALL allocations to this invoice (including any prior pass-through tags). For
+              // an unfunded invoice, that equals the buyer's tagged contribution so far.
+              var ceiling = inv.amountPostDilutions != null ? inv.amountPostDilutions : (inv.amount || 0);
+              var paid = inv.paymentsToInvoice || 0;
+              return r2(Math.max(0, ceiling - paid));
+            }
+
             var allocTotal = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
-            var routingRemaining = r2(routing.amount - allocTotal);
+            var passThroughTotal = passThroughAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+            var routingRemaining = r2(routing.amount - allocTotal - passThroughTotal);
+            // Settle preview count for the bottom bar.
+            var ptSettleCount = passThroughAllocs.filter(function(a) { var inv = passThroughInvoices.find(function(x) { return x.id === a.invoiceId; }); if (!inv) return false; return r2(a.amount + (inv.paymentsToInvoice || 0)) >= (inv.amountPostDilutions != null ? inv.amountPostDilutions : inv.amount) - 0.01; }).length;
+
+            // Apply filters
+            var fundedList = applyFilterSort(fundedInvoices, allocFundedSearch, allocFundedDueRange, allocFundedSort).filter(function(inv) { return inv.totalOutstanding > 0.01 || allocs.some(function(a) { return a.invoiceId === inv.id; }); });
+            var passThroughList = applyFilterSort(passThroughInvoices, allocPtSearch, allocPtDueRange, allocPtSort).filter(function(inv) { return buyerOutstandingFor(inv) > 0.01 || passThroughAllocs.some(function(a) { return a.invoiceId === inv.id; }); });
+
+            // Filter bar style
+            var filterInputStyle = { padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" };
+
+            // Commit handler for the routing's confirm bar. holdRemainder=false is
+            // the original "pass through the remainder to the supplier" behaviour.
+            // holdRemainder=true skips the untagged pass-through SPQ creation —
+            // the unallocated portion stays on the payment as headroom (rendered
+            // as "Partially Allocated"). Operator can return later via Edit
+            // Allocations to deploy it. Funded recovery and tagged pass-throughs
+            // are written either way; only the bulk untagged step is gated.
+            function commitRouting(holdRemainder) {
+              var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routing.programId; });
+              var now = new Date();
+              var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+              if (allocs.length > 0 && pay) {
+                var activeAllocs = allocs.filter(function(a) { return a.amount > 0; });
+                pay.allocations = pay.allocations.filter(function(a) {
+                  if (a.remittance) return true;
+                  var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                  if (!inv) return true;
+                  var supMatch = inv.supplierId === routing.supplierId
+                    || getParentEntityId(inv.supplierId) === routing.supplierId
+                    || inv.supplierName === routing.supplierName
+                    || getParentSupplierName(inv.supplierName) === routing.supplierName;
+                  if (!supMatch) return true;
+                  if (a.kind === "pass_through") return false;
+                  if (inv.fundingProgram !== routing.programId) return true;
+                  return false;
+                });
+                activeAllocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date, kind: "funded_recovery" }); });
+
+                var refreshedData = processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
+                activeAllocs.forEach(function(a) {
+                  var updatedInv = refreshedData.invoices.find(function(x) { return x.id === a.invoiceId; });
+                  if (updatedInv && updatedInv.fundingStatus === "fully_repaid" && updatedInv.holdbackAvailable > 0.01) {
+                    var maxHbpNum = 0;
+                    HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
+                    var hbId = "HBP-" + String(maxHbpNum + 1).padStart(7, "0");
+                    var hbAmt = r2(updatedInv.holdbackAvailable);
+                    var hbBankInfo = getSupplierBankDetails(updatedInv.supplierId || updatedInv.supplierName, updatedInv.fundingProgram);
+                    var hbSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                    HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, amount: hbAmt, date: viewDate, currency: updatedInv.currency, allocations: [{ type: "disbursement", targetId: null, amount: hbAmt }] });
+                    SUPPLIER_PAYMENT_QUEUE.push({
+                      id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
+                      supplierName: updatedInv.supplierName, supplierId: updatedInv.supplierId || "",
+                      bankName: hbBankInfo.bankName, bankDetails: hbBankInfo.bankDetails, bankVerified: hbBankInfo.bankVerified,
+                      amount: hbAmt, currency: updatedInv.currency, status: "Pending",
+                      programId: updatedInv.fundingProgram || null, programName: routing.programName,
+                      createdAt: now.toISOString(), createdDisplay: nowDisp,
+                      executedAt: null, executedDisplay: null
+                    });
+                    saveHoldbackPayment(hbId);
+                    saveSPQEntry(hbSpqId);
+                    auditLog("Holdback Return Queued", hbId + ": " + money(hbAmt, updatedInv.currency) + " holdback from " + updatedInv.id + " queued for return to " + updatedInv.supplierName + " (" + hbSpqId + ")", { hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, supplierName: updatedInv.supplierName, amount: hbAmt, currency: updatedInv.currency, spqId: hbSpqId, programId: updatedInv.fundingProgram, autoGenerated: true });
+                  }
+                });
+
+                auditLog("Payment Allocated", allocPay.paymentId + ": " + money(allocTotal, allocPay.currency) + " applied to " + activeAllocs.length + " invoice(s) for " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, amount: allocTotal, currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, programId: routing.programId, programName: routing.programName, allocations: activeAllocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }) });
+                persistDerivedFieldsForInvoices(activeAllocs.map(function(a) { return a.invoiceId; }), viewDate);
+              }
+
+              // Stage 1.7 edit-time integrity: cancel any prior PENDING pass-through
+              // SPQ entries for this routing before writing fresh ones.
+              var stalePtSpq = SUPPLIER_PAYMENT_QUEUE.filter(function(sp) {
+                if (sp.type !== "remittance") return false;
+                if (sp.sourcePaymentId !== allocPay.paymentId) return false;
+                if (sp.supplierId !== routing.supplierId && getParentEntityId(sp.supplierId) !== routing.supplierId) return false;
+                if (sp.programId && routing.programId && sp.programId !== routing.programId) return false;
+                if (sp.status !== "Pending") return false;
+                return true;
+              });
+              stalePtSpq.forEach(function(sp) {
+                sp.status = "Cancelled";
+                sp.cancelledAt = now.toISOString();
+                sp.cancelledDisplay = nowDisp;
+                sp.notes = sp.notes || [];
+                sp.notes.push({
+                  text: "Cancelled on re-edit of source payment " + allocPay.paymentId,
+                  display: nowDisp,
+                  createdAt: now.toISOString(),
+                  source: "system"
+                });
+                saveSPQEntry(sp.id);
+                auditLog("Pass-through Cancelled", sp.id + " cancelled (" + money(sp.amount, sp.currency) + " " + (sp.invoiceId ? "tagged to " + sp.invoiceId : "untagged bulk") + ") on re-edit of source payment " + allocPay.paymentId, {
+                  spqId: sp.id, paymentId: allocPay.paymentId, invoiceId: sp.invoiceId || null,
+                  supplierId: sp.supplierId, supplierName: sp.supplierName,
+                  amount: sp.amount, currency: sp.currency,
+                  programId: sp.programId, programName: sp.programName,
+                  reason: "edit_replacement"
+                });
+              });
+
+              // Apply tagged pass-through allocations
+              var activePtAllocs = passThroughAllocs.filter(function(a) { return a.amount > 0; });
+              if (activePtAllocs.length > 0 && pay) {
+                activePtAllocs.forEach(function(a) {
+                  pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date, kind: "pass_through" });
+                });
+                activePtAllocs.forEach(function(a) {
+                  var ptInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                  var ptSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                  var ptBankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
+                  SUPPLIER_PAYMENT_QUEUE.push({
+                    id: ptSpqId, type: "remittance",
+                    invoiceId: a.invoiceId, invoiceIds: [a.invoiceId],
+                    supplierName: routing.supplierName, supplierId: routing.supplierId,
+                    bankName: ptBankInfo.bankName, bankDetails: ptBankInfo.bankDetails,
+                    amount: r2(a.amount), currency: allocPay.currency, status: "Pending",
+                    programId: routing.programId, programName: routing.programName,
+                    createdAt: now.toISOString(), createdDisplay: nowDisp,
+                    sourcePaymentId: allocPay.paymentId,
+                    sourceInvoiceId: a.invoiceId
+                  });
+                  saveSPQEntry(ptSpqId);
+                  auditLog("Pass-through Tagged", ptSpqId + ": " + money(r2(a.amount), allocPay.currency) + " from " + allocPay.paymentId + " tagged to " + a.invoiceId + " (unpurchased) and queued for remittance to " + routing.supplierName, { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(a.amount), currency: allocPay.currency, spqId: ptSpqId, programId: routing.programId, programName: routing.programName, kind: "pass_through" });
+                });
+                persistDerivedFieldsForInvoices(activePtAllocs.map(function(a) { return a.invoiceId; }), viewDate);
+              }
+
+              // Bulk untagged pass-through remainder — GATED on holdRemainder.
+              // When the operator chose Hold, the remainder stays as headroom on
+              // the payment instead of becoming an outbound SPQ.
+              if (!holdRemainder && routingRemaining > 0.01) {
+                var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                var bankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
+                SUPPLIER_PAYMENT_QUEUE.push({
+                  id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
+                  supplierName: routing.supplierName, supplierId: routing.supplierId,
+                  bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
+                  amount: r2(routingRemaining), currency: allocPay.currency, status: "Pending",
+                  programId: routing.programId, programName: routing.programName,
+                  createdAt: now.toISOString(), createdDisplay: nowDisp,
+                  sourcePaymentId: allocPay.paymentId
+                });
+                auditLog("Remittance Queued", spqId + ": " + money(r2(routingRemaining), allocPay.currency) + " queued for remittance to " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(routingRemaining), currency: allocPay.currency, spqId: spqId, programId: routing.programId, programName: routing.programName });
+              }
+
+              // Move to next routing or finish.
+              var nextIdx = activeRouting + 1;
+              while (nextIdx < payRoutings.length && payRoutings[nextIdx].counterpartyType === "service_provider") {
+                nextIdx++;
+              }
+              if (nextIdx < payRoutings.length) {
+                setActiveRouting(nextIdx);
+                var nextRouting = payRoutings[nextIdx];
+                var preservedNext = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                  if (a.remittance) return false;
+                  if (a.kind === "pass_through") return false;
+                  var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                  if (!inv) return false;
+                  var supMatch = inv.supplierId === nextRouting.supplierId
+                    || getParentEntityId(inv.supplierId) === nextRouting.supplierId
+                    || inv.supplierName === nextRouting.supplierName
+                    || getParentSupplierName(inv.supplierName) === nextRouting.supplierName;
+                  if (!supMatch) return false;
+                  if (inv.fundingProgram !== nextRouting.programId) return false;
+                  return true;
+                }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, allocDate: a.allocDate || null, kind: "funded_recovery" }; }) : [];
+                setAllocs(preservedNext);
+                var preservedPtNext = (allocPay && allocPay.allocations) ? allocPay.allocations.filter(function(a) {
+                  if (a.kind !== "pass_through") return false;
+                  var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
+                  if (!inv) return false;
+                  var supMatch = inv.supplierId === nextRouting.supplierId
+                    || getParentEntityId(inv.supplierId) === nextRouting.supplierId
+                    || inv.supplierName === nextRouting.supplierName
+                    || getParentSupplierName(inv.supplierName) === nextRouting.supplierName;
+                  return supMatch;
+                }).map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount, kind: "pass_through" }; }) : [];
+                setPassThroughAllocs(preservedPtNext);
+                setAllocProgFilter(payRoutings[nextIdx].programId);
+                setAllocSupFilter(payRoutings[nextIdx].supplierName);
+              } else {
+                // All done
+                if (pay) {
+                  _isSaving = true;
+                  var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
+                  supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
+                    if (upRes && upRes.error) { console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow); toast.error("Payment save failed", upRes.error.message || "Routing succeeded locally but DB save failed."); }
+                    supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function(delRes) {
+                      if (delRes && delRes.error) { console.error("[Inline SavePayment] allocations delete error:", delRes.error); toast.error("Allocations clear failed", delRes.error.message || "Could not clear prior allocations."); }
+                      if (pay.allocations.length > 0) {
+                        var allocRows = pay.allocations.map(function(a) {
+                          var aSupIds = getSupplierIdsForInvoice(a.invoiceId);
+                          return {
+                            payment_id: pay.paymentId, invoice_id: a.invoiceId,
+                            amount: a.amount, alloc_date: a.allocDate || null,
+                            supplier_id: aSupIds.supplierId, supplier_entity_id: aSupIds.entityId,
+                            kind: a.kind || "funded_recovery"
+                          };
+                        });
+                        supabase.from("payment_allocations").insert(allocRows).then(function(insRes) {
+                          if (insRes && insRes.error) { console.error("[Inline SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocations write failed", insRes.error.message || "Could not insert allocations."); }
+                        });
+                      }
+                    });
+                    _isSaving = false;
+                  });
+                }
+                SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
+                  if (spq.sourcePaymentId === allocPay.paymentId) saveSPQEntry(spq.id);
+                });
+                payRoutings.forEach(function(r) { saveFundingProgram(r.programId); });
+                // Detect partial allocation: if the operator chose Hold on the last
+                // routing's remainder, the payment is intentionally not fully
+                // consumed. Compute committed = funded recovery + tagged PT + bulk
+                // PT SPQ totals (which is what pay.allocations + matching pending
+                // SPQ remittances will reflect after this commit). Anything short
+                // of allocPay.amount means a Hold was used.
+                var committedAllocs = pay ? pay.allocations.reduce(function(s, a) { return s + (a.amount || 0); }, 0) : 0;
+                var committedBulkPt = SUPPLIER_PAYMENT_QUEUE.filter(function(sp) {
+                  return sp.type === "remittance" && sp.sourcePaymentId === allocPay.paymentId && !sp.invoiceId && sp.status !== "Cancelled" && sp.status !== "Failed";
+                }).reduce(function(s, sp) { return s + sp.amount; }, 0);
+                var committed = r2(committedAllocs + committedBulkPt);
+                var heldAmount = r2(allocPay.amount - committed);
+                if (heldAmount > 0.01) {
+                  auditLog("Payment Partially Processed", allocPay.paymentId + ": " + money(committed, allocPay.currency) + " allocated, " + money(heldAmount, allocPay.currency) + " held on payment", { paymentId: allocPay.paymentId, amount: allocPay.amount, committed: committed, held: heldAmount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
+                  toast.success("Payment partially allocated", allocPay.paymentId + " \u2014 " + money(committed, allocPay.currency) + " allocated, " + money(heldAmount, allocPay.currency) + " held for later.");
+                } else {
+                  auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
+                  toast.success("Payment allocated", allocPay.paymentId + " \u2014 " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s).");
+                }
+                setAllocPay(null); setAllocs([]); setPassThroughAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
+                setDataVer(function(v) { return v + 1; });
+              }
+            }
 
             return <div style={{ marginTop: 22, background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", overflow: "hidden" }}>
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -13374,18 +16499,35 @@ export default function FactoringDashboard() {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <div><div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: routingRemaining > 0.01 ? "#F59E0B" : "#10B981" }}>{money(routingRemaining, allocPay.currency)}</div></div>
-                  {allocs.length > 0 && <button onClick={function() { setAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
-                  <button onClick={function() { setPayAllocPhase("route"); setActiveRouting(null); setAllocs([]); setPayRoutings([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                  {(allocs.length > 0 || passThroughAllocs.length > 0) && <button onClick={function() { setAllocs([]); setPassThroughAllocs([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear</button>}
+                  <button onClick={function() { setPayAllocPhase("route"); setActiveRouting(null); setAllocs([]); setPassThroughAllocs([]); setPayRoutings([]); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
 
-              {/* Invoice list for this routing */}
+              {/* Section 1: Funded invoices — recover Pelagic capital */}
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Select invoices for {routing.supplierName}</div>
-                <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Funded invoices · recover Pelagic capital</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="text" value={allocFundedSearch} onChange={function(e) { setAllocFundedSearch(e.target.value); }} placeholder="Search invoice / buyer..." style={Object.assign({}, filterInputStyle, { width: 180 })} />
+                    <select value={allocFundedDueRange} onChange={function(e) { setAllocFundedDueRange(e.target.value); }} style={filterInputStyle}>
+                      <option value="all">All dates</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="30d">Due in 30 days</option>
+                      <option value="90d">Due in 90 days</option>
+                    </select>
+                    <select value={allocFundedSort} onChange={function(e) { setAllocFundedSort(e.target.value); }} style={filterInputStyle}>
+                      <option value="dueDate-asc">Due date ↑</option>
+                      <option value="dueDate-desc">Due date ↓</option>
+                      <option value="outstanding-desc">O/S ↓</option>
+                      <option value="amount-desc">Amount ↓</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ maxHeight: 260, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Invoice", "Buyer", "Due Date", "Penalty O/S", "Interest O/S", "Capital O/S", "Total O/S", "Allocate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 6px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).sort(function(a, b) { return (a.dueDate || "") < (b.dueDate || "") ? -1 : 1; }).map(function(inv) {
+                    <tbody>{fundedList.map(function(inv) {
                       var existing = allocs.find(function(a) { return a.invoiceId === inv.id; });
                       var currentAmt = existing ? existing.amount : 0;
                       var penOS = inv.penaltyInterest || 0;
@@ -13400,137 +16542,97 @@ export default function FactoringDashboard() {
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(capOS, inv.currency)}</td>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{money(inv.totalOutstanding, inv.currency)}</td>
                         <td style={{ padding: "6px 6px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
-                          var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding, routingRemaining + currentAmt));
-                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val }); return n; });
+                          var val = r2(Math.min(parseFloat(e.target.value) || 0, inv.totalOutstanding + currentAmt, routingRemaining + currentAmt));
+                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val, kind: "funded_recovery" }); return n; });
                         }} step="0.01" placeholder="0.00" style={{ width: 90, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
                         <td style={{ padding: "6px 6px", display: "flex", gap: 3 }}><button onClick={function() {
-                          var maxVal = r2(Math.min(inv.totalOutstanding, routingRemaining + currentAmt));
-                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal }); return n; });
+                          var maxVal = r2(Math.min(inv.totalOutstanding + currentAmt, routingRemaining + currentAmt));
+                          setAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal, kind: "funded_recovery" }); return n; });
                         }} style={{ padding: "2px 5px", borderRadius: 3, border: "1px solid #10B98140", background: "#10B98110", color: "#10B981", fontSize: 8, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
                       </tr>;
                     })}</tbody>
                   </table>
-                  {routingInvoices.filter(function(inv) { return inv.totalOutstanding > 0.01; }).length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices with outstanding balance for this supplier/program</div>}
+                  {fundedList.length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices with outstanding balance for this supplier/program</div>}
                 </div>
               </div>
 
-              {/* Confirm / Pass-through buttons */}
-              <div style={{ padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>
-                  {allocs.length > 0 ? allocs.length + " invoice(s): " + money(allocTotal, allocPay.currency) + " allocated" : "No invoices selected"}
-                  {routingRemaining > 0.01 && allocs.length > 0 ? " — " + money(routingRemaining, allocPay.currency) + " will be passed through to supplier" : ""}
-                  {routingRemaining > 0.01 && allocs.length === 0 ? "Full amount will be passed through to supplier" : ""}
+              {/* Section 2: Pass-through invoices — supplier collection-agent role.
+                  Renders only when there are pass-through candidates AND there's still
+                  routing remaining (so the user has money available to tag). */}
+              {passThroughInvoices.length > 0 && (routingRemaining > 0.01 || passThroughAllocs.length > 0) && <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Unpurchased invoices</div>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: "#7C3AED14", color: "#7C3AED", border: "1px solid #7C3AED40", letterSpacing: "0.04em", textTransform: "uppercase" }}>Pass-through</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="text" value={allocPtSearch} onChange={function(e) { setAllocPtSearch(e.target.value); }} placeholder="Search invoice / buyer..." style={Object.assign({}, filterInputStyle, { width: 180 })} />
+                    <select value={allocPtDueRange} onChange={function(e) { setAllocPtDueRange(e.target.value); }} style={filterInputStyle}>
+                      <option value="all">All dates</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="30d">Due in 30 days</option>
+                      <option value="90d">Due in 90 days</option>
+                    </select>
+                    <select value={allocPtSort} onChange={function(e) { setAllocPtSort(e.target.value); }} style={filterInputStyle}>
+                      <option value="dueDate-asc">Due date ↑</option>
+                      <option value="dueDate-desc">Due date ↓</option>
+                      <option value="outstanding-desc">Buyer O/S ↓</option>
+                      <option value="amount-desc">Face value ↓</option>
+                    </select>
+                  </div>
                 </div>
-                <button onClick={function() {
-                  // Confirm this routing's allocation
-                  var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routing.programId; });
-                  var now = new Date();
-                  var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}>Optionally tag the remaining {money(routingRemaining + passThroughTotal, allocPay.currency)} against specific unpurchased invoices for this supplier. Tagged amounts pass through to the supplier; the matched invoice is tracked toward settlement.</div>
+                <div style={{ maxHeight: 260, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Invoice", "Buyer", "Due Date", "Face Value", "Already Paid", "Buyer O/S", "Apply", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 6px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{passThroughList.map(function(inv) {
+                      var existing = passThroughAllocs.find(function(a) { return a.invoiceId === inv.id; });
+                      var currentAmt = existing ? existing.amount : 0;
+                      var alreadyPaid = inv.paymentsToInvoice || 0;
+                      var buyerOS = buyerOutstandingFor(inv);
+                      var faceCeiling = inv.amountPostDilutions != null ? inv.amountPostDilutions : (inv.amount || 0);
+                      var willSettle = currentAmt > 0 && r2(currentAmt + alreadyPaid) >= faceCeiling - 0.01;
+                      return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: currentAmt > 0 ? "#7C3AED08" : "transparent" }}>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(inv.amount, inv.currency)}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: alreadyPaid > 0 ? "var(--text)" : "var(--muted)" }}>{alreadyPaid > 0 ? money(alreadyPaid, inv.currency) : "\u2014"}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>
+                          {money(buyerOS, inv.currency)}
+                          {willSettle && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: "#10B98120", color: "#10B981", letterSpacing: "0.04em", textTransform: "uppercase" }}>Settles</span>}
+                        </td>
+                        <td style={{ padding: "6px 6px" }}><input type="number" value={currentAmt || ""} onChange={function(e) {
+                          var val = r2(Math.min(parseFloat(e.target.value) || 0, buyerOS + currentAmt, routingRemaining + currentAmt));
+                          setPassThroughAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (val > 0) n.push({ invoiceId: inv.id, amount: val, kind: "pass_through" }); return n; });
+                        }} step="0.01" placeholder="0.00" style={{ width: 90, padding: "4px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textAlign: "right" }} /></td>
+                        <td style={{ padding: "6px 6px", display: "flex", gap: 3 }}><button onClick={function() {
+                          var maxVal = r2(Math.min(buyerOS + currentAmt, routingRemaining + currentAmt));
+                          setPassThroughAllocs(function(prev) { var n = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (maxVal > 0) n.push({ invoiceId: inv.id, amount: maxVal, kind: "pass_through" }); return n; });
+                        }} style={{ padding: "2px 5px", borderRadius: 3, border: "1px solid #7C3AED40", background: "#7C3AED10", color: "#7C3AED", fontSize: 8, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Max</button></td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                  {passThroughList.length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No matching unpurchased invoices for this supplier/buyer</div>}
+                </div>
+              </div>}
 
-                  // Apply invoice allocations
-                  if (allocs.length > 0 && pay) {
-                    var activeAllocs = allocs.filter(function(a) { return a.amount > 0; });
-                    activeAllocs.forEach(function(a) { pay.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, allocDate: allocPay.date }); });
-
-                    // Check for holdback returns: if allocation fully repays an invoice, auto-create holdback disbursement
-                    var refreshedData = processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
-                    activeAllocs.forEach(function(a) {
-                      var updatedInv = refreshedData.invoices.find(function(x) { return x.id === a.invoiceId; });
-                      if (updatedInv && updatedInv.fundingStatus === "fully_repaid" && updatedInv.holdbackAvailable > 0.01) {
-                        // Auto-create holdback return
-                        var maxHbpNum = 0;
-                        HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
-                        var hbId = "HBP-" + String(maxHbpNum + 1).padStart(7, "0");
-                        var hbAmt = r2(updatedInv.holdbackAvailable);
-                        var hbBankInfo = getSupplierBankDetails(updatedInv.supplierId || updatedInv.supplierName, updatedInv.fundingProgram);
-                        var hbSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
-                        HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, amount: hbAmt, date: viewDate, currency: updatedInv.currency, allocations: [{ type: "disbursement", targetId: null, amount: hbAmt }] });
-                        SUPPLIER_PAYMENT_QUEUE.push({
-                          id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
-                          supplierName: updatedInv.supplierName, supplierId: updatedInv.supplierId || "",
-                          bankName: hbBankInfo.bankName, bankDetails: hbBankInfo.bankDetails, bankVerified: hbBankInfo.bankVerified,
-                          amount: hbAmt, currency: updatedInv.currency, status: "Pending",
-                          programId: updatedInv.fundingProgram || null, programName: routing.programName,
-                          createdAt: now.toISOString(), createdDisplay: nowDisp,
-                          executedAt: null, executedDisplay: null
-                        });
-                        saveHoldbackPayment(hbId);
-                        saveSPQEntry(hbSpqId);
-                        auditLog("Holdback Return Queued", hbId + ": " + money(hbAmt, updatedInv.currency) + " holdback from " + updatedInv.id + " queued for return to " + updatedInv.supplierName + " (" + hbSpqId + ")", { hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, supplierName: updatedInv.supplierName, amount: hbAmt, currency: updatedInv.currency, spqId: hbSpqId, programId: updatedInv.fundingProgram, autoGenerated: true });
-                      }
-                    });
-
-                    // Note: Program balance is credited automatically via the buyer payment allocation
-                    // showing in the bank statement — no separate fund flow entry needed
-
-                    auditLog("Payment Allocated", allocPay.paymentId + ": " + money(allocTotal, allocPay.currency) + " applied to " + activeAllocs.length + " invoice(s) for " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, amount: allocTotal, currency: allocPay.currency, supplierId: routing.supplierId, supplierName: routing.supplierName, programId: routing.programId, programName: routing.programName, allocations: activeAllocs.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }) });
-                  }
-
-                  // Pass-through remainder to supplier
-                  if (routingRemaining > 0.01) {
-                    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
-                    var bankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
-                    SUPPLIER_PAYMENT_QUEUE.push({
-                      id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
-                      supplierName: routing.supplierName, supplierId: routing.supplierId,
-                      bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
-                      amount: r2(routingRemaining), currency: allocPay.currency, status: "Pending",
-                      programId: routing.programId, programName: routing.programName,
-                      createdAt: now.toISOString(), createdDisplay: nowDisp,
-                      sourcePaymentId: allocPay.paymentId
-                    });
-
-                    // Pass-throughs are derivable from PAYMENTS_DB + SPQ at render time;
-                    // no fund_flows entry needed. (The pass-through inflow + matched outflow
-                    // net to zero over the SPQ lifecycle, so they never affect program balance.)
-
-                    auditLog("Remittance Queued", spqId + ": " + money(r2(routingRemaining), allocPay.currency) + " queued for remittance to " + routing.supplierName + " via " + routing.programName, { paymentId: allocPay.paymentId, supplierId: routing.supplierId, supplierName: routing.supplierName, amount: r2(routingRemaining), currency: allocPay.currency, spqId: spqId, programId: routing.programId, programName: routing.programName });
-                  }
-
-                  // Move to next routing or finish. Skip any Service Provider routings —
-                  // they were processed before allocate phase began.
-                  var nextIdx = activeRouting + 1;
-                  while (nextIdx < payRoutings.length && payRoutings[nextIdx].counterpartyType === "service_provider") {
-                    nextIdx++;
-                  }
-                  if (nextIdx < payRoutings.length) {
-                    setActiveRouting(nextIdx);
-                    setAllocs([]);
-                    setAllocProgFilter(payRoutings[nextIdx].programId);
-                    setAllocSupFilter(payRoutings[nextIdx].supplierName);
-                  } else {
-                    // All done
-                    // Save all modified records
-                    if (pay) {
-                      _isSaving = true;
-                      var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
-                      supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
-                        if (upRes && upRes.error) { console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow); toast.error("Payment save failed", upRes.error.message || "Routing succeeded locally but DB save failed."); }
-                        // Save allocations
-                        supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function(delRes) {
-                          if (delRes && delRes.error) { console.error("[Inline SavePayment] allocations delete error:", delRes.error); toast.error("Allocations clear failed", delRes.error.message || "Could not clear prior allocations."); }
-                          if (pay.allocations.length > 0) {
-                            var allocRows = pay.allocations.map(function(a) { return { payment_id: pay.paymentId, invoice_id: a.invoiceId, amount: a.amount, alloc_date: a.allocDate || null }; });
-                            supabase.from("payment_allocations").insert(allocRows).then(function(insRes) {
-                              if (insRes && insRes.error) { console.error("[Inline SavePayment] allocations insert error:", insRes.error, "rows:", allocRows); toast.error("Allocations write failed", insRes.error.message || "Could not insert allocations."); }
-                            });
-                          }
-                        });
-                        _isSaving = false;
-                      });
-                    }
-                    // Save any SPQ entries created during this allocation
-                    SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-                      if (spq.sourcePaymentId === allocPay.paymentId) saveSPQEntry(spq.id);
-                    });
-                    // Save program fund flows
-                    payRoutings.forEach(function(r) { saveFundingProgram(r.programId); });
-                    auditLog("Payment Fully Processed", allocPay.paymentId + ": " + money(allocPay.amount, allocPay.currency) + " fully allocated across " + payRoutings.length + " routing(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, routings: payRoutings.map(function(r) { return { supplierId: r.supplierId, supplierName: r.supplierName, programId: r.programId, programName: r.programName, amount: r.amount }; }) });
-                    toast.success("Payment allocated", allocPay.paymentId + " \u2014 " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s).");
-                    setAllocPay(null); setAllocs([]); setPayRoutings([]); setPayAllocPhase("route"); setActiveRouting(null); setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
-                    setDataVer(function(v) { return v + 1; });
-                  }
-                }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{allocs.length > 0 && routingRemaining > 0.01 ? "Apply & Pass Through" : allocs.length > 0 ? "Confirm Allocation" : "Pass Through to Supplier"}</button>
+              {/* Confirm + summary bar */}
+              <div style={{ padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+                  <div>
+                    {allocs.length > 0 ? "Funded recovery: " + money(allocTotal, allocPay.currency) + " (" + allocs.length + " invoice" + (allocs.length === 1 ? "" : "s") + ")" : "No funded recovery"}
+                    {passThroughAllocs.length > 0 ? " · Pass-through tagged: " + money(passThroughTotal, allocPay.currency) + " (" + passThroughAllocs.length + " invoice" + (passThroughAllocs.length === 1 ? "" : "s") + (ptSettleCount > 0 ? ", " + ptSettleCount + " settles" : "") + ")" : ""}
+                  </div>
+                  {routingRemaining > 0.01 && <div style={{ color: "var(--text-secondary)" }}>{money(routingRemaining, allocPay.currency)} unallocated — pass through to supplier or hold on payment for later</div>}
+                </div>
+                {routingRemaining > 0.01
+                  ? <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={function() { commitRouting(true); }} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Hold {money(routingRemaining, allocPay.currency)} on payment</button>
+                      <button onClick={function() { commitRouting(false); }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{allocs.length > 0 ? "Apply & Pass Through" : "Pass Through to Supplier"}</button>
+                    </div>
+                  : <button onClick={function() { commitRouting(false); }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Confirm Allocation</button>
+                }
               </div>
             </div>;
           }
@@ -13584,19 +16686,41 @@ export default function FactoringDashboard() {
             if (!allocCN) return;
             var cn = CREDIT_NOTES_DB.find(function(c) { return c.creditNoteId === allocCN.creditNoteId; });
             if (!cn) return;
-            // Clear existing allocations and re-apply from allocs state
+            // Capture pre-existing allocations for persistence (these invoices' balances
+            // will change because the CN is being re-allocated away from them).
+            var preAffected = {};
+            cn.allocations.forEach(function(a) { preAffected[a.invoiceId] = true; });
+            // Clear existing allocations and re-apply from both alloc arrays. Stage 1.7:
+            // funded recovery (top section) and pass-through (bottom section, against
+            // unfunded invoices) are written into the same JSONB array, distinguished
+            // by `kind`. Pass-through allocations reduce amountPostDilutions but are
+            // excluded from supplier dilution rate (see processForDate / supDilRates).
             cn.allocations = [];
             var totalAlloc = 0;
+            var fundedCount = 0, ptCount = 0;
             allocs.forEach(function(a) {
               if (a.amount > 0) {
-                cn.allocations.push({ invoiceId: a.invoiceId, amount: a.amount });
+                cn.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, kind: "funded_recovery" });
                 totalAlloc += a.amount;
+                preAffected[a.invoiceId] = true;
+                fundedCount++;
+              }
+            });
+            cnPassThroughAllocs.forEach(function(a) {
+              if (a.amount > 0) {
+                cn.allocations.push({ invoiceId: a.invoiceId, amount: a.amount, kind: "pass_through" });
+                totalAlloc += a.amount;
+                preAffected[a.invoiceId] = true;
+                ptCount++;
               }
             });
             saveCreditNote(allocCN.creditNoteId);
-    auditLog("Credit Note Allocated", cn.creditNoteId + ": " + money(totalAlloc, cn.currency) + " allocated to " + cn.allocations.length + " invoice(s)", { creditNoteId: cn.creditNoteId, amount: totalAlloc, currency: cn.currency, allocations: cn.allocations.slice() });
-            setAllocCN(null); setAllocs([]);
+            var summary = cn.creditNoteId + ": " + money(totalAlloc, cn.currency) + " allocated to " + cn.allocations.length + " invoice(s)";
+            if (ptCount > 0) summary += " (" + fundedCount + " funded recovery, " + ptCount + " pass-through)";
+            auditLog("Credit Note Allocated", summary, { creditNoteId: cn.creditNoteId, amount: totalAlloc, currency: cn.currency, allocations: cn.allocations.slice(), fundedCount: fundedCount, passThroughCount: ptCount });
+            setAllocCN(null); setAllocs([]); setCnPassThroughAllocs([]);
             setDataVer(function(v) { return v + 1; });
+            persistDerivedFieldsForInvoices(Object.keys(preAffected), viewDate);
           }
 
           return <div>
@@ -13616,7 +16740,7 @@ export default function FactoringDashboard() {
 
             {/* Credit Notes List */}
             {(function() {
-              var cnlHasActive = !!(cnlSearch || cnlCcyFilter || cnlSupFilter || cnlBuyFilter || cnlStatusFilter || cnlDateFrom || cnlDateTo);
+              var cnlHasActive = !!(cnlSearch || cnlCcyFilter || cnlSupFilter || cnlBuyFilter || cnlStatusFilter || cnlVoidedFilter || cnlDateFrom || cnlDateTo);
               function cnStatus(cn) {
                 var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
                 var remaining = r2(cn.amount - allocated);
@@ -13624,6 +16748,11 @@ export default function FactoringDashboard() {
               }
               function applyCnlFilters(list) {
                 var r = list;
+                // Voided default: hide. "yes" = show only voided. "all" = show both. Voided rows are
+                // visible-for-audit only; they're disregarded in calculations (filtered at processForDate).
+                if (cnlVoidedFilter === "yes") r = r.filter(function(cn) { return !!cn.voided; });
+                else if (cnlVoidedFilter === "all") { /* no filter */ }
+                else r = r.filter(function(cn) { return !cn.voided; });
                 if (cnlCcyFilter) r = r.filter(function(cn) { return cn.currency === cnlCcyFilter; });
                 if (cnlSupFilter) r = r.filter(function(cn) { return cn.supplierName === cnlSupFilter; });
                 if (cnlBuyFilter) r = r.filter(function(cn) { return cn.buyerName === cnlBuyFilter; });
@@ -13701,9 +16830,14 @@ export default function FactoringDashboard() {
                   <option value="partial">Partial</option>
                   <option value="allocated">Allocated</option>
                 </select>
+                <select value={cnlVoidedFilter} onChange={function(e) { setCnlVoidedFilter(e.target.value); setCnlPage(0); }} title="Voided credit notes are kept for audit but disregarded in calculations." style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlVoidedFilter ? "var(--accent)" : "var(--border)"), background: cnlVoidedFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">Hide voided</option>
+                  <option value="all">Show voided</option>
+                  <option value="yes">Voided only</option>
+                </select>
                 <input type="date" value={cnlDateFrom} onChange={function(e) { setCnlDateFrom(e.target.value); setCnlPage(0); }} title="Date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateFrom ? "var(--accent)" : "var(--border)"), background: cnlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={cnlDateTo} onChange={function(e) { setCnlDateTo(e.target.value); setCnlPage(0); }} title="Date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlDateTo ? "var(--accent)" : "var(--border)"), background: cnlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {cnlHasActive && <button onClick={function() { setCnlSearch(""); setCnlCcyFilter(""); setCnlSupFilter(""); setCnlBuyFilter(""); setCnlStatusFilter(""); setCnlDateFrom(""); setCnlDateTo(""); setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {cnlHasActive && <button onClick={function() { setCnlSearch(""); setCnlCcyFilter(""); setCnlSupFilter(""); setCnlBuyFilter(""); setCnlStatusFilter(""); setCnlVoidedFilter(""); setCnlDateFrom(""); setCnlDateTo(""); setCnlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
               {CREDIT_NOTES_DB.length === 0 && <div style={{ padding: "20px 28px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No credit notes created yet.</div>}
               {CREDIT_NOTES_DB.length > 0 && filteredCn.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No credit notes match your filters.</div>}
@@ -13718,8 +16852,8 @@ export default function FactoringDashboard() {
                     // Get audit entries for this CN
                     var cnAudit = AUDIT_LOG.filter(function(log) { var c = log.context || {}; return c.creditNoteId === cn.creditNoteId || (log.details || "").indexOf(cn.creditNoteId) >= 0; }).slice().reverse();
                     return <tbody key={cn.creditNoteId}>
-                      <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
-                      <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}</td>
+                      <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent", opacity: cn.voided ? 0.5 : 1, textDecoration: cn.voided ? "line-through" : "none" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
+                      <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}{cn.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (cn.voidedAt ? "on " + new Date(cn.voidedAt).toLocaleString("en-GB") : "") + (cn.voidedBy ? " by " + cn.voidedBy : "") + (cn.voidReason ? "\nReason: " + cn.voidReason : "")}>VOIDED</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
@@ -13738,7 +16872,7 @@ export default function FactoringDashboard() {
                         {/* Credit Note Details */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
                           <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "18px 22px" }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 12, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Credit Note Details</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--text)", marginBottom: 12, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Credit Note Details</div>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Credit Note ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cn.creditNoteId}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Date</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(cn.date)}</div></div>
@@ -13750,14 +16884,21 @@ export default function FactoringDashboard() {
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Created</div><div style={{ fontSize: 12, color: "var(--text-secondary)" }}>{cn.createdDisplay}</div></div>
                             </div>
                             {/* Allocate button for non-fully-allocated */}
-                            {status !== "allocated" && <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                              <button onClick={function(e) { e.stopPropagation(); setAllocCN(cn); setAllocs([]); setCnSearch(""); setCnProgFilter(""); setCnSupFilter(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Allocate to Invoices</button>
+                            {status !== "allocated" && !cn.voided && <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                              <button onClick={function(e) { e.stopPropagation(); var preF = []; var preP = []; (cn.allocations || []).forEach(function(a) { if (a.kind === "pass_through") preP.push({ invoiceId: a.invoiceId, amount: a.amount, kind: "pass_through" }); else preF.push({ invoiceId: a.invoiceId, amount: a.amount, kind: "funded_recovery" }); }); setAllocCN(cn); setAllocs(preF); setCnPassThroughAllocs(preP); setCnSearch(""); setCnProgFilter(""); setCnSupFilter(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Allocate to Invoices</button>
                             </div>}
+                            {/* Void / Un-void. Voiding requires zero allocations (enforced in voidCreditNote helper). */}
+                            <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              {!cn.voided && status === "unallocated" && <button onClick={function(e) { e.stopPropagation(); setVoidPromptReason(""); setVoidPrompt({ kind: "creditNote", action: "void", id: cn.creditNoteId, name: cn.supplierName + " \u2192 " + cn.buyerName, amount: cn.amount, currency: cn.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Mark this credit note as voided. It remains for audit but is disregarded everywhere else.">Void Credit Note</button>}
+                              {!cn.voided && status !== "unallocated" && <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }} title="Unallocate first to enable voiding.">Cannot void while allocated</span>}
+                              {cn.voided && <button onClick={function(e) { e.stopPropagation(); setVoidPromptReason(""); setVoidPrompt({ kind: "creditNote", action: "unvoid", id: cn.creditNoteId, name: cn.supplierName + " \u2192 " + cn.buyerName, amount: cn.amount, currency: cn.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this credit note — it will count in calculations again.">Un-void Credit Note</button>}
+                              {cn.voided && cn.voidReason && <span style={{ fontSize: 11, color: "var(--muted)" }}>Voided: <em style={{ color: "var(--text-secondary)" }}>{cn.voidReason}</em>{cn.voidedBy ? " \u2014 " + cn.voidedBy : ""}{cn.voidedAt ? " on " + new Date(cn.voidedAt).toLocaleString("en-GB") : ""}</span>}
+                            </div>
                           </div>
 
                           {/* Allocations */}
                           <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "18px 22px" }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 12, paddingBottom: 6, borderBottom: "2px solid #C08B30" }}>Allocations ({cn.allocations.length})</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "#D97706", marginBottom: 12, paddingBottom: 6, borderBottom: "2px solid #C08B30" }}>Allocations ({cn.allocations.length})</div>
                             {cn.allocations.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", padding: "8px 0" }}>No allocations yet.</div>}
                             {cn.allocations.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
                               <thead><tr>{["Invoice", "Buyer", "Amount", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
@@ -13775,6 +16916,7 @@ export default function FactoringDashboard() {
                                     saveCreditNote(cn.creditNoteId);
     auditLog("Credit Note Unallocated", cn.creditNoteId + ": " + money(removedAmt, cn.currency) + " unallocated from " + removedInvId, { creditNoteId: cn.creditNoteId, invoiceId: removedInvId, amount: removedAmt, currency: cn.currency });
                                     setDataVer(function(v) { return v + 1; });
+                                    persistDerivedFieldsForInvoices([removedInvId], viewDate);
                                   }} style={{ padding: "3px 8px", borderRadius: 5, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Unallocate</button></td>
                                 </tr>;
                               })}</tbody>
@@ -13784,7 +16926,7 @@ export default function FactoringDashboard() {
 
                         {/* Notes */}
                         <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "18px 22px", marginBottom: 16 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Notes {cn.notes && cn.notes.length > 0 ? "(" + cn.notes.length + ")" : ""}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--text)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Notes {cn.notes && cn.notes.length > 0 ? "(" + cn.notes.length + ")" : ""}</div>
                           {cn.notes && cn.notes.length > 0 && <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 10 }}>
                             {cn.notes.slice().reverse().map(function(n, ni) {
                               return <div key={ni} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--bg)", marginBottom: 4, border: "1px solid var(--border)" }}>
@@ -13802,7 +16944,7 @@ export default function FactoringDashboard() {
 
                         {/* Audit Log */}
                         {cnAudit.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "18px 22px" }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Log ({cnAudit.length})</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Audit Log ({cnAudit.length})</div>
                           <div style={{ maxHeight: 150, overflowY: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
                               <tbody>{cnAudit.map(function(e, ei) {
@@ -13840,8 +16982,12 @@ export default function FactoringDashboard() {
             {allocCN && (function() {
               var avail = getCNRemaining(allocCN);
               var allocTotal = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+              var ptAllocTotal = cnPassThroughAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+              var combinedTotal = allocTotal + ptAllocTotal;
               var allInvs = viewData.invoices;
-              var eligible = allInvs.filter(function(inv) {
+              // Base eligibility: same supplier (with branch/parent matching) + same buyer
+              // + same currency. Search applies to both sections.
+              function baseEligible(inv) {
                 if (inv.currency !== allocCN.currency) return false;
                 if (allocCN.supplierName) {
                   var cnBranch = getBranchName(allocCN.supplierName);
@@ -13849,53 +16995,178 @@ export default function FactoringDashboard() {
                   else { if (getParentSupplierName(inv.supplierName) !== allocCN.supplierName) return false; }
                 }
                 if (allocCN.buyerName && inv.buyerName !== allocCN.buyerName) return false;
-                if (cnSearch && inv.id.indexOf(cnSearch.toUpperCase()) === -1 && (inv.buyerName || "").toLowerCase().indexOf(cnSearch.toLowerCase()) === -1) return false;
+                return true;
+              }
+              var fundedEligible = allInvs.filter(function(inv) { return baseEligible(inv) && isFundedInvoice(inv); });
+              var ptEligible = allInvs.filter(function(inv) {
+                if (!baseEligible(inv)) return false;
+                if (isFundedInvoice(inv)) return false;
+                if (inv.invoiceStatus === "Settled" || inv.invoiceStatus === "Cancelled" || inv.invoiceStatus === "Declined") return false;
+                if (inv.fundingStatus === "historic" || inv.fundingStatus === "write_off") return false;
                 return true;
               });
 
-              return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAllocCN(null); setAllocs([]); }}>
-                <div style={{ background: "var(--card)", borderRadius: 16, border: "2px solid var(--accent)", padding: "28px 32px", maxWidth: 960, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
+              // Filter+sort pipeline shared between sections.
+              function applyFs(list, search, dueRange, sortKey) {
+                var r = list.slice();
+                if (search) { var q = search.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) >= 0 || (inv.invoiceReference || "").toLowerCase().indexOf(q) >= 0 || (inv.buyerName || "").toLowerCase().indexOf(q) >= 0; }); }
+                if (dueRange === "overdue") r = r.filter(function(inv) { return inv.dueDate && inv.dueDate < viewDate; });
+                else if (dueRange === "30d") { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() + 30); var cs = co.toISOString().split("T")[0]; r = r.filter(function(inv) { return inv.dueDate && inv.dueDate >= viewDate && inv.dueDate <= cs; }); }
+                else if (dueRange === "90d") { var co90 = new Date(viewDate + "T12:00:00"); co90.setDate(co90.getDate() + 90); var cs90 = co90.toISOString().split("T")[0]; r = r.filter(function(inv) { return inv.dueDate && inv.dueDate >= viewDate && inv.dueDate <= cs90; }); }
+                var parts = (sortKey || "dueDate-asc").split("-");
+                var key = parts[0], dir = parts[1] === "desc" ? -1 : 1;
+                r.sort(function(a, b) {
+                  var av, bv;
+                  if (key === "dueDate") { av = a.dueDate || "9999-12-31"; bv = b.dueDate || "9999-12-31"; }
+                  else if (key === "amount") { av = a.amount || 0; bv = b.amount || 0; }
+                  else { av = a.id; bv = b.id; }
+                  return av < bv ? -dir : av > bv ? dir : 0;
+                });
+                return r;
+              }
+
+              // Buyer-side outstanding for pass-through invoices (face value − all dilutions
+              // already applied − payments already tagged).
+              function buyerOSFor(inv) {
+                var ceiling = inv.amountPostDilutions != null ? inv.amountPostDilutions : (inv.amount || 0);
+                var paid = inv.paymentsToInvoice || 0;
+                return r2(Math.max(0, ceiling - paid));
+              }
+
+              var fundedList = applyFs(fundedEligible, cnSearch, cnFundedDueRange, cnFundedSort);
+              var ptList = applyFs(ptEligible, cnPtSearch, cnPtDueRange, cnPtSort);
+
+              // Settle preview: a pass-through CN allocation that fully wipes the
+              // buyer's remaining receivable would settle the invoice. Same threshold
+              // logic as in processForDate's auto-settle.
+              var ptSettleCount = cnPassThroughAllocs.filter(function(a) {
+                var inv = ptEligible.find(function(x) { return x.id === a.invoiceId; });
+                if (!inv) return false;
+                var ceiling = inv.amountPostDilutions != null ? inv.amountPostDilutions : (inv.amount || 0);
+                var afterCN = ceiling - a.amount;
+                return r2((inv.paymentsToInvoice || 0)) >= afterCN - 0.01;
+              }).length;
+
+              var filterInputStyle = { padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none" };
+
+              return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAllocCN(null); setAllocs([]); setCnPassThroughAllocs([]); }}>
+                <div style={{ background: "var(--card)", borderRadius: 16, border: "2px solid var(--accent)", padding: "28px 32px", maxWidth: 1000, width: "95%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 600 }}>Allocate Credit Note: {allocCN.creditNoteId}</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{allocCN.supplierName} / {allocCN.buyerName || "All Buyers"} {"\u2014"} {money(allocCN.amount, allocCN.currency)} {"\u2014"} Available: <strong style={{ color: r2(avail - allocTotal) > 0 ? "#059669" : "#DC2626" }}>{money(r2(avail - allocTotal), allocCN.currency)}</strong></div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{allocCN.supplierName} / {allocCN.buyerName || "All Buyers"} {"\u2014"} {money(allocCN.amount, allocCN.currency)} {"\u2014"} Available: <strong style={{ color: r2(avail - combinedTotal) > 0 ? "#059669" : "#DC2626" }}>{money(r2(avail - combinedTotal), allocCN.currency)}</strong></div>
                   </div>
-                  <button onClick={function() { setAllocCN(null); setAllocs([]); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
+                  <button onClick={function() { setAllocCN(null); setAllocs([]); setCnPassThroughAllocs([]); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                 </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                  <input type="text" value={cnSearch} onChange={function(e) { setCnSearch(e.target.value); }} placeholder="Search invoices..." style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 220 }} />
-                  <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>{eligible.length > 50 ? "Showing first 50 of " + eligible.length + " invoices for " : eligible.length + " invoices for "}{allocCN.supplierName} / {allocCN.buyerName || "All"}</span>
+
+                {/* Section 1: Funded invoices — reduce supplier's debt to Pelagic */}
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Funded invoices · reduces Pelagic exposure</div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="text" value={cnSearch} onChange={function(e) { setCnSearch(e.target.value); }} placeholder="Search invoice / buyer..." style={Object.assign({}, filterInputStyle, { width: 180 })} />
+                      <select value={cnFundedDueRange} onChange={function(e) { setCnFundedDueRange(e.target.value); }} style={filterInputStyle}>
+                        <option value="all">All dates</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="30d">Due in 30 days</option>
+                        <option value="90d">Due in 90 days</option>
+                      </select>
+                      <select value={cnFundedSort} onChange={function(e) { setCnFundedSort(e.target.value); }} style={filterInputStyle}>
+                        <option value="dueDate-asc">Due date ↑</option>
+                        <option value="dueDate-desc">Due date ↓</option>
+                        <option value="amount-desc">Amount ↓</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Invoice", "Buyer", "Inv Amount", "Inv Status", "Fund Status", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{fundedList.slice(0, 50).map(function(inv) {
+                        var aa = allocs.find(function(a) { return a.invoiceId === inv.id; });
+                        var aaAmt = aa ? aa.amount : 0;
+                        var mx = Math.min(inv.amount, r2(avail - combinedTotal + aaAmt));
+                        var ist = IST[inv.invoiceStatus] || IST["Received"];
+                        var fst = FST[inv.fundingStatus] || FST.funded;
+                        return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aaAmt > 0 ? "#2B4C7E06" : "transparent" }}>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
+                          <td style={{ padding: "8px 12px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
+                          <td style={{ padding: "8px 12px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
+                          <td style={{ padding: "8px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input type="number" step="0.01" value={aaAmt > 0 ? String(aaAmt) : ""} onChange={function(e) { var v = Math.min(r2(parseFloat(e.target.value) || 0), mx); setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (v > 0) f.push({ invoiceId: inv.id, amount: v, kind: "funded_recovery" }); return f; }); }} placeholder="0.00" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aaAmt > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
+                            <button onClick={function() { setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); f.push({ invoiceId: inv.id, amount: mx, kind: "funded_recovery" }); return f; }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Max</button>
+                          </div></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                    {fundedList.length === 0 && <div style={{ padding: "16px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No funded invoices match this credit note's supplier/buyer/currency</div>}
+                  </div>
                 </div>
-                <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 16 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Invoice", "Supplier", "Buyer", "Inv Amount", "Inv Status", "Fund Status", "Allocate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{eligible.slice(0, 50).map(function(inv) {
-                      var aa = allocs.find(function(a) { return a.invoiceId === inv.id; });
-                      var aaAmt = aa ? aa.amount : 0;
-                      var mx = Math.min(inv.amount, r2(avail - allocTotal + aaAmt));
-                      var ist = IST[inv.invoiceStatus] || IST["Received"];
-                      var fst = FST[inv.fundingStatus] || FST.funded;
-                      return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aaAmt > 0 ? "#2B4C7E06" : "transparent" }}>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
-                        <td style={{ padding: "8px 12px", fontSize: 12 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
-                        <td style={{ padding: "8px 12px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
-                        <td style={{ padding: "8px 12px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
-                        <td style={{ padding: "8px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <input type="number" step="0.01" value={aaAmt > 0 ? String(aaAmt) : ""} onChange={function(e) { var v = Math.min(r2(parseFloat(e.target.value) || 0), mx); setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (v > 0) f.push({ invoiceId: inv.id, amount: v }); return f; }); }} placeholder="0.00" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (aaAmt > 0 ? "var(--accent)" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
-                          <button onClick={function() { setAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); f.push({ invoiceId: inv.id, amount: mx }); return f; }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Max</button>
-                        </div></td>
-                      </tr>;
-                    })}</tbody>
-                  </table>
-                </div>
+
+                {/* Section 2: Pass-through invoices — reduce buyer's debt to supplier */}
+                {ptEligible.length > 0 && <div style={{ marginBottom: 18, background: "var(--bg)", borderRadius: 8, padding: "14px 16px", border: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Unpurchased invoices</div>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: "#7C3AED14", color: "#7C3AED", border: "1px solid #7C3AED40", letterSpacing: "0.04em", textTransform: "uppercase" }}>Pass-through</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="text" value={cnPtSearch} onChange={function(e) { setCnPtSearch(e.target.value); }} placeholder="Search invoice / buyer..." style={Object.assign({}, filterInputStyle, { width: 180 })} />
+                      <select value={cnPtDueRange} onChange={function(e) { setCnPtDueRange(e.target.value); }} style={filterInputStyle}>
+                        <option value="all">All dates</option>
+                        <option value="overdue">Overdue</option>
+                        <option value="30d">Due in 30 days</option>
+                        <option value="90d">Due in 90 days</option>
+                      </select>
+                      <select value={cnPtSort} onChange={function(e) { setCnPtSort(e.target.value); }} style={filterInputStyle}>
+                        <option value="dueDate-asc">Due date ↑</option>
+                        <option value="dueDate-desc">Due date ↓</option>
+                        <option value="amount-desc">Face value ↓</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8 }}>Tag CN amount against unpurchased invoices to reduce the buyer-side receivable. Does not feed Pelagic dilution metrics; the supplier bears the reduction.</div>
+                  <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead><tr>{["Invoice", "Buyer", "Due Date", "Face Value", "Buyer O/S", "Apply"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg)" }}>{h}</th>; })}</tr></thead>
+                      <tbody>{ptList.slice(0, 50).map(function(inv) {
+                        var existing = cnPassThroughAllocs.find(function(a) { return a.invoiceId === inv.id; });
+                        var currentAmt = existing ? existing.amount : 0;
+                        var buyerOS = buyerOSFor(inv);
+                        var ceiling = inv.amountPostDilutions != null ? inv.amountPostDilutions : (inv.amount || 0);
+                        var mx = Math.min(buyerOS + currentAmt, r2(avail - combinedTotal + currentAmt));
+                        var willSettle = currentAmt > 0 && (inv.paymentsToInvoice || 0) >= (ceiling - currentAmt) - 0.01;
+                        return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: currentAmt > 0 ? "#7C3AED08" : "transparent" }}>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{inv.id}</span></td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName || "\u2014"}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(inv.amount, inv.currency)}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>
+                            {money(buyerOS, inv.currency)}
+                            {willSettle && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "2px 5px", borderRadius: 3, background: "#10B98120", color: "#10B981", letterSpacing: "0.04em", textTransform: "uppercase" }}>Settles</span>}
+                          </td>
+                          <td style={{ padding: "8px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <input type="number" step="0.01" value={currentAmt > 0 ? String(currentAmt) : ""} onChange={function(e) { var v = Math.min(r2(parseFloat(e.target.value) || 0), mx); setCnPassThroughAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (v > 0) f.push({ invoiceId: inv.id, amount: v, kind: "pass_through" }); return f; }); }} placeholder="0.00" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (currentAmt > 0 ? "#7C3AED" : "var(--border)"), background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 90 }} />
+                            <button onClick={function() { setCnPassThroughAllocs(function(prev) { var f = prev.filter(function(a) { return a.invoiceId !== inv.id; }); if (mx > 0) f.push({ invoiceId: inv.id, amount: mx, kind: "pass_through" }); return f; }); }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid #7C3AED40", background: "#7C3AED10", color: "#7C3AED", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Max</button>
+                          </div></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                    {ptList.length === 0 && <div style={{ padding: "12px", textAlign: "center", color: "var(--muted)", fontSize: 12, fontStyle: "italic" }}>No matching unpurchased invoices for this supplier/buyer</div>}
+                  </div>
+                </div>}
+
                 <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                    <button onClick={executeCNAllocation} disabled={allocTotal < 0.01} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: allocTotal > 0 ? "var(--accent)" : "var(--border)", color: allocTotal > 0 ? "#fff" : "var(--muted)", fontSize: 14, fontWeight: 600, cursor: allocTotal > 0 ? "pointer" : "default", boxShadow: allocTotal > 0 ? "0 2px 10px #2B4C7E30" : "none" }}>Allocate {money(r2(allocTotal), allocCN.currency)}</button>
-                    <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{allocs.filter(function(a) { return a.amount > 0; }).length} invoice(s)</span>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <button onClick={executeCNAllocation} disabled={combinedTotal < 0.01} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: combinedTotal > 0 ? "var(--accent)" : "var(--border)", color: combinedTotal > 0 ? "#fff" : "var(--muted)", fontSize: 14, fontWeight: 600, cursor: combinedTotal > 0 ? "pointer" : "default", boxShadow: combinedTotal > 0 ? "0 2px 10px #2B4C7E30" : "none" }}>Allocate {money(r2(combinedTotal), allocCN.currency)}</button>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {allocs.length > 0 ? "Funded: " + money(allocTotal, allocCN.currency) + " (" + allocs.length + ")" : ""}
+                      {allocs.length > 0 && cnPassThroughAllocs.length > 0 ? " · " : ""}
+                      {cnPassThroughAllocs.length > 0 ? "Pass-through: " + money(ptAllocTotal, allocCN.currency) + " (" + cnPassThroughAllocs.length + (ptSettleCount > 0 ? ", " + ptSettleCount + " settles" : "") + ")" : ""}
+                    </span>
                   </div>
-                  <button onClick={function() { setAllocCN(null); setAllocs([]); }} style={{ padding: "10px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={function() { setAllocCN(null); setAllocs([]); setCnPassThroughAllocs([]); }} style={{ padding: "10px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
               </div>;
@@ -13942,7 +17213,7 @@ export default function FactoringDashboard() {
               amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
               interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
               advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
-              buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", poNumber: nf.poNumber || "",
+              buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", purchaseOrder: nf.purchaseOrder || "",
               invoiceStatus: "Received", invoiceStatusHistory: hist,
               fundingStatus: "pending", fundingProgram: null,
               invoiceDate: nf.invoiceDate, dueDate: nf.dueDate,
@@ -13951,14 +17222,19 @@ export default function FactoringDashboard() {
             });
             auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: nf.buyer, dueDate: nf.dueDate });
             saveInvoice(newId);
-            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
+            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
             setInvlShowCreate(false);
             setDataVer(function(v) { return v + 1; });
           }
           // Build filtered list
-          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlDateFrom || invlDateTo);
+          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlVoidedFilter || invlDateFrom || invlDateTo);
           function applyInvlFilters(list) {
             var r = list;
+            // Voided default: hide. "yes" = show only voided. "all" = show both. Voided rows are
+            // visible-for-audit only; they're disregarded everywhere else (filtered out at processForDate).
+            if (invlVoidedFilter === "yes") r = r.filter(function(inv) { return !!inv.voided; });
+            else if (invlVoidedFilter === "all") { /* no filter */ }
+            else r = r.filter(function(inv) { return !inv.voided; });
             if (invlCcyFilter) r = r.filter(function(inv) { return inv.currency === invlCcyFilter; });
             if (invlSupFilter) r = r.filter(function(inv) { return (inv.supplierName === invlSupFilter) || (inv.supplierId === invlSupFilter); });
             if (invlBuyFilter) r = r.filter(function(inv) { return (inv.buyerName === invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
@@ -13974,7 +17250,7 @@ export default function FactoringDashboard() {
             if (invlDnaFilter === "no") r = r.filter(function(inv) { return !inv.doNotAdvance; });
             if (invlDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= invlDateFrom; });
             if (invlDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= invlDateTo; });
-            if (invlSearch) { var q = invlSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            if (invlSearch) { var q = invlSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
             return r;
           }
           // Stats (always honour filters)
@@ -14072,7 +17348,7 @@ export default function FactoringDashboard() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Purchase Order No.</label>
-                    <input type="text" value={nf.poNumber} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { poNumber: e.target.value }); }); }} placeholder="Optional" style={inpS} />
+                    <input type="text" value={nf.purchaseOrder} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { purchaseOrder: e.target.value }); }); }} placeholder="Optional" style={inpS} />
                   </div>
                 </div>
                 {amt > 0 && days > 0 && <div style={{ marginTop: 12, padding: "10px 16px", borderRadius: 8, background: "var(--bg)", fontSize: 12 }}>
@@ -14097,7 +17373,7 @@ export default function FactoringDashboard() {
                   var rows = filteredInvs.map(function(inv) {
                     var progName = "";
                     if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
-                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.fundingStatus || "", progName, inv.doNotFund ? "yes" : "no", inv.doNotAdvance ? "yes" : "no", inv.buyerRef || "", inv.supplierRef || "", inv.poNumber || ""];
+                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.fundingStatus || "", progName, inv.doNotFund ? "yes" : "no", inv.doNotAdvance ? "yes" : "no", inv.buyerRef || "", inv.supplierRef || "", inv.purchaseOrder || ""];
                   });
                   var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
                   var blob = new Blob([csv], { type: "text/csv" });
@@ -14139,9 +17415,14 @@ export default function FactoringDashboard() {
                   <option value="yes">Do Not Advance only</option>
                   <option value="no">Exclude DNA</option>
                 </select>
+                <select value={invlVoidedFilter} onChange={function(e) { setInvlVoidedFilter(e.target.value); setInvlPage(0); }} title="Voided invoices are kept for audit but disregarded in calculations." style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlVoidedFilter ? "var(--accent)" : "var(--border)"), background: invlVoidedFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
+                  <option value="">Hide voided</option>
+                  <option value="all">Show voided</option>
+                  <option value="yes">Voided only</option>
+                </select>
                 <input type="date" value={invlDateFrom} onChange={function(e) { setInvlDateFrom(e.target.value); setInvlPage(0); }} title="Invoice date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateFrom ? "var(--accent)" : "var(--border)"), background: invlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={invlDateTo} onChange={function(e) { setInvlDateTo(e.target.value); setInvlPage(0); }} title="Invoice date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateTo ? "var(--accent)" : "var(--border)"), background: invlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlVoidedFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
 
               {INVOICES_DB.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices yet. Expand "Create New Invoice" above to add one.</div>}
@@ -14154,8 +17435,8 @@ export default function FactoringDashboard() {
                     var fst = FST[inv.fundingStatus] || FST.pending;
                     var progName = "";
                     if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
-                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", opacity: inv.doNotFund ? 0.7 : 1 }} onClick={function() { drillToInvoice(inv.id); }}>
-                      <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
+                    return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", opacity: inv.voided ? 0.5 : (inv.doNotFund ? 0.7 : 1), textDecoration: inv.voided ? "line-through" : "none" }} onClick={function() { drillToInvoice(inv.id); }}>
+                      <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (inv.voidedAt ? "on " + new Date(inv.voidedAt).toLocaleString("en-GB") : "") + (inv.voidedBy ? " by " + inv.voidedBy : "") + (inv.voidReason ? "\nReason: " + inv.voidReason : "")}>VOIDED</span>}{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
@@ -14194,6 +17475,25 @@ export default function FactoringDashboard() {
             var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
+          // Drill to the invoice on its supplier's Invoices tab, expand the
+          // detail row, and immediately activate edit mode. Used by the row-
+          // level Edit button — saves the operator from the multi-step path
+          // of opening the supplier, finding the invoice, clicking the chevron,
+          // then the Edit Invoice button. Especially useful when the table is
+          // wider than the viewport and the chevron is off-screen to the right.
+          function drillToInvoiceForEdit(invoiceId) {
+            var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+            if (!inv) return;
+            var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+            if (!sup) return;
+            setView("supplier");
+            setSelectedSupplier(sup.id);
+            setSupTab("invoices");
+            setQ(invoiceId);
+            setPg(0);
+            setExp(invoiceId);
+            startEdit(inv);
+          }
           function drillToSupplier(supplierName) {
             var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
@@ -14215,7 +17515,7 @@ export default function FactoringDashboard() {
             if (upiBuyFilter) r = r.filter(function(inv) { return inv.buyerName === upiBuyFilter; });
             if (upiDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= upiDateFrom; });
             if (upiDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= upiDateTo; });
-            if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
             return r;
           }
           // Build eligible programs per-invoice (intersection driver for bulk allocate)
@@ -14354,13 +17654,25 @@ export default function FactoringDashboard() {
             if (!selectedBulkOpt || selectedInvs.length === 0) return;
             var fp = selectedBulkOpt.fp;
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
-            var allocated = [], funded = [];
+            var allocated = [], funded = [], creditSkippedSup = [], creditSkippedBuy = [], creditSkippedBoth = [];
+            // Stage 1.9: pause gates for the fundAtMax branch. Allocate-only is intentionally
+            // not pause-gated (no cash moves; the gate matters only when capital is advanced).
+            // Without these, Fund-at-max-from-Unpurchased bypasses the pause gate enforced by
+            // the single-invoice fund popup, letting an operator fund invoices for a paused
+            // supplier or buyer simply by routing through the bulk path.
+            var pauseSkippedSup = [], pauseSkippedBuy = [];
+            // Track per-supplier and per-buyer credit-limit headroom across the bulk run for the "& Fund" branch.
+            var creditHeadroomMap = {}; // key = supplierParentId
+            var buyerCreditHeadroomMap = {}; // key = buyerId
             var now = new Date();
             var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
             selectedInvs.forEach(function(invProc) {
               var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
               if (!raw || raw.fundingStatus !== "pending") return;
               if (fundAtMax) {
+                // Pause gate — match the single-invoice fund popup. Skip paused entities.
+                if (isEntityPaused(raw.supplierEntityId || raw.supplierId)) { pauseSkippedSup.push(raw.id); return; }
+                if (isBuyerPaused(raw.buyerId)) { pauseSkippedBuy.push(raw.id); return; }
                 // Compute effective base (matches getMaxAvailableCapital + buyer-collected term)
                 var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
                 var postDil = raw.amount - (invProc.dilutionTotal || 0);
@@ -14368,6 +17680,22 @@ export default function FactoringDashboard() {
                 var postCol = raw.amount - buyerCollected;
                 var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
                 var cap = r2(effectiveBase * fp.maxAdvanceRate);
+                // Credit-limit gates (apply only when funding, not allocate-only). Both supplier-side and buyer-side.
+                var supEntId = raw.supplierEntityId || raw.supplierId;
+                var supParent = getParentEntityId(supEntId);
+                if (creditHeadroomMap[supParent] === undefined) {
+                  creditHeadroomMap[supParent] = getSupplierProgramCreditHeadroom(supEntId, fp.id, null);
+                }
+                if (buyerCreditHeadroomMap[raw.buyerId] === undefined) {
+                  buyerCreditHeadroomMap[raw.buyerId] = getBuyerProgramCreditHeadroom(raw.buyerId, fp.id, null);
+                }
+                var clHeadroom = creditHeadroomMap[supParent];
+                var buyHeadroom = buyerCreditHeadroomMap[raw.buyerId];
+                var supBlk = clHeadroom !== Infinity && clHeadroom < cap - 0.01;
+                var buyBlk = buyHeadroom !== Infinity && buyHeadroom < cap - 0.01;
+                if (supBlk && buyBlk) { creditSkippedBoth.push(raw.id); return; }
+                if (supBlk) { creditSkippedSup.push(raw.id); return; }
+                if (buyBlk) { creditSkippedBuy.push(raw.id); return; }
                 raw.capitalDue = cap;
                 raw.holdback = r2(raw.amount - cap);
                 raw.annualRate = fp.minInterestRate;
@@ -14380,6 +17708,8 @@ export default function FactoringDashboard() {
                 raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                 raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                 raw.intendedPaymentDate = fundingDate;
+                if (clHeadroom !== Infinity) creditHeadroomMap[supParent] -= cap;
+                if (buyHeadroom !== Infinity) buyerCreditHeadroomMap[raw.buyerId] -= cap;
                 funded.push(raw.id);
               } else {
                 // Allocate only — stay at capitalDue=0
@@ -14398,12 +17728,44 @@ export default function FactoringDashboard() {
               raw.approvedDate = viewDate;
               raw.fundingProgram = fp.id;
               saveInvoice(raw.id);
+              // Per-invoice audit so the entry appears in the invoice's own trail
+              // and propagates to the supplier portal (which filters by supplierId).
+              auditLog("Invoice Approved", raw.id + " approved for funding via " + fp.name + ": " + money(raw.amount, raw.currency) + " \u2014 " + raw.supplierName, { invoiceId: raw.id, amount: raw.amount, currency: raw.currency, supplierId: raw.supplierId, supplierName: raw.supplierName, supplier: raw.supplierName, buyerId: raw.buyerId, buyer: raw.buyerName, approvedDate: raw.approvedDate, fundingProgram: fp.id, fundingProgramName: fp.name });
             });
             if (allocated.length > 0) {
               auditLog("Invoices Allocated to Program", allocated.length + " invoice(s) allocated to " + fp.name + " at \u00a30 capital: " + allocated.join(", "), { invoiceIds: allocated, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_only" });
             }
             if (funded.length > 0) {
               auditLog("Invoices Allocated & Funded", funded.length + " invoice(s) allocated to " + fp.name + " and funded at max: " + funded.join(", "), { invoiceIds: funded, fundingProgram: fp.id, fundingProgramName: fp.name, action: "allocate_and_fund" });
+            }
+            if (creditSkippedSup.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedSup.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier credit limit reached): " + creditSkippedSup.join(", "), { invoiceIds: creditSkippedSup, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "supplier_credit_limit" });
+            }
+            if (creditSkippedBuy.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedBuy.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (buyer credit limit reached): " + creditSkippedBuy.join(", "), { invoiceIds: creditSkippedBuy, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "buyer_credit_limit" });
+            }
+            if (creditSkippedBoth.length > 0) {
+              auditLog("Funding Skipped \u2014 Credit Limit", creditSkippedBoth.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (both supplier and buyer credit limits reached): " + creditSkippedBoth.join(", "), { invoiceIds: creditSkippedBoth, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "both_credit_limits" });
+            }
+            // Stage 1.9: audit + alert pause-skipped invoices. Mirrors the credit-skipped
+            // pattern so operators see exactly which invoices were excluded and why.
+            if (pauseSkippedSup.length > 0) {
+              auditLog("Funding Skipped \u2014 Paused", pauseSkippedSup.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (supplier paused): " + pauseSkippedSup.join(", "), { invoiceIds: pauseSkippedSup, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "supplier_paused" });
+            }
+            if (pauseSkippedBuy.length > 0) {
+              auditLog("Funding Skipped \u2014 Paused", pauseSkippedBuy.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (buyer paused): " + pauseSkippedBuy.join(", "), { invoiceIds: pauseSkippedBuy, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "buyer_paused" });
+            }
+            var totalSkipped = creditSkippedSup.length + creditSkippedBuy.length + creditSkippedBoth.length;
+            var totalPauseSkipped = pauseSkippedSup.length + pauseSkippedBuy.length;
+            if (totalSkipped > 0 || totalPauseSkipped > 0) {
+              var alertParts = [(totalSkipped + totalPauseSkipped) + " invoice(s) were skipped during Allocate & Fund on " + fp.name + ":\n"];
+              if (creditSkippedSup.length > 0) alertParts.push("\nSupplier credit limit reached (" + creditSkippedSup.length + "): " + creditSkippedSup.join(", "));
+              if (creditSkippedBuy.length > 0) alertParts.push("\nBuyer credit limit reached (" + creditSkippedBuy.length + "): " + creditSkippedBuy.join(", "));
+              if (creditSkippedBoth.length > 0) alertParts.push("\nBoth credit limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
+              if (pauseSkippedSup.length > 0) alertParts.push("\nSupplier paused (" + pauseSkippedSup.length + "): " + pauseSkippedSup.join(", "));
+              if (pauseSkippedBuy.length > 0) alertParts.push("\nBuyer paused (" + pauseSkippedBuy.length + "): " + pauseSkippedBuy.join(", "));
+              alertParts.push("\n\nThese invoices remain pending. Resolve the cause (unpause the entity, or increase credit limits), then retry.");
+              alert(alertParts.join(""));
             }
             setUpiSelected({});
             setUpiBulkProg("");
@@ -14488,7 +17850,7 @@ export default function FactoringDashboard() {
                     <th style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 700, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", width: 32 }}>
                       <div onClick={toggleSelectAllPage} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (allPageSelected ? "var(--accent)" : "var(--border)"), background: allPageSelected ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: pageEligibleIds.length > 0 ? "pointer" : "default", opacity: pageEligibleIds.length > 0 ? 1 : 0.3 }} title={pageEligibleIds.length === 0 ? "No eligible rows on this page" : (allPageSelected ? "Deselect all on page" : "Select all on page")}>{allPageSelected ? "\u2713" : ""}</div>
                     </th>
-                    {[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "daysPending", l: "Days" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "maxCap", l: "Max Capital" }, { k: null, l: "Eligibility" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"uph-" + hi} onClick={h.k ? upiSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? upiArr(h.k) : ""}</th>; })}
+                    {[{ k: "id", l: "Invoice ID" }, { k: "invoiceDate", l: "Invoice Date" }, { k: "daysPending", l: "Days" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "maxCap", l: "Max Capital" }, { k: null, l: "Eligibility" }, { k: null, l: "Actions" }].map(function(h, hi) { return <th key={"uph-" + hi} onClick={h.k ? upiSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>{h.l}{h.k ? upiArr(h.k) : ""}</th>; })}
                   </tr></thead>
                   <tbody>{upiPageItems.map(function(inv) {
                     var ist = IST[inv.invoiceStatus] || IST["Received"];
@@ -14522,12 +17884,30 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11 }}>
-                        {isDnp ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Excluded</span> : (noElig ? <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>)}
+                        {isDnp ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Excluded</span> : (noElig ? (function() {
+                          // Diagnose ineligibility for tooltip rendering
+                          var diag = getEligibilityReasons(inv, supDilRates);
+                          return <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <Badge label="No eligible program" bg="#EF444414" color="#EF4444" border="#EF444430" />
+                            <IneligibilityIndicator diag={diag} placement="left" />
+                          </span>;
+                        })() : <span style={{ fontSize: 11, color: "var(--text-secondary)" }} title={eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); return p ? p.name : pid; }).join(", ")}>{eligIds.length} program{eligIds.length === 1 ? "" : "s"}</span>)}
                       </td>
                       <td style={{ padding: "8px 8px" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          {canAllocate && <button onClick={function() { openRowFundPopup(inv); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #38BDF8", background: "transparent", color: "#38BDF8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Allocate & Fund</button>}
-                          <button onClick={toggleRowDnp} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (isDnp ? "var(--accent)" : "#6B7280"), background: isDnp ? "transparent" : "#6B728010", color: isDnp ? "var(--accent)" : "#94A3B8", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", opacity: 1 }} title={isDnp ? "Clear Do Not Purchase \u2014 return to allocation queue" : "Mark this invoice Do Not Purchase \u2014 exclude from allocation"}>{isDnp ? "Clear DNP" : "Mark DNP"}</button>
+                          {isDnp && <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", whiteSpace: "nowrap" }}>DNP</span>}
+                          {!isDnp && noElig && (function() {
+                            var diag = getEligibilityReasons(inv, supDilRates);
+                            return <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "var(--card)", color: "var(--muted)", border: "1px solid var(--border)", whiteSpace: "nowrap" }}>Not eligible</span>
+                              <IneligibilityIndicator diag={diag} placement="left" />
+                            </span>;
+                          })()}
+                          {/* Edit shortcut — drills to the invoice's supplier Invoices tab with
+                              the row expanded and edit mode already on. Saves the operator from
+                              hunting for the chevron, which is often scrolled off-screen on a
+                              wide table. */}
+                          <button onClick={function() { drillToInvoiceForEdit(inv.id); }} title="Edit this invoice" style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Edit</button>
                         </div>
                       </td>
                     </tr>;
@@ -14613,18 +17993,19 @@ export default function FactoringDashboard() {
                 companyNumber: data.company_number || num,
                 incorporationDate: data.date_of_creation || entObj.incorporationDate || "",
                 companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : entObj.companyStatus || "",
-                street1: addr.address_line_1 || entObj.street1 || "",
-                street2: addr.address_line_2 || entObj.street2 || "",
+                addressLine1: addr.address_line_1 || entObj.addressLine1 || "",
+                addressLine2: addr.address_line_2 || entObj.addressLine2 || "",
                 city: addr.locality || entObj.city || "",
-                state: addr.region || entObj.state || "",
-                zip: addr.postal_code || entObj.zip || "",
+                county: addr.region || entObj.county || "",
+                postcode: addr.postal_code || entObj.postcode || "",
                 country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : entObj.country || "United Kingdom",
                 directors: merged
               });
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
-              saveBuyer(b.id);
-              if (entObj.id.startsWith("SUP")) saveSupplier(entObj.id);
-              else if (entObj.id.startsWith("SP-")) saveServiceProvider(entObj.id);
+              // Dispatch to the correct table based on the entity ID prefix.
+              // IDs are: SUP-### for suppliers, SVC-### for service providers, BUY-### for buyers.
+              if (entObj.id.indexOf("SUP-") === 0) saveSupplier(entObj.id);
+              else if (entObj.id.indexOf("SVC-") === 0) saveServiceProvider(entObj.id);
               else saveBuyer(entObj.id);
     auditLog("CH Auto-Update", "Updated " + entObj.id + " (" + entObj.name + ") from Companies House. " + directors.length + " officers imported.", { entityId: entObj.id, companyNumber: num, officerCount: directors.length });
               setDataVer(function(v) { return v + 1; });
@@ -14641,7 +18022,7 @@ export default function FactoringDashboard() {
                 var newCoNum = (f.companyNumber || "").trim();
                 // Build field-level change log
                 var changes = [];
-                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
+                var trackFields = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified" };
                 Object.keys(trackFields).forEach(function(k) {
                   var oldVal = ent[k] !== undefined && ent[k] !== null ? String(ent[k]) : "";
                   var newVal = f[k] !== undefined && f[k] !== null ? String(f[k]) : "";
@@ -14714,6 +18095,11 @@ export default function FactoringDashboard() {
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
                 Object.assign(ent, f);
+                // Persist to Supabase. Without this, credit-limit and other manage-panel edits
+                // would only live in memory until the next bulk save. Applies to suppliers, buyers, and SPs.
+                if (manageTab === "suppliers") saveSupplier(manageEdit);
+                else if (manageTab === "service_providers") saveServiceProvider(manageEdit);
+                else if (manageTab === "buyers") saveBuyer(manageEdit);
                 // If company number was added or changed, auto-fetch from CH
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
@@ -14734,6 +18120,10 @@ export default function FactoringDashboard() {
               if (coNum && (!f.directors || f.directors.length === 0)) {
                 chFetchAndUpdateEntity(newEnt, coNum);
               }
+              // Step E: Round-trip prospect conversion. If we arrived via deep link, write back.
+              if (prospectDeepLink && manageTab === "suppliers" && prospectDeepLink.prospectId) {
+                completeProspectConversion(prospectDeepLink, newId, f.name);
+              }
             }
             setManageEdit(null); setManageFields({}); setShowNewEntity(false);
             setDataVer(function(v) { return v + 1; });
@@ -14745,7 +18135,7 @@ export default function FactoringDashboard() {
             setManageFields(Object.assign({}, EMPTY_ADDR, { name: "", companyNumber: "", incorporationDate: "", companyStatus: "", directors: [] }, isSupLike ? { bankName: "", bankDetails: "" } : {}));
             setShowNewEntity(true);
             // Show CH import step for suppliers and buyers
-            if (isSupTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
+            if (isSupTab || isSPTab || manageTab === "buyers") { setChImportStep("lookup"); setChCompanyNo(""); setChError(""); }
             else { setChImportStep(null); }
           }
           function chLookup() {
@@ -14787,11 +18177,11 @@ export default function FactoringDashboard() {
                   companyNumber: data.company_number || num,
                   incorporationDate: data.date_of_creation || "",
                   companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                  street1: addr.address_line_1 || "",
-                  street2: addr.address_line_2 || "",
+                  addressLine1: addr.address_line_1 || "",
+                  addressLine2: addr.address_line_2 || "",
                   city: addr.locality || "",
-                  state: addr.region || "",
-                  zip: addr.postal_code || "",
+                  county: addr.region || "",
+                  postcode: addr.postal_code || "",
                   country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                   directors: directors,
                   entitySource: "ch"
@@ -14887,12 +18277,12 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>Total O/S: </span><strong style={{ color: pInv.totalOutstanding > 0 ? "#D97706" : "#059669" }}>{money(pInv.totalOutstanding, pInv.currency)}</strong></div>
                       </div>
                       {pInv.payments.length > 0 && <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Buyer Payments ({pInv.payments.length})</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Buyer Payments ({pInv.payments.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{pInv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, pInv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, pInv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
                       </div>}
                       {pInv.holdbackPayments && pInv.holdbackPayments.length > 0 && <div>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#059669", marginBottom: 6 }}>Holdback Payments Applied ({pInv.holdbackPayments.length})</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginBottom: 6 }}>Holdback Payments Applied ({pInv.holdbackPayments.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["HBP ID", "Source", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{pInv.holdbackPayments.map(function(hp, hi) { return <tr key={hi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{hp.hbPaymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{hp.sourceInvoiceId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(hp.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(hp.amount, pInv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{hp.appliedToPenalty > 0 ? money(hp.appliedToPenalty, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{hp.appliedToInterest > 0 ? money(hp.appliedToInterest, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{hp.appliedToCapital > 0 ? money(hp.appliedToCapital, pInv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
                       </div>}
@@ -14908,7 +18298,7 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>Date: </span>{fmt(pPay.date)}</div>
                         <div><span style={{ color: "var(--muted)" }}>Currency: </span>{pPay.currency}</div>
                       </div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Allocations ({pPay.allocations.length})</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Allocations ({pPay.allocations.length})</div>
                       {pPay.allocations.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No allocations.</div>}
                       {pPay.allocations.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Invoice", "Buyer", "Amount", "Invoice Total", "Due Date"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{pPay.allocations.map(function(a, ai) { var aInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; }); return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}</td><td style={{ padding: "5px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv ? aInv.buyerName : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pPay.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{aInv ? money(aInv.amount, aInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv ? fmt(aInv.dueDate) : "\u2014"}</td></tr>; })}</tbody></table>}
@@ -14927,9 +18317,9 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{pSrcInv ? pSrcInv.supplierName : "\u2014"}</div>
                         <div><span style={{ color: "var(--muted)" }}>Currency: </span>{pHbp.currency}</div>
                       </div>
-                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Disbursement Details ({pHbp.allocations.length})</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Disbursement Details ({pHbp.allocations.length})</div>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Type", "Target", "Amount", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                      <tbody>{pHbp.allocations.map(function(a, ai) { var tInv = a.type === "invoice" ? INVOICES_DB.find(function(x) { return x.id === a.targetId; }) : null; return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "6px 8px", fontSize: 12 }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)", fontWeight: 600 }}>Supplier Return</span> : <span style={{ color: "#D97706", fontWeight: 600 }}>Invoice Alloc</span>}</td><td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)" }}>{pSrcInv ? pSrcInv.supplierName : "\u2014"}</span> : <span style={{ color: "var(--accent)" }}>{a.targetId}</span>}</td><td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pHbp.currency)}</td><td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{a.type === "disbursement" ? "Returned to supplier" : (tInv ? tInv.buyerName + " \u2014 Due: " + fmt(tInv.dueDate) : "\u2014")}</td></tr>; })}</tbody></table>
+                      <tbody>{pHbp.allocations.map(function(a, ai) { var tInv = a.type === "invoice" ? INVOICES_DB.find(function(x) { return x.id === a.targetId; }) : null; return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "6px 8px", fontSize: 12 }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)", fontWeight: 600 }}>Supplier Return</span> : <span style={{ color: "#D97706" }}>Invoice Alloc</span>}</td><td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)" }}>{pSrcInv ? pSrcInv.supplierName : "\u2014"}</span> : <span style={{ color: "var(--accent)" }}>{a.targetId}</span>}</td><td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pHbp.currency)}</td><td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{a.type === "disbursement" ? "Returned to supplier" : (tInv ? tInv.buyerName + " \u2014 Due: " + fmt(tInv.dueDate) : "\u2014")}</td></tr>; })}</tbody></table>
                     </div>;
                   }
                 }
@@ -14953,12 +18343,28 @@ export default function FactoringDashboard() {
                   <button onClick={function() { setManageDetail(null); setManagePopup(null); setChLiveData(null); setManageDetailTab("overview"); }} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, fontWeight: 600 }}>{det.name}</div>
+                      <div style={{ fontSize: 18, fontWeight: 800 }}>{det.name}</div>
                       {detEntity && detEntity.paused && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", textTransform: "uppercase", letterSpacing: "0.04em" }}>{"\u23F8"} Paused</span>}
                     </div>
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
-                  {detEntity && <button onClick={function() { detEntity.paused = !detEntity.paused; if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id); auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
+                  {detEntity && <button onClick={function() {
+                    // Stage 1.9: KYC gating. Suppliers and buyers cannot be unpaused
+                    // until KYC is marked Passed. Service providers carry the KYC
+                    // checkbox for completeness but do not have unpause gating.
+                    var attemptingUnpause = !!detEntity.paused; // current value true means clicking will unpause
+                    var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                    if (attemptingUnpause && kycRequired && !kycIsPassed(detEntity)) {
+                      toast.error("KYC required", "Mark KYC as Passed below before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                      return;
+                    }
+                    detEntity.paused = !detEntity.paused;
+                    if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                    else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                    else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                    auditLog(detEntity.paused ? "Entity Paused" : "Entity Unpaused", det.id + " (" + det.name + ") " + (detEntity.paused ? "paused \u2014 new invoices ineligible for funding" : "unpaused \u2014 funding eligibility restored"), { entityId: det.id, entityName: det.name, paused: detEntity.paused });
+                    setDataVer(function(v) { return v + 1; });
+                  }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid " + (detEntity.paused ? "#05966940" : "#EF444440"), background: detEntity.paused ? "#05966908" : "#EF444408", color: detEntity.paused ? "#059669" : "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{detEntity.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>}
                 </div>
 
                 {/* Detail Sub-Tabs */}
@@ -14977,6 +18383,78 @@ export default function FactoringDashboard() {
                   })}
                 </div>
 
+                {/* Pause banner. Visible on every tab whenever the entity is paused.
+                    Surfaces the answer to "why is this paused?" without forcing the
+                    operator to dig through the audit log. Three reasons covered:
+                    auto-paused on first program addition, manual pause via the toggle,
+                    or unknown (legacy data, audit not yet hydrated). When KYC is the
+                    only remaining gate, the banner offers an inline Unpause button
+                    so the operator doesn't have to scroll back to the entity header. */}
+                {detEntity && detEntity.paused && (function() {
+                  var pc = getPauseContext(det.id);
+                  var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                  var kycOk = kycIsPassed(detEntity);
+                  // Three-way banner state:
+                  //   "needs_kyc"   — paused, KYC required and not yet passed
+                  //   "ready"       — paused, KYC passed (or not required); operator may unpause now
+                  //   "informational" — service provider paused (no KYC gate); show details only
+                  var state =
+                    kycRequired && !kycOk ? "needs_kyc" :
+                    kycRequired && kycOk  ? "ready" :
+                    "informational";
+                  // Source phrasing
+                  var sourceText =
+                    pc && pc.source === "auto_program_add" ? "Auto-paused when added to first funding program" :
+                    pc && pc.source === "manual"           ? "Manually paused" :
+                    "Paused (audit context unavailable)";
+                  var actor = pc ? pc.pausedBy : "unknown";
+                  var when  = pc ? (pc.pausedDisplay || "") : "";
+                  // Banner colour: amber for needs_kyc, green-ish for ready, neutral for SP
+                  var fill   = state === "needs_kyc" ? "#FEF3C7" : state === "ready" ? "#D1FAE5" : "#F3F4F6";
+                  var stroke = state === "needs_kyc" ? "#FCD34D" : state === "ready" ? "#6EE7B7" : "#D1D5DB";
+                  var headInk= state === "needs_kyc" ? "#92400E" : state === "ready" ? "#065F46" : "#374151";
+                  var subInk = state === "needs_kyc" ? "#78350F" : state === "ready" ? "#047857" : "#4B5563";
+                  // Headline
+                  var headline =
+                    state === "needs_kyc"     ? "Paused \u2014 pending KYC verification" :
+                    state === "ready"         ? "Paused \u2014 KYC verified, ready to unpause" :
+                                                "Paused";
+                  // Sub-line
+                  var sub;
+                  if (state === "needs_kyc") {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Tick the KYC Passed checkbox in the Files panel below to enable unpausing.";
+                  } else if (state === "ready") {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Click Unpause to restore funding eligibility.";
+                  } else {
+                    sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ".";
+                  }
+                  return <div style={{ background: fill, border: "1px solid " + stroke, borderRadius: 12, padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 280 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: headInk, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 16 }}>{state === "needs_kyc" ? "\u26A0" : state === "ready" ? "\u2713" : "\u23F8"}</span>
+                        {headline}
+                      </div>
+                      <div style={{ fontSize: 12, color: subInk, lineHeight: 1.45 }}>{sub}</div>
+                    </div>
+                    {state === "ready" || state === "informational" ? <button onClick={function() {
+                      // Same path as the header pause button, but inline for ergonomics.
+                      // KYC gate is intentionally re-checked here for safety: if state
+                      // changes between render and click (concurrent edit) we don't want
+                      // the inline button to bypass the gate.
+                      if (kycRequired && !kycIsPassed(detEntity)) {
+                        toast.error("KYC required", "Mark KYC as Passed below before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                        return;
+                      }
+                      detEntity.paused = false;
+                      if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                      else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                      else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                      auditLog("Entity Unpaused", det.id + " (" + det.name + ") unpaused \u2014 funding eligibility restored", { entityId: det.id, entityName: det.name, paused: false });
+                      setDataVer(function(v) { return v + 1; });
+                    }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + (state === "ready" ? "#10B981" : "#6B7280"), background: state === "ready" ? "#10B981" : "transparent", color: state === "ready" ? "#fff" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{"\u25B6"} Unpause now</button> : null}
+                  </div>;
+                })()}
+
                 {/* Tab 1: Overview — Layout A: Refined Card Grid */}
                 {manageDetailTab === "overview" && (function() {
                   // Filtered data for overview
@@ -14985,7 +18463,7 @@ export default function FactoringDashboard() {
                   var unallocPays = entityPays.filter(function(ep) { var al = 0; ep.allocs.forEach(function(a) { al += a.amount; }); return al < ep.pay.amount - 0.01; });
                   var attentionHbps = entityHbps.filter(function(hbp) { var disbAmt = 0; hbp.allocations.forEach(function(a) { if (a.type === "disbursement") disbAmt += a.amount; }); return disbAmt < 0.01; });
 
-                  var fieldLabel = { fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600, color: "var(--muted)", marginBottom: 3 };
+                  var fieldLabel = { fontSize: 8.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",  color: "var(--muted)", marginBottom: 3 };
                   var fieldValue = { fontSize: 13, fontWeight: 500, color: "var(--text)" };
                   var fieldMono = { fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace" };
                   var sectionTitle = { fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 14, paddingBottom: 8, borderBottom: "2px solid var(--accent)" };
@@ -15002,7 +18480,7 @@ export default function FactoringDashboard() {
                       {det.companyNumber && <div><div style={fieldLabel}>Company Number</div><div style={fieldMono}>{det.companyNumber}</div></div>}
                       {det.companyStatus && <div><div style={fieldLabel}>Company Status</div><div style={fieldValue}>{det.companyStatus}</div></div>}
                       {det.incorporationDate && <div><div style={fieldLabel}>Incorporated</div><div style={fieldValue}>{fmt(det.incorporationDate)}</div></div>}
-                      {det.street1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.street1, det.street2, det.city, det.state, det.zip, det.country].filter(Boolean).join(", ")}</div></div>}
+                      {det.addressLine1 && <div style={{ gridColumn: "1 / -1" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[det.addressLine1, det.addressLine2, det.city, det.county, det.postcode, det.country].filter(Boolean).join(", ")}</div></div>}
                     </div>
                     {/* Contacts */}
                     {(det.primaryContact || det.primaryEmail || det.primaryPhone) && (function() {
@@ -15044,7 +18522,7 @@ export default function FactoringDashboard() {
                         })}
                       </div> : <div style={{ padding: "14px 0", color: "var(--muted)", fontSize: 13, fontStyle: "italic", marginBottom: 10 }}>No notes yet.</div>; })()}
                       <div style={{ display: "flex", gap: 8 }}>
-                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
+                        <input type="text" value={noteText} onChange={function(e) { setNoteText(e.target.value); }} onKeyDown={function(e) { if (e.key === "Enter" && noteText.trim() && detEntity) { var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : isSp ? "service_provider" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
                     auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); } }} placeholder="Add a note..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none" }} />
                         <button onClick={function() { if (!noteText.trim() || !detEntity) return; var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }); var noteId = "EN-" + det.id + "-" + Date.now(); ENTITY_NOTES_DB.push({ id: noteId, entityId: det.id, entityType: isSup ? "supplier" : "buyer", text: noteText.trim(), display: nd, createdAt: new Date().toISOString(), source: "manual", prospectNoteId: null }); auditLog("Entity Note Added", det.id + " (" + det.name + "): " + noteText.trim(), { entityId: det.id, entityName: det.name, note: noteText.trim() }); setNoteText(""); setDataVer(function(v) { return v + 1; }); }} disabled={!noteText.trim()} style={{ padding: "10px 22px", borderRadius: 10, border: "none", background: noteText.trim() ? "var(--accent)" : "var(--border)", color: noteText.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: noteText.trim() ? "pointer" : "default" }}>Add Note</button>
                       </div>
@@ -15055,17 +18533,59 @@ export default function FactoringDashboard() {
                       <div style={sectionTitle}>Files {det.entityFiles && det.entityFiles.length > 0 ? "(" + det.entityFiles.length + ")" : ""}</div>
                       {det.entityFiles && det.entityFiles.length > 0 && <div style={{ maxHeight: 160, overflowY: "auto", marginBottom: 12 }}>
                         {det.entityFiles.map(function(fl, fi) {
+                          // Click handler — fetch a signed URL on demand and open in new tab.
+                          // We don't pre-fetch URLs at render time because (a) there may be
+                          // many files, (b) signed URLs are time-limited, (c) we want each
+                          // download to be a discrete audited action.
+                          function downloadFile() {
+                            if (fl.dataUrl) {
+                              // Legacy entry from before Storage migration — use embedded data URL.
+                              var a = document.createElement("a");
+                              a.href = fl.dataUrl; a.download = fl.fileName;
+                              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                              return;
+                            }
+                            if (!fl.storagePath) {
+                              toast.error("Cannot download", "File metadata is missing storage path. The file may not have uploaded successfully.");
+                              return;
+                            }
+                            getEntityFileSignedUrl(fl.storagePath).then(function(url) {
+                              window.open(url, "_blank", "noopener,noreferrer");
+                            }).catch(function(err) {
+                              console.error("[Entity Files] Download error:", err);
+                              toast.error("Download failed", err.message || String(err));
+                            });
+                          }
                           return <div key={fi} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
                             <div>
-                              <a href={fl.dataUrl} download={fl.fileName} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 }}>{fl.fileName}</a>
+                              <span onClick={downloadFile} style={{ fontSize: 13, color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2, cursor: "pointer" }}>{fl.fileName}</span>
                               {fl.label && <span style={{ fontSize: 11, color: "var(--text-secondary)", marginLeft: 10 }}>{fl.label}</span>}
                               {fl.notes && <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 8 }}>{"\u2014"} {fl.notes}</span>}
                             </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span style={{ fontSize: 9, color: "var(--muted)" }}>{fl.uploadedAt}</span>
-                              <button onClick={function() { if (detEntity && detEntity.entityFiles) { detEntity.entityFiles.splice(fi, 1); if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(detEntity.id); else if (manageTab === "service_providers") saveServiceProvider(detEntity.id); else if (manageTab === "buyers") saveBuyer(detEntity.id);
-                    auditLog("File Removed", "File \"" + fl.fileName + "\" removed from " + det.id, { entityId: det.id, fileName: fl.fileName }); setDataVer(function(v) { return v + 1; }); } }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
+                              <button onClick={function() {
+                                if (!detEntity || !detEntity.entityFiles) return;
+                                if (!confirm("Delete \"" + fl.fileName + "\"? This cannot be undone.")) return;
+                                // Remove from storage first; on completion (success or
+                                // storage-not-found), strip the metadata row and persist.
+                                // Silent storage failures don't block the metadata removal —
+                                // a "ghost" storage object is preferable to a stuck metadata row.
+                                var storagePath = fl.storagePath;
+                                function finishMetaRemoval() {
+                                  detEntity.entityFiles.splice(fi, 1);
+                                  if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                  else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                  else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                  auditLog("File Removed", "\"" + fl.fileName + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, entityName: det.name, fileName: fl.fileName, storagePath: storagePath || null });
+                                  setDataVer(function(v) { return v + 1; });
+                                }
+                                if (storagePath) {
+                                  deleteEntityFile(storagePath).then(finishMetaRemoval, finishMetaRemoval);
+                                } else {
+                                  finishMetaRemoval();
+                                }
+                              }} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>{"\u2715"}</button>
                             </div>
                           </div>;
                         })}
@@ -15090,22 +18610,99 @@ export default function FactoringDashboard() {
                           var notesInput = document.getElementById("entityFileNotes");
                           if (!fileInput || !fileInput.files || !fileInput.files[0] || !detEntity) return;
                           var file = fileInput.files[0];
-                          var reader = new FileReader();
-                          reader.onload = function(e) {
+                          // Determine entity_type for the storage path. The det.id prefix is
+                          // authoritative (SUP-/BUY-/SP-) but we use manageTab as the source
+                          // of truth since it's what saveSupplier/saveBuyer/saveServiceProvider
+                          // already key off.
+                          var entityType =
+                            manageTab === "suppliers"         ? "suppliers" :
+                            manageTab === "buyers"            ? "buyers" :
+                            manageTab === "service_providers" ? "service_providers" : null;
+                          if (!entityType) {
+                            toast.error("Upload failed", "Cannot determine entity type for upload.");
+                            return;
+                          }
+                          // Pre-flight size check so the user gets a fast clear error rather
+                          // than waiting for a network round trip.
+                          if (file.size > ENTITY_FILES_MAX_BYTES) {
+                            toast.error("File too large", "Maximum file size is " + Math.floor(ENTITY_FILES_MAX_BYTES / (1024 * 1024)) + " MB. \"" + file.name + "\" is " + (file.size / (1024 * 1024)).toFixed(1) + " MB.");
+                            return;
+                          }
+                          var labelVal = labelInput ? labelInput.value : "";
+                          var notesVal = notesInput ? notesInput.value : "";
+                          uploadEntityFile(entityType, detEntity.id, file).then(function(storagePath) {
                             if (!detEntity.entityFiles) detEntity.entityFiles = [];
                             var nd = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-                            detEntity.entityFiles.push({ fileName: file.name, label: labelInput ? labelInput.value : "", notes: notesInput ? notesInput.value : "", dataUrl: e.target.result, uploadedAt: nd, size: file.size });
-                            if (manageTab === "suppliers") saveSupplier(manageDetail); else if (manageTab === "service_providers") saveServiceProvider(manageDetail); else if (manageTab === "buyers") saveBuyer(manageDetail);
-                    if (manageTab === "suppliers") saveSupplier(det.id); else if (manageTab === "service_providers") saveServiceProvider(det.id); else if (manageTab === "buyers") saveBuyer(det.id);
-                      auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, fileName: file.name, label: labelInput ? labelInput.value : "" });
+                            detEntity.entityFiles.push({
+                              fileName: file.name,
+                              label: labelVal,
+                              notes: notesVal,
+                              storagePath: storagePath,
+                              uploadedAt: nd,
+                              size: file.size,
+                              uploadedBy: (userProfile && userProfile.email) || null
+                            });
+                            if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                            else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                            else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                            auditLog("File Uploaded", "\"" + file.name + "\" uploaded to " + det.id + " (" + det.name + ")", { entityId: det.id, entityName: det.name, fileName: file.name, label: labelVal, size: file.size, storagePath: storagePath });
                             if (fileInput) fileInput.value = "";
                             if (labelInput) labelInput.value = "";
                             if (notesInput) notesInput.value = "";
                             setDataVer(function(v) { return v + 1; });
-                          };
-                          reader.readAsDataURL(file);
+                          }).catch(function(err) {
+                            console.error("[Entity Files] Upload error:", err);
+                            toast.error("Upload failed", err.message || String(err));
+                          });
                         }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Upload</button>
                       </div>
+
+                      {/* KYC checkbox (Stage 1.9). Located beneath the file upload area
+                          per spec — file uploads typically include KYC supporting documents,
+                          so the visual proximity matches the workflow. Suppliers and buyers
+                          must have this ticked before they can be unpaused (force-paused on
+                          first program addition). Service providers see the checkbox but
+                          have no gating. Disabled when the user is read-only or when no
+                          entity is loaded. */}
+                      {detEntity && (function() {
+                        var kycPassed = kycIsPassed(detEntity);
+                        var isAdmin = userProfile && userProfile.role === "admin";
+                        return <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: isAdmin ? "pointer" : "not-allowed" }}>
+                            <input type="checkbox" checked={kycPassed} disabled={!isAdmin} onChange={function(e) {
+                              if (!isAdmin) return;
+                              var nowIso = new Date().toISOString();
+                              var nowDisp = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+                              var actorEmail = userProfile.email || null;
+                              if (e.target.checked) {
+                                detEntity.kyc = Object.assign({}, detEntity.kyc || {}, { passed: true, passedAt: nowIso, passedBy: actorEmail });
+                                if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                auditLog("KYC Marked Passed", det.id + " (" + det.name + ") KYC marked Passed by " + (actorEmail || "admin") + " on " + nowDisp, { entityId: det.id, entityName: det.name, entityType: manageTab, kycPassed: true, passedAt: nowIso, passedBy: actorEmail });
+                              } else {
+                                // Untick is a corrective action. Does NOT auto-pause — the user
+                                // can pause manually if they want to lock funding while KYC is
+                                // re-verified. We just record the unset.
+                                var reason = prompt("Reason for unsetting KYC Passed (optional):") || null;
+                                detEntity.kyc = Object.assign({}, detEntity.kyc || {}, { passed: false, unsetAt: nowIso, unsetBy: actorEmail, unsetReason: reason });
+                                if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                                else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                                else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                                auditLog("KYC Marked Not Passed", det.id + " (" + det.name + ") KYC unset by " + (actorEmail || "admin") + " on " + nowDisp + (reason ? " \u2014 " + reason : ""), { entityId: det.id, entityName: det.name, entityType: manageTab, kycPassed: false, unsetAt: nowIso, unsetBy: actorEmail, unsetReason: reason });
+                              }
+                              setDataVer(function(v) { return v + 1; });
+                            }} style={{ width: 16, height: 16, cursor: isAdmin ? "pointer" : "not-allowed" }} />
+                            <span style={{ fontSize: 13, fontWeight: 600, color: kycPassed ? "#059669" : "var(--text)" }}>KYC Passed</span>
+                          </label>
+                          {kycPassed && detEntity.kyc && detEntity.kyc.passedBy && <div style={{ fontSize: 10, color: "var(--muted)", display: "flex", alignItems: "center" }}>
+                            Marked by {detEntity.kyc.passedBy}{detEntity.kyc.passedAt ? " on " + new Date(detEntity.kyc.passedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : ""}
+                          </div>}
+                          {!kycPassed && (manageTab === "suppliers" || manageTab === "buyers") && <div style={{ fontSize: 10, color: "#D97706", fontStyle: "italic" }}>{manageTab === "suppliers" ? "Supplier" : "Buyer"} cannot be unpaused until KYC is marked Passed.</div>}
+                          {!kycPassed && manageTab === "service_providers" && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>KYC not yet completed (informational only \u2014 service providers are not pause-gated).</div>}
+                          {!isAdmin && <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Read-only \u2014 admin role required to change KYC status.</div>}
+                        </div>;
+                      })()}
                     </div>
                   </div>
 
@@ -15118,7 +18715,7 @@ export default function FactoringDashboard() {
                   {attentionInvs.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices requiring attention.</div>}
                   {attentionInvs.length > 0 && <div style={{ maxHeight: 350, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Invoice", isSup ? "Buyer" : "Supplier", "Amount", "CCY", "Due", "Inv Status", "Fund Status", "O/S"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Invoice", isSup ? "Buyer" : "Supplier", "Amount", "CCY", "Due", "Inv Status", "Fund Status", "O/S"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{attentionInvs.map(function(inv) {
                         var ist = IST[inv.invoiceStatus] || IST["Received"];
                         var fst = FST[inv.fundingStatus] || FST.funded;
@@ -15146,7 +18743,7 @@ export default function FactoringDashboard() {
                   {unallocPays.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No unallocated payments.</div>}
                   {unallocPays.length > 0 && <div style={{ maxHeight: 300, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["Payment ID", "Date", "Total Amt", "Allocated", "Remaining", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["Payment ID", "Date", "Total Amt", "Allocated", "Remaining", "CCY"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{unallocPays.map(function(ep) {
                         var al = 0; ep.allocs.forEach(function(a) { al += a.amount; }); var rem = r2(ep.pay.amount - al);
                         return <tr key={ep.pay.paymentId} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setManagePopup({ type: "payment", id: ep.pay.paymentId }); }}>
@@ -15171,7 +18768,7 @@ export default function FactoringDashboard() {
                   {attentionHbps.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No holdback payments requiring attention.</div>}
                   {attentionHbps.length > 0 && <div style={{ maxHeight: 300, overflowY: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                      <thead><tr>{["HBP ID", "Date", "Source Invoice", "Amount", "CCY", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                       <tbody>{attentionHbps.map(function(hbp) {
                         return <tr key={hbp.hbPaymentId} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setManagePopup({ type: "holdback", id: hbp.hbPaymentId }); }}>
                           <td style={Object.assign({}, ovMc, ovLink("#059669"))}>{hbp.hbPaymentId}</td>
@@ -15305,7 +18902,7 @@ export default function FactoringDashboard() {
                     {(!det.directors || det.directors.length === 0) && <div style={{ padding: "30px 22px", textAlign: "center", color: "var(--muted)", fontSize: 12 }}>No directors on record. Import from Companies House when creating/editing this entity, or add manually via the Edit form.</div>}
                     {det.directors && det.directors.length > 0 && <div style={{ maxHeight: 500, overflowY: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                        <thead><tr>{["Name", "Role", "Nationality", "Appointed", "Resigned", "Status", "Source"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                        <thead><tr>{["Name", "Role", "Nationality", "Appointed", "Resigned", "Status", "Source"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{det.directors.map(function(dir, di) {
                           var isResigned = !!dir.resignedDate;
                           return <tr key={di} style={{ borderBottom: "1px solid var(--border)", opacity: isResigned ? 0.6 : 1 }}>
@@ -15315,7 +18912,7 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(dir.appointedDate)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: isResigned ? "#EF4444" : "var(--text-secondary)" }}>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</td>
                             <td style={{ padding: "8px 8px" }}><Badge label={isResigned ? "Resigned" : "Active"} bg={isResigned ? "#6B728014" : "#2E8B5714"} color={isResigned ? "#6B7280" : "#059669"} border={isResigned ? "#6B728030" : "#2E8B5730"} /></td>
-                            <td style={{ padding: "8px 8px" }}>{dir.source === "ch" ? <span style={{ fontSize: 9, fontWeight: 600, color: "#38BDF8", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span> : <span style={{ fontSize: 9, fontWeight: 600, color: "#D97706", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}</td>
+                            <td style={{ padding: "8px 8px" }}>{dir.source === "ch" ? <span style={{ fontSize: 9, fontWeight: 600, color: "#38BDF8", background: "#567EBB14", padding: "2px 7px", borderRadius: 4 }}>CH</span> : <span style={{ fontSize: 9,  color: "#D97706", background: "#C08B3014", padding: "2px 7px", borderRadius: 4 }}>Manual</span>}</td>
                           </tr>;
                         })}</tbody>
                       </table>
@@ -15353,7 +18950,7 @@ export default function FactoringDashboard() {
                   var ebData = editingBranch ? editingBranch.data : null;
 
                   function startBranchEdit(idx) {
-                    var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
+                    var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", addressLine1: "", addressLine2: "", city: "", county: "", country: "United Kingdom", postcode: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
                     setManagePopup({ type: "branchEdit", idx: idx, data: br });
                   }
                   function saveBranch() {
@@ -15362,7 +18959,7 @@ export default function FactoringDashboard() {
                     if (ebIdx >= 0) {
                       // Track changes for audit log
                       var oldBr = branches[ebIdx];
-                      var brTrack = { branchName: "Branch Name", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
+                      var brTrack = { branchName: "Branch Name", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
                       var brChanges = [];
                       Object.keys(brTrack).forEach(function(k) { var ov = oldBr[k] !== undefined && oldBr[k] !== null ? String(oldBr[k]) : ""; var nv = ebData[k] !== undefined && ebData[k] !== null ? String(ebData[k]) : ""; if (ov !== nv) brChanges.push(brTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); });
                       // Track program bank account changes on branch
@@ -15411,7 +19008,7 @@ export default function FactoringDashboard() {
                     var val = ebData[key] || "";
                     var bInp = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
                     return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>{label}</label>
+                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>{label}</label>
                       {type === "country" ? <select value={val} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, (function() { var o = {}; o[key] = e.target.value; return o; })()) }); }); }} style={Object.assign({}, bInp, { cursor: "pointer" })}>{COUNTRIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                         : <input type={type || "text"} value={val} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, (function() { var o = {}; o[key] = e.target.value; return o; })()) }); }); }} style={bInp} />}
                     </div>;
@@ -15426,7 +19023,7 @@ export default function FactoringDashboard() {
                       {branches.length === 0 && <div style={{ padding: "24px 22px", color: "var(--muted)", fontSize: 12, textAlign: "center", fontStyle: "italic" }}>No branches added. Click "+ Add Branch" to create one.</div>}
                       {branches.length > 0 && <div style={{ maxHeight: 400, overflowY: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank Accounts", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                          <thead><tr>{["Branch Name", "City", "Country", "Primary Contact", "Bank Accounts", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                           <tbody>{branches.map(function(br, bi) {
                             var brPbaCount = br.programBankAccounts ? Object.keys(br.programBankAccounts).filter(function(k) { var o = br.programBankAccounts[k]; return (o.outgoing && o.outgoing.bankName) || (o.incoming && o.incoming.bankName); }).length : 0;
                             return <tr key={bi} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -15436,11 +19033,24 @@ export default function FactoringDashboard() {
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{br.primaryContact || "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 11 }}>{brPbaCount > 0 ? <Badge label={brPbaCount + " program" + (brPbaCount !== 1 ? "s" : "")} bg="#2E8B5714" color="#059669" border="#2E8B5730" /> : <span style={{ color: "var(--muted)", fontStyle: "italic", fontSize: 11 }}>Using parent</span>}</td>
                               <td style={{ padding: "8px 8px" }}>
-                                {br.paused ? <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u23F8"} Paused</span> : <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>Active</span>}
+                                {br.paused ? <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u23F8"} Paused</span> : <span style={{ fontSize: 10,  padding: "3px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>Active</span>}
                               </td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
                                 <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
-                                <button onClick={function() { br.paused = !br.paused; saveSupplier(selectedSupplier); auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
+                                <button onClick={function() {
+                                  // Stage 1.9: branch unpause gated by parent supplier's KYC.
+                                  // detEntity here is the parent supplier (set further up in
+                                  // the entity detail render scope).
+                                  var attemptingBranchUnpause = !!br.paused;
+                                  if (attemptingBranchUnpause && !kycIsPassed(detEntity)) {
+                                    toast.error("KYC required", "Mark KYC as Passed on the parent supplier before unpausing this branch.");
+                                    return;
+                                  }
+                                  br.paused = !br.paused;
+                                  saveSupplier(selectedSupplier);
+                                  auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused });
+                                  setDataVer(function(v) { return v + 1; });
+                                }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
                               </td>
                             </tr>;
@@ -15458,12 +19068,12 @@ export default function FactoringDashboard() {
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px", marginBottom: 14 }}>
                           <div style={{ gridColumn: "1 / -1" }}>{bfld("Branch Name", "branchName")}</div>
-                          {bfld("Street Address 1", "street1")}
-                          {bfld("Street Address 2", "street2")}
+                          {bfld("Address Line 1", "addressLine1")}
+                          {bfld("Address Line 2", "addressLine2")}
                           {bfld("City", "city")}
-                          {bfld("State / County", "state")}
+                          {bfld("County", "county")}
                           {bfld("Country", "country", "country")}
-                          {bfld("ZIP / Postal Code", "zip")}
+                          {bfld("Postcode", "postcode")}
                         </div>
                         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 14px" }}>
                           {bfld("Primary Contact", "primaryContact")}
@@ -15597,7 +19207,7 @@ export default function FactoringDashboard() {
                       {entityAudit.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No audit entries found for this entity.</div>}
                       {entityAudit.length > 0 && <div style={{ maxHeight: 500, overflowY: "auto" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                          <thead><tr>{["Timestamp", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                          <thead><tr>{["Timestamp", "Action", "Details"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                           <tbody>{entityAudit.map(function(log, li) {
                             return <tr key={li} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "8px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", whiteSpace: "nowrap" }}>{log.timestamp}</td>
@@ -15628,7 +19238,7 @@ export default function FactoringDashboard() {
                       setChLiveLoading(false);
                     }).catch(function() { setChLiveLoading(false); });
                   }
-                  var chTh = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" };
+                  var chTh = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" };
                   var chTd = { padding: "6px 10px", fontSize: 11.5, borderBottom: "1px solid var(--border)" };
                   var chLk = { color: "var(--accent)", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 2 };
 
@@ -15749,13 +19359,18 @@ export default function FactoringDashboard() {
 
             {/* Normal manage content (hidden when detail is open) */}
             {!manageDetail && manageTab !== "invoices" && manageTab !== "audit" && manageTab !== "queue" && manageTab !== "programs" && manageTab !== "users" && manageTab !== "csv_import" && manageTab !== "csv_review" && editing && <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
+              {/* Step H: Prospect conversion banner */}
+              {prospectDeepLink && !manageEdit && <div style={{ background: "#567EBB14", border: "1px solid #567EBB", borderRadius: 8, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#567EBB", background: "#567EBB28", padding: "3px 7px", borderRadius: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>Prospect Conversion</span>
+                <span style={{ fontSize: 12, color: "var(--text)" }}>Converting prospect from upload <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{prospectDeepLink.uploadId || "—"}</span>. Notes and invoices will migrate after save.</span>
+              </div>}
               {/* Companies House Import Step (suppliers only, new entity only) */}
-              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
+              {(isSupTab || isSPTab || manageTab === "buyers") && !manageEdit && chImportStep === "lookup" && <div>
                 <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>New {entityLabel}</div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Import company details from Companies House or enter manually.</div>
                 <div style={{ display: "flex", gap: 10, alignItems: "end", marginBottom: 12 }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, maxWidth: 260 }}>
-                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>UK Company Number</label>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>UK Company Number</label>
                     <input type="text" value={chCompanyNo} onChange={function(e) { setChCompanyNo(e.target.value); setChError(""); }} onKeyDown={function(e) { if (e.key === "Enter" && chCompanyNo.trim()) chLookup(); }} placeholder="e.g. 12345678" style={{ padding: "8px 12px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none", letterSpacing: "0.05em" }} />
                   </div>
                   <button onClick={chLookup} disabled={!chCompanyNo.trim()} style={{ padding: "8px 20px", borderRadius: 7, border: "none", background: chCompanyNo.trim() ? "#E2E8F0" : "var(--border)", color: chCompanyNo.trim() ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: chCompanyNo.trim() ? "pointer" : "default" }}>Import from Companies House</button>
@@ -15764,13 +19379,13 @@ export default function FactoringDashboard() {
                 </div>
                 {chError && <div style={{ fontSize: 11, color: "#DC2626", marginTop: 4 }}>{chError}</div>}
               </div>}
-              {(isSupTab || manageTab === "buyers") && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
+              {(isSupTab || isSPTab || manageTab === "buyers") && !manageEdit && chImportStep === "loading" && <div style={{ padding: "30px 0", textAlign: "center" }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" }}>Looking up company {chCompanyNo.trim().padStart(8, "0")}...</div>
               </div>}
               {/* Main form — shown when: not supplier new, or skip, or done, or editing existing */}
-              {((!isSupTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
+              {((!isSupTab && !isSPTab && manageTab !== "buyers") || manageEdit || chImportStep === "skip" || chImportStep === "done" || chImportStep === null) && (function() {
               var isCh = f.entitySource === "ch";
-              var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, street1: true, street2: true, city: true, state: true, country: true, zip: true };
+              var chFields = { name: true, companyNumber: true, companyStatus: true, incorporationDate: true, addressLine1: true, addressLine2: true, city: true, county: true, country: true, postcode: true };
               function chRefreshEntity() {
                 var num = (f.companyNumber || "").trim();
                 if (!num) return;
@@ -15795,11 +19410,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || prev.incorporationDate,
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : prev.companyStatus,
-                      street1: addr.address_line_1 || prev.street1,
-                      street2: addr.address_line_2 || prev.street2,
+                      addressLine1: addr.address_line_1 || prev.addressLine1,
+                      addressLine2: addr.address_line_2 || prev.addressLine2,
                       city: addr.locality || prev.city,
-                      state: addr.region || prev.state,
-                      zip: addr.postal_code || prev.zip,
+                      county: addr.region || prev.county,
+                      postcode: addr.postal_code || prev.postcode,
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : prev.country,
                       directors: directors.concat(manualDirs)
                     });
@@ -15851,11 +19466,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || "",
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                      street1: addr.address_line_1 || "",
-                      street2: addr.address_line_2 || "",
+                      addressLine1: addr.address_line_1 || "",
+                      addressLine2: addr.address_line_2 || "",
                       city: addr.locality || "",
-                      state: addr.region || "",
-                      zip: addr.postal_code || "",
+                      county: addr.region || "",
+                      postcode: addr.postal_code || "",
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                       directors: directors
                     });
@@ -15870,11 +19485,11 @@ export default function FactoringDashboard() {
                       companyNumber: data.company_number || num,
                       incorporationDate: data.date_of_creation || "",
                       companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : "",
-                      street1: addr.address_line_1 || "",
-                      street2: addr.address_line_2 || "",
+                      addressLine1: addr.address_line_1 || "",
+                      addressLine2: addr.address_line_2 || "",
                       city: addr.locality || "",
-                      state: addr.region || "",
-                      zip: addr.postal_code || "",
+                      county: addr.region || "",
+                      postcode: addr.postal_code || "",
                       country: addr.country ? (addr.country === "England" || addr.country === "Wales" || addr.country === "Scotland" || addr.country === "Northern Ireland" ? "United Kingdom" : addr.country) : "United Kingdom",
                       directors: directors
                     });
@@ -15888,9 +19503,74 @@ export default function FactoringDashboard() {
               }
 
               return <div>
+              {/* Pause banner on the Edit form. Mirrors the Details-panel banner so an
+                  operator who opens Edit on a paused entity immediately sees why it's
+                  paused and can either unpause inline (when KYC is satisfied) or switch
+                  to Details to tick KYC. Without this, the only pause UI lived on the
+                  Details panel, leaving Edit users with a paused entity and no idea why
+                  or how to fix it. */}
+              {manageEdit && (function() {
+                var editEnt = db.find(function(x) { return x.id === manageEdit; });
+                if (!editEnt || !editEnt.paused) return null;
+                var pc = getPauseContext(manageEdit);
+                var kycRequired = (manageTab === "suppliers" || manageTab === "buyers");
+                var kycOk = kycIsPassed(editEnt);
+                var state =
+                  kycRequired && !kycOk ? "needs_kyc" :
+                  kycRequired && kycOk  ? "ready" :
+                  "informational";
+                var sourceText =
+                  pc && pc.source === "auto_program_add" ? "Auto-paused when added to first funding program" :
+                  pc && pc.source === "manual"           ? "Manually paused" :
+                  "Paused (audit context unavailable)";
+                var actor = pc ? pc.pausedBy : "unknown";
+                var when  = pc ? (pc.pausedDisplay || "") : "";
+                var fill   = state === "needs_kyc" ? "#FEF3C7" : state === "ready" ? "#D1FAE5" : "#F3F4F6";
+                var stroke = state === "needs_kyc" ? "#FCD34D" : state === "ready" ? "#6EE7B7" : "#D1D5DB";
+                var headInk= state === "needs_kyc" ? "#92400E" : state === "ready" ? "#065F46" : "#374151";
+                var subInk = state === "needs_kyc" ? "#78350F" : state === "ready" ? "#047857" : "#4B5563";
+                var headline =
+                  state === "needs_kyc" ? "Paused \u2014 pending KYC verification" :
+                  state === "ready"     ? "Paused \u2014 KYC verified, ready to unpause" :
+                                          "Paused";
+                var sub;
+                if (state === "needs_kyc") {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Close this form and open the Details view to tick the KYC Passed checkbox in the Files panel.";
+                } else if (state === "ready") {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Click Unpause now to restore funding eligibility.";
+                } else {
+                  sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ".";
+                }
+                return <div style={{ background: fill, border: "1px solid " + stroke, borderRadius: 12, padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 280 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: headInk, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 16 }}>{state === "needs_kyc" ? "\u26A0" : state === "ready" ? "\u2713" : "\u23F8"}</span>
+                      {headline}
+                    </div>
+                    <div style={{ fontSize: 12, color: subInk, lineHeight: 1.45 }}>{sub}</div>
+                  </div>
+                  {state === "ready" || state === "informational" ? <button onClick={function() {
+                    if (kycRequired && !kycIsPassed(editEnt)) {
+                      toast.error("KYC required", "Mark KYC as Passed in Details before unpausing this " + (manageTab === "suppliers" ? "supplier" : "buyer") + ".");
+                      return;
+                    }
+                    editEnt.paused = false;
+                    if (manageTab === "suppliers") saveSupplier(editEnt.id);
+                    else if (manageTab === "service_providers") saveServiceProvider(editEnt.id);
+                    else if (manageTab === "buyers") saveBuyer(editEnt.id);
+                    auditLog("Entity Unpaused", editEnt.id + " (" + editEnt.name + ") unpaused \u2014 funding eligibility restored", { entityId: editEnt.id, entityName: editEnt.name, paused: false });
+                    setDataVer(function(v) { return v + 1; });
+                  }} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + (state === "ready" ? "#10B981" : "#6B7280"), background: state === "ready" ? "#10B981" : "transparent", color: state === "ready" ? "#fff" : "#374151", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{"\u25B6"} Unpause now</button> : null}
+                </div>;
+              })()}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{manageEdit ? "Edit" : "New"} {entityLabel}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+                    {manageEdit ? "Edit" : "New"} {entityLabel}
+                    {/* Paused badge: small but visible inline alongside the title so it's
+                        clear at a glance from the Edit form. Mirrors the badge in Details. */}
+                    {manageEdit && (function() { var ee = db.find(function(x) { return x.id === manageEdit; }); return ee && ee.paused ? <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", textTransform: "uppercase", letterSpacing: "0.04em" }}>{"\u23F8"} Paused</span> : null; })()}
+                  </div>
                   {chImportStep === "done" && <div style={{ fontSize: 10, color: "#059669", fontWeight: 600, marginTop: 2 }}>Imported from Companies House</div>}
                   {isCh && manageEdit && <div style={{ fontSize: 10, color: "#38BDF8", fontWeight: 600, marginTop: 2 }}>CH-sourced entity {"\u2014"} company details and CH directors are read-only</div>}
                 </div>
@@ -15906,12 +19586,12 @@ export default function FactoringDashboard() {
                 {fld("Company Number", "companyNumber", null, isCh && manageEdit)}
                 {fld("Incorporation Date", "incorporationDate", isCh && manageEdit ? null : "date", isCh && manageEdit)}
                 {fld("Company Status", "companyStatus", null, isCh && manageEdit)}
-                {fld("Street Address 1", "street1", null, isCh && manageEdit)}
-                {fld("Street Address 2", "street2", null, isCh && manageEdit)}
+                {fld("Address Line 1", "addressLine1", null, isCh && manageEdit)}
+                {fld("Address Line 2", "addressLine2", null, isCh && manageEdit)}
                 {fld("City", "city", null, isCh && manageEdit)}
-                {fld("State / County", "state", null, isCh && manageEdit)}
+                {fld("County", "county", null, isCh && manageEdit)}
                 {fld("Country", "country", isCh && manageEdit ? null : "country", isCh && manageEdit)}
-                {fld("ZIP / Postal Code", "zip", null, isCh && manageEdit)}
+                {fld("Postcode", "postcode", null, isCh && manageEdit)}
 
               </div>
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
@@ -15933,7 +19613,55 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", gap: 8, alignItems: "end" }}><div style={{ flex: 1 }}>{fld("Contact 5 Phone", "contact5Phone", "tel")}</div><label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", paddingBottom: 8 }}><input type="checkbox" checked={f.contact5Signatory || false} onChange={function() { setManageFields(function(p) { return Object.assign({}, p, { contact5Signatory: !p.contact5Signatory }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: f.contact5Signatory ? "#059669" : "var(--muted)", whiteSpace: "nowrap" }}>Signatory</span></label></div>
                 </div>
               </div>
-              {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+              {isSupTab && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Rates</div>
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Program</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Advance</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Interest p.a.</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Penalty p.a.</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Effective From</th>
+                    <th style={{ padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}></th>
+                  </tr></thead>
+                  <tbody>{(function() {
+                    var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                    if (eligibleProgs.length === 0) {
+                      return <tr><td colSpan="6" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to set rates." : "Save the supplier first, then add to programs to set rates."}</td></tr>;
+                    }
+                    return eligibleProgs.map(function(fp) {
+                      var rate = getSupplierRateForProgram(manageEdit, fp.id);
+                      return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name} <span style={{ color: "var(--muted)", fontWeight: 400 }}>({fp.currency})</span></td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#0EA5E9" : "var(--muted)" }}>{rate ? (rate.advanceRate * 100).toFixed(0) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#D97706" : "var(--muted)" }}>{rate ? (rate.annualRate * 100).toFixed(1) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: rate ? "#DC2626" : "var(--muted)" }}>{rate ? (rate.penaltyRate * 100).toFixed(1) + "%" : "—"}</td>
+                        <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{(function() {
+                          var pr = (f.programRates || {})[fp.id];
+                          if (!pr || pr.length === 0) return "—";
+                          var sorted = pr.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+                          return sorted[0].effectiveDisplay || sorted[0].effectiveDate || "—";
+                        })()}</td>
+                        <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                          <button onClick={function() {
+                            setAddToProgramModal({
+                              supplierId: manageEdit, supplierName: f.name || manageEdit,
+                              programId: fp.id, programName: fp.name, programCcy: fp.currency || "GBP",
+                              isBranch: false,
+                              advanceRate: rate ? String((rate.advanceRate * 100).toFixed(0)) : String(((fp.maxAdvanceRate - 0.05) * 100).toFixed(0)),
+                              annualRate: rate ? String((rate.annualRate * 100).toFixed(1)) : String(((fp.minInterestRate + 0.01) * 100).toFixed(1)),
+                              penaltyRate: rate ? String((rate.penaltyRate * 100).toFixed(1)) : "20.0",
+                              creditLimit: ((f.creditLimits || {})[fp.id] !== undefined) ? String((f.creditLimits || {})[fp.id]) : "",
+                              singleInvoiceLimit: ((f.singleInvoiceLimits || {})[fp.id] !== undefined) ? String((f.singleInvoiceLimits || {})[fp.id]) : ""
+                            });
+                          }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{rate ? "Edit" : "Set"}</button>
+                        </td>
+                      </tr>;
+                    });
+                  })()}</tbody>
+                </table>
+              </div>}
+              {(isSupTab || manageTab === "buyers") && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
                   <thead><tr>
@@ -15942,7 +19670,16 @@ export default function FactoringDashboard() {
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
                   </tr></thead>
-                  <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
+                  <tbody>{(function() {
+                    // Only show programs this entity participates in. Suppliers and buyers each have
+                    // their own membership helper. New entities (manageEdit null) show nothing.
+                    var isBuyerEntity = manageTab === "buyers";
+                    var entityWord = isBuyerEntity ? "buyer" : "supplier";
+                    var eligibleProgs = manageEdit ? (isBuyerEntity ? programsForBuyer(manageEdit) : programsForSupplier(manageEdit)) : [];
+                    if (eligibleProgs.length === 0) {
+                      return <tr><td colSpan="4" style={{ padding: "16px 10px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure limits." : "Save the " + entityWord + " first, then add to programs to configure limits."}</td></tr>;
+                    }
+                    return eligibleProgs.map(function(fp) {
                     var cl = (f.creditLimits || {})[fp.id];
                     var sil = (f.singleInvoiceLimits || {})[fp.id];
                     return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
@@ -15951,12 +19688,19 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
                       <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
                     </tr>;
-                  })}</tbody>
+                    });
+                  })()}</tbody>
                 </table>
               </div>}
               {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Bank Accounts by Program</div>
-                {FUNDING_PROGRAMS_DB.map(function(fp) {
+                {(function() {
+                  // Tweak #3: Only show programs this supplier participates in.
+                  var eligibleProgs = manageEdit ? programsForSupplier(manageEdit) : [];
+                  if (eligibleProgs.length === 0) {
+                    return <div style={{ padding: "16px", fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic", background: "var(--card-hover)", borderRadius: 10, border: "1px solid var(--border)" }}>{manageEdit ? "Not a member of any program. Add to a program first to configure bank accounts." : "Save the supplier first, then add to programs to configure bank accounts."}</div>;
+                  }
+                  return eligibleProgs.map(function(fp) {
                   var pba = (f.programBankAccounts || {})[fp.id] || {};
                   var outgoing = pba.outgoing || {};
                   var incoming = pba.incoming || {};
@@ -16017,7 +19761,8 @@ export default function FactoringDashboard() {
                       </div>
                     </div>
                   </div>;
-                })}
+                });
+                })()}
               </div>}
               {/* Directors Section */}
               <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
@@ -16041,27 +19786,27 @@ export default function FactoringDashboard() {
                         {!isChDir && <button onClick={function() { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs.splice(di, 1); return Object.assign({}, p, { directors: dirs }); }); }} style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{"\u2715"}</button>}
                       </div>
                       {isChDir ? <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px", fontSize: 12 }}>
-                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600 }}>Name</span><div>{dir.name}</div></div>
-                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600 }}>Role</span><div>{dir.role}</div></div>
-                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600 }}>Appointed</span><div>{fmt(dir.appointedDate)}</div></div>
-                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600 }}>Resigned</span><div>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Name</span><div>{dir.name}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Role</span><div>{dir.role}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Appointed</span><div>{fmt(dir.appointedDate)}</div></div>
+                        <div><span style={{ color: "var(--muted)", fontSize: 9, fontWeight: 700, textTransform: "uppercase" }}>Resigned</span><div>{dir.resignedDate ? fmt(dir.resignedDate) : "\u2014"}</div></div>
                       </div> : <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "8px 12px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Name</label>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Name</label>
                           <input type="text" value={dir.name} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { name: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Role</label>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Role</label>
                           <select value={dir.role} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { role: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }}>
                             <option>Director</option><option>Secretary</option><option>Corporate Director</option><option>Corporate Secretary</option><option>Nominee Director</option><option>Nominee Secretary</option><option>Llp Member</option><option>Llp Designated Member</option>
                           </select>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Appointed</label>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Appointed</label>
                           <input type="date" value={dir.appointedDate || ""} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { appointedDate: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Resigned</label>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Resigned</label>
                           <input type="date" value={dir.resignedDate || ""} onChange={function(e) { setManageFields(function(p) { var dirs = (p.directors || []).slice(); dirs[di] = Object.assign({}, dirs[di], { resignedDate: e.target.value }); return Object.assign({}, p, { directors: dirs }); }); }} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none" }} />
                         </div>
                       </div>}
@@ -16270,122 +20015,178 @@ export default function FactoringDashboard() {
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>{editProg !== null ? "Edit Program" : "New Funding Program"}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Program Name</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Program Name</label>
                       <input type="text" value={pf.name || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { name: e.target.value }); }); }} style={inpS} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Currency</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Currency</label>
                       <select value={pf.currency || "GBP"} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { currency: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Maximum Size</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Maximum Size</label>
                       <input type="number" step="1000" value={pf.maxSize || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSize: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Max Advance Rate %</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Max Advance Rate %</label>
                       <input type="number" step="1" value={pf.maxAdvanceRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxAdvanceRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Interest Rate % p.a.</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Min Interest Rate % p.a.</label>
                       <input type="number" step="0.1" value={pf.minInterestRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInterestRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Max Invoice Term (days)</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Max Invoice Term (days)</label>
                       <input type="number" step="1" value={pf.maxInvoiceTerm || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxInvoiceTerm: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0", paddingTop: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>Status Escalation Thresholds (days)</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Status Escalation Thresholds (days)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#EF4444" }}>Overdue After</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#EF4444" }}>Overdue After</label>
                         <input type="number" step="1" value={pf.thresholdOverdue !== undefined ? pf.thresholdOverdue : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdOverdue: e.target.value }); }); }} placeholder="1" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#8B5CF6" }}>At Risk After</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#8B5CF6" }}>At Risk After</label>
                         <input type="number" step="1" value={pf.thresholdAtRisk !== undefined ? pf.thresholdAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdAtRisk: e.target.value }); }); }} placeholder="7" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#DC2626" }}>Recovery After</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#DC2626" }}>Recovery After</label>
                         <input type="number" step="1" value={pf.thresholdRecovery !== undefined ? pf.thresholdRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdRecovery: e.target.value }); }); }} placeholder="30" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#8B5CF6" }}>Dispute At Risk</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#8B5CF6" }}>Dispute At Risk</label>
                         <input type="number" step="1" value={pf.thresholdDisputeAtRisk !== undefined ? pf.thresholdDisputeAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeAtRisk: e.target.value }); }); }} placeholder="1" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#DC2626" }}>Dispute Recovery</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#DC2626" }}>Dispute Recovery</label>
                         <input type="number" step="1" value={pf.thresholdDisputeRecovery !== undefined ? pf.thresholdDisputeRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeRecovery: e.target.value }); }); }} placeholder="14" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                     </div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0", paddingTop: 14 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>Invoice Eligibility Criteria</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Invoice Eligibility Criteria</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Tenor (days)</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Min Invoice Tenor (days)</label>
                         <input type="number" step="1" value={pf.minInvoiceTenor !== undefined ? pf.minInvoiceTenor : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceTenor: e.target.value }); }); }} placeholder="0" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Size</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Min Invoice Size</label>
                         <input type="number" step="0.01" value={pf.minInvoiceSize !== undefined ? pf.minInvoiceSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceSize: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                     </div>
-                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 6, marginTop: 8 }}>Max Supplier Dilution Rates (%)</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#D97706", marginBottom: 6, marginTop: 8 }}>Max Supplier Dilution Rates (%)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px", marginBottom: 10 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Live</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Live</label>
                         <input type="number" step="0.1" value={pf.maxSupDilLive !== undefined ? pf.maxSupDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDilLive: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>30 Day</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>30 Day</label>
                         <input type="number" step="0.1" value={pf.maxSupDil30 !== undefined ? pf.maxSupDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil30: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>90 Day</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>90 Day</label>
                         <input type="number" step="0.1" value={pf.maxSupDil90 !== undefined ? pf.maxSupDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil90: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                     </div>
-                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 6, marginTop: 8 }}>Max Funded Dilution Rates (%)</div>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text)", marginBottom: 6, marginTop: 8 }}>Max Funded Dilution Rates (%)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Live</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Live</label>
                         <input type="number" step="0.1" value={pf.maxFundDilLive !== undefined ? pf.maxFundDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDilLive: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>30 Day</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>30 Day</label>
                         <input type="number" step="0.1" value={pf.maxFundDil30 !== undefined ? pf.maxFundDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil30: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>90 Day</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>90 Day</label>
                         <input type="number" step="0.1" value={pf.maxFundDil90 !== undefined ? pf.maxFundDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil90: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyers</label>
+                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() {
+                        if (sel) {
+                          // Deselect: remove from eligibleBuyers and persist (mirrors supplier-side semantics).
+                          // Existing limits on the buyer object are intentionally left in place (so re-adding restores them);
+                          // the funding gate only consults limits when the buyer is in eligibleBuyers anyway.
+                          setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); });
+                          var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                          if (dpEditingProgBuy) {
+                            dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id; });
+                            saveFundingProgram(dpEditingProgBuy.id);
+                          }
+                        } else {
+                          // Select: open generalised add-to-program modal in buyer mode (no rates, just limits).
+                          // Guard: a new (unsaved) program has no stable ID yet, so adding entities to it
+                          // would silently key their limits/rates against an empty programId. Block until saved.
+                          var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                          if (!editingProgramObjBuy) {
+                            toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                            return;
+                          }
+                          setAddToProgramModal({
+                            entityKind: "buyer",
+                            entityId: b.id, entityName: b.name,
+                            programId: editingProgramObjBuy.id, programName: pf.name || "",
+                            programCcy: pf.currency || "GBP",
+                            // Pre-populate with any limits already set on the buyer for this program (re-add convenience).
+                            creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
+                            singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
+                          });
+                        }
+                      }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Suppliers</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Suppliers</label>
                       <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
                         var items = [];
                         SUPPLIERS_DB.forEach(function(s) {
                           var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
                           items.push(React.createElement("span", { key: s.id, onClick: function() {
-                            setProgFields(function(p) {
-                              var arr = (p.eligibleSuppliers || []).slice();
-                              if (parentSel) {
-                                // Deselect parent and all its branches
+                            if (parentSel) {
+                              // Deselect: remove from eligible list (keeps existing rates/limits as historic record)
+                              setProgFields(function(p) {
+                                var arr = (p.eligibleSuppliers || []).slice();
                                 arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
-                              } else {
-                                // Select parent (which means all branches eligible)
-                                arr = arr.filter(function(n) { return !n.startsWith(s.id + ":"); });
-                                arr.push(s.id);
+                                return Object.assign({}, p, { eligibleSuppliers: arr });
+                              });
+                              // Also persist to Supabase immediately so refresh shows correct state
+                              var dpEditingProg = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (dpEditingProg) {
+                                dpEditingProg.eligibleSuppliers = (dpEditingProg.eligibleSuppliers || []).filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
+                                saveFundingProgram(dpEditingProg.id);
                               }
-                              return Object.assign({}, p, { eligibleSuppliers: arr });
-                            });
+                            } else {
+                              // Select: open modal to capture rates + limits before adding to eligible list.
+                              // pf.maxAdvanceRate / pf.minInterestRate are stored in form state as percent strings (e.g. "90", "15.0"), not decimals.
+                              // Guard: a new (unsaved) program has no stable ID yet, so adding a supplier to
+                              // it would silently key their rates and limits against an empty programId. Block
+                              // until saved. Mirrors the buyer-side guard.
+                              var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (!editingProgramObj) {
+                                toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                return;
+                              }
+                              var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
+                              var fpMinInt = parseFloat(pf.minInterestRate) || 15;
+                              setAddToProgramModal({
+                                supplierId: s.id, supplierName: s.name,
+                                programId: editingProgramObj.id, programName: pf.name || "",
+                                programCcy: pf.currency || "GBP",
+                                isBranch: false,
+                                advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
+                                annualRate: String((fpMinInt + 1).toFixed(1)),
+                                penaltyRate: "20.0",
+                                creditLimit: "",
+                                singleInvoiceLimit: ""
+                              });
+                            }
                           }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#0EA5E920" : "transparent", color: parentSel ? "#E2E8F0" : "var(--muted)", borderColor: parentSel ? "#E2E8F0" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
                           // Show branches indented if parent is NOT selected (individual branch selection)
                           if (s.branches && s.branches.length > 0 && !parentSel) {
@@ -16393,7 +20194,36 @@ export default function FactoringDashboard() {
                               var brEntityId = makeEntityId(s.id, br.branchId);
                               var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
                               items.push(React.createElement("span", { key: brEntityId, onClick: function() {
-                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
+                                if (brSel) {
+                                  setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
+                                  var dpEditingProgB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (dpEditingProgB) {
+                                    dpEditingProgB.eligibleSuppliers = (dpEditingProgB.eligibleSuppliers || []).filter(function(n) { return n !== brEntityId; });
+                                    saveFundingProgram(dpEditingProgB.id);
+                                  }
+                                } else {
+                                  // Same guard as the parent path: a new (unsaved) program has no
+                                  // stable ID yet, so adding a branch to it would silently key its
+                                  // rates and limits against an empty programId.
+                                  var editingProgramObjB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (!editingProgramObjB) {
+                                    toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                    return;
+                                  }
+                                  var fpMaxAdvB = parseFloat(pf.maxAdvanceRate) || 90;
+                                  var fpMinIntB = parseFloat(pf.minInterestRate) || 15;
+                                  setAddToProgramModal({
+                                    supplierId: brEntityId, supplierName: s.name + " \u2014 " + br.branchName,
+                                    programId: editingProgramObjB.id, programName: pf.name || "",
+                                    programCcy: pf.currency || "GBP",
+                                    isBranch: true,
+                                    advanceRate: String(Math.max(0, fpMaxAdvB - 5).toFixed(0)),
+                                    annualRate: String((fpMinIntB + 1).toFixed(1)),
+                                    penaltyRate: "20.0",
+                                    creditLimit: "",
+                                    singleInvoiceLimit: ""
+                                  });
+                                }
                               }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
                             });
                           }
@@ -16408,11 +20238,11 @@ export default function FactoringDashboard() {
                       })()}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyer Jurisdictions</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyer Jurisdictions</label>
                       <div style={{ display: "flex", flexWrap: "wrap", maxHeight: 80, overflowY: "auto" }}>{COUNTRIES.map(function(c) { var sel = (pf.eligibleBuyerJurisdictions || []).indexOf(c) > -1; return <span key={c} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyerJurisdictions: toggleArr(p.eligibleBuyerJurisdictions || [], c) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#C08B3020" : "transparent", color: sel ? "#D97706" : "var(--muted)", borderColor: sel ? "#D97706" : "var(--border)", fontWeight: sel ? 700 : 400, fontSize: 9 })}>{c}</span>; })}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Supplier Jurisdictions</label>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Supplier Jurisdictions</label>
                       <div style={{ display: "flex", flexWrap: "wrap", maxHeight: 80, overflowY: "auto" }}>{COUNTRIES.map(function(c) { var sel = (pf.eligibleSupplierJurisdictions || []).indexOf(c) > -1; return <span key={c} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleSupplierJurisdictions: toggleArr(p.eligibleSupplierJurisdictions || [], c) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#a855f720" : "transparent", color: sel ? "#7C3AED" : "var(--muted)", borderColor: sel ? "#7C3AED" : "var(--border)", fontWeight: sel ? 700 : 400, fontSize: 9 })}>{c}</span>; })}</div>
                     </div>
                   </div>
@@ -16851,26 +20681,7 @@ export default function FactoringDashboard() {
                 }
 
                 // Write new/updated invoices directly to Supabase in batches
-                var invToSave = INVOICES_DB.map(function(inv) {
-                  return {
-                    id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
-                    amount: inv.amount, currency: inv.currency,
-                    capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
-                    interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
-                    days_to_maturity: inv.daysToMaturity || 0,
-                    advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
-                    invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
-                    created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
-                    invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
-                    funding_program: inv.fundingProgram || null,
-                    partial_approved_amount: inv.partialApprovedAmount || 0,
-                    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
-                    invoice_status_history: inv.invoiceStatusHistory || [],
-                    adjustments: inv.adjustments || [],
-                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
-                    notes: inv.notes || []
-                  };
-                });
+                var invToSave = INVOICES_DB.map(packInvoiceRow);
                 console.log("[CSV Import] Saving " + invToSave.length + " invoices to Supabase...");
                 setCsvImportProgress("Saving to database... 0/" + invToSave.length);
                 var saveErrors = 0;
@@ -17158,9 +20969,12 @@ export default function FactoringDashboard() {
 
               function openEditUser(user) {
                 var role = user.role;
-                // Map stored role: if role is "supplier" but supplier_id has ":", it's a branch user
-                if (role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) role = "supplier_branch";
-                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: user.supplier_id || "", status: user.status || "active" });
+                // Stage 2: branch_id is now a separate column. supplier_id always holds the
+                // parent only. Branch users are detected by the presence of branch_id.
+                var compositeId = user.supplier_id || "";
+                if (compositeId && user.branch_id) compositeId = compositeId + ":" + user.branch_id;
+                if (role === "supplier" && user.branch_id) role = "supplier_branch";
+                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: compositeId, status: user.status || "active" });
                 setUserEdit(user);
                 setUserSaveMsg("");
               }
@@ -17178,9 +20992,14 @@ export default function FactoringDashboard() {
                 if ((f.role === "supplier" || f.role === "supplier_branch") && !f.supplier_id) { setUserSaveMsg("Supplier/Branch must be selected for this role."); return; }
                 if (userEdit === "new" && (!f.password || f.password.length < 8)) { setUserSaveMsg("Password must be at least 8 characters."); return; }
 
-                // Determine the stored role and supplier_id
+                // Determine the stored role and split the composite entity ID into
+                // supplier_id (parent only) + branch_id (suffix or null) for DB write.
+                // Stage 2 stores them as separate columns.
                 var storedRole = f.role === "supplier_branch" ? "supplier" : f.role;
-                var storedSupplierId = (f.role === "supplier" || f.role === "supplier_branch") ? f.supplier_id : null;
+                var composite = (f.role === "supplier" || f.role === "supplier_branch") ? (f.supplier_id || "") : "";
+                var parsedComposite = parseEntityId(composite);
+                var storedSupplierId = composite ? (parsedComposite.supplierId || null) : null;
+                var storedBranchId = composite ? (parsedComposite.branchId || null) : null;
 
                 setUserSaveMsg("Saving...");
 
@@ -17200,11 +21019,11 @@ export default function FactoringDashboard() {
                     restoreAndUpsert.then(function() {
                       return supabase.from("user_profiles").upsert({
                         id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
-                        supplier_id: storedSupplierId, status: f.status || "active"
+                        supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active"
                       });
                     }).then(function(r2) {
                       if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
-                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedSupplierId ? " — " + getEntityDisplayName(storedSupplierId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
+                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (composite ? " — " + getEntityDisplayName(composite) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId });
                       setUserSaveMsg("");
                       setUserEdit(null);
                       loadUsers();
@@ -17212,10 +21031,10 @@ export default function FactoringDashboard() {
                   });
                 } else {
                   // Update existing user profile
-                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, status: f.status || "active" };
+                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active" };
                   supabase.from("user_profiles").update(updates).eq("id", userEdit.id).then(function(r2) {
                     if (r2.error) { setUserSaveMsg("Error: " + r2.error.message); return; }
-                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedSupplierId ? ", entity: " + getEntityDisplayName(storedSupplierId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
+                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (composite ? ", entity: " + getEntityDisplayName(composite) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status });
                     setUserSaveMsg("");
                     setUserEdit(null);
                     loadUsers();
@@ -17322,17 +21141,23 @@ export default function FactoringDashboard() {
                 </div>
                 {(function() {
                   var muHasActive = !!(mgUsrSearch || mgUsrRoleFilter || mgUsrStatusFilter);
-                  // Effective display role (handles supplier_branch derivation)
+                  // Effective display role: branch users are stored as role='supplier' with
+                  // branch_id set; surface "supplier_branch" for filter/sort purposes.
                   function effectiveRole(user) {
-                    if (user.role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) return "supplier_branch";
+                    if (user.role === "supplier" && user.branch_id) return "supplier_branch";
                     return user.role;
+                  }
+                  // Compose entity ID from supplier_id + branch_id for display lookup.
+                  function userEntityId(user) {
+                    var sid = user.supplier_id || "";
+                    return user.branch_id ? (sid + ":" + user.branch_id) : sid;
                   }
                   function applyMuFilters(list) {
                     var r = list;
                     if (mgUsrRoleFilter) r = r.filter(function(u) { return effectiveRole(u) === mgUsrRoleFilter; });
                     if (mgUsrStatusFilter === "active") r = r.filter(function(u) { return u.status !== "deactivated"; });
                     if (mgUsrStatusFilter === "deactivated") r = r.filter(function(u) { return u.status === "deactivated"; });
-                    if (mgUsrSearch) { var q = mgUsrSearch.toLowerCase(); r = r.filter(function(u) { var entN = u.supplier_id ? (getEntityDisplayName(u.supplier_id) || u.supplier_id) : ""; return (u.full_name || "").toLowerCase().indexOf(q) > -1 || (u.email || "").toLowerCase().indexOf(q) > -1 || String(entN).toLowerCase().indexOf(q) > -1; }); }
+                    if (mgUsrSearch) { var q = mgUsrSearch.toLowerCase(); r = r.filter(function(u) { var eid = userEntityId(u); var entN = eid ? (getEntityDisplayName(eid) || eid) : ""; return (u.full_name || "").toLowerCase().indexOf(q) > -1 || (u.email || "").toLowerCase().indexOf(q) > -1 || String(entN).toLowerCase().indexOf(q) > -1; }); }
                     return r;
                   }
                   var filteredForStats = applyMuFilters(usersList);
@@ -17341,7 +21166,7 @@ export default function FactoringDashboard() {
                     if (mgUsrSort === "name") return (u.full_name || "").toLowerCase();
                     if (mgUsrSort === "email") return (u.email || "").toLowerCase();
                     if (mgUsrSort === "role") return effectiveRole(u) || "";
-                    if (mgUsrSort === "entity") return u.supplier_id ? (getEntityDisplayName(u.supplier_id) || u.supplier_id).toLowerCase() : "";
+                    if (mgUsrSort === "entity") { var ueid = userEntityId(u); return ueid ? (getEntityDisplayName(ueid) || ueid).toLowerCase() : ""; }
                     if (mgUsrSort === "status") return u.status || "active";
                     return "";
                   }
@@ -17379,7 +21204,8 @@ export default function FactoringDashboard() {
                           var displayRole = effectiveRole(user);
                           var rc = roleColors[displayRole] || "#6B7280";
                           var isDeactivated = user.status === "deactivated";
-                          var entityName = user.supplier_id ? getEntityDisplayName(user.supplier_id) || user.supplier_id : "\u2014";
+                          var rowEntId = userEntityId(user);
+                          var entityName = rowEntId ? getEntityDisplayName(rowEntId) || rowEntId : "\u2014";
                           return <tr key={user.id} style={{ borderBottom: "1px solid var(--border)", opacity: isDeactivated ? 0.5 : 1 }}>
                             <td style={{ padding: "10px 12px", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{user.full_name || "\u2014"}</td>
                             <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{user.email}</td>
@@ -17694,13 +21520,13 @@ export default function FactoringDashboard() {
                           if (d.holdbackPayments) { HOLDBACK_PAYMENTS_DB.length = 0; d.holdbackPayments.forEach(function(x) { HOLDBACK_PAYMENTS_DB.push(x); }); }
                           if (d.auditLog) { AUDIT_LOG.length = 0; d.auditLog.forEach(function(x) { AUDIT_LOG.push(x); }); }
                           if (d.supplierPaymentQueue) { SUPPLIER_PAYMENT_QUEUE.length = 0; d.supplierPaymentQueue.forEach(function(x) { SUPPLIER_PAYMENT_QUEUE.push(x); }); }
-                          if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) { if (!x.rates) x.rates = [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }]; SUPPLIERS_DB.push(x); }); }
+                          if (d.suppliers) { SUPPLIERS_DB.length = 0; d.suppliers.forEach(function(x) { if (!x.rates) x.rates = []; SUPPLIERS_DB.push(x); }); }
                           if (d.buyers) { BUYERS_DB.length = 0; d.buyers.forEach(function(x) { BUYERS_DB.push(x); }); BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
                           if (d.fundingPrograms) { FUNDING_PROGRAMS_DB.length = 0; d.fundingPrograms.forEach(function(x) { FUNDING_PROGRAMS_DB.push(x); }); }
                           if (d.serviceProviders) { SERVICE_PROVIDERS_DB.length = 0; d.serviceProviders.forEach(function(x) { SERVICE_PROVIDERS_DB.push(x); }); }
                           if (d.creditNotes) { CREDIT_NOTES_DB.length = 0; d.creditNotes.forEach(function(x) { CREDIT_NOTES_DB.push(x); }); }
-                          if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].name);
-                          if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].name);
+                          if (SUPPLIERS_DB.length > 0) setSelectedSupplier(SUPPLIERS_DB[0].id);
+                          if (BUYERS_DB.length > 0) setSelectedBuyer(BUYERS_DB[0].id);
                           setDataVer(function(v) { return v + 1; });
                           savePersistedData();
                           auditLog("Data Imported", "Backup imported: " + (d.invoices ? d.invoices.length : 0) + " invoices, " + (d.suppliers ? d.suppliers.length : 0) + " suppliers, " + (d.fundingPrograms ? d.fundingPrograms.length : 0) + " programs" + (d.exportDate ? " (exported " + d.exportDate.split("T")[0] + ")" : ""), { source: "import" });
@@ -17806,7 +21632,7 @@ export default function FactoringDashboard() {
         })()}
       </div>
     </div></div></>}
-    <style dangerouslySetInnerHTML={{ __html: "\n@media (min-width: 769px) { .ff-sidebar-mobile { display: none !important; } .ff-sidebar-overlay { display: none !important; } .ff-menu-btn { display: none !important; } }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } .ff-menu-btn { display: flex !important; } .ff-sidebar-mobile { display: flex !important; } .ff-sidebar-close { display: flex !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: var(--card-hover); }\ninput:focus, select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" }} />
+    <style dangerouslySetInnerHTML={{ __html: "\n/* Self-hosted webfonts. Inter is the body UI font and JetBrains Mono is\n   the tabular/code font. Font files live in /public/fonts and are served\n   at /fonts/* by the Vite/Vercel deployment. font-display:swap means the\n   system fallback renders immediately while the webfont downloads — no\n   blank text on first paint. */\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/inter/Inter-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/fonts/inter/Inter-Medium.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/inter/Inter-SemiBold.woff2') format('woff2'); }\n@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/fonts/inter/Inter-Bold.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2'); }\n@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 600; font-display: swap; src: url('/fonts/jetbrains-mono/JetBrainsMono-SemiBold.woff2') format('woff2'); }\n/* Apply tabular numerals globally so currency columns align even outside the\n   monospace cells. Inter's 'tnum' feature makes all digits the same width. */\nbody, .ff-root { font-feature-settings: 'tnum' 1, 'cv11' 1; }\n@media (min-width: 769px) { .ff-sidebar-mobile { display: none !important; } .ff-sidebar-overlay { display: none !important; } .ff-menu-btn { display: none !important; } }\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } .ff-menu-btn { display: flex !important; } .ff-sidebar-mobile { display: flex !important; } .ff-sidebar-close { display: flex !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\ntable tr:hover td { background: var(--card-hover); }\ninput:focus, select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15) !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #94A3B8; }\n" }} />
     <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "var(--card)", borderTop: "1px solid var(--border)", padding: "6px 12px", fontSize: 11, color: "var(--muted)", textAlign: "center", zIndex: 1000 }}>
       Powered by <a href="https://pelagicsolutions.co.uk" target="_blank" rel="noopener noreferrer" style={{ color: "var(--text-secondary)", textDecoration: "none" }}>Pelagic Solutions</a>
     </div>
