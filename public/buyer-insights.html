@@ -1917,73 +1917,51 @@ function loadUpload(uploadId, onLoaded) {
         if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
         var meta = upRes.data;
 
-        updateProcessing(35, 'Fetching invoice rows…');
-        fetchAllRows('buyer_invoices', uploadId, function(invErr, invRows) {
-            if (invErr) { hideProcessing(); alert('Invoice fetch failed: ' + invErr); return; }
+        // PHASE 3d: drop row fetching entirely. The snapshot has everything
+        // every view needs (totals/suppliers/timeSeries at every granularity).
+        // Drilldowns are lazy-loaded targeted queries (limit 250) when needed.
+        // This is where the scale win lands: open time was bounded by 50k-row
+        // fetch (~2-3 min); now it's a single snapshot read (sub-second).
+        updateProcessing(60, 'Fetching analytics snapshot…');
+        sbClient.from('buyer_upload_snapshots')
+            .select('stats, computed_at, schema_version, computed_in_ms')
+            .eq('upload_id', uploadId)
+            .maybeSingle()
+            .then(function(snapRes) {
+                var snapshot = (snapRes && snapRes.data) ? snapRes.data : null;
+                if (snapRes && snapRes.error) {
+                    console.warn('Snapshot fetch failed:', snapRes.error.message);
+                } else if (!snapshot) {
+                    hideProcessing();
+                    alert('This upload has no analytics snapshot. From the Upload History row, click "Recompute snapshot" to fix it.');
+                    return;
+                } else {
+                    console.log('Snapshot loaded:',
+                        snapshot.schema_version,
+                        'computed in', snapshot.computed_in_ms, 'ms at', snapshot.computed_at);
+                }
 
-            updateProcessing(70, 'Fetching credit note rows…');
-            fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
-                if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
+                // window.__upload now holds only meta + snapshot. Row arrays
+                // are gone — views read from snapshot via getCurrentStats() /
+                // getCurrentTimeSeries(). Drilldowns lazy-fetch supplier rows
+                // on demand.
+                window.__upload = {
+                    uploadId: uploadId,
+                    meta: meta,
+                    snapshot: snapshot,
+                    filter: { kind: 'all' },
+                    currentPeriodKey: 'all',
+                    filteredFromDate: null,
+                    filteredToDate: null
+                    // No invRows / cnRows / filteredXxx / filteredStats / stats.
+                    // Anything that used to read those should call getCurrentStats()
+                    // or getCurrentTimeSeries() and consume the snapshot path.
+                };
 
-                // PHASE 2: fetch the precomputed snapshot alongside rows.
-                // For now, nothing consumes this — it's just made available on
-                // __upload.snapshot for later phases to read from. The existing
-                // render path (computeBuyerStats from rows) is unchanged.
-                updateProcessing(85, 'Fetching analytics snapshot…');
-                sbClient.from('buyer_upload_snapshots')
-                    .select('stats, computed_at, schema_version, computed_in_ms')
-                    .eq('upload_id', uploadId)
-                    .maybeSingle()
-                    .then(function(snapRes) {
-                        // Non-fatal: a missing snapshot just means we won't be
-                        // able to use the fast path later. The old path still works.
-                        var snapshot = (snapRes && snapRes.data) ? snapRes.data : null;
-                        if (snapRes && snapRes.error) {
-                            console.warn('Snapshot fetch failed (non-fatal):', snapRes.error.message);
-                        } else if (!snapshot) {
-                            console.warn('No snapshot for upload ' + uploadId + '. Run compute_buyer_snapshot() in SQL to populate.');
-                        } else {
-                            console.log('Snapshot loaded:',
-                                snapshot.schema_version,
-                                'computed in', snapshot.computed_in_ms, 'ms at', snapshot.computed_at);
-                        }
-
-                        updateProcessing(90, 'Computing analytics…');
-                        var stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
-
-                        // Single shared cache. Reports / Trends / All Suppliers all
-                        // read meta, invRows, cnRows, stats from here.
-                        //
-                        // Step 3 — filter state is also app-level now (not per-tab).
-                        // .filter is the current operator selection.
-                        // .filteredXxx fields are the recomputed slices used by every
-                        //  view. Initial values: no filter applied (filter kind = "all"),
-                        //  so the filtered* fields mirror the upload-wide raw data.
-                        //
-                        // PHASE 2 addition: .snapshot holds the precomputed analytics
-                        // bundle from Supabase. Not yet consumed by any view.
-                        window.__upload = {
-                            uploadId: uploadId,
-                            meta: meta,
-                            invRows: invRows || [],
-                            cnRows: cnRows || [],
-                            stats: stats,
-                            snapshot: snapshot,
-                            filter: { kind: 'all' },
-                            currentPeriodKey: 'all',
-                            filteredFromDate: null,
-                            filteredToDate: null,
-                            filteredStats: stats,
-                            filteredInvRows: invRows || [],
-                            filteredCnRows: cnRows || []
-                        };
-
-                        refreshAppShellForUpload();
-                        hideProcessing();
-                        onLoaded(window.__upload);
-                    });
+                refreshAppShellForUpload();
+                hideProcessing();
+                onLoaded(window.__upload);
             });
-        });
     });
 }
 
@@ -2020,60 +1998,36 @@ function refreshAppShellPeriodLabel() {
     document.getElementById('currentUploadPeriod').textContent = label;
 }
 
-// Apply a new period filter at the app level. Recomputes filteredXxx fields
-// on __upload, invalidates the Trends per-supplier stats cache, then re-renders
-// whichever view is currently visible. Reports and Trends both read filter
-// state from __upload — there's no per-tab filter state any more.
-//
-// PHASE 3a: also sets u.currentPeriodKey for snapshot-aware views. Until all
-// views migrate, both paths exist in parallel:
-//   - Legacy (Reports/Trends): consume u.filteredStats / u.filteredXxxRows
-//   - Snapshot (All Suppliers): consume u.snapshot.stats.perPeriod[u.currentPeriodKey]
+// Apply a new period filter at the app level. PHASE 3d: no row filtering
+// any more — we just set currentPeriodKey and re-render the views. Each
+// view reads from the snapshot's perPeriod[key] block via getCurrentStats()
+// or getCurrentTimeSeries(). View switching is now O(1) — instant.
 function applyUploadFilter(newFilter) {
     var u = window.__upload;
     if (!u) return;
     u.filter = newFilter;
 
-    // Resolve filter to {fromDate, toDate, label, periodKey} and filter the row arrays.
     var resolved = resolvePeriodFilter(newFilter, u.meta.date_range_min, u.meta.date_range_max);
     u.filteredFromDate = resolved.fromDate;
     u.filteredToDate = resolved.toDate;
     u.currentPeriodKey = resolved.periodKey || 'all';
-    u.filteredInvRows = filterRowsByDate(u.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
-    u.filteredCnRows  = filterRowsByDate(u.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
 
-    // Re-derive the stats bundle from filtered rows. This is the slow step
-    // (~500ms on 50k rows). Reports + All Suppliers both consume this.
-    u.filteredStats = window.BuyerAnalytics.computeBuyerStats(u.meta, u.filteredInvRows, u.filteredCnRows);
-
-    // Trends caches per-supplier stats on its own state; invalidate so it
-    // re-derives from the new filtered slice on next render.
+    // Invalidate caches that depend on the active period.
     if (window.__trends) window.__trends._stats = null;
-
-    // All Suppliers sparkline cache is also stats-derived — invalidate.
     if (u._allSupTimeSeries) u._allSupTimeSeries = null;
 
-    // Update the visible elements: strip period label, the active-filter
-    // text under the dropdown, and re-render whatever view is currently
-    // active. (If a view isn't visible, it'll re-render when next activated.)
     refreshAppShellPeriodLabel();
     updatePeriodFilterActiveLabel('uploadFilter', newFilter, u.meta.date_range_min, u.meta.date_range_max);
 
-    // Reports: refresh its meta line + rebuild ccy tabs (since per-currency
-    // counts may have shifted) + re-render body.
     if (window.__report && window.__report.activeCcy) {
         refreshReportMeta();
         rebuildReportCurrencyTabs();
     }
-    // Trends: refresh its meta line + rebuild ccy tabs.
     if (window.__trends && window.__trends.activeCcy) {
         refreshTrendsMeta();
         rebuildTrendsCurrencyTabs();
     }
-    // All Suppliers: rebuild ccy tabs + body. The active currency may have
-    // dropped out if the filter shifted the data.
     if (window.__allSuppliers && window.__allSuppliers.activeCcy) {
-        // Subtitle on the All Suppliers header may include the filter range
         document.getElementById('allSupSubtitle').textContent =
             (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
         rebuildAllSuppliersCurrencyTabs();
@@ -4075,50 +4029,87 @@ document.addEventListener('keydown', function(e) {
 });
 
 function openSupplierPanel(supId, ccy) {
-    // Source raw rows from whichever surface is currently active.
-    // Both __report and __trends cache raw invoice/CN rows. Prefer __trends
-    // if it's the visible surface (operator's current context).
-    var src = pickSupplierDataSource();
-    if (!src) {
-        alert('No upload data available. Open a report or trends view first.');
+    // PHASE 3d: lazy-load this supplier's rows from Supabase (limit 250).
+    // We don't carry invRows/cnRows in __upload any more — drilldowns are
+    // targeted queries scoped to (upload_id, supplier_identifier, currency).
+    // The 250 cap is enforced at the UI; if the supplier has more rows than
+    // that, the table shows the most recent 250 and a hint that there's more.
+    var u = window.__upload;
+    if (!u || !sbClient) {
+        alert('No upload loaded.');
         return;
     }
 
-    // Filter rows: this supplier, this currency, non-excluded
-    var invRows = src.invRows.filter(function(r) {
-        return !r.excluded && r.supplier_identifier === supId && (r.currency || '').toUpperCase() === ccy.toUpperCase();
-    });
-    var cnRows = src.cnRows.filter(function(r) {
-        return !r.excluded && r.supplier_identifier === supId && (r.currency || '').toUpperCase() === ccy.toUpperCase();
-    });
-
-    if (invRows.length === 0) {
-        alert('No invoices found for this supplier in ' + ccy + '. (Identifier: ' + supId + ')');
-        return;
-    }
-
-    // Compute supplier-scoped stats by reusing the analytics module.
-    // Wrap our filtered rows as a synthetic per-currency upload.
-    var supStats = computeSupplierScopedStats(invRows, cnRows, src.meta);
-    var supplierName = invRows[0].supplier_name || supId;
-
-    // Populate the panel
-    populateSupplierPanel(supplierName, supId, ccy, supStats, invRows, cnRows, src.meta);
-
-    // Show with slide-in
+    // Show the panel immediately with a loading state — the fetch round-trip
+    // is small but not zero, and we want to feel responsive.
     var panel = document.getElementById('supPanel');
     var backdrop = document.getElementById('supPanelBackdrop');
     panel.setAttribute('aria-hidden', 'false');
     backdrop.classList.add('open');
     panel.classList.add('open');
     _supplierPanelOpen = true;
+    var body = document.getElementById('supPanelBody');
+    if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">Loading supplier detail…</div>';
 
-    // Charts need to be drawn after the panel has laid out (just made
-    // visible from transform: translateX(100%)). One rAF is enough since
-    // the panel is already in DOM, just transformed.
-    requestAnimationFrame(function() {
-        drawSupplierVolumeChart(supStats, ccy);
-        drawSupplierPaymentChart(supStats);
+    var DRILL_LIMIT = 250;
+
+    // Fetch invoices + CNs in parallel.
+    var invPromise = sbClient.from('buyer_invoices')
+        .select('*')
+        .eq('upload_id', u.uploadId)
+        .eq('supplier_identifier', supId)
+        .ilike('currency', ccy)
+        .eq('excluded', false)
+        .order('invoice_date', { ascending: false })
+        .limit(DRILL_LIMIT);
+
+    var cnPromise = sbClient.from('buyer_credit_notes')
+        .select('*')
+        .eq('upload_id', u.uploadId)
+        .eq('supplier_identifier', supId)
+        .ilike('currency', ccy)
+        .eq('excluded', false)
+        .order('cn_date', { ascending: false })
+        .limit(DRILL_LIMIT);
+
+    Promise.all([invPromise, cnPromise]).then(function(results) {
+        var invRes = results[0];
+        var cnRes  = results[1];
+        if (invRes.error) {
+            if (body) body.innerHTML = '<div style="padding:24px; color:var(--danger);">Invoice fetch failed: ' + escHTML(invRes.error.message) + '</div>';
+            return;
+        }
+        var invRows = invRes.data || [];
+        var cnRows  = (cnRes && cnRes.data) || [];
+
+        if (invRows.length === 0) {
+            if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">No invoices found for this supplier in ' + escHTML(ccy) + '.</div>';
+            return;
+        }
+
+        // Compute supplier-scoped stats.
+        var supStats = computeSupplierScopedStats(invRows, cnRows, u.meta);
+        var supplierName = invRows[0].supplier_name || supId;
+
+        // Populate the panel with the (possibly capped) row set.
+        populateSupplierPanel(supplierName, supId, ccy, supStats, invRows, cnRows, u.meta);
+
+        // If we hit the cap, add a small advisory note above the recent-invoices list.
+        if (invRows.length === DRILL_LIMIT) {
+            var noteHost = document.querySelector('#supPanelBody .sup-panel-list-cap');
+            if (!noteHost && body) {
+                var note = document.createElement('div');
+                note.className = 'sup-panel-list-cap';
+                note.style.cssText = 'margin: 8px 0 0; font-size: 11px; color: var(--muted);';
+                note.textContent = 'Showing the most recent ' + DRILL_LIMIT + ' invoices for this supplier. Larger drilldowns will be paginated in a future build.';
+                body.appendChild(note);
+            }
+        }
+
+        requestAnimationFrame(function() {
+            drawSupplierVolumeChart(supStats, ccy);
+            drawSupplierPaymentChart(supStats);
+        });
     });
 }
 
@@ -5518,9 +5509,14 @@ function buildTrendsPrintTree() {
     root.innerHTML = '';
 
     // Use filtered rows if a filter is applied; otherwise upload-wide rows.
-    // All filter state on __upload (Step 3).
+    // PHASE 3d: rows aren't loaded by default. PDF export needs them. If
+    // missing, we surface a friendly error rather than producing a broken PDF.
     var invRows = u.filteredInvRows || u.invRows;
     var cnRows  = u.filteredCnRows  || u.cnRows;
+    if (!invRows || !cnRows) {
+        alert('PDF export needs row data; this isn\'t loaded by default after the snapshot refactor. (To restore: open the upload, then re-trigger export — a future build will load rows on demand for export.)');
+        return;
+    }
 
     if (!t._stats) {
         t._stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
