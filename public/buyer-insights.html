@@ -1669,16 +1669,27 @@ function processAndSave() {
                     sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
                     return;
                 }
-                updateProcessing(100, 'Done.');
-                setTimeout(function() {
-                    hideProcessing();
-                    resetUploadForm();
-                    loadAllData();
-                    alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes, ' + Object.keys(distinctSuppliers).length.toLocaleString() + ' suppliers across ' + Object.keys(currencies).length + ' currencies.');
-                    // Jump to Upload History so the operator can see the new row.
-                    var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
-                    if (histBtn) histBtn.click();
-                }, 500);
+                // Rows saved. Now ask Postgres to compute the analytics snapshot.
+                // This single RPC call replaces what used to be done client-side
+                // every time the upload was viewed.
+                updateProcessing(90, 'Computing analytics snapshot…');
+                sbClient.rpc('compute_buyer_snapshot', { p_upload_id: uploadId }).then(function(snapRes) {
+                    if (snapRes.error) {
+                        hideProcessing();
+                        alert('Rows saved but snapshot failed: ' + snapRes.error.message + '\n\nYou can retry from the Upload History.');
+                        return;
+                    }
+                    updateProcessing(100, 'Done.');
+                    setTimeout(function() {
+                        hideProcessing();
+                        resetUploadForm();
+                        loadAllData();
+                        alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes, ' + Object.keys(distinctSuppliers).length.toLocaleString() + ' suppliers across ' + Object.keys(currencies).length + ' currencies.');
+                        // Jump to Upload History so the operator can see the new row.
+                        var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
+                        if (histBtn) histBtn.click();
+                    }, 500);
+                });
             });
         });
     });
@@ -5433,5 +5444,10 @@ function teardownPrintTree() {
 }
 
 </script>
+
+<div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e5e5e5;padding:6px 12px;font-size:11px;color:#888;text-align:center;z-index:1000;">
+  Powered by <a href="https://pelagicsolutions.co.uk" target="_blank" rel="noopener" style="color:#555;text-decoration:none;">Pelagic Solutions</a>
+</div>
+
 </body>
 </html>
