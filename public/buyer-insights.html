@@ -2088,20 +2088,27 @@ function applyUploadFilter(newFilter) {
 // from rows) if the snapshot isn't loaded or doesn't have the requested
 // period key.
 //
-// Output shape matches the per-currency block from computeBuyerStats:
-//   { perCurrency: { GBP: { totals, suppliers, volumeOverTime }, ... } }
+// Snapshot-side blocks are enriched on the fly with derivations that
+// legacy computeBuyerStats() produced:
+//   - totals: netSpend, avgInvoiceAmount, paymentCoveragePct
+//   - concentration: top1/3/5/10/20Pct, hhi (derived from suppliers)
+//   - dilution: overallRate, league (filtered to invoiceCount>=3)
+//   - paymentBehaviour: coveragePct, distribution buckets, consistentlyLate
 //
-// Callers should treat .perCurrency identically regardless of source —
-// the snapshot is built to match the existing structure.
+// These derivations all walk the .suppliers array, which is already in the
+// snapshot. Cost: O(suppliers) per render — fast even for 100k suppliers.
 function getCurrentStats() {
     var u = window.__upload;
     if (!u) return null;
     var key = u.currentPeriodKey || 'all';
     if (u.snapshot && u.snapshot.stats && u.snapshot.stats.perPeriod && u.snapshot.stats.perPeriod[key]) {
-        // Snapshot path: return the per-period block from the precomputed bundle.
-        // We also stitch on .overall from the snapshot for callers that need it.
+        var raw = u.snapshot.stats.perPeriod[key].perCurrency || {};
+        var enriched = {};
+        Object.keys(raw).forEach(function(ccy) {
+            enriched[ccy] = enrichSnapshotCcy(raw[ccy]);
+        });
         return {
-            perCurrency: u.snapshot.stats.perPeriod[key].perCurrency || {},
+            perCurrency: enriched,
             overall:     u.snapshot.stats.overall,
             __source:    'snapshot'
         };
@@ -2113,6 +2120,162 @@ function getCurrentStats() {
         perCurrency: s.perCurrency || {},
         overall:     s.overall,
         __source:    'client'
+    };
+}
+
+// Enrich one currency block from the snapshot with the derived fields the
+// legacy computeBuyerStats() produced. Pure function; no DOM, no side effects.
+function enrichSnapshotCcy(c) {
+    var t = c.totals;
+    var suppliers = c.suppliers || [];
+
+    // ── Concentration: top-N percentages + HHI ──────────────────────
+    // Suppliers are already sorted by total_spend DESC in the snapshot.
+    var totalSpend = t.totalSpend || 0;
+    var spends = suppliers.map(function(s) { return s.totalSpend || 0; });
+    function topNSum(arr, n) {
+        var s = 0;
+        for (var i = 0; i < Math.min(n, arr.length); i++) s += arr[i];
+        return s;
+    }
+    var hhi = totalSpend > 0
+        ? spends.reduce(function(acc, sp) { var sh = sp / totalSpend; return acc + sh * sh; }, 0)
+        : 0;
+    var concentration = {
+        supplierCount: suppliers.length,
+        top1Pct:  totalSpend > 0 ? topNSum(spends, 1)  / totalSpend : 0,
+        top3Pct:  totalSpend > 0 ? topNSum(spends, 3)  / totalSpend : 0,
+        top5Pct:  totalSpend > 0 ? topNSum(spends, 5)  / totalSpend : 0,
+        top10Pct: totalSpend > 0 ? topNSum(spends, 10) / totalSpend : 0,
+        top20Pct: totalSpend > 0 ? topNSum(spends, 20) / totalSpend : 0,
+        hhi:      hhi
+    };
+
+    // ── Dilution league ─────────────────────────────────────────────
+    // Filter to suppliers with enough invoice base to be meaningful.
+    var dilutionLeague = suppliers
+        .filter(function(s) { return (s.invoiceCount || 0) >= 3 && (s.totalSpend || 0) > 0; })
+        .map(function(s) {
+            return {
+                identifier:   s.identifier,
+                name:         s.name,
+                dilutionRate: s.dilutionRate || 0,
+                cnTotal:      s.cnTotal || 0,
+                cnCount:      s.cnCount || 0,
+                invoiceTotal: s.totalSpend || 0,
+                invoiceCount: s.invoiceCount || 0,
+                sharePct:     s.sharePct || 0
+            };
+        })
+        .sort(function(a, b) { return (b.dilutionRate || 0) - (a.dilutionRate || 0); });
+    var dilution = {
+        overallRate:    totalSpend > 0 ? (t.totalCNs || 0) / totalSpend : 0,
+        totalCNs:       t.totalCNs || 0,
+        cnInvoiceRatio: totalSpend > 0 ? (t.totalCNs || 0) / totalSpend : 0,
+        league:         dilutionLeague
+    };
+
+    // ── Payment behaviour (period-wide) ─────────────────────────────
+    // Distribution buckets: we don't have per-row DPD in the snapshot, so we
+    // approximate by walking suppliers and using their per-supplier counts.
+    // Each supplier carries onTimePct/latePct/veryLatePct relative to their
+    // own paidCount. We use those to allocate their paidCount into buckets.
+    // It's not row-exact (we don't get sub-bucket detail beyond on-time/late/
+    // very-late), but it's the best we can do without raw rows.
+    //
+    // NB: the four-bucket distribution (1-14 / 15-30 / 31-60 / 61+) collapses
+    // to three observable groups: on-time (<=0), late (1-30), very-late (>30).
+    // We split late into the 1-14 / 15-30 bands proportionally as a best-effort.
+    var totalPaid = 0;
+    var totalOnTime = 0;
+    var totalLate = 0;
+    var totalVeryLate = 0;
+    suppliers.forEach(function(s) {
+        var paid = s.paidCount || 0;
+        totalPaid += paid;
+        if (paid > 0 && s.onTimePct !== null && s.onTimePct !== undefined) {
+            totalOnTime   += paid * (s.onTimePct || 0);
+            totalLate     += paid * (s.latePct   || 0);
+            totalVeryLate += paid * (s.veryLatePct || 0);
+        }
+    });
+    // Split "late" (1-30) into 1-14 and 15-30 proportionally (50/50 as a fallback)
+    var distribution = {
+        earlyOrOnTime: Math.round(totalOnTime),
+        late1to14:     Math.round((totalLate - totalVeryLate) * 0.5),
+        late15to30:    Math.round((totalLate - totalVeryLate) * 0.5),
+        late31to60:    Math.round(totalVeryLate * 0.6),
+        late61plus:    Math.round(totalVeryLate * 0.4)
+    };
+    // Consistently late: suppliers with medianDaysPastDue > 30 across >=3 paid.
+    var consistentlyLate = suppliers
+        .filter(function(s) {
+            return (s.paidCount || 0) >= 3 && s.medianDaysPastDue !== null && s.medianDaysPastDue !== undefined && s.medianDaysPastDue > 30;
+        })
+        .map(function(s) {
+            return {
+                identifier:        s.identifier,
+                name:              s.name,
+                medianDaysPastDue: s.medianDaysPastDue,
+                avgDaysPastDue:    s.avgDaysPastDue,
+                paidCount:         s.paidCount
+            };
+        })
+        .sort(function(a, b) { return b.medianDaysPastDue - a.medianDaysPastDue; });
+    var paymentBehaviour = {
+        coveragePct:       (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0,
+        paidInvoiceCount:  totalPaid,
+        avgDaysPastDue:    t.avgDaysPastDue,
+        medianDaysPastDue: t.medianDaysPastDue,
+        distribution:      distribution,
+        consistentlyLate:  consistentlyLate
+    };
+
+    // Enriched totals
+    var enrichedTotals = Object.assign({}, t, {
+        netSpend:           Math.round(((t.totalSpend || 0) - (t.totalCNs || 0)) * 100) / 100,
+        avgInvoiceAmount:   (t.invoiceCount || 0) > 0 ? Math.round((t.totalSpend / t.invoiceCount) * 100) / 100 : 0,
+        paymentCoveragePct: (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0,
+        avgDaysToPaid:      null  // not derivable from snapshot
+    });
+
+    // ── Per-supplier trendSlope / trendSlopeNormalised ──────────────
+    // Linear regression on monthly invoice count. Computed here rather than
+    // in SQL because it's cheap (suppliers × months ≈ a few thousand pairs)
+    // and easier to verify against the legacy implementation in JS.
+    function linearSlope(yArr) {
+        var n = yArr.length;
+        if (n < 2) return 0;
+        var sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        for (var i = 0; i < n; i++) {
+            sumX  += i;
+            sumY  += yArr[i];
+            sumXY += i * yArr[i];
+            sumX2 += i * i;
+        }
+        var denom = (n * sumX2 - sumX * sumX);
+        return denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+    }
+    var enrichedSuppliers = suppliers.map(function(s) {
+        var monthlyCount = s.monthlyInvoiceCount || {};
+        var months = Object.keys(monthlyCount).sort();
+        var counts = months.map(function(m) { return monthlyCount[m]; });
+        var slope = counts.length >= 3 ? linearSlope(counts) : null;
+        var meanCount = counts.length > 0 ? counts.reduce(function(a, b) { return a + b; }, 0) / counts.length : 0;
+        var slopeN = (slope !== null && meanCount > 0) ? slope / meanCount : null;
+        return Object.assign({}, s, {
+            trendSlope:           slope,
+            trendSlopeNormalised: slopeN
+        });
+    });
+
+    return {
+        totals:           enrichedTotals,
+        suppliers:        enrichedSuppliers,
+        concentration:    concentration,
+        dilution:         dilution,
+        paymentBehaviour: paymentBehaviour,
+        volumeOverTime:   c.volumeOverTime || {}
     };
 }
 
@@ -2205,14 +2368,22 @@ function showReportView(upload) {
 function rebuildReportCurrencyTabs() {
     var r = window.__report;
     var u = window.__upload;
-    var stats = u.filteredStats || u.stats;
+    // PHASE 3b: prefer snapshot via helper.
+    var stats = getCurrentStats();
     var ccyTabs = document.getElementById('reportCcyTabs');
     ccyTabs.innerHTML = '';
 
-    var currencies = stats.overall.currencies.slice();
+    // Currency list: snapshot uses keys present in perCurrency (period-specific);
+    // legacy uses stats.overall.currencies.
+    var currencies;
+    if (stats.__source === 'snapshot') {
+        currencies = Object.keys(stats.perCurrency);
+    } else {
+        currencies = stats.overall.currencies.slice();
+    }
     currencies.sort(function(a, b) {
-        var sa = stats.perCurrency[a].totals.totalSpend;
-        var sb = stats.perCurrency[b].totals.totalSpend;
+        var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+        var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
         if (sb !== sa) return sb - sa;
         return a < b ? -1 : 1;
     });
@@ -2244,13 +2415,36 @@ function rebuildReportCurrencyTabs() {
 // depending on whether a filter is applied. All filter state on __upload.
 function refreshReportMeta() {
     var u = window.__upload;
-    var stats = u.filteredStats || u.stats;
+    // PHASE 3b: derive counts from snapshot when available. Sum per-currency
+    // totals to get the period-wide invoice/CN counts.
+    var stats = getCurrentStats();
     var metaBits = [];
     var fromTo = (u.filteredFromDate || u.meta.date_range_min) + ' → ' + (u.filteredToDate || u.meta.date_range_max);
     metaBits.push(fromTo);
-    metaBits.push(stats.overall.totalInvoices.toLocaleString() + ' invoices');
-    metaBits.push(stats.overall.totalSuppliers.toLocaleString() + ' suppliers');
-    if (stats.overall.totalCNs > 0) metaBits.push(stats.overall.totalCNs.toLocaleString() + ' credit notes');
+
+    var totalInv = 0, totalCN = 0;
+    var supSet = {};
+    if (stats.__source === 'snapshot') {
+        Object.keys(stats.perCurrency).forEach(function(ccy) {
+            var t = stats.perCurrency[ccy].totals;
+            totalInv += t.invoiceCount || 0;
+            totalCN  += t.cnCount      || 0;
+            (stats.perCurrency[ccy].suppliers || []).forEach(function(s) {
+                if (s.identifier) supSet[s.identifier] = true;
+            });
+        });
+    } else {
+        totalInv = stats.overall.totalInvoices;
+        totalCN  = stats.overall.totalCNs;
+        // For legacy we don't know unique supplier count per period without
+        // re-deriving; fall back to overall (less accurate under filter)
+        supSet = null;
+    }
+    metaBits.push(totalInv.toLocaleString() + ' invoices');
+    metaBits.push(
+        (supSet ? Object.keys(supSet).length : stats.overall.totalSuppliers).toLocaleString() + ' suppliers'
+    );
+    if (totalCN > 0) metaBits.push(totalCN.toLocaleString() + ' credit notes');
     document.getElementById('reportMeta').textContent = metaBits.join('  ·  ');
 }
 
@@ -2309,9 +2503,8 @@ function destroyAllCharts() {
 
 function renderReportBody(ccy) {
     destroyAllCharts();
-    // Read filteredStats (filter-aware) from __upload. Falls back to
-    // upload-wide stats if no filter has been applied yet.
-    var stats = window.__upload.filteredStats || window.__upload.stats;
+    // PHASE 3b: prefer snapshot via helper.
+    var stats = getCurrentStats();
     var c = stats.perCurrency[ccy];
     if (!c) {
         // Currency no longer present in the filtered slice — show empty state
