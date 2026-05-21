@@ -1970,6 +1970,7 @@ function loadUpload(uploadId, onLoaded) {
                             stats: stats,
                             snapshot: snapshot,
                             filter: { kind: 'all' },
+                            currentPeriodKey: 'all',
                             filteredFromDate: null,
                             filteredToDate: null,
                             filteredStats: stats,
@@ -2023,15 +2024,21 @@ function refreshAppShellPeriodLabel() {
 // on __upload, invalidates the Trends per-supplier stats cache, then re-renders
 // whichever view is currently visible. Reports and Trends both read filter
 // state from __upload — there's no per-tab filter state any more.
+//
+// PHASE 3a: also sets u.currentPeriodKey for snapshot-aware views. Until all
+// views migrate, both paths exist in parallel:
+//   - Legacy (Reports/Trends): consume u.filteredStats / u.filteredXxxRows
+//   - Snapshot (All Suppliers): consume u.snapshot.stats.perPeriod[u.currentPeriodKey]
 function applyUploadFilter(newFilter) {
     var u = window.__upload;
     if (!u) return;
     u.filter = newFilter;
 
-    // Resolve filter to {fromDate, toDate, label} and filter the row arrays.
+    // Resolve filter to {fromDate, toDate, label, periodKey} and filter the row arrays.
     var resolved = resolvePeriodFilter(newFilter, u.meta.date_range_min, u.meta.date_range_max);
     u.filteredFromDate = resolved.fromDate;
     u.filteredToDate = resolved.toDate;
+    u.currentPeriodKey = resolved.periodKey || 'all';
     u.filteredInvRows = filterRowsByDate(u.invRows, 'invoice_date', resolved.fromDate, resolved.toDate);
     u.filteredCnRows  = filterRowsByDate(u.cnRows,  'cn_date',      resolved.fromDate, resolved.toDate);
 
@@ -2071,6 +2078,42 @@ function applyUploadFilter(newFilter) {
             (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
         rebuildAllSuppliersCurrencyTabs();
     }
+}
+
+// ================================================================
+// SNAPSHOT-AWARE STATS HELPER (Phase 3+)
+// ================================================================
+// Returns the current "period stats" for a view, preferring snapshot when
+// available. Falls back to the legacy filteredStats (computed client-side
+// from rows) if the snapshot isn't loaded or doesn't have the requested
+// period key.
+//
+// Output shape matches the per-currency block from computeBuyerStats:
+//   { perCurrency: { GBP: { totals, suppliers, volumeOverTime }, ... } }
+//
+// Callers should treat .perCurrency identically regardless of source —
+// the snapshot is built to match the existing structure.
+function getCurrentStats() {
+    var u = window.__upload;
+    if (!u) return null;
+    var key = u.currentPeriodKey || 'all';
+    if (u.snapshot && u.snapshot.stats && u.snapshot.stats.perPeriod && u.snapshot.stats.perPeriod[key]) {
+        // Snapshot path: return the per-period block from the precomputed bundle.
+        // We also stitch on .overall from the snapshot for callers that need it.
+        return {
+            perCurrency: u.snapshot.stats.perPeriod[key].perCurrency || {},
+            overall:     u.snapshot.stats.overall,
+            __source:    'snapshot'
+        };
+    }
+    // Legacy fall-through: client-side computed stats.
+    var s = u.filteredStats || u.stats;
+    if (!s) return null;
+    return {
+        perCurrency: s.perCurrency || {},
+        overall:     s.overall,
+        __source:    'client'
+    };
 }
 
 // Enable or disable the Reports + Trends view tabs (and All Suppliers
@@ -3578,65 +3621,63 @@ function nullableStr(v) {
 // PERIOD FILTER
 // ================================================================
 // A small filter that scopes the report/trends/all-suppliers to a slice of
-// the upload. Filters by invoice_date (and cn_date for CNs).
-//
-// Step 3: filter state is APP-LEVEL — lives on window.__upload.filter
-// and is consumed by every view. There is no per-tab filter any more.
-// Changing the filter triggers re-render in whatever views are currently
-// active. No Supabase fetch — rows are already cached client-side.
+// the upload. Mirrors the snapshot's perPeriod keys so views that read from
+// the snapshot can map filter -> period key trivially.
 //
 // Options:
-//   all      — full upload period (no filter)
-//   quarter  — most recent calendar quarter within the upload window
-//              ("This Quarter") — bounded by period end
-//   ytd      — calendar Jan 1 of period-end's year through period end
-//   custom   — operator-supplied from/to dates
+//   all          — full upload period (no filter)
+//   12m/6m/3m/1m — rolling window of N months ending at periodMax
+//   year:YYYY    — a specific calendar year
 //
-// The resolver returns {fromDate, toDate, label} — dates as YYYY-MM-DD
-// strings or null for unbounded. Apply filter via:
-//   rows.filter(function(r) { return inRange(r.invoice_date, from, to); })
+// All windows are anchored to the upload's date_range_max ("periodMax"),
+// not today — a sales-tool upload may be months old.
 //
-// "Relative to period end" means the upload's date_range_max, not today —
-// a sales-tool upload may be months old.
+// The resolver returns {fromDate, toDate, label, periodKey}:
+//   - fromDate, toDate — YYYY-MM-DD strings used by legacy row-filter consumers
+//   - label            — human-readable description for UI chrome
+//   - periodKey        — matches the snapshot's perPeriod key (used by
+//                        snapshot-aware views — Phase 3+)
 
 function resolvePeriodFilter(filter, periodMin, periodMax) {
     if (!filter || filter.kind === 'all') {
-        return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period' };
-    }
-    if (filter.kind === 'custom') {
-        return {
-            fromDate: filter.from || periodMin || null,
-            toDate:   filter.to   || periodMax || null,
-            label: 'Custom range'
-        };
+        return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period', periodKey: 'all' };
     }
 
-    // For 'quarter' and 'ytd' we need a reference end-date. Use the upload's
-    // period end; fall back to today if the upload lacks date_range_max.
     var refEndStr = periodMax || new Date().toISOString().slice(0, 10);
     var refEnd = new Date(refEndStr + 'T00:00:00');
     if (isNaN(refEnd.getTime())) refEnd = new Date();
 
-    if (filter.kind === 'quarter') {
-        // Calendar quarter of refEnd. Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec.
-        var m = refEnd.getMonth();
-        var qStartMonth = Math.floor(m / 3) * 3;
-        var qStart = new Date(refEnd.getFullYear(), qStartMonth, 1);
+    // Rolling N months
+    var rollingMatch = /^(\d+)m$/.exec(filter.kind);
+    if (rollingMatch) {
+        var months = parseInt(rollingMatch[1], 10);
+        // (periodMax - months) + 1 day → inclusive lower bound that lines up
+        // with the snapshot's "> date_range_max - interval 'N months'" predicate.
+        var lower = new Date(refEnd);
+        lower.setMonth(lower.getMonth() - months);
+        lower.setDate(lower.getDate() + 1);
         return {
-            fromDate: toISODate(qStart),
+            fromDate: toISODate(lower),
             toDate:   refEndStr,
-            label: 'Q' + (Math.floor(m / 3) + 1) + ' ' + refEnd.getFullYear()
+            label:    'Last ' + months + ' month' + (months === 1 ? '' : 's'),
+            periodKey: filter.kind
         };
     }
-    if (filter.kind === 'ytd') {
-        var jan1 = new Date(refEnd.getFullYear(), 0, 1);
+
+    // Specific calendar year: year:YYYY
+    var yearMatch = /^year:(\d{4})$/.exec(filter.kind);
+    if (yearMatch) {
+        var y = parseInt(yearMatch[1], 10);
         return {
-            fromDate: toISODate(jan1),
-            toDate:   refEndStr,
-            label: refEnd.getFullYear() + ' YTD'
+            fromDate: y + '-01-01',
+            toDate:   y + '-12-31',
+            label:    String(y),
+            periodKey: String(y)  // snapshot uses bare year strings as keys
         };
     }
-    return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period' };
+
+    // Unknown kind — treat as 'all'
+    return { fromDate: periodMin || null, toDate: periodMax || null, label: 'Full period', periodKey: 'all' };
 }
 
 function toISODate(d) {
@@ -3663,66 +3704,55 @@ function filterRowsByDate(rows, dateField, fromDate, toDate) {
 // Build the filter UI as an HTML string. Caller injects it into a container
 // and wires up the change/apply handlers via attachPeriodFilterHandlers.
 //
-// The UI is a select + two date inputs (visible only when 'custom') + Apply
-// button. State is read from `filter` arg and written back to the same
-// object on apply.
+// Period kinds (anchored to upload date_range_max, not "now"):
+//   - all                    All data
+//   - 12m / 6m / 3m / 1m     Rolling windows ending at date_range_max
+//   - year:YYYY              One calendar year (dynamic — driven by stats.overall.years)
+//
+// These keys mirror the snapshot's perPeriod block so the filter selection
+// maps directly to a pre-computed slice for the views that read snapshot.
 function renderPeriodFilterControl(idPrefix, filter, periodMin, periodMax) {
     filter = filter || { kind: 'all' };
-    var isCustom = filter.kind === 'custom';
+    // Years come from the snapshot's overall.years (descending) when available;
+    // otherwise no year options are offered.
+    var years = [];
+    var u = window.__upload;
+    if (u && u.snapshot && u.snapshot.stats && u.snapshot.stats.overall && u.snapshot.stats.overall.years) {
+        years = u.snapshot.stats.overall.years.slice();
+    }
+    var opts = '' +
+        '<option value="all" ' + (filter.kind === 'all' ? 'selected' : '') + '>All data</option>' +
+        '<option value="12m" ' + (filter.kind === '12m' ? 'selected' : '') + '>Last 12 months</option>' +
+        '<option value="6m"  ' + (filter.kind === '6m'  ? 'selected' : '') + '>Last 6 months</option>' +
+        '<option value="3m"  ' + (filter.kind === '3m'  ? 'selected' : '') + '>Last 3 months</option>' +
+        '<option value="1m"  ' + (filter.kind === '1m'  ? 'selected' : '') + '>Last month</option>';
+    years.forEach(function(y) {
+        var key = 'year:' + y;
+        opts += '<option value="' + key + '" ' + (filter.kind === key ? 'selected' : '') + '>' + y + '</option>';
+    });
     return '' +
         '<div class="period-filter" id="' + idPrefix + '-wrap">' +
             '<label class="period-filter-label">Period</label>' +
-            '<select class="period-filter-select" id="' + idPrefix + '-select">' +
-                '<option value="all"     ' + (filter.kind === 'all'     ? 'selected' : '') + '>All data</option>' +
-                '<option value="quarter" ' + (filter.kind === 'quarter' ? 'selected' : '') + '>This Quarter</option>' +
-                '<option value="ytd"     ' + (filter.kind === 'ytd'     ? 'selected' : '') + '>Year to Date</option>' +
-                '<option value="custom"  ' + (filter.kind === 'custom'  ? 'selected' : '') + '>Custom range</option>' +
-            '</select>' +
-            '<span class="period-filter-custom" id="' + idPrefix + '-custom-wrap" style="' + (isCustom ? '' : 'display:none;') + '">' +
-                '<input type="date" class="period-filter-date" id="' + idPrefix + '-from" value="' + escHTML(filter.from || (periodMin || '')) + '" min="' + escHTML(periodMin || '') + '" max="' + escHTML(periodMax || '') + '" />' +
-                '<span class="period-filter-sep">→</span>' +
-                '<input type="date" class="period-filter-date" id="' + idPrefix + '-to" value="' + escHTML(filter.to || (periodMax || '')) + '" min="' + escHTML(periodMin || '') + '" max="' + escHTML(periodMax || '') + '" />' +
-                '<button class="btn btn-xs btn-primary" id="' + idPrefix + '-apply">Apply</button>' +
-            '</span>' +
+            '<select class="period-filter-select" id="' + idPrefix + '-select">' + opts + '</select>' +
             '<span class="period-filter-active" id="' + idPrefix + '-active-label"></span>' +
         '</div>';
 }
 
 // Wire up handlers for a rendered filter control. onChange is called with
-// the new filter object whenever the operator commits a change (selecting
-// All/Quarter/YTD applies immediately; Custom waits for Apply).
+// the new filter object whenever the operator commits a change.
 function attachPeriodFilterHandlers(idPrefix, filter, periodMin, periodMax, onChange) {
     var sel = document.getElementById(idPrefix + '-select');
-    var customWrap = document.getElementById(idPrefix + '-custom-wrap');
-    var fromInput = document.getElementById(idPrefix + '-from');
-    var toInput = document.getElementById(idPrefix + '-to');
-    var applyBtn = document.getElementById(idPrefix + '-apply');
-
     if (!sel) return;
-
     sel.addEventListener('change', function() {
-        var kind = sel.value;
-        if (kind === 'custom') {
-            customWrap.style.display = '';
-            // Don't fire onChange yet — wait for Apply.
+        var v = sel.value;
+        var newFilter;
+        if (v && v.indexOf('year:') === 0) {
+            newFilter = { kind: v };  // e.g. 'year:2025'
         } else {
-            customWrap.style.display = 'none';
-            var newFilter = { kind: kind };
-            onChange(newFilter);
+            newFilter = { kind: v };
         }
+        onChange(newFilter);
     });
-
-    if (applyBtn) {
-        applyBtn.addEventListener('click', function() {
-            var from = fromInput.value;
-            var to = toInput.value;
-            if (from && to && from > to) {
-                alert('From date is after To date.');
-                return;
-            }
-            onChange({ kind: 'custom', from: from || null, to: to || null });
-        });
-    }
 }
 
 // Update the small "active range" label next to the control. Caller invokes
@@ -4243,15 +4273,47 @@ function daysBetween(fromDateStr, toDateStr) {
 // this surface). Monthly is the universally readable density for a 60×22
 // sparkline over 24 months. Weekly is too jittery, quarterly too sparse.
 // Trends remains where granularity gets adjusted.
+//
+// PHASE 3a: when a snapshot is available, build the sparkline data from the
+// pre-baked monthlyInvoiceCount on each supplier in the snapshot. This avoids
+// the client-side computeTimeSeries call entirely for the sparklines, which
+// scales the same way as the per-supplier list: O(suppliers) not O(rows).
 function getAllSupTimeSeries(ccy) {
     var u = window.__upload;
     if (!u) return null;
     if (!u._allSupTimeSeries) u._allSupTimeSeries = {};
-    if (!u._allSupTimeSeries[ccy]) {
-        var invRows = u.filteredInvRows || u.invRows;
-        var cnRows  = u.filteredCnRows  || u.cnRows;
-        u._allSupTimeSeries[ccy] = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, 'monthly', ccy);
+    if (u._allSupTimeSeries[ccy]) return u._allSupTimeSeries[ccy];
+
+    var stats = getCurrentStats();
+    if (stats && stats.__source === 'snapshot') {
+        var ccyStats = stats.perCurrency[ccy];
+        if (!ccyStats) {
+            u._allSupTimeSeries[ccy] = { sparklines: {} };
+            return u._allSupTimeSeries[ccy];
+        }
+        // Build the union of all months that appear across this currency's
+        // suppliers, sorted. Then for each supplier produce a parallel array
+        // aligned to that month sequence (0 for missing months).
+        var monthSet = {};
+        ccyStats.suppliers.forEach(function(s) {
+            Object.keys(s.monthlyInvoiceCount || {}).forEach(function(m) { monthSet[m] = true; });
+        });
+        var months = Object.keys(monthSet).sort();
+        var sparklines = {};
+        ccyStats.suppliers.forEach(function(s) {
+            var mc = s.monthlyInvoiceCount || {};
+            sparklines[s.identifier] = {
+                volume: months.map(function(m) { return mc[m] || 0; })
+            };
+        });
+        u._allSupTimeSeries[ccy] = { sparklines: sparklines, buckets: months };
+        return u._allSupTimeSeries[ccy];
     }
+
+    // Legacy path: client-side computation from row data.
+    var invRows = u.filteredInvRows || u.invRows;
+    var cnRows  = u.filteredCnRows  || u.cnRows;
+    u._allSupTimeSeries[ccy] = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, 'monthly', ccy);
     return u._allSupTimeSeries[ccy];
 }
 
@@ -4337,14 +4399,24 @@ function updateAllSupClearVisibility() {
 function rebuildAllSuppliersCurrencyTabs() {
     var as = window.__allSuppliers;
     var u = window.__upload;
-    var stats = u.filteredStats || u.stats;
+    // PHASE 3a: read from snapshot when available via the helper.
+    var stats = getCurrentStats();
     var ccyTabs = document.getElementById('allSupCcyTabs');
     ccyTabs.innerHTML = '';
 
-    var currencies = stats.overall.currencies.slice();
+    // Currency list: from the snapshot's overall.currencies (stable across
+    // periods) OR — for the legacy path — derived from the perCurrency keys.
+    var currencies;
+    if (stats.__source === 'snapshot') {
+        // Period-specific currencies (some currencies may have zero data in a
+        // narrow window). Use the keys present in perCurrency.
+        currencies = Object.keys(stats.perCurrency);
+    } else {
+        currencies = stats.overall.currencies.slice();
+    }
     currencies.sort(function(a, b) {
-        var sa = stats.perCurrency[a].totals.totalSpend;
-        var sb = stats.perCurrency[b].totals.totalSpend;
+        var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+        var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
         if (sb !== sa) return sb - sa;
         return a < b ? -1 : 1;
     });
@@ -4381,7 +4453,8 @@ function rebuildAllSuppliersCurrencyTabs() {
 function renderAllSuppliersBody() {
     var as = window.__allSuppliers;
     var u = window.__upload;
-    var stats = u.filteredStats || u.stats;
+    // PHASE 3a: read from snapshot when available via the helper.
+    var stats = getCurrentStats();
     var ccy = as.activeCcy;
     var ccyStats = stats.perCurrency[ccy];
 
