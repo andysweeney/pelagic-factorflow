@@ -5169,9 +5169,8 @@ function exportTrendsPDF() {
 
 function buildReportPrintTree() {
     var u = window.__upload;
-    // Use filteredStats if a filter is applied; otherwise full upload stats.
-    // All filter state lives on __upload now (Step 3).
-    var stats = u.filteredStats || u.stats;
+    // PHASE 3d: read from snapshot via helper (same path as on-screen Reports).
+    var stats = getCurrentStats();
     var meta = u.meta;
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
@@ -5186,10 +5185,15 @@ function buildReportPrintTree() {
     root.appendChild(buildPrintCover(meta, stats, 'Buyer Insights', effective));
 
     // Per-currency pages — same order as the on-screen tabs (highest spend first)
-    var currencies = stats.overall.currencies.slice();
+    var currencies;
+    if (stats.__source === 'snapshot') {
+        currencies = Object.keys(stats.perCurrency);
+    } else {
+        currencies = stats.overall.currencies.slice();
+    }
     currencies.sort(function(a, b) {
-        var sa = stats.perCurrency[a].totals.totalSpend;
-        var sb = stats.perCurrency[b].totals.totalSpend;
+        var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+        var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
         if (sb !== sa) return sb - sa;
         return a < b ? -1 : 1;
     });
@@ -5644,20 +5648,8 @@ function buildTrendsPrintTree() {
     var root = document.getElementById('printRoot');
     root.innerHTML = '';
 
-    // Use filtered rows if a filter is applied; otherwise upload-wide rows.
-    // PHASE 3d: rows aren't loaded by default. PDF export needs them. If
-    // missing, we surface a friendly error rather than producing a broken PDF.
-    var invRows = u.filteredInvRows || u.invRows;
-    var cnRows  = u.filteredCnRows  || u.cnRows;
-    if (!invRows || !cnRows) {
-        alert('PDF export needs row data; this isn\'t loaded by default after the snapshot refactor. (To restore: open the upload, then re-trigger export — a future build will load rows on demand for export.)');
-        return;
-    }
-
-    if (!t._stats) {
-        t._stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
-    }
-    var stats = t._stats;
+    // PHASE 3d: read from snapshot via helpers (same path as on-screen Trends).
+    var stats = getCurrentStats();
     var granularity = t.granularity || 'monthly';
 
     var effective = {
@@ -5669,18 +5661,23 @@ function buildTrendsPrintTree() {
     // Cover page with Trends eyebrow and filtered range
     root.appendChild(buildPrintCover(meta, stats, 'Trends Analysis', effective));
 
-    var currencies = stats.overall.currencies.slice();
+    var currencies;
+    if (stats.__source === 'snapshot') {
+        currencies = Object.keys(stats.perCurrency);
+    } else {
+        currencies = stats.overall.currencies.slice();
+    }
     currencies.sort(function(a, b) {
-        var sa = stats.perCurrency[a].totals.totalSpend;
-        var sb = stats.perCurrency[b].totals.totalSpend;
+        var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+        var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
         if (sb !== sa) return sb - sa;
         return a < b ? -1 : 1;
     });
 
     currencies.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
-        // Time-series from filtered rows so charts match the on-screen view
-        var ts = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, granularity, ccy);
+        // Time-series from snapshot (matches the on-screen view exactly)
+        var ts = getCurrentTimeSeries(ccy, granularity);
         _trendsPrintData[ccy] = ts;
 
         root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'A'));
