@@ -1634,7 +1634,12 @@ function processAndSave() {
         cn_count: cnRows.length,
         supplier_count: Object.keys(distinctSuppliers).length,
         date_range_min: minDate,
-        date_range_max: maxDate
+        date_range_max: maxDate,
+        // Until per-buyer onboarding lands, all uploads belong to the internal
+        // demo bucket. When real buyer accounts arrive, this will be selected
+        // from a dropdown of known buyer_ids (or auto-populated from a
+        // "current buyer" choice the operator made earlier in the session).
+        buyer_id: 'pelagic-demo'
     };
 
     updateProcessing(15, 'Creating upload record…');
@@ -1646,10 +1651,19 @@ function processAndSave() {
             return;
         }
         var uploadId = res.data[0].id;
+        var uploadBuyerId = res.data[0].buyer_id;
 
-        // Attach upload_id to each row
-        invRows.forEach(function(r) { r.upload_id = uploadId; });
-        cnRows.forEach(function(r) { r.upload_id = uploadId; });
+        // Attach upload_id and buyer_id to each row. buyer_id is denormalised
+        // onto child rows so the buyer-scoped RLS policies can filter without
+        // a join back to buyer_uploads.
+        invRows.forEach(function(r) {
+            r.upload_id = uploadId;
+            r.buyer_id  = uploadBuyerId;
+        });
+        cnRows.forEach(function(r) {
+            r.upload_id = uploadId;
+            r.buyer_id  = uploadBuyerId;
+        });
 
         updateProcessing(25, 'Saving ' + invRows.length.toLocaleString() + ' invoice rows…');
 
