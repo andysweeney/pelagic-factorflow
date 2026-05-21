@@ -1767,6 +1767,15 @@ function processAndSave() {
         buyer_id: document.getElementById('buyerSelect').value
     };
 
+    // PHASE: snapshot_status flow:
+    //   uploading → pending → computing → ready (or failed)
+    // - Browser sets 'uploading' on insert (before row inserts begin)
+    // - Browser sets 'pending' after ALL rows committed, which triggers the worker
+    // - Worker (pg_cron, every minute) picks up 'pending' rows and processes async
+    // This protects the worker from racing with in-progress row inserts, which
+    // crashed the database when both were heavy at 500k rows.
+    uploadRecord.snapshot_status = 'uploading';
+
     updateProcessing(15, 'Creating upload record…');
 
     sbClient.from('buyer_uploads').insert(uploadRecord).select().then(function(res) {
@@ -1808,27 +1817,30 @@ function processAndSave() {
                     sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
                     return;
                 }
-                // Rows saved. Now ask Postgres to compute the analytics snapshot.
-                // This single RPC call replaces what used to be done client-side
-                // every time the upload was viewed.
-                updateProcessing(90, 'Computing analytics snapshot…');
-                sbClient.rpc('compute_buyer_snapshot', { p_upload_id: uploadId }).then(function(snapRes) {
-                    if (snapRes.error) {
-                        hideProcessing();
-                        alert('Rows saved but snapshot failed: ' + snapRes.error.message + '\n\nYou can retry from the Upload History.');
-                        return;
-                    }
-                    updateProcessing(100, 'Done.');
-                    setTimeout(function() {
-                        hideProcessing();
-                        resetUploadForm();
-                        loadAllData();
-                        alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes, ' + Object.keys(distinctSuppliers).length.toLocaleString() + ' suppliers across ' + Object.keys(currencies).length + ' currencies.');
-                        // Jump to Upload History so the operator can see the new row.
-                        var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
-                        if (histBtn) histBtn.click();
-                    }, 500);
-                });
+
+                // PHASE: All rows committed. Flip to 'pending' to enqueue the
+                // background worker. Worker will populate aggregates and compute
+                // snapshot — no synchronous wait. Browser is free to dismiss.
+                updateProcessing(95, 'Queuing analytics computation…');
+                sbClient.from('buyer_uploads')
+                    .update({ snapshot_status: 'pending' })
+                    .eq('id', uploadId)
+                    .then(function(updRes) {
+                        if (updRes.error) {
+                            hideProcessing();
+                            alert('Rows saved but could not queue analytics: ' + updRes.error.message + '\n\nYou can retry from the Upload History.');
+                            return;
+                        }
+                        updateProcessing(100, 'Done.');
+                        setTimeout(function() {
+                            hideProcessing();
+                            resetUploadForm();
+                            loadAllData();
+                            alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes.\n\nAnalytics are now computing in the background. This typically takes 30 seconds for 100k rows, 1-2 minutes for 500k rows. Refresh Upload History to see status.');
+                            var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
+                            if (histBtn) histBtn.click();
+                        }, 500);
+                    });
             });
         });
     });
