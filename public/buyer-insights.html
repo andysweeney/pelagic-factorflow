@@ -1925,34 +1925,62 @@ function loadUpload(uploadId, onLoaded) {
             fetchAllRows('buyer_credit_notes', uploadId, function(cnErr, cnRows) {
                 if (cnErr) { hideProcessing(); alert('Credit note fetch failed: ' + cnErr); return; }
 
-                updateProcessing(90, 'Computing analytics…');
-                var stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
+                // PHASE 2: fetch the precomputed snapshot alongside rows.
+                // For now, nothing consumes this — it's just made available on
+                // __upload.snapshot for later phases to read from. The existing
+                // render path (computeBuyerStats from rows) is unchanged.
+                updateProcessing(85, 'Fetching analytics snapshot…');
+                sbClient.from('buyer_upload_snapshots')
+                    .select('stats, computed_at, schema_version, computed_in_ms')
+                    .eq('upload_id', uploadId)
+                    .maybeSingle()
+                    .then(function(snapRes) {
+                        // Non-fatal: a missing snapshot just means we won't be
+                        // able to use the fast path later. The old path still works.
+                        var snapshot = (snapRes && snapRes.data) ? snapRes.data : null;
+                        if (snapRes && snapRes.error) {
+                            console.warn('Snapshot fetch failed (non-fatal):', snapRes.error.message);
+                        } else if (!snapshot) {
+                            console.warn('No snapshot for upload ' + uploadId + '. Run compute_buyer_snapshot() in SQL to populate.');
+                        } else {
+                            console.log('Snapshot loaded:',
+                                snapshot.schema_version,
+                                'computed in', snapshot.computed_in_ms, 'ms at', snapshot.computed_at);
+                        }
 
-                // Single shared cache. Reports / Trends / All Suppliers all
-                // read meta, invRows, cnRows, stats from here.
-                //
-                // Step 3 — filter state is also app-level now (not per-tab).
-                // .filter is the current operator selection.
-                // .filteredXxx fields are the recomputed slices used by every
-                //  view. Initial values: no filter applied (filter kind = "all"),
-                //  so the filtered* fields mirror the upload-wide raw data.
-                window.__upload = {
-                    uploadId: uploadId,
-                    meta: meta,
-                    invRows: invRows || [],
-                    cnRows: cnRows || [],
-                    stats: stats,
-                    filter: { kind: 'all' },
-                    filteredFromDate: null,
-                    filteredToDate: null,
-                    filteredStats: stats,
-                    filteredInvRows: invRows || [],
-                    filteredCnRows: cnRows || []
-                };
+                        updateProcessing(90, 'Computing analytics…');
+                        var stats = window.BuyerAnalytics.computeBuyerStats(meta, invRows, cnRows);
 
-                refreshAppShellForUpload();
-                hideProcessing();
-                onLoaded(window.__upload);
+                        // Single shared cache. Reports / Trends / All Suppliers all
+                        // read meta, invRows, cnRows, stats from here.
+                        //
+                        // Step 3 — filter state is also app-level now (not per-tab).
+                        // .filter is the current operator selection.
+                        // .filteredXxx fields are the recomputed slices used by every
+                        //  view. Initial values: no filter applied (filter kind = "all"),
+                        //  so the filtered* fields mirror the upload-wide raw data.
+                        //
+                        // PHASE 2 addition: .snapshot holds the precomputed analytics
+                        // bundle from Supabase. Not yet consumed by any view.
+                        window.__upload = {
+                            uploadId: uploadId,
+                            meta: meta,
+                            invRows: invRows || [],
+                            cnRows: cnRows || [],
+                            stats: stats,
+                            snapshot: snapshot,
+                            filter: { kind: 'all' },
+                            filteredFromDate: null,
+                            filteredToDate: null,
+                            filteredStats: stats,
+                            filteredInvRows: invRows || [],
+                            filteredCnRows: cnRows || []
+                        };
+
+                        refreshAppShellForUpload();
+                        hideProcessing();
+                        onLoaded(window.__upload);
+                    });
             });
         });
     });
