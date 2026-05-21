@@ -2279,6 +2279,74 @@ function enrichSnapshotCcy(c) {
     };
 }
 
+// ================================================================
+// SNAPSHOT TIME-SERIES HELPER (Phase 3c)
+// ================================================================
+// Returns the time-series bundle Trends needs, at the requested granularity.
+// Output shape matches what window.BuyerAnalytics.computeTimeSeries() used
+// to return — Trends' drawXxx functions are unchanged.
+//
+// Per-supplier sparklines are always monthly regardless of `granularity`
+// (UX decision: weekly/quarterly per-supplier is too jittery / sparse).
+function getCurrentTimeSeries(ccy, granularity) {
+    var u = window.__upload;
+    if (!u) return null;
+    var key = u.currentPeriodKey || 'all';
+    if (!u.snapshot || !u.snapshot.stats || !u.snapshot.stats.perPeriod ||
+        !u.snapshot.stats.perPeriod[key] ||
+        !u.snapshot.stats.perPeriod[key].perCurrency ||
+        !u.snapshot.stats.perPeriod[key].perCurrency[ccy]) {
+        // Legacy fall-through. computeTimeSeries needs raw rows.
+        var invRows = u.filteredInvRows || u.invRows;
+        var cnRows  = u.filteredCnRows  || u.cnRows;
+        return window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, granularity, ccy);
+    }
+
+    var ccyBlock = u.snapshot.stats.perPeriod[key].perCurrency[ccy];
+    var ts = ccyBlock.timeSeries && ccyBlock.timeSeries[granularity];
+    if (!ts) {
+        // Snapshot exists but granularity is missing; fall back.
+        var invRows2 = u.filteredInvRows || u.invRows;
+        var cnRows2  = u.filteredCnRows  || u.cnRows;
+        return window.BuyerAnalytics.computeTimeSeries(invRows2, cnRows2, granularity, ccy);
+    }
+
+    // Buckets: union of volume / dilution / payments bucket labels, sorted.
+    var bucketSet = {};
+    (ts.volume   || []).forEach(function(b) { if (b.bucket) bucketSet[b.bucket] = true; });
+    (ts.dilution || []).forEach(function(b) { if (b.bucket) bucketSet[b.bucket] = true; });
+    (ts.payments || []).forEach(function(b) { if (b.bucket) bucketSet[b.bucket] = true; });
+    var buckets = Object.keys(bucketSet).sort();
+
+    // Sparklines from per-supplier monthlyInvoiceCount (always monthly).
+    var sparklines = {};
+    var monthSet = {};
+    (ccyBlock.suppliers || []).forEach(function(s) {
+        Object.keys(s.monthlyInvoiceCount || {}).forEach(function(m) { monthSet[m] = true; });
+    });
+    var months = Object.keys(monthSet).sort();
+    (ccyBlock.suppliers || []).forEach(function(s) {
+        var mc = s.monthlyInvoiceCount || {};
+        var ma = s.monthlyInvoiceAmount || {};
+        sparklines[s.identifier] = {
+            volume: months.map(function(m) { return mc[m] || 0; }),
+            spend:  months.map(function(m) { return ma[m] || 0; })
+        };
+    });
+
+    return {
+        granularity:   granularity,
+        currency:      ccy,
+        buckets:       buckets,
+        volume:        ts.volume   || [],
+        payments:      ts.payments || [],
+        dilution:      ts.dilution || [],
+        concentration: ts.concentration || { topNames: [], series: [] },
+        sparklines:    sparklines,
+        __source:      'snapshot'
+    };
+}
+
 // Enable or disable the Reports + Trends view tabs (and All Suppliers
 // once it exists). When disabled, click is a no-op and the tooltip
 // explains why.
@@ -3183,35 +3251,34 @@ function showTrendsView(upload) {
 }
 
 // Rebuild Trends currency tabs. Per-currency invoice/spend totals come from
-// the filtered row slice on __upload.
+// the current period block in the snapshot (or legacy filteredStats).
 function rebuildTrendsCurrencyTabs() {
     var t = window.__trends;
     var u = window.__upload;
-    var invRows = u.filteredInvRows || u.invRows;
+    var stats = getCurrentStats();
 
-    var ccyTotals = {};
-    invRows.forEach(function(r) {
-        if (r.excluded) return;
-        var c = (r.currency || '').toUpperCase().trim();
-        if (!c) return;
-        if (!ccyTotals[c]) ccyTotals[c] = { spend: 0, count: 0 };
-        ccyTotals[c].spend += parseFloat(r.amount) || 0;
-        ccyTotals[c].count += 1;
-    });
-    var currencies = Object.keys(ccyTotals).sort(function(a, b) {
-        if (ccyTotals[b].spend !== ccyTotals[a].spend) return ccyTotals[b].spend - ccyTotals[a].spend;
+    var currencies;
+    if (stats.__source === 'snapshot') {
+        currencies = Object.keys(stats.perCurrency);
+    } else {
+        currencies = stats.overall.currencies.slice();
+    }
+    currencies.sort(function(a, b) {
+        var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+        var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
+        if (sb !== sa) return sb - sa;
         return a < b ? -1 : 1;
     });
 
-    // Preserve active currency if still present after filter
     var nextActive = (currencies.indexOf(t.activeCcy) > -1) ? t.activeCcy : (currencies[0] || null);
 
     var ccyTabsEl = document.getElementById('trendsCcyTabs');
     ccyTabsEl.innerHTML = '';
     currencies.forEach(function(ccy) {
+        var c = stats.perCurrency[ccy];
         var btn = document.createElement('button');
         btn.className = 'ccy-tab' + (ccy === nextActive ? ' active' : '');
-        btn.textContent = ccy + '  ·  ' + ccyTotals[ccy].count + ' inv';
+        btn.textContent = ccy + '  ·  ' + (c.totals.invoiceCount || 0) + ' inv';
         btn.addEventListener('click', function() {
             document.querySelectorAll('#trendsCcyTabs .ccy-tab').forEach(function(b) { b.classList.remove('active'); });
             btn.classList.add('active');
@@ -3223,8 +3290,6 @@ function rebuildTrendsCurrencyTabs() {
 
     if (nextActive) {
         t.activeCcy = nextActive;
-        // requestAnimationFrame for the first-render layout case (and any
-        // subsequent filter change that may have caused a layout shift).
         requestAnimationFrame(function() { renderTrendsBody(); });
     } else {
         document.getElementById('trendsBody').innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No data in the selected period</div><div class="empty-state-sub">Try a wider filter.</div></div></div>';
@@ -3233,18 +3298,31 @@ function rebuildTrendsCurrencyTabs() {
 
 function refreshTrendsMeta() {
     var u = window.__upload;
-    var invRows = u.filteredInvRows || u.invRows;
-    var cnRows = u.filteredCnRows || u.cnRows;
+    var stats = getCurrentStats();
     var metaBits = [];
     var from = u.filteredFromDate || u.meta.date_range_min;
     var to = u.filteredToDate || u.meta.date_range_max;
     if (from && to) metaBits.push(from + ' → ' + to);
-    metaBits.push(invRows.length.toLocaleString() + ' invoices');
-    // Supplier count from filtered rows (unique identifiers)
-    var supIds = {};
-    invRows.forEach(function(r) { if (!r.excluded && r.supplier_identifier) supIds[r.supplier_identifier] = true; });
-    metaBits.push(Object.keys(supIds).length.toLocaleString() + ' suppliers');
-    if (cnRows.length > 0) metaBits.push(cnRows.length.toLocaleString() + ' credit notes');
+
+    var totalInv = 0, totalCN = 0;
+    var supSet = {};
+    if (stats.__source === 'snapshot') {
+        Object.keys(stats.perCurrency).forEach(function(ccy) {
+            var tt = stats.perCurrency[ccy].totals;
+            totalInv += tt.invoiceCount || 0;
+            totalCN  += tt.cnCount      || 0;
+            (stats.perCurrency[ccy].suppliers || []).forEach(function(s) {
+                if (s.identifier) supSet[s.identifier] = true;
+            });
+        });
+    } else {
+        totalInv = stats.overall.totalInvoices;
+        totalCN  = stats.overall.totalCNs;
+        supSet = null;
+    }
+    metaBits.push(totalInv.toLocaleString() + ' invoices');
+    metaBits.push((supSet ? Object.keys(supSet).length : stats.overall.totalSuppliers).toLocaleString() + ' suppliers');
+    if (totalCN > 0) metaBits.push(totalCN.toLocaleString() + ' credit notes');
     document.getElementById('trendsMeta').textContent = metaBits.join('  ·  ');
 }
 
@@ -3262,15 +3340,12 @@ function renderTrendsBody() {
     var t = window.__trends;
     var u = window.__upload;
     var ccy = t.activeCcy;
-    // Pass filtered rows to computeTimeSeries. Falls back to upload-wide rows
-    // if no filter has been applied yet.
-    var invRows = u.filteredInvRows || u.invRows;
-    var cnRows  = u.filteredCnRows  || u.cnRows;
-    var ts = window.BuyerAnalytics.computeTimeSeries(invRows, cnRows, t.granularity, ccy);
+    // PHASE 3c: read time series from snapshot via helper.
+    var ts = getCurrentTimeSeries(ccy, t.granularity);
 
     var body = document.getElementById('trendsBody');
 
-    if (ts.buckets.length === 0) {
+    if (!ts || ts.buckets.length === 0) {
         body.innerHTML = '<div class="trends-chart-block"><div class="empty-state"><div class="empty-state-title">No ' + ccy + ' data</div></div></div>';
         return;
     }
@@ -3547,21 +3622,10 @@ function chartCommonOptions(opts) {
 // ────────────────────────────────────────────────────────────────
 
 function renderTrendsSupplierTable(ts, ccy) {
-    // Per-supplier stats from filtered rows (or upload-wide rows if no filter).
-    // Cached on window.__trends._stats; applyUploadFilter invalidates this
-    // cache when the operator changes the period filter.
-    if (!window.__trends._stats) {
-        var u = window.__upload;
-        var invRows = u.filteredInvRows || u.invRows;
-        var cnRows  = u.filteredCnRows  || u.cnRows;
-        window.__trends._stats = window.BuyerAnalytics.computeBuyerStats(
-            u.meta, invRows, cnRows
-        );
-    }
-    var stats = window.__trends._stats;
+    // PHASE 3c: per-supplier stats come from snapshot via helper.
+    var stats = getCurrentStats();
     var ccyStats = stats.perCurrency[ccy];
     if (!ccyStats) return '<div class="empty-state-sub">No supplier data for ' + ccy + '.</div>';
-
     var suppliers = ccyStats.suppliers;
 
     function supplierRow(s) {
