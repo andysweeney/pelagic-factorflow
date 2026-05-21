@@ -1076,7 +1076,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Buyer Label</th>
+                            <th>Buyer</th>
                             <th class="text-right">Invoices</th>
                             <th class="text-right">Credit Notes</th>
                             <th class="text-right">Suppliers</th>
@@ -1259,6 +1259,24 @@ function showSignedInChrome(user, profile) {
     bar.appendChild(label);
     bar.appendChild(btn);
     document.body.appendChild(bar);
+}
+
+// ================================================================
+// BUYER DISPLAY (joining buyer name with upload label)
+// ================================================================
+// Returns the display string for an upload row. Uses the buyer name from
+// the joined buyers row (.buyer.name) if present, with the upload's
+// freeform label as a subtitle. Falls back gracefully if either is missing.
+function buyerHeading(u) {
+    if (!u) return '(no upload)';
+    var name = u.buyer && u.buyer.name ? u.buyer.name : '';
+    var lbl = u.buyer_label || '';
+    if (name && lbl) return name + ' — ' + lbl;
+    return name || lbl || '(unnamed)';
+}
+function buyerName(u) {
+    if (!u) return '';
+    return (u.buyer && u.buyer.name) ? u.buyer.name : '';
 }
 
 // ================================================================
@@ -1878,14 +1896,20 @@ function hideProcessing() {
 // ================================================================
 function loadAllData() {
     if (!sbClient) return;
-    sbClient.from('buyer_uploads').select('*').order('created_at', { ascending: false }).then(function(res) {
-        if (res.error) { console.error('loadAllData error:', res.error); return; }
-        state.uploads = res.data || [];
-        // If user is currently viewing history, refresh it.
-        if (!document.getElementById('tab-uploads-history').classList.contains('hidden')) {
-            renderUploadsHistory();
-        }
-    });
+    // Embed the buyer's name via the FK we added on buyer_uploads.buyer_id -> buyers.id.
+    // Supabase's PostgREST embed syntax: buyers!buyer_uploads_buyer_id_fkey(name) — but
+    // it'll auto-pick the FK if there's only one between the two tables, so just buyers(name) is fine.
+    sbClient.from('buyer_uploads')
+        .select('*, buyer:buyers(id, name)')
+        .order('created_at', { ascending: false })
+        .then(function(res) {
+            if (res.error) { console.error('loadAllData error:', res.error); return; }
+            state.uploads = res.data || [];
+            // If user is currently viewing history, refresh it.
+            if (!document.getElementById('tab-uploads-history').classList.contains('hidden')) {
+                renderUploadsHistory();
+            }
+        });
 }
 
 function renderUploadsHistory() {
@@ -1903,7 +1927,10 @@ function renderUploadsHistory() {
         var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
 
         tr.innerHTML =
-            '<td><strong>' + escHTML(u.buyer_label) + '</strong>' + (u.notes ? '<div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">' + escHTML(u.notes) + '</div>' : '') + '</td>' +
+            '<td><strong>' + escHTML(buyerName(u) || '(no buyer)') + '</strong>' +
+                (u.buyer_label ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">' + escHTML(u.buyer_label) + '</div>' : '') +
+                (u.notes ? '<div style="font-size:10px; color:var(--muted); margin-top:2px;">' + escHTML(u.notes) + '</div>' : '') +
+            '</td>' +
             '<td class="text-right mono">' + (u.invoice_count || 0).toLocaleString() + '</td>' +
             '<td class="text-right mono">' + (u.cn_count || 0).toLocaleString() + '</td>' +
             '<td class="text-right mono">' + (u.supplier_count || 0).toLocaleString() + '</td>' +
@@ -1978,7 +2005,7 @@ function renderReportPicker() {
         var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
         row.innerHTML =
             '<div class="picker-row-main">' +
-                '<div class="picker-row-label">' + escHTML(u.buyer_label) + '</div>' +
+                '<div class="picker-row-label">' + escHTML(buyerHeading(u)) + '</div>' +
                 '<div class="picker-row-sub">' +
                     (u.invoice_count || 0).toLocaleString() + ' invoices · ' +
                     (u.supplier_count || 0).toLocaleString() + ' suppliers · ' +
@@ -2022,7 +2049,7 @@ function loadUpload(uploadId, onLoaded) {
 
     showProcessing(10, 'Loading upload…');
 
-    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
+    sbClient.from('buyer_uploads').select('*, buyer:buyers(id, name)').eq('id', uploadId).single().then(function(upRes) {
         if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
         var meta = upRes.data;
 
@@ -2080,7 +2107,7 @@ function refreshAppShellForUpload() {
     var u = window.__upload;
     if (!u) return;
     var strip = document.getElementById('currentUploadStrip');
-    document.getElementById('currentUploadName').textContent = u.meta.buyer_label || '(unnamed)';
+    document.getElementById('currentUploadName').textContent = buyerHeading(u.meta);
     refreshAppShellPeriodLabel();
     strip.classList.remove('hidden');
 
@@ -2138,7 +2165,7 @@ function applyUploadFilter(newFilter) {
     }
     if (window.__allSuppliers && window.__allSuppliers.activeCcy) {
         document.getElementById('allSupSubtitle').textContent =
-            (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
+            buyerHeading(u.meta) + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
         rebuildAllSuppliersCurrencyTabs();
     }
 }
@@ -2488,7 +2515,7 @@ function showReportView(upload) {
     document.getElementById('reportPicker').classList.add('hidden');
     document.getElementById('reportView').classList.remove('hidden');
 
-    document.getElementById('reportTitle').textContent = meta.buyer_label;
+    document.getElementById('reportTitle').textContent = buyerHeading(meta);
     refreshReportMeta();
 
     rebuildReportCurrencyTabs();
@@ -3259,7 +3286,7 @@ function renderTrendsPicker() {
         var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
         row.innerHTML =
             '<div class="picker-row-main">' +
-                '<div class="picker-row-label">' + escHTML(u.buyer_label) + '</div>' +
+                '<div class="picker-row-label">' + escHTML(buyerHeading(u)) + '</div>' +
                 '<div class="picker-row-sub">' +
                     (u.invoice_count || 0).toLocaleString() + ' invoices · ' +
                     (u.supplier_count || 0).toLocaleString() + ' suppliers · ' +
@@ -3292,7 +3319,7 @@ function showTrendsView(upload) {
     document.getElementById('trendsPicker').classList.add('hidden');
     document.getElementById('trendsView').classList.remove('hidden');
 
-    document.getElementById('trendsTitle').textContent = meta.buyer_label;
+    document.getElementById('trendsTitle').textContent = buyerHeading(meta);
     refreshTrendsMeta();
 
     // Granularity toggle — independent of filter
@@ -3789,7 +3816,7 @@ function runAnalysis(uploadId, buyerLabel) {
 
     showProcessing(10, 'Fetching upload metadata…');
 
-    sbClient.from('buyer_uploads').select('*').eq('id', uploadId).single().then(function(upRes) {
+    sbClient.from('buyer_uploads').select('*, buyer:buyers(id, name)').eq('id', uploadId).single().then(function(upRes) {
         if (upRes.error) { hideProcessing(); alert('Could not load upload: ' + upRes.error.message); return; }
         var uploadMeta = upRes.data;
 
@@ -4690,7 +4717,7 @@ function showAllSuppliersView(upload) {
 
     var u = upload;
     document.getElementById('allSupSubtitle').textContent =
-        (u.meta.buyer_label || '') + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
+        buyerHeading(u.meta) + (u.filteredFromDate ? '  ·  ' + u.filteredFromDate + ' → ' + u.filteredToDate : '');
 
     // Wire toolbar events. We attach once and idempotently — the elements
     // exist in DOM permanently, only the state changes.
@@ -5205,7 +5232,7 @@ function buildPrintCover(meta, stats, eyebrowLabel, effective) {
             '<img class="print-cover-logo" src="' + PELAGIC_LOGO_DATAURL + '" alt="Pelagic Solutions" />' +
             '<div class="print-cover-title-block">' +
                 '<div class="print-cover-eyebrow">' + escHTML(eyebrowLabel || 'Buyer Insights') + '</div>' +
-                '<div class="print-cover-title">' + escHTML(meta.buyer_label) + '</div>' +
+                '<div class="print-cover-title">' + escHTML(buyerHeading(meta)) + '</div>' +
                 '<div class="print-cover-subtitle">' + escHTML(period) +
                     (periodSubNote ? '<span style="font-size:10pt; color:#64748B; font-weight:400;">' + escHTML(periodSubNote) + '</span>' : '') +
                 '</div>' +
