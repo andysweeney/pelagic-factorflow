@@ -2959,7 +2959,9 @@ function drawConcentrationChart(ccy, c) {
 
 function renderSectionDilution(c, ccy) {
     var overall = c.dilution.overallRate;
-    var league = c.dilution.league.slice(0, 10);
+    var fullLeague = c.dilution.league;
+    var league = fullLeague.slice(0, 10);
+    var suppliersWithCns = fullLeague.filter(function(s) { return s.cnCount > 0; }).length;
 
     if (c.totals.cnCount === 0) {
         return '' +
@@ -2984,6 +2986,10 @@ function renderSectionDilution(c, ccy) {
         '</tr>';
     }).join('');
 
+    var jumpLinkHtml = suppliersWithCns > 10
+        ? '<button class="section-jump-link" data-jump-to="all-suppliers">View all ' + suppliersWithCns.toLocaleString() + ' suppliers with credit notes in the All Suppliers tab →</button>'
+        : '';
+
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 3</div>' +
@@ -2994,7 +3000,7 @@ function renderSectionDilution(c, ccy) {
                 statCard('Overall dilution', pct(overall), 'across ' + c.totals.cnCount + ' credit notes') +
                 statCard('Total credit notes', moneyShort(c.totals.totalCNs, ccy), '') +
                 statCard('Net spend', moneyShort(c.totals.netSpend, ccy), '') +
-                statCard('Suppliers w/ CNs', league.filter(function(s) { return s.cnCount > 0; }).length.toLocaleString(), 'of ' + c.suppliers.length) +
+                statCard('Suppliers w/ CNs', suppliersWithCns.toLocaleString(), 'of ' + c.suppliers.length) +
             '</div>' +
 
             '<div class="chart-box">' +
@@ -3009,6 +3015,7 @@ function renderSectionDilution(c, ccy) {
                     '</tr></thead>' +
                     '<tbody>' + rows + '</tbody>' +
                 '</table>' +
+                jumpLinkHtml +
             '</div>' +
         '</div>';
 }
