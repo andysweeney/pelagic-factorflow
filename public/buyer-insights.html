@@ -2309,26 +2309,24 @@ function enrichSnapshotCcy(c) {
         late31to60:    Math.round(totalVeryLate * 0.6),
         late61plus:    Math.round(totalVeryLate * 0.4)
     };
-    // Consistently late: suppliers with medianDaysPastDue > 30 across >=3 paid.
+    // Consistently late: suppliers with avgDaysPastDue > 30 across >=3 paid.
     var consistentlyLate = suppliers
         .filter(function(s) {
-            return (s.paidCount || 0) >= 3 && s.medianDaysPastDue !== null && s.medianDaysPastDue !== undefined && s.medianDaysPastDue > 30;
+            return (s.paidCount || 0) >= 3 && s.avgDaysPastDue !== null && s.avgDaysPastDue !== undefined && s.avgDaysPastDue > 30;
         })
         .map(function(s) {
             return {
                 identifier:        s.identifier,
                 name:              s.name,
-                medianDaysPastDue: s.medianDaysPastDue,
                 avgDaysPastDue:    s.avgDaysPastDue,
                 paidCount:         s.paidCount
             };
         })
-        .sort(function(a, b) { return b.medianDaysPastDue - a.medianDaysPastDue; });
+        .sort(function(a, b) { return b.avgDaysPastDue - a.avgDaysPastDue; });
     var paymentBehaviour = {
         coveragePct:       (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0,
         paidInvoiceCount:  totalPaid,
         avgDaysPastDue:    t.avgDaysPastDue,
-        medianDaysPastDue: t.medianDaysPastDue,
         distribution:      distribution,
         consistentlyLate:  consistentlyLate
     };
@@ -2757,8 +2755,8 @@ function chooseSurprisingFact(c, ccy) {
     }
     var late = c.paymentBehaviour.consistentlyLate[0];
     if (late) {
-        return 'Your AP team is consistently paying <strong>' + escHTML(late.name) + '</strong> a median of ' +
-               late.medianDaysPastDue + ' days past due (across ' + late.paidCount + ' paid invoices). ' +
+        return 'Your AP team is consistently paying <strong>' + escHTML(late.name) + '</strong> on average ' +
+               late.avgDaysPastDue + ' days past due (across ' + late.paidCount + ' paid invoices). ' +
                'Smaller suppliers feel that lateness disproportionately.';
     }
     return 'Across ' + c.totals.supplierCount.toLocaleString() + ' ' + ccy + ' suppliers and ' +
@@ -2955,8 +2953,7 @@ function renderSectionPaymentBehaviour(c, ccy) {
         function lateRow(s) {
             return '<tr>' +
                 '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span></td>' +
-                '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
-                '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
+                '<td class="text-right mono" style="color:var(--danger); font-weight:700;">+' + s.avgDaysPastDue + 'd</td>' +
                 '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
             '</tr>';
         }
@@ -2969,7 +2966,7 @@ function renderSectionPaymentBehaviour(c, ccy) {
                 'Suppliers paid consistently late (' + lateAll.length + ')' +
             '</div>' +
             '<table class="report-table">' +
-                '<thead><tr><th>Supplier</th><th class="text-right">Median days past due</th><th class="text-right">Avg days past due</th><th class="text-right">Paid invoices</th></tr></thead>' +
+                '<thead><tr><th>Supplier</th><th class="text-right">Avg days past due</th><th class="text-right">Paid invoices</th></tr></thead>' +
                 '<tbody>' + lateTop.map(lateRow).join('') + '</tbody>' +
                 (lateRest.length > 0
                     ? '<tbody id="' + toggleId + '-rest" class="hidden">' + lateRest.map(lateRow).join('') + '</tbody>'
@@ -2985,11 +2982,10 @@ function renderSectionPaymentBehaviour(c, ccy) {
         '<div class="section">' +
             '<div class="section-eyebrow">Section 4</div>' +
             '<div class="section-title">How you look from the supplier side</div>' +
-            '<div class="section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. The average can flatter you; the distribution rarely does.</div>' +
+            '<div class="section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. Averages summarise the headline; the distribution below shows where pain actually lives.</div>' +
 
             '<div class="stat-grid">' +
-                statCard('Median DPD', (pb.medianDaysPastDue >= 0 ? '+' : '') + pb.medianDaysPastDue + 'd', pb.medianDaysPastDue <= 0 ? 'paying on time at median' : 'past due at median') +
-                statCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', '') +
+                statCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', pb.avgDaysPastDue <= 0 ? 'paying on time on average' : 'past due on average') +
                 statCard('Coverage', pct(pb.coveragePct), pb.paidInvoiceCount + ' of ' + c.totals.invoiceCount + ' have paid_date') +
                 statCard('Late ≥30 days', pb.paidInvoiceCount > 0 ? pct((d.late31to60 + d.late61plus) / pb.paidInvoiceCount) : '0.0%', '') +
             '</div>' +
@@ -3186,7 +3182,7 @@ function generateObservations(c, ccy) {
     // Observation: payment lateness
     var late = c.paymentBehaviour.consistentlyLate;
     if (late.length > 0) {
-        var lateNames = late.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (median +' + s.medianDaysPastDue + 'd)'; }).join(', ');
+        var lateNames = late.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (avg +' + s.avgDaysPastDue + 'd)'; }).join(', ');
         var lateMore = late.length - 3;
         out.push({
             severity: 'warn',
@@ -3473,7 +3469,7 @@ function renderTrendsBody() {
         // Chart 3: Payment lateness
         '<div class="trends-chart-block">' +
             '<div class="chart-box-title">Payment lateness</div>' +
-            '<div class="chart-box-sub">Median days past due, by ' + t.granularity.replace('ly', '') + ' the invoice was paid. Positive = late, negative = early.</div>' +
+            '<div class="chart-box-sub">Average days past due, by ' + t.granularity.replace('ly', '') + ' the invoice was paid. Positive = late, negative = early.</div>' +
             '<div class="trends-chart-canvas"><canvas id="trends-chart-payments"></canvas></div>' +
         '</div>' +
 
@@ -3595,8 +3591,8 @@ function drawTrendsPayments(labels, ts) {
         data: {
             labels: labels,
             datasets: [{
-                label: 'Median DPD',
-                data: ts.payments.map(function(p) { return p.medianDpd; }),
+                label: 'Avg DPD',
+                data: ts.payments.map(function(p) { return p.avgDpd; }),
                 borderColor: '#EF4444',
                 backgroundColor: '#EF444420',
                 borderWidth: 2,
@@ -3608,14 +3604,11 @@ function drawTrendsPayments(labels, ts) {
         },
         options: chartCommonOptions({
             yLeftLabel: 'Days past due',
-            // 1dp because the median of an even count of integer DPDs is
-            // typically a .5 — surfacing that detail is more honest than
-            // rounding to integer days.
             yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'd'; },
             tooltipFormatter: function(ctx) {
                 var p = ts.payments[ctx.dataIndex];
-                if (p.medianDpd === null) return 'No invoices paid';
-                return 'Median DPD: ' + (p.medianDpd >= 0 ? '+' : '') + p.medianDpd.toFixed(1) + 'd (' + p.paidCount + ' invoices, ' + ((p.onTimePct || 0) * 100).toFixed(0) + '% on time)';
+                if (p.avgDpd === null || p.avgDpd === undefined) return 'No invoices paid';
+                return 'Avg DPD: ' + (p.avgDpd >= 0 ? '+' : '') + p.avgDpd.toFixed(1) + 'd (' + p.paidCount + ' invoices, ' + ((p.onTimePct || 0) * 100).toFixed(0) + '% on time)';
             }
         })
     });
@@ -3869,7 +3862,7 @@ function runAnalysis(uploadId, buyerLabel) {
                             spend:       s.totalSpend,
                             sharePct:    +(s.sharePct * 100).toFixed(1),
                             avgDpd:      s.avgDaysPastDue,
-                            medianDpd:   s.medianDaysPastDue,
+                            avgDpd:      s.avgDaysPastDue,
                             dilutionPct: +(s.dilutionRate * 100).toFixed(2),
                             firstInv:    s.firstInvoice,
                             lastInv:     s.lastInvoice,
@@ -4369,11 +4362,11 @@ function computeSupplierScopedStats(invRows, cnRows, meta) {
         invoiceCount: invRows.length,
         totalSpend: totalSpend,
         avgInvoiceAmount: invRows.length > 0 ? totalSpend / invRows.length : 0,
+        maxInvoiceAmount: invRows.length > 0 ? Math.max.apply(null, invRows.map(function(r) { return parseFloat(r.amount) || 0; })) : 0,
         paidCount: paidCount,
         unpaidCount: unpaidCount,
         dpds: dpds,
         avgDpd: dpds.length > 0 ? dpds.reduce(function(a, b) { return a + b; }, 0) / dpds.length : null,
-        medianDpd: dpds.length > 0 ? medianValue(dpds) : null,
         dpdDistribution: dist,
         firstInvoice: firstInvoice,
         lastInvoice: lastInvoice,
@@ -4388,13 +4381,6 @@ function computeSupplierScopedStats(invRows, cnRows, meta) {
     };
 }
 
-function medianValue(arr) {
-    if (arr.length === 0) return null;
-    var sorted = arr.slice().sort(function(a, b) { return a - b; });
-    var mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 // ── Panel content rendering ─────────────────────────────────────
 
 function populateSupplierPanel(name, supId, ccy, st, invRows, cnRows, meta) {
@@ -4407,7 +4393,7 @@ function populateSupplierPanel(name, supId, ccy, st, invRows, cnRows, meta) {
     var cachedShare = lookupShareOfCurrency(supId, ccy);
     if (cachedShare !== null && cachedShare >= 0.20) tags.push({ cls: 'dominant', text: 'Dominant (' + pct(cachedShare) + ')' });
     if (st.dilutionRate >= 0.08 && st.invoiceCount >= 3) tags.push({ cls: 'quality', text: 'Quality issues' });
-    if (st.medianDpd !== null && st.medianDpd > 30 && st.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Consistently late' });
+    if (st.avgDpd !== null && st.avgDpd > 30 && st.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Consistently late' });
     if (st.daysSinceLast !== null && st.daysSinceLast >= 90) tags.push({ cls: 'silent', text: 'Silent ' + st.daysSinceLast + 'd' });
     // Trend label from the cached stats
     var cachedTrend = lookupTrendLabel(supId, ccy);
@@ -4454,17 +4440,17 @@ function lookupTrendLabel(supId, ccy) {
 }
 
 function renderSupAtAGlance(st, ccy, sharePct) {
-    var dpdStr = st.medianDpd !== null ? (st.medianDpd >= 0 ? '+' : '') + st.medianDpd + 'd' : '—';
-    var dpdSub = st.medianDpd !== null && st.paidCount > 0 ? 'median over ' + st.paidCount + ' paid' : 'no paid invoices';
+    var dpdStr = (st.avgDpd !== null && st.avgDpd !== undefined) ? (st.avgDpd >= 0 ? '+' : '') + st.avgDpd.toFixed(1) + 'd' : '—';
+    var dpdSub = (st.avgDpd !== null && st.avgDpd !== undefined) && st.paidCount > 0 ? 'avg over ' + st.paidCount + ' paid' : 'no paid invoices';
 
     return '' +
         '<div class="sup-panel-section">' +
             '<div class="sup-panel-section-title">At a glance</div>' +
             '<div class="sup-stat-grid">' +
-                supStatCard('Total spend', moneyShort(st.totalSpend, ccy), 'avg ' + moneyShort(st.avgInvoiceAmount, ccy)) +
+                supStatCard('Total spend', moneyShort(st.totalSpend, ccy), 'avg ' + moneyShort(st.avgInvoiceAmount, ccy) + ', max ' + moneyShort(st.maxInvoiceAmount, ccy)) +
                 supStatCard('Invoices', st.invoiceCount.toLocaleString(), st.paidCount + ' paid, ' + st.unpaidCount + ' open') +
                 supStatCard('Share of ' + ccy, sharePct !== null ? pct(sharePct) : '—', 'of all ' + ccy + ' spend') +
-                supStatCard('Median DPD', dpdStr, dpdSub) +
+                supStatCard('Avg DPD', dpdStr, dpdSub) +
                 supStatCard('First invoice', st.firstInvoice || '—', '') +
                 supStatCard('Last invoice', st.lastInvoice || '—', st.daysSinceLast !== null ? st.daysSinceLast + ' days before period end' : '') +
             '</div>' +
@@ -4886,7 +4872,7 @@ function renderAllSuppliersBody() {
         filtered = filtered.filter(function(s) { return s.cnCount && s.cnCount > 0; });
     }
     if (pills.latePaid) {
-        filtered = filtered.filter(function(s) { return s.medianDaysPastDue !== null && s.medianDaysPastDue > 30 && s.paidCount >= 3; });
+        filtered = filtered.filter(function(s) { return s.avgDaysPastDue !== null && s.avgDaysPastDue > 30 && s.paidCount >= 3; });
     }
     if (pills.silent) {
         filtered = filtered.filter(function(s) {
@@ -4936,7 +4922,8 @@ function sortAllSuppliers(rows, col, dir, periodEnd) {
             case 'name':         va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); break;
             case 'invoiceCount': va = a.invoiceCount; vb = b.invoiceCount; break;
             case 'totalSpend':   va = a.totalSpend;   vb = b.totalSpend;   break;
-            case 'medianInvoiceAmount': va = a.medianInvoiceAmount; vb = b.medianInvoiceAmount; break;
+            case 'avgInvoiceAmount': va = a.avgInvoiceAmount; vb = b.avgInvoiceAmount; break;
+            case 'maxInvoiceAmount': va = a.maxInvoiceAmount; vb = b.maxInvoiceAmount; break;
             case 'sharePct':     va = a.sharePct;     vb = b.sharePct;     break;
             case 'dilutionRate': va = a.dilutionRate; vb = b.dilutionRate; break;
             case 'avgDpd':       va = (a.avgDaysPastDue === null ? -Infinity : a.avgDaysPastDue); vb = (b.avgDaysPastDue === null ? -Infinity : b.avgDaysPastDue); break;
@@ -4973,8 +4960,10 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
         { key: 'name',                label: 'Supplier' },
         { key: 'invoiceCount',        label: 'Invoices',       cls: 'text-right' },
         { key: 'totalSpend',          label: 'Spend',          cls: 'text-right' },
-        { key: 'medianInvoiceAmount', label: 'Median invoice', cls: 'text-right',
-          tooltip: 'Median (typical) invoice amount from this supplier. Less skewed by occasional outsized invoices than the mean. Useful for "what does a normal invoice look like from this supplier."' },
+        { key: 'avgInvoiceAmount',    label: 'Avg invoice',     cls: 'text-right',
+          tooltip: 'Mean invoice amount from this supplier across the selected period. Useful as a quick sense of typical invoice size; less robust than median, but reliable enough at this aggregation level.' },
+        { key: 'maxInvoiceAmount',    label: 'Max invoice',     cls: 'text-right',
+          tooltip: 'Largest single invoice from this supplier in the period. Highlights one-off large transactions that may distort averages.' },
         { key: 'sharePct',            label: 'Share',          cls: 'text-right' },
         { key: 'volSpark',            label: 'Volume',         cls: 'text-center',  sortable: false,
           tooltip: 'Monthly invoice count over the period. Rising means the supplier is invoicing more often; falling means fewer invoices — an early warning that the relationship may be tailing off.' },
@@ -5009,7 +4998,7 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
         var tags = [];
         if (s.sharePct >= 0.20) tags.push({ cls: 'dominant', text: 'Dominant' });
         if (s.dilutionRate >= 0.08 && s.invoiceCount >= 3) tags.push({ cls: 'quality', text: 'Quality' });
-        if (s.medianDaysPastDue !== null && s.medianDaysPastDue > 30 && s.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Late' });
+        if (s.avgDaysPastDue !== null && s.avgDaysPastDue > 30 && s.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Late' });
         var silentDaysVal = null;
         if (s.lastInvoice) {
             silentDaysVal = Math.floor((periodEnd - new Date(s.lastInvoice + 'T00:00:00')) / 86400000);
@@ -5070,7 +5059,8 @@ function renderAllSuppliersTable(rows, ccy, periodEnd) {
             '</td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.totalSpend, ccy) + '</td>' +
-            '<td class="text-right mono">' + moneyShort(s.medianInvoiceAmount, ccy) + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.avgInvoiceAmount, ccy) + '</td>' +
+            '<td class="text-right mono">' + moneyShort(s.maxInvoiceAmount, ccy) + '</td>' +
             '<td class="text-right mono"><strong>' + pct(s.sharePct) + '</strong></td>' +
             '<td class="sparkline-cell text-center">' + volSparkHtml + '</td>' +
             '<td class="text-right mono"><span class="' + dilCls + '">' + pct(s.dilutionRate) + '</span></td>' +
@@ -5476,13 +5466,12 @@ function renderPrintSectionPaymentBehaviour(c, ccy) {
         lateRows = top.map(function(s) {
             return '<tr>' +
                 '<td><strong>' + escHTML(s.name) + '</strong></td>' +
-                '<td class="text-right mono" style="color:#B91C1C; font-weight:700;">+' + s.medianDaysPastDue + 'd</td>' +
-                '<td class="text-right mono">+' + s.avgDaysPastDue + 'd</td>' +
+                '<td class="text-right mono" style="color:#B91C1C; font-weight:700;">+' + s.avgDaysPastDue + 'd</td>' +
                 '<td class="text-right mono">' + s.paidCount.toLocaleString() + '</td>' +
             '</tr>';
         }).join('');
         if (pb.consistentlyLate.length > 8) {
-            lateRows += '<tr><td colspan="4" style="text-align:center; font-style:italic; color:#64748B; font-size:7pt;">+ ' + (pb.consistentlyLate.length - 8) + ' more suppliers paid consistently late</td></tr>';
+            lateRows += '<tr><td colspan="3" style="text-align:center; font-style:italic; color:#64748B; font-size:7pt;">+ ' + (pb.consistentlyLate.length - 8) + ' more suppliers paid consistently late</td></tr>';
         }
     }
 
@@ -5490,11 +5479,10 @@ function renderPrintSectionPaymentBehaviour(c, ccy) {
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 4</div>' +
             '<div class="print-section-title">How you look from the supplier side</div>' +
-            '<div class="print-section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. The average can flatter you; the distribution rarely does.</div>' +
+            '<div class="print-section-lede">Time from due date to paid date, across your ' + ccy + ' invoices. Averages summarise the headline; the distribution below shows where pain actually lives.</div>' +
 
             '<div class="print-stat-grid">' +
-                printStatCard('Median DPD', (pb.medianDaysPastDue >= 0 ? '+' : '') + pb.medianDaysPastDue + 'd', pb.medianDaysPastDue <= 0 ? 'on time at median' : 'past due at median') +
-                printStatCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', '') +
+                printStatCard('Average DPD', (pb.avgDaysPastDue >= 0 ? '+' : '') + pb.avgDaysPastDue + 'd', pb.avgDaysPastDue <= 0 ? 'on time on average' : 'past due on average') +
                 printStatCard('Coverage', pct(pb.coveragePct), pb.paidInvoiceCount + ' have paid_date') +
                 printStatCard('Late >=30d', pb.paidInvoiceCount > 0 ? pct((d.late31to60 + d.late61plus) / pb.paidInvoiceCount) : '0.0%', '') +
             '</div>' +
@@ -5517,7 +5505,7 @@ function renderPrintSectionPaymentBehaviour(c, ccy) {
                 '</div>' +
                 (lateRows
                     ? '<div style="font-size:8pt; font-weight:700; color:#B45309; margin:3mm 0 1mm 0; text-transform:uppercase; letter-spacing:0.4pt;">Suppliers paid consistently late (' + pb.consistentlyLate.length + ')</div>' +
-                      '<table class="print-table"><thead><tr><th>Supplier</th><th class="text-right">Median DPD</th><th class="text-right">Avg DPD</th><th class="text-right">Paid invoices</th></tr></thead><tbody>' + lateRows + '</tbody></table>'
+                      '<table class="print-table"><thead><tr><th>Supplier</th><th class="text-right">Avg DPD</th><th class="text-right">Paid invoices</th></tr></thead><tbody>' + lateRows + '</tbody></table>'
                     : '') +
             '</div>' +
         '</div>';
@@ -5738,7 +5726,7 @@ function buildTrendsPagePair(ccy, c, ts, granularity, pair) {
             '<div class="print-trends-chart-pair">' +
                 '<div class="print-trends-chart">' +
                     '<div class="print-trends-chart-title">Payment lateness</div>' +
-                    '<div class="print-trends-chart-sub">Median days past due, by ' + granularity.replace('ly', '') + ' the invoice was paid. Positive = late.</div>' +
+                    '<div class="print-trends-chart-sub">Average days past due, by ' + granularity.replace('ly', '') + ' the invoice was paid. Positive = late.</div>' +
                     '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-pay-' + ccy + '"></canvas></div>' +
                 '</div>' +
                 '<div class="print-trends-chart">' +
@@ -5923,7 +5911,7 @@ function drawTrendsPrintPayments(ccy, ts) {
         type: 'line',
         data: {
             labels: ts.buckets,
-            datasets: [{ label: 'Median DPD', data: ts.payments.map(function(p) { return p.medianDpd; }), borderColor: '#EF4444', backgroundColor: '#EF444425', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3, spanGaps: true }]
+            datasets: [{ label: 'Avg DPD', data: ts.payments.map(function(p) { return p.avgDpd; }), borderColor: '#EF4444', backgroundColor: '#EF444425', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3, spanGaps: true }]
         },
         options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'd'; } })
     });
