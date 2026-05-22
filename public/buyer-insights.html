@@ -607,6 +607,20 @@
         .sup-panel-tag.slow-paid  { background: #F59E0B25; color: var(--warning); }
 
         .sup-panel-body { padding: 16px 22px 32px; }
+        .sup-panel-context-strip {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 18px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .sup-panel-context-strip strong {
+            color: var(--text);
+            font-weight: 600;
+        }
         .sup-panel-section { margin-bottom: 20px; }
         .sup-panel-section-title { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
 
@@ -4171,19 +4185,18 @@ document.addEventListener('keydown', function(e) {
 });
 
 function openSupplierPanel(supId, ccy) {
-    // PHASE 3d: lazy-load this supplier's rows from Supabase (limit 250).
-    // We don't carry invRows/cnRows in __upload any more — drilldowns are
-    // targeted queries scoped to (upload_id, supplier_identifier, currency).
-    // The 250 cap is enforced at the UI; if the supplier has more rows than
-    // that, the table shows the most recent 250 and a hint that there's more.
+    // PHASE 4: stats come from the snapshot (period-aware), not from a
+    // 250-row sample. Snapshot suppliers[] contains accurate totals/avgs
+    // for every period — no inference from a sample. Rows are still
+    // lazy-loaded (limit 250) for the recent-invoices table, filtered to
+    // match the active period filter so the panel matches the rest of
+    // the screen.
     var u = window.__upload;
     if (!u || !sbClient) {
         alert('No upload loaded.');
         return;
     }
 
-    // Show the panel immediately with a loading state — the fetch round-trip
-    // is small but not zero, and we want to feel responsive.
     var panel = document.getElementById('supPanel');
     var backdrop = document.getElementById('supPanelBackdrop');
     panel.setAttribute('aria-hidden', 'false');
@@ -4193,65 +4206,148 @@ function openSupplierPanel(supId, ccy) {
     var body = document.getElementById('supPanelBody');
     if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">Loading supplier detail…</div>';
 
+    // Look up period-active supplier object from snapshot.
+    var stats = getCurrentStats();
+    var ccyStats = stats.perCurrency[ccy];
+    if (!ccyStats) {
+        if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">No data for this supplier in ' + escHTML(ccy) + '.</div>';
+        return;
+    }
+    var supplier = ccyStats.suppliers.find(function(s) { return s.identifier === supId; });
+    if (!supplier) {
+        if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">Supplier not found in this period. Try widening the filter.</div>';
+        return;
+    }
+
+    // Also pull the lifetime ('all' period) supplier object for context strip.
+    var lifetimeSupplier = null;
+    var snap = u.snapshot && u.snapshot.stats;
+    if (snap && snap.perPeriod && snap.perPeriod['all'] && snap.perPeriod['all'].perCurrency[ccy]) {
+        lifetimeSupplier = snap.perPeriod['all'].perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
+    }
+
+    // Compute period date range for the row fetch + display.
+    var periodFromDate = u.filteredFromDate;
+    var periodToDate   = u.filteredToDate;
+
+    // Build the "stats" object the panel renderers expect, populated from
+    // the snapshot suppliers entry. monthlySeries derived from snapshot
+    // monthlyInvoiceCount/monthlyInvoiceAmount — already pre-baked.
+    var supName = supplier.name || supId;
+    var monthlyCount  = supplier.monthlyInvoiceCount  || {};
+    var monthlyAmount = supplier.monthlyInvoiceAmount || {};
+    var months = Object.keys(monthlyCount).sort();
+    var monthlySeries = months.map(function(m) {
+        return { month: m, count: monthlyCount[m] || 0, spend: monthlyAmount[m] || 0 };
+    });
+
+    // Approximate DPD distribution from snapshot on_time / late / very_late
+    // tallies. Same approximation we already use elsewhere — late split into
+    // 1-14 and 15-30 50/50; very_late split into 31-60 and 61+ as 60/40.
+    var paidCount  = supplier.paidCount  || 0;
+    var totalLate     = Math.round((supplier.latePct     || 0) * paidCount);
+    var totalVeryLate = Math.round((supplier.veryLatePct || 0) * paidCount);
+    var earlyOrOnTime = Math.max(0, paidCount - totalLate);
+    var distribution = {
+        earlyOrOnTime: earlyOrOnTime,
+        late1to14:     Math.round((totalLate - totalVeryLate) * 0.5),
+        late15to30:    Math.round((totalLate - totalVeryLate) * 0.5),
+        late31to60:    Math.round(totalVeryLate * 0.6),
+        late61plus:    Math.round(totalVeryLate * 0.4)
+    };
+
+    var daysSinceLast = null;
+    if (supplier.lastInvoice) {
+        var periodEndDate = periodToDate ? new Date(periodToDate + 'T00:00:00') : new Date();
+        var last = new Date(supplier.lastInvoice + 'T00:00:00');
+        if (!isNaN(last.getTime())) {
+            daysSinceLast = Math.floor((periodEndDate - last) / 86400000);
+        }
+    }
+
+    var panelStats = {
+        // Reads compatible with the existing render functions
+        invoiceCount:      supplier.invoiceCount,
+        totalSpend:        supplier.totalSpend,
+        avgInvoiceAmount:  supplier.avgInvoiceAmount,
+        maxInvoiceAmount:  supplier.maxInvoiceAmount,
+        paidCount:         supplier.paidCount,
+        unpaidCount:       supplier.unpaidCount,
+        avgDpd:            supplier.avgDaysPastDue,
+        dpdDistribution:   distribution,
+        firstInvoice:      supplier.firstInvoice,
+        lastInvoice:       supplier.lastInvoice,
+        daysSinceLast:     daysSinceLast,
+        cnCount:           supplier.cnCount,
+        cnTotal:           supplier.cnTotal,
+        dilutionRate:      supplier.dilutionRate,
+        monthlySeries:     monthlySeries,
+        // Filled by the lazy fetch below
+        creditNotes:       [],
+        recentInvoices:    [],
+        totalInvoiceCount: supplier.invoiceCount,
+        // Snapshot share is already period-scoped — no need to recompute
+        sharePct:          supplier.sharePct
+    };
+
+    // Render the panel now from snapshot data. Charts get drawn after rAF.
+    populateSupplierPanel(supName, supId, ccy, panelStats, ccyStats, lifetimeSupplier, periodFromDate, periodToDate);
+    requestAnimationFrame(function() {
+        drawSupplierVolumeChart(panelStats, ccy);
+        drawSupplierPaymentChart(panelStats);
+    });
+
+    // Lazy-load row-level data for the recent-invoices and credit-notes
+    // tables. Filtered by period date range so the panel honours the
+    // active filter. Limit DRILL_LIMIT for both.
     var DRILL_LIMIT = 250;
 
-    // Fetch invoices + CNs in parallel.
-    var invPromise = sbClient.from('buyer_invoices')
-        .select('*')
+    var invQ = sbClient.from('buyer_invoices')
+        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
         .ilike('currency', ccy)
         .eq('excluded', false)
         .order('invoice_date', { ascending: false })
         .limit(DRILL_LIMIT);
+    if (periodFromDate) invQ = invQ.gte('invoice_date', periodFromDate);
+    if (periodToDate)   invQ = invQ.lte('invoice_date', periodToDate);
 
-    var cnPromise = sbClient.from('buyer_credit_notes')
-        .select('*')
+    var cnQ = sbClient.from('buyer_credit_notes')
+        .select('cn_date, cn_reference, amount, paid_date, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
         .ilike('currency', ccy)
         .eq('excluded', false)
         .order('cn_date', { ascending: false })
         .limit(DRILL_LIMIT);
+    if (periodFromDate) cnQ = cnQ.gte('cn_date', periodFromDate);
+    if (periodToDate)   cnQ = cnQ.lte('cn_date', periodToDate);
 
-    Promise.all([invPromise, cnPromise]).then(function(results) {
+    Promise.all([invQ, cnQ]).then(function(results) {
         var invRes = results[0];
         var cnRes  = results[1];
         if (invRes.error) {
-            if (body) body.innerHTML = '<div style="padding:24px; color:var(--danger);">Invoice fetch failed: ' + escHTML(invRes.error.message) + '</div>';
+            // Non-fatal: panel still shows snapshot stats; row table just empty.
+            console.warn('Invoice fetch failed:', invRes.error.message);
             return;
         }
         var invRows = invRes.data || [];
         var cnRows  = (cnRes && cnRes.data) || [];
 
-        if (invRows.length === 0) {
-            if (body) body.innerHTML = '<div style="padding:24px; color:var(--muted);">No invoices found for this supplier in ' + escHTML(ccy) + '.</div>';
-            return;
+        panelStats.recentInvoices = invRows.slice(0, 20);
+        panelStats.creditNotes = cnRows;
+
+        // Re-render the row-level sections now that data is in.
+        var recentEl = document.querySelector('#supPanelBody .sup-section-recent');
+        var dilEl    = document.querySelector('#supPanelBody .sup-section-dilution');
+        if (recentEl) {
+            recentEl.outerHTML = renderSupRecentInvoices(panelStats, ccy,
+                invRows.length === DRILL_LIMIT, periodFromDate, periodToDate);
         }
-
-        // Compute supplier-scoped stats.
-        var supStats = computeSupplierScopedStats(invRows, cnRows, u.meta);
-        var supplierName = invRows[0].supplier_name || supId;
-
-        // Populate the panel with the (possibly capped) row set.
-        populateSupplierPanel(supplierName, supId, ccy, supStats, invRows, cnRows, u.meta);
-
-        // If we hit the cap, add a small advisory note above the recent-invoices list.
-        if (invRows.length === DRILL_LIMIT) {
-            var noteHost = document.querySelector('#supPanelBody .sup-panel-list-cap');
-            if (!noteHost && body) {
-                var note = document.createElement('div');
-                note.className = 'sup-panel-list-cap';
-                note.style.cssText = 'margin: 8px 0 0; font-size: 11px; color: var(--muted);';
-                note.textContent = 'Showing the most recent ' + DRILL_LIMIT + ' invoices for this supplier. Larger drilldowns will be paginated in a future build.';
-                body.appendChild(note);
-            }
+        if (dilEl && panelStats.cnCount > 0) {
+            dilEl.outerHTML = renderSupDilution(panelStats, ccy);
         }
-
-        requestAnimationFrame(function() {
-            drawSupplierVolumeChart(supStats, ccy);
-            drawSupplierPaymentChart(supStats);
-        });
     });
 }
 
@@ -4383,61 +4479,66 @@ function computeSupplierScopedStats(invRows, cnRows, meta) {
 
 // ── Panel content rendering ─────────────────────────────────────
 
-function populateSupplierPanel(name, supId, ccy, st, invRows, cnRows, meta) {
+function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier, periodFrom, periodTo) {
     document.getElementById('supPanelTitle').textContent = name;
     document.getElementById('supPanelSubtitle').textContent = supId + '  ·  ' + ccy;
 
-    // Tags: derived signals
+    // Period-aware tags. All thresholds use period-scoped values now.
     var tags = [];
-    // Find this supplier's share-of-currency from the cached stats if available
-    var cachedShare = lookupShareOfCurrency(supId, ccy);
-    if (cachedShare !== null && cachedShare >= 0.20) tags.push({ cls: 'dominant', text: 'Dominant (' + pct(cachedShare) + ')' });
+    if (st.sharePct !== null && st.sharePct !== undefined && st.sharePct >= 0.20) {
+        tags.push({ cls: 'dominant', text: 'Dominant (' + pct(st.sharePct) + ')' });
+    }
     if (st.dilutionRate >= 0.08 && st.invoiceCount >= 3) tags.push({ cls: 'quality', text: 'Quality issues' });
-    if (st.avgDpd !== null && st.avgDpd > 30 && st.paidCount >= 3) tags.push({ cls: 'slow-paid', text: 'Consistently late' });
+    if (st.avgDpd !== null && st.avgDpd !== undefined && st.avgDpd > 30 && st.paidCount >= 3) {
+        tags.push({ cls: 'slow-paid', text: 'Consistently late' });
+    }
     if (st.daysSinceLast !== null && st.daysSinceLast >= 90) tags.push({ cls: 'silent', text: 'Silent ' + st.daysSinceLast + 'd' });
-    // Trend label from the cached stats
-    var cachedTrend = lookupTrendLabel(supId, ccy);
-    if (cachedTrend === 'growing')   tags.push({ cls: 'growing', text: 'Growing' });
-    if (cachedTrend === 'declining') tags.push({ cls: 'declining', text: 'Declining' });
 
     document.getElementById('supPanelTags').innerHTML = tags.map(function(t) {
         return '<span class="sup-panel-tag ' + t.cls + '">' + escHTML(t.text) + '</span>';
     }).join('');
 
-    // Body
+    // Context strip: filter range + lifetime anchor so the operator knows
+    // what slice they're looking at vs the supplier's full history.
+    var contextHtml = renderSupContextStrip(st, lifetimeSupplier, ccy, periodFrom, periodTo);
+
     var body = document.getElementById('supPanelBody');
     body.innerHTML =
-        renderSupAtAGlance(st, ccy, cachedShare) +
+        contextHtml +
+        renderSupAtAGlance(st, ccy, st.sharePct) +
         renderSupVolume(st, ccy) +
         renderSupPayment(st) +
         (st.cnCount > 0 ? renderSupDilution(st, ccy) : '') +
-        renderSupRecentInvoices(st, ccy);
+        renderSupRecentInvoices(st, ccy, false, periodFrom, periodTo);
 
-    // Reset scroll to top so each open starts fresh
     document.getElementById('supPanel').scrollTop = 0;
 }
 
-// Look up share-of-currency from the upload-wide stats. Used for
-// the tag and the at-a-glance stat. Returns null if no upload is loaded
-// or the supplier isn't in this currency's roster.
-function lookupShareOfCurrency(supId, ccy) {
-    if (!window.__upload || !window.__upload.stats) return null;
-    var stats = window.__upload.stats;
-    if (!stats.perCurrency[ccy]) return null;
-    var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
-    return found ? found.sharePct : null;
+// Context strip — shows the active filter window and the supplier's full
+// history bounds. Keeps the operator anchored when zooming in.
+function renderSupContextStrip(st, lifetimeSupplier, ccy, periodFrom, periodTo) {
+    var bits = [];
+    if (periodFrom && periodTo) {
+        bits.push('<strong>Filter:</strong> ' + escHTML(periodFrom) + ' → ' + escHTML(periodTo));
+    } else {
+        bits.push('<strong>Filter:</strong> Full period');
+    }
+    if (lifetimeSupplier) {
+        var firstInv = lifetimeSupplier.firstInvoice || '—';
+        var lastInv  = lifetimeSupplier.lastInvoice  || '—';
+        bits.push(
+            '<strong>Lifetime:</strong> ' +
+            (lifetimeSupplier.invoiceCount || 0).toLocaleString() + ' invoices · ' +
+            moneyShort(lifetimeSupplier.totalSpend || 0, ccy) + ' total · ' +
+            'active ' + escHTML(firstInv) + ' → ' + escHTML(lastInv)
+        );
+    }
+    return '<div class="sup-panel-context-strip">' + bits.join(' &nbsp;·&nbsp; ') + '</div>';
 }
 
-function lookupTrendLabel(supId, ccy) {
-    if (!window.__upload || !window.__upload.stats) return null;
-    var stats = window.__upload.stats;
-    if (!stats.perCurrency[ccy]) return null;
-    var found = stats.perCurrency[ccy].suppliers.find(function(s) { return s.identifier === supId; });
-    if (!found || found.trendSlopeNormalised === null) return 'flat';
-    if (found.trendSlopeNormalised > 0.10) return 'growing';
-    if (found.trendSlopeNormalised < -0.10) return 'declining';
-    return 'flat';
-}
+// (lookupShareOfCurrency and lookupTrendLabel removed — Phase 4 reads
+// these directly from the snapshot supplier object instead of the dead
+// __upload.stats lookup.)
 
 function renderSupAtAGlance(st, ccy, sharePct) {
     var dpdStr = (st.avgDpd !== null && st.avgDpd !== undefined) ? (st.avgDpd >= 0 ? '+' : '') + st.avgDpd.toFixed(1) + 'd' : '—';
@@ -4504,7 +4605,7 @@ function renderSupDilution(st, ccy) {
         : '';
 
     return '' +
-        '<div class="sup-panel-section">' +
+        '<div class="sup-panel-section sup-section-dilution">' +
             '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(st.dilutionRate) + ')</div>' +
             '<table class="sup-table">' +
                 '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Settled</th></tr></thead>' +
@@ -4513,7 +4614,15 @@ function renderSupDilution(st, ccy) {
         '</div>';
 }
 
-function renderSupRecentInvoices(st, ccy) {
+function renderSupRecentInvoices(st, ccy, capHit, periodFrom, periodTo) {
+    if (!st.recentInvoices || st.recentInvoices.length === 0) {
+        return '' +
+            '<div class="sup-panel-section sup-section-recent">' +
+                '<div class="sup-panel-section-title">Recent invoices</div>' +
+                '<div class="sup-empty" style="font-size:11px; color:var(--text-secondary);">Loading invoice rows…</div>' +
+            '</div>';
+    }
+
     var rows = st.recentInvoices.map(function(inv) {
         var dpdCell = '—';
         if (inv.paid_date && inv.due_date) {
@@ -4535,18 +4644,31 @@ function renderSupRecentInvoices(st, ccy) {
         '</tr>';
     }).join('');
 
-    var moreNote = st.totalInvoiceCount > 20
-        ? '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:6px;">Showing 20 most recent of ' + st.totalInvoiceCount + ' invoices for this supplier.</div>'
+    // Compose the "showing X of Y" hint to reflect both the 20-row preview
+    // and any cap hit on the 250 lazy-fetched rows.
+    var hints = [];
+    var totalInPeriod = st.totalInvoiceCount; // snapshot-period invoiceCount
+    if (totalInPeriod > 20) {
+        hints.push('Showing 20 most recent of ' + totalInPeriod.toLocaleString() + ' invoices in this period.');
+    }
+    if (capHit) {
+        hints.push('Detail beyond the most recent 250 rows is paginated in a future build.');
+    }
+    if (periodFrom && periodTo) {
+        hints.push('Period: ' + escHTML(periodFrom) + ' → ' + escHTML(periodTo) + '.');
+    }
+    var hintHtml = hints.length > 0
+        ? '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:6px;">' + hints.join(' ') + '</div>'
         : '';
 
     return '' +
-        '<div class="sup-panel-section">' +
+        '<div class="sup-panel-section sup-section-recent">' +
             '<div class="sup-panel-section-title">Recent invoices</div>' +
             '<table class="sup-table">' +
                 '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Due</th><th class="text-right">DPD</th></tr></thead>' +
                 '<tbody>' + rows + '</tbody>' +
             '</table>' +
-            moreNote +
+            hintHtml +
         '</div>';
 }
 
