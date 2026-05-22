@@ -280,6 +280,20 @@
         .section-title { font-size: 20px; font-weight: 700; color: var(--text); margin-bottom: 6px; line-height: 1.3; }
         .section-lede { font-size: 13px; color: var(--text-secondary); margin-bottom: 22px; max-width: 720px; line-height: 1.5; }
 
+        /* "View all in All Suppliers" link beneath a capped table */
+        .section-jump-link {
+            display: inline-block;
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--accent);
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 4px 0;
+            font-weight: 600;
+        }
+        .section-jump-link:hover { text-decoration: underline; }
+
         /* Stat cards (At a glance) */
         .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
         /* Modifier used by Section 2 (Concentration) which has 6 narrow
@@ -2836,9 +2850,13 @@ function chooseSurprisingFact(c, ccy) {
 
 function renderSectionConcentration(c, ccy) {
     var conc = c.concentration;
-    var suppliers = c.suppliers;
+    // Suppliers come from the snapshot already sorted by total_spend DESC.
+    // Top 10 for the table; the HHI/topN stats above still summarise the
+    // full population.
+    var top10 = c.suppliers.slice(0, 10);
+    var hasMore = c.suppliers.length > 10;
 
-    var rows = suppliers.map(function(s, idx) {
+    var rows = top10.map(function(s, idx) {
         return '<tr>' +
             '<td>' + (idx + 1) + '</td>' +
             '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span><div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(s.identifier) + '</div></td>' +
@@ -2849,6 +2867,10 @@ function renderSectionConcentration(c, ccy) {
             '<td class="mono" style="font-size:11px; color:var(--text-secondary);">' + (s.firstInvoice || '—') + ' → ' + (s.lastInvoice || '—') + '</td>' +
         '</tr>';
     }).join('');
+
+    var jumpLinkHtml = hasMore
+        ? '<button class="section-jump-link" data-jump-to="all-suppliers">View all ' + c.suppliers.length.toLocaleString() + ' suppliers in the All Suppliers tab →</button>'
+        : '';
 
     // HHI interpretation, gentle — not as a hard threshold.
     var hhiLabel = conc.hhi >= 0.5 ? 'highly concentrated'
@@ -2881,8 +2903,8 @@ function renderSectionConcentration(c, ccy) {
 
             '<div class="chart-row" style="grid-template-columns: 2fr 1fr;">' +
                 '<div class="chart-box">' +
-                    '<div class="chart-box-title">Supplier rankings — ' + ccy + '</div>' +
-                    '<div style="max-height:380px; overflow-y:auto;"><table class="report-table">' +
+                    '<div class="chart-box-title">Top 10 suppliers — ' + ccy + '</div>' +
+                    '<table class="report-table">' +
                         '<thead><tr>' +
                             '<th>#</th><th>Supplier</th>' +
                             '<th class="text-right">Invoices</th>' +
@@ -2892,7 +2914,8 @@ function renderSectionConcentration(c, ccy) {
                             '<th>Active</th>' +
                         '</tr></thead>' +
                         '<tbody>' + rows + '</tbody>' +
-                    '</table></div>' +
+                    '</table>' +
+                    jumpLinkHtml +
                 '</div>' +
                 '<div class="chart-box">' +
                     '<div class="chart-box-title">Share of ' + ccy + ' spend</div>' +
@@ -3156,7 +3179,14 @@ function renderSectionStressSignals(c, ccy) {
             '</div>';
     }
 
-    var rows = signals.map(function(entry) {
+    // Sort flagged suppliers by total spend desc and cap at 10.
+    signals.sort(function(a, b) {
+        return (b.supplier.totalSpend || 0) - (a.supplier.totalSpend || 0);
+    });
+    var top10 = signals.slice(0, 10);
+    var hasMore = signals.length > 10;
+
+    var rows = top10.map(function(entry) {
         var s = entry.supplier;
         var tags = entry.signals.map(function(sig) {
             var color = sig.tag === 'silent' ? 'var(--danger)' : sig.tag === 'declining' ? 'var(--warning)' : 'var(--purple)';
@@ -3171,6 +3201,10 @@ function renderSectionStressSignals(c, ccy) {
             '<td class="text-right mono" style="font-size:11px;">' + (s.firstInvoice || '—') + '<br>→ ' + (s.lastInvoice || '—') + '</td>' +
         '</tr>';
     }).join('');
+
+    var jumpLinkHtml = hasMore
+        ? '<button class="section-jump-link" data-jump-to="all-suppliers">View all ' + signals.length.toLocaleString() + ' flagged suppliers in the All Suppliers tab →</button>'
+        : '';
 
     return '' +
         '<div class="section">' +
@@ -3188,6 +3222,7 @@ function renderSectionStressSignals(c, ccy) {
                     '</tr></thead>' +
                     '<tbody>' + rows + '</tbody>' +
                 '</table>' +
+                jumpLinkHtml +
             '</div>' +
         '</div>';
 }
@@ -4218,6 +4253,16 @@ document.addEventListener('click', function(e) {
             if (supId && supCcy) {
                 e.preventDefault();
                 openSupplierPanel(supId, supCcy);
+            }
+            return;
+        }
+        // "View all in All Suppliers" jump links from Report sections
+        if (el.getAttribute && el.getAttribute('data-jump-to')) {
+            var dest = el.getAttribute('data-jump-to');
+            var tabBtn = document.querySelector('.tab-btn[data-tab="' + dest + '"]');
+            if (tabBtn) {
+                e.preventDefault();
+                tabBtn.click();
             }
             return;
         }
