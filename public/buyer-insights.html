@@ -3252,6 +3252,7 @@ function statCard(label, value, sub, labelHtml) {
 
 // Short-form money display: £1.2M, €847k, $5.4k, with currency symbol.
 function moneyShort(val, ccy) {
+    if (val == null || isNaN(val)) return '—';
     var symbols = { GBP: '£', EUR: '€', USD: '$' };
     var sym = symbols[ccy] || (ccy + ' ');
     var abs = Math.abs(val);
