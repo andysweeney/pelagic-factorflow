@@ -644,6 +644,58 @@
 
         .sup-empty { padding: 24px 12px; text-align: center; color: var(--text-secondary); font-size: 11px; }
 
+        /* Search bar for invoice/CN tables in the supplier panel */
+        .sup-search-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 11px;
+            flex-wrap: wrap;
+        }
+        .sup-search-bar input[type="text"],
+        .sup-search-bar input[type="number"] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 5px 8px;
+            color: var(--text);
+            font-size: 11px;
+            font-family: var(--mono);
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .sup-search-bar input[type="text"]:focus,
+        .sup-search-bar input[type="number"]:focus {
+            border-color: var(--accent);
+        }
+        .sup-search-bar input[type="text"] { flex: 1; min-width: 100px; }
+        .sup-search-bar input[type="number"] { width: 75px; }
+        .sup-search-bar .sup-search-label {
+            font-size: 10px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .sup-search-bar .sup-search-clear {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            border-radius: 4px;
+            padding: 5px 8px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        .sup-search-bar .sup-search-clear:hover {
+            color: var(--text);
+            border-color: var(--text-secondary);
+        }
+        .sup-search-status {
+            font-size: 10px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: 4px;
+        }
+
         /* ── Period filter (Reports + Trends) ─────────────────────── */
         .period-filter {
             display: inline-flex;
@@ -4230,6 +4282,17 @@ function openSupplierPanel(supId, ccy) {
     var periodFromDate = u.filteredFromDate;
     var periodToDate   = u.filteredToDate;
 
+    // Track context for search bar handlers (so they know what to query)
+    window._supSearchContext = {
+        uploadId:  u.uploadId,
+        supId:     supId,
+        ccy:       ccy,
+        periodFrom: periodFromDate,
+        periodTo:   periodToDate,
+        invDebounceTimer: null,
+        cnDebounceTimer:  null
+    };
+
     // Build the "stats" object the panel renderers expect, populated from
     // the snapshot suppliers entry. monthlySeries derived from snapshot
     // monthlyInvoiceCount/monthlyInvoiceAmount — already pre-baked.
@@ -4337,6 +4400,7 @@ function openSupplierPanel(supId, ccy) {
 
         panelStats.recentInvoices = invRows.slice(0, 20);
         panelStats.creditNotes = cnRows;
+        panelStats._rowsLoaded = true;
 
         // Re-render the row-level sections now that data is in.
         var recentEl = document.querySelector('#supPanelBody .sup-section-recent');
@@ -4348,6 +4412,10 @@ function openSupplierPanel(supId, ccy) {
         if (dilEl && panelStats.cnCount > 0) {
             dilEl.outerHTML = renderSupDilution(panelStats, ccy);
         }
+
+        // outerHTML replacement detaches the handlers wired in populateSupplierPanel;
+        // re-attach to the new elements.
+        wireSupSearchHandlers(ccy);
     });
 }
 
@@ -4508,10 +4576,154 @@ function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier,
         renderSupAtAGlance(st, ccy, st.sharePct) +
         renderSupVolume(st, ccy) +
         renderSupPayment(st) +
-        (st.cnCount > 0 ? renderSupDilution(st, ccy) : '') +
-        renderSupRecentInvoices(st, ccy, false, periodFrom, periodTo);
+        renderSupRecentInvoices(st, ccy, false, periodFrom, periodTo) +
+        (st.cnCount > 0 ? renderSupDilution(st, ccy) : '');
+
+    wireSupSearchHandlers(ccy);
 
     document.getElementById('supPanel').scrollTop = 0;
+}
+
+// Wire the search input/clear button event handlers. Debounced 300ms so
+// the user can keep typing without hammering the DB.
+function wireSupSearchHandlers(ccy) {
+    var ctx = window._supSearchContext;
+    if (!ctx) return;
+
+    // Invoice search
+    var invRef = document.getElementById('sup-inv-search-ref');
+    var invMin = document.getElementById('sup-inv-search-min');
+    var invMax = document.getElementById('sup-inv-search-max');
+    var invClear = document.getElementById('sup-inv-search-clear');
+
+    function debouncedInvSearch() {
+        if (ctx.invDebounceTimer) clearTimeout(ctx.invDebounceTimer);
+        ctx.invDebounceTimer = setTimeout(function() { runSupInvoiceSearch(ccy); }, 300);
+    }
+    if (invRef) invRef.addEventListener('input', debouncedInvSearch);
+    if (invMin) invMin.addEventListener('input', debouncedInvSearch);
+    if (invMax) invMax.addEventListener('input', debouncedInvSearch);
+    if (invClear) invClear.addEventListener('click', function() {
+        if (invRef) invRef.value = '';
+        if (invMin) invMin.value = '';
+        if (invMax) invMax.value = '';
+        runSupInvoiceSearch(ccy);
+    });
+
+    // CN search (may not exist if supplier has 0 CNs)
+    var cnRef = document.getElementById('sup-cn-search-ref');
+    var cnMin = document.getElementById('sup-cn-search-min');
+    var cnMax = document.getElementById('sup-cn-search-max');
+    var cnClear = document.getElementById('sup-cn-search-clear');
+
+    function debouncedCnSearch() {
+        if (ctx.cnDebounceTimer) clearTimeout(ctx.cnDebounceTimer);
+        ctx.cnDebounceTimer = setTimeout(function() { runSupCnSearch(ccy); }, 300);
+    }
+    if (cnRef) cnRef.addEventListener('input', debouncedCnSearch);
+    if (cnMin) cnMin.addEventListener('input', debouncedCnSearch);
+    if (cnMax) cnMax.addEventListener('input', debouncedCnSearch);
+    if (cnClear) cnClear.addEventListener('click', function() {
+        if (cnRef) cnRef.value = '';
+        if (cnMin) cnMin.value = '';
+        if (cnMax) cnMax.value = '';
+        runSupCnSearch(ccy);
+    });
+}
+
+// Fetch invoices matching the search bar inputs and re-render the tbody.
+// Period date range is always applied — the panel only searches within
+// the active filter window (matches the rest of the screen).
+function runSupInvoiceSearch(ccy) {
+    var ctx = window._supSearchContext;
+    if (!ctx || !sbClient) return;
+
+    var ref = (document.getElementById('sup-inv-search-ref') || {}).value || '';
+    var min = (document.getElementById('sup-inv-search-min') || {}).value || '';
+    var max = (document.getElementById('sup-inv-search-max') || {}).value || '';
+    var status = document.getElementById('sup-inv-search-status');
+    var tbody  = document.getElementById('sup-inv-tbody');
+    if (!tbody) return;
+
+    // No filters at all → restore the "20 most recent" preview by re-fetching.
+    var hasFilter = (ref.trim() !== '' || min !== '' || max !== '');
+
+    if (status) status.textContent = 'Searching…';
+
+    var q = sbClient.from('buyer_invoices')
+        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
+        .eq('upload_id', ctx.uploadId)
+        .eq('supplier_identifier', ctx.supId)
+        .ilike('currency', ctx.ccy)
+        .eq('excluded', false)
+        .order('invoice_date', { ascending: false })
+        .limit(hasFilter ? 250 : 20);
+
+    if (ctx.periodFrom) q = q.gte('invoice_date', ctx.periodFrom);
+    if (ctx.periodTo)   q = q.lte('invoice_date', ctx.periodTo);
+    if (ref.trim() !== '') q = q.ilike('invoice_reference', '%' + ref.trim() + '%');
+    if (min !== '')        q = q.gte('amount', parseFloat(min));
+    if (max !== '')        q = q.lte('amount', parseFloat(max));
+
+    q.then(function(res) {
+        if (res.error) {
+            if (status) status.textContent = 'Search failed: ' + res.error.message;
+            return;
+        }
+        var rows = res.data || [];
+        tbody.innerHTML = renderSupInvoiceRows(rows, ccy);
+        if (status) {
+            if (!hasFilter) status.textContent = '';
+            else if (rows.length === 250) status.textContent = 'Showing first 250 matches. Refine to see more.';
+            else status.textContent = 'Found ' + rows.length + ' matching invoice' + (rows.length === 1 ? '' : 's') + ' in this period.';
+        }
+    });
+}
+
+// Same pattern for credit notes.
+function runSupCnSearch(ccy) {
+    var ctx = window._supSearchContext;
+    if (!ctx || !sbClient) return;
+
+    var ref = (document.getElementById('sup-cn-search-ref') || {}).value || '';
+    var min = (document.getElementById('sup-cn-search-min') || {}).value || '';
+    var max = (document.getElementById('sup-cn-search-max') || {}).value || '';
+    var status = document.getElementById('sup-cn-search-status');
+    var tbody  = document.getElementById('sup-cn-tbody');
+    if (!tbody) return;
+
+    var hasFilter = (ref.trim() !== '' || min !== '' || max !== '');
+
+    if (status) status.textContent = 'Searching…';
+
+    var q = sbClient.from('buyer_credit_notes')
+        .select('cn_date, cn_reference, amount, paid_date, currency')
+        .eq('upload_id', ctx.uploadId)
+        .eq('supplier_identifier', ctx.supId)
+        .ilike('currency', ctx.ccy)
+        .eq('excluded', false)
+        .order('cn_date', { ascending: false })
+        .limit(hasFilter ? 250 : 15);
+
+    if (ctx.periodFrom) q = q.gte('cn_date', ctx.periodFrom);
+    if (ctx.periodTo)   q = q.lte('cn_date', ctx.periodTo);
+    if (ref.trim() !== '') q = q.ilike('cn_reference', '%' + ref.trim() + '%');
+    if (min !== '')        q = q.gte('amount', parseFloat(min));
+    if (max !== '')        q = q.lte('amount', parseFloat(max));
+
+    q.then(function(res) {
+        if (res.error) {
+            if (status) status.textContent = 'Search failed: ' + res.error.message;
+            return;
+        }
+        var rows = res.data || [];
+        tbody.innerHTML = renderSupCnRows(rows, ccy);
+        if (status) {
+            if (!hasFilter) status.textContent = '';
+            else if (rows.length === 250) status.textContent = 'Showing first 250 matches. Refine to see more.';
+            else status.textContent = 'Found ' + rows.length + ' matching credit note' + (rows.length === 1 ? '' : 's') + ' in this period.';
+        }
+    });
 }
 
 // Context strip — shows the active filter window and the supplier's full
@@ -4591,7 +4803,37 @@ function renderSupPayment(st) {
 }
 
 function renderSupDilution(st, ccy) {
-    var rows = st.creditNotes.slice(0, 15).map(function(cn) {
+    var rowsHtml = renderSupCnRows(st.creditNotes.slice(0, 15), ccy);
+    var moreRow = st.creditNotes.length > 15
+        ? '<tr><td colspan="4" style="text-align:center; font-style:italic; font-size:10px; color:var(--text-secondary);">+ ' + (st.creditNotes.length - 15) + ' more credit notes</td></tr>'
+        : '';
+
+    var searchBar = '' +
+        '<div class="sup-search-bar">' +
+            '<span class="sup-search-label">Search:</span>' +
+            '<input type="text"   id="sup-cn-search-ref"  placeholder="CN ref…" />' +
+            '<input type="number" id="sup-cn-search-min"  placeholder="Min" step="any" />' +
+            '<input type="number" id="sup-cn-search-max"  placeholder="Max" step="any" />' +
+            '<button class="sup-search-clear" id="sup-cn-search-clear">Clear</button>' +
+        '</div>' +
+        '<div class="sup-search-status" id="sup-cn-search-status"></div>';
+
+    return '' +
+        '<div class="sup-panel-section sup-section-dilution">' +
+            '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(st.dilutionRate) + ')</div>' +
+            searchBar +
+            '<table class="sup-table">' +
+                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Settled</th></tr></thead>' +
+                '<tbody id="sup-cn-tbody">' + rowsHtml + moreRow + '</tbody>' +
+            '</table>' +
+        '</div>';
+}
+
+function renderSupCnRows(rows, ccy) {
+    if (!rows || rows.length === 0) {
+        return '<tr><td colspan="4" style="text-align:center; padding:14px; color:var(--text-secondary); font-size:11px;">No matching credit notes.</td></tr>';
+    }
+    return rows.map(function(cn) {
         return '<tr>' +
             '<td class="mono" style="font-size:10px;">' + escHTML(cn.cn_date || '—') + '</td>' +
             '<td>' + escHTML(cn.cn_reference || '—') + '</td>' +
@@ -4599,31 +4841,62 @@ function renderSupDilution(st, ccy) {
             '<td class="mono" style="font-size:10px; color:var(--text-secondary);">' + escHTML(cn.paid_date || 'open') + '</td>' +
         '</tr>';
     }).join('');
-
-    var moreRow = st.creditNotes.length > 15
-        ? '<tr><td colspan="4" style="text-align:center; font-style:italic; font-size:10px; color:var(--text-secondary);">+ ' + (st.creditNotes.length - 15) + ' more credit notes</td></tr>'
-        : '';
-
-    return '' +
-        '<div class="sup-panel-section sup-section-dilution">' +
-            '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(st.dilutionRate) + ')</div>' +
-            '<table class="sup-table">' +
-                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Settled</th></tr></thead>' +
-                '<tbody>' + rows + moreRow + '</tbody>' +
-            '</table>' +
-        '</div>';
 }
 
 function renderSupRecentInvoices(st, ccy, capHit, periodFrom, periodTo) {
-    if (!st.recentInvoices || st.recentInvoices.length === 0) {
-        return '' +
-            '<div class="sup-panel-section sup-section-recent">' +
-                '<div class="sup-panel-section-title">Recent invoices</div>' +
-                '<div class="sup-empty" style="font-size:11px; color:var(--text-secondary);">Loading invoice rows…</div>' +
-            '</div>';
-    }
+    var initialLoad = !st._rowsLoaded;
+    var rowsHtml = initialLoad
+        ? '<tr><td colspan="5" style="text-align:center; padding:14px; color:var(--text-secondary); font-size:11px;">Loading invoices…</td></tr>'
+        : renderSupInvoiceRows(st.recentInvoices, ccy);
 
-    var rows = st.recentInvoices.map(function(inv) {
+    // Compose the "showing X of Y" hint to reflect both the 20-row preview
+    // and any cap hit on the 250 lazy-fetched rows.
+    var hints = [];
+    var totalInPeriod = st.totalInvoiceCount;
+    if (totalInPeriod > 20) {
+        hints.push('Showing 20 most recent of ' + totalInPeriod.toLocaleString() + ' invoices in this period.');
+    }
+    if (capHit) {
+        hints.push('Use search below to find invoices not in the most recent 250.');
+    }
+    if (periodFrom && periodTo) {
+        hints.push('Period: ' + escHTML(periodFrom) + ' → ' + escHTML(periodTo) + '.');
+    }
+    var hintHtml = hints.length > 0
+        ? '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:6px;">' + hints.join(' ') + '</div>'
+        : '';
+
+    // Search bar: text reference + amount range. Hits the database on
+    // debounced input so the buyer can find invoices outside the loaded 250.
+    var searchBar = '' +
+        '<div class="sup-search-bar">' +
+            '<span class="sup-search-label">Search:</span>' +
+            '<input type="text"   id="sup-inv-search-ref"  placeholder="Invoice ref…" />' +
+            '<input type="number" id="sup-inv-search-min"  placeholder="Min" step="any" />' +
+            '<input type="number" id="sup-inv-search-max"  placeholder="Max" step="any" />' +
+            '<button class="sup-search-clear" id="sup-inv-search-clear">Clear</button>' +
+        '</div>' +
+        '<div class="sup-search-status" id="sup-inv-search-status"></div>';
+
+    return '' +
+        '<div class="sup-panel-section sup-section-recent">' +
+            '<div class="sup-panel-section-title">Recent invoices</div>' +
+            searchBar +
+            '<table class="sup-table">' +
+                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Due</th><th class="text-right">DPD</th></tr></thead>' +
+                '<tbody id="sup-inv-tbody">' + rowsHtml + '</tbody>' +
+            '</table>' +
+            hintHtml +
+        '</div>';
+}
+
+// Render just the <tr> rows for the invoice table. Pulled out so the
+// search results can re-render the tbody without rebuilding the section.
+function renderSupInvoiceRows(rows, ccy) {
+    if (!rows || rows.length === 0) {
+        return '<tr><td colspan="5" style="text-align:center; padding:14px; color:var(--text-secondary); font-size:11px;">No matching invoices.</td></tr>';
+    }
+    return rows.map(function(inv) {
         var dpdCell = '—';
         if (inv.paid_date && inv.due_date) {
             var d = daysBetween(inv.due_date, inv.paid_date);
@@ -4634,7 +4907,6 @@ function renderSupRecentInvoices(st, ccy, capHit, periodFrom, periodTo) {
         } else if (!inv.paid_date) {
             dpdCell = '<span style="color:var(--text-secondary); font-size:10px;">open</span>';
         }
-
         return '<tr>' +
             '<td class="mono" style="font-size:10px;">' + escHTML(inv.invoice_date || '—') + '</td>' +
             '<td>' + escHTML(inv.invoice_reference || '—') + '</td>' +
@@ -4643,33 +4915,6 @@ function renderSupRecentInvoices(st, ccy, capHit, periodFrom, periodTo) {
             '<td class="mono text-right">' + dpdCell + '</td>' +
         '</tr>';
     }).join('');
-
-    // Compose the "showing X of Y" hint to reflect both the 20-row preview
-    // and any cap hit on the 250 lazy-fetched rows.
-    var hints = [];
-    var totalInPeriod = st.totalInvoiceCount; // snapshot-period invoiceCount
-    if (totalInPeriod > 20) {
-        hints.push('Showing 20 most recent of ' + totalInPeriod.toLocaleString() + ' invoices in this period.');
-    }
-    if (capHit) {
-        hints.push('Detail beyond the most recent 250 rows is paginated in a future build.');
-    }
-    if (periodFrom && periodTo) {
-        hints.push('Period: ' + escHTML(periodFrom) + ' → ' + escHTML(periodTo) + '.');
-    }
-    var hintHtml = hints.length > 0
-        ? '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:6px;">' + hints.join(' ') + '</div>'
-        : '';
-
-    return '' +
-        '<div class="sup-panel-section sup-section-recent">' +
-            '<div class="sup-panel-section-title">Recent invoices</div>' +
-            '<table class="sup-table">' +
-                '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Due</th><th class="text-right">DPD</th></tr></thead>' +
-                '<tbody>' + rows + '</tbody>' +
-            '</table>' +
-            hintHtml +
-        '</div>';
 }
 
 // ── Charts for the supplier panel ───────────────────────────────
