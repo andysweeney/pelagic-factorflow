@@ -3730,25 +3730,27 @@ function drawTrendsConcentration(labels, ts) {
     var canvas = document.getElementById('trends-chart-concentration');
     if (!canvas) return;
 
-    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#94A3B8'];
+    // Palette: 5 supplier colours + a muted grey for "Other".
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899'];
+    var otherColor = '#94A3B8';
+
     var datasets = ts.concentration.topNames.map(function(name, i) {
         return {
             label: name,
             data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }),
-            backgroundColor: palette[i] + '80',
-            borderColor: palette[i],
+            backgroundColor: palette[i % palette.length] + '80',
+            borderColor: palette[i % palette.length],
             borderWidth: 1,
             fill: true,
             tension: 0.2,
             pointRadius: 0
         };
     });
-    // Add "Other" as the top stack
     datasets.push({
         label: 'Other suppliers',
         data: ts.concentration.series.map(function(s) { return s.otherPct; }),
-        backgroundColor: palette[3] + '60',
-        borderColor: palette[3],
+        backgroundColor: otherColor + '60',
+        borderColor: otherColor,
         borderWidth: 1,
         fill: true,
         tension: 0.2,
@@ -6340,11 +6342,12 @@ function drawTrendsPrintPayments(ccy, ts) {
 function drawTrendsPrintConcentration(ccy, ts) {
     var canvas = document.getElementById('print-trends-conc-' + ccy);
     if (!canvas) return;
-    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#94A3B8'];
+    var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EC4899'];
+    var otherColor = '#94A3B8';
     var datasets = ts.concentration.topNames.map(function(name, i) {
-        return { label: name, data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }), backgroundColor: palette[i] + '80', borderColor: palette[i], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 };
+        return { label: name, data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }), backgroundColor: palette[i % palette.length] + '80', borderColor: palette[i % palette.length], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 };
     });
-    datasets.push({ label: 'Other', data: ts.concentration.series.map(function(s) { return s.otherPct; }), backgroundColor: palette[3] + '60', borderColor: palette[3], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 });
+    datasets.push({ label: 'Other', data: ts.concentration.series.map(function(s) { return s.otherPct; }), backgroundColor: otherColor + '60', borderColor: otherColor, borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 });
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: { labels: ts.buckets, datasets: datasets },
