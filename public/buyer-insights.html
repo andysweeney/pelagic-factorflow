@@ -261,6 +261,92 @@
         .empty-state-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
         .empty-state-sub { font-size: 13px; }
 
+        /* ── Operator-only chrome (hidden in buyer mode) ── */
+        body.buyer-mode .operator-only { display: none !important; }
+
+        /* ── Prospects tab ── */
+        .pr-pill {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 5px 11px;
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: var(--font);
+            transition: all 0.15s;
+        }
+        .pr-pill:hover { color: var(--text); border-color: var(--text-secondary); }
+        .pr-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        .pr-stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px 14px;
+            min-width: 110px;
+        }
+        .pr-stat-card .label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+        .pr-stat-card .value { font-size: 18px; font-weight: 700; color: var(--text); font-family: var(--mono); margin-top: 4px; }
+        .pr-stat-card .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+        .pr-status-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .pr-status-lead         { background: #94A3B820; color: #94A3B8; }
+        .pr-status-contacted    { background: #0EA5E920; color: #0EA5E9; }
+        .pr-status-interested   { background: #8B5CF620; color: #8B5CF6; }
+        .pr-status-negotiating  { background: #F59E0B20; color: #F59E0B; }
+        .pr-status-onboarding   { background: #10B98140; color: #10B981; }
+        .pr-status-converted    { background: #10B98180; color: #fff; }
+        .pr-status-declined     { background: #EF444420; color: #EF4444; }
+
+        .pr-verified-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #10B98120;
+            color: #10B981;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        /* ── Outreach toggle (Upload History → Buyers card) ── */
+        .outreach-switch {
+            position: relative;
+            display: inline-block;
+            width: 38px;
+            height: 20px;
+            vertical-align: middle;
+        }
+        .outreach-switch input { opacity: 0; width: 0; height: 0; }
+        .outreach-switch .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border);
+            border-radius: 20px;
+            transition: 0.15s;
+        }
+        .outreach-switch .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px; width: 14px;
+            left: 3px; bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: 0.15s;
+        }
+        .outreach-switch input:checked + .slider { background: var(--accent); }
+        .outreach-switch input:checked + .slider:before { transform: translateX(18px); }
+        .outreach-switch input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
+
         /* ── Report ── */
         .report-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px; }
         .report-title { font-size: 22px; font-weight: 700; color: var(--text); }
@@ -961,6 +1047,7 @@
         <button class="tab-btn" data-tab="reports">Reports</button>
         <button class="tab-btn" data-tab="all-suppliers">All Suppliers</button>
         <button class="tab-btn" data-tab="trends">Trends</button>
+        <button class="tab-btn operator-only" data-tab="prospects">Prospects</button>
         <button class="tab-btn" data-tab="uploads-history">Upload History</button>
     </div>
 
@@ -1148,7 +1235,96 @@
     </div>
 
     <!-- ── UPLOAD HISTORY TAB ── -->
+    <!-- ── PROSPECTS TAB ── (operators only — buyer-mode CSS hides it) -->
+    <div id="tab-prospects" class="tab-content hidden operator-only">
+        <div class="card">
+            <div class="card-title">Active Prospects</div>
+            <div class="card-subtitle">Suppliers from outreach-permitted buyers. Click a row to verify, take notes, and convert.</div>
+
+            <div id="prospectsStats" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;"></div>
+
+            <div id="prospectsFilters" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin-bottom:14px;">
+                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-secondary); margin-bottom:10px;">Filters</div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                    <select id="prFilterBuyer"     style="min-width:180px;"><option value="">All buyers</option></select>
+                    <select id="prFilterCurrency"  style="min-width:100px;">
+                        <option value="">All currencies</option>
+                        <option value="GBP">GBP</option><option value="EUR">EUR</option><option value="USD">USD</option>
+                    </select>
+                    <select id="prFilterStatus" style="min-width:140px;">
+                        <option value="">All statuses</option>
+                        <option value="lead">Lead</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="interested">Interested</option>
+                        <option value="negotiating">Negotiating</option>
+                        <option value="onboarding">Onboarding</option>
+                        <option value="declined">Declined</option>
+                    </select>
+                    <input type="text" id="prFilterSearch" placeholder="Search supplier ID / legal name / contact..." style="flex:1; min-width:220px;">
+                    <button class="btn btn-xs" id="prFilterReset" style="background:var(--card); color:var(--text-secondary); border:1px solid var(--border);">Reset</button>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="pr-pill" data-pill="new"          >🆕 New this upload</button>
+                    <button class="pr-pill" data-pill="silent14"     >🔇 Silent ≥14d</button>
+                    <button class="pr-pill" data-pill="conversation" >💬 In conversation</button>
+                    <button class="pr-pill" data-pill="untouched"    >🎯 Untouched</button>
+                    <button class="pr-pill" data-pill="verified"     >✅ CH-verified</button>
+                    <button class="pr-pill" data-pill="quality"      >⚠️ Quality concerns</button>
+                    <button class="pr-pill" data-pill="late"         >🐌 Consistently late</button>
+                    <button class="pr-pill" data-pill="converted"    >Show converted</button>
+                </div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="report-table">
+                    <thead>
+                        <tr>
+                            <th style="cursor:pointer;" data-pr-sort="buyer_name">Buyer</th>
+                            <th style="cursor:pointer;" data-pr-sort="supplier">Supplier</th>
+                            <th>Currency</th>
+                            <th style="cursor:pointer;" data-pr-sort="status">Status</th>
+                            <th class="text-right" style="cursor:pointer;" data-pr-sort="spend">Spend</th>
+                            <th class="text-right" style="cursor:pointer;" data-pr-sort="invoices">Invoices</th>
+                            <th class="text-right" style="cursor:pointer;" data-pr-sort="avgDpd">Avg DPD</th>
+                            <th class="text-right" style="cursor:pointer;" data-pr-sort="dilution">Dilution</th>
+                            <th style="cursor:pointer;" data-pr-sort="last_seen_at">Last seen</th>
+                            <th>Verified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prospectsBody"></tbody>
+                </table>
+            </div>
+            <div id="prospectsEmpty" class="empty-state hidden">
+                <div class="empty-state-title">No prospects match the current filters</div>
+                <div class="empty-state-sub">Try resetting filters, or enable outreach on a buyer in Upload History.</div>
+            </div>
+            <div id="prospectsStatusLine" style="margin-top:8px; font-size:11px; color:var(--text-secondary);"></div>
+        </div>
+    </div>
+
     <div id="tab-uploads-history" class="tab-content hidden">
+        <div class="card operator-only" style="margin-bottom:16px;">
+            <div class="card-title">Buyers</div>
+            <div class="card-subtitle">Toggle supplier outreach permission per buyer. Permitted buyers' suppliers appear in the Prospects tab.</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Buyer</th>
+                            <th class="text-right">Uploads</th>
+                            <th class="text-right">Latest upload</th>
+                            <th>Outreach permitted</th>
+                            <th class="text-right">Prospects</th>
+                        </tr>
+                    </thead>
+                    <tbody id="buyersBody"></tbody>
+                </table>
+            </div>
+            <div id="buyersEmpty" class="empty-state hidden" style="padding:14px;">
+                <div class="empty-state-sub">No buyers yet. Add one via the main portal.</div>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-title">Past Uploads</div>
             <div class="card-subtitle">Each upload is one buyer's AP extract for a defined period. Delete cascades to invoice and credit-note rows.</div>
@@ -1256,7 +1432,17 @@ var state = {
     cnColumns: [],
     invoiceMapping: {},  // canonical_field -> csv_column_name (or null)
     cnMapping: {},
-    uploads: []          // populated by loadAllData()
+    uploads: [],         // populated by loadAllData()
+    buyers: [],          // all buyers (operator-only)
+    prospects: [],       // all prospect_suppliers rows (operator-only)
+    prospectsFilter: {
+        buyer: '',
+        currency: '',
+        status: '',
+        search: '',
+        pills: {}        // { silent14: true, conversation: true, ... }
+    },
+    prospectsSort: { key: 'spend', dir: 'desc' }
 };
 
 // ================================================================
@@ -1377,7 +1563,7 @@ function applyBuyerUIMode() {
     document.body.classList.add('buyer-mode');
 
     // Hide operator-only tabs.
-    var hideTabs = ['upload', 'uploads-history'];
+    var hideTabs = ['upload', 'uploads-history', 'prospects'];
     hideTabs.forEach(function(tab) {
         var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
         if (btn) btn.style.display = 'none';
@@ -1425,6 +1611,7 @@ function setupTabs() {
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
+            if (tab === 'prospects') renderProspects();
             if (tab === 'reports') {
                 // With Step 2 architecture: if an upload is loaded but no
                 // Reports view exists yet, open the Reports view automatically.
@@ -1989,17 +2176,43 @@ function hideProcessing() {
 function loadAllData() {
     if (!sbClient) return;
     // Embed the buyer's name via the FK we added on buyer_uploads.buyer_id -> buyers.id.
-    // Supabase's PostgREST embed syntax: buyers!buyer_uploads_buyer_id_fkey(name) — but
-    // it'll auto-pick the FK if there's only one between the two tables, so just buyers(name) is fine.
     sbClient.from('buyer_uploads')
         .select('*, buyer:buyers(id, name)')
         .order('created_at', { ascending: false })
         .then(function(res) {
             if (res.error) { console.error('loadAllData error:', res.error); return; }
             state.uploads = res.data || [];
-            // If user is currently viewing history, refresh it.
             if (!document.getElementById('tab-uploads-history').classList.contains('hidden')) {
                 renderUploadsHistory();
+            }
+        });
+
+    // Operator-only data: full buyer list with outreach flag, and all prospects.
+    // Buyers in buyer-mode won't reach this (RLS blocks them anyway).
+    if (window.__currentProfile && window.__currentProfile.role === 'buyer') return;
+
+    sbClient.from('buyers')
+        .select('id, name, supplier_outreach_permitted')
+        .order('name', { ascending: true })
+        .then(function(res) {
+            if (res.error) { console.error('loadBuyers error:', res.error); return; }
+            state.buyers = res.data || [];
+            renderBuyersOutreachTable();
+        });
+
+    sbClient.from('prospect_suppliers')
+        .select('*')
+        .order('last_seen_at', { ascending: false })
+        .then(function(res) {
+            if (res.error) {
+                // Non-fatal: prospects may not be set up yet on a fresh DB.
+                console.warn('loadProspects: ', res.error.message);
+                state.prospects = [];
+            } else {
+                state.prospects = res.data || [];
+            }
+            if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
+                renderProspects();
             }
         });
 }
@@ -2059,6 +2272,457 @@ function deleteUpload(uploadId) {
         if (res.error) { alert('Delete failed: ' + res.error.message); return; }
         loadAllData();
     });
+}
+
+// ================================================================
+// LAYER 2b — BUYERS OUTREACH MANAGEMENT (operators only)
+// ================================================================
+// A small card on Upload History that lists buyers and lets operators
+// toggle supplier_outreach_permitted. Flipping ON calls
+// populate_prospect_suppliers_now() so prospects appear immediately.
+
+function renderBuyersOutreachTable() {
+    var tbody = document.getElementById('buyersBody');
+    var empty = document.getElementById('buyersEmpty');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!state.buyers || state.buyers.length === 0) {
+        if (empty) empty.classList.remove('hidden');
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+
+    // Index uploads + prospects by buyer for quick lookups.
+    var uploadsByBuyer  = {};
+    var latestByBuyer   = {};
+    state.uploads.forEach(function(u) {
+        if (!u.buyer_id) return;
+        uploadsByBuyer[u.buyer_id] = (uploadsByBuyer[u.buyer_id] || 0) + 1;
+        if (!latestByBuyer[u.buyer_id] || u.created_at > latestByBuyer[u.buyer_id]) {
+            latestByBuyer[u.buyer_id] = u.created_at;
+        }
+    });
+    var prospectsByBuyer = {};
+    (state.prospects || []).forEach(function(p) {
+        prospectsByBuyer[p.buyer_id] = (prospectsByBuyer[p.buyer_id] || 0) + 1;
+    });
+
+    state.buyers.forEach(function(b) {
+        var tr = document.createElement('tr');
+        var uploadCount = uploadsByBuyer[b.id] || 0;
+        var latest      = latestByBuyer[b.id] ? formatDateTime(latestByBuyer[b.id]) : '—';
+        var prospectCount = prospectsByBuyer[b.id] || 0;
+        var checked = b.supplier_outreach_permitted ? 'checked' : '';
+
+        tr.innerHTML =
+            '<td><strong>' + escHTML(b.name) + '</strong>' +
+                '<div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(b.id) + '</div></td>' +
+            '<td class="text-right mono">' + uploadCount + '</td>' +
+            '<td class="text-right mono">' + latest + '</td>' +
+            '<td>' +
+                '<label class="outreach-switch">' +
+                    '<input type="checkbox" data-buyer="' + escHTML(b.id) + '" ' + checked + '>' +
+                    '<span class="slider"></span>' +
+                '</label>' +
+                '<span class="outreach-status" data-buyer-status="' + escHTML(b.id) + '" style="margin-left:10px; font-size:11px; color:var(--text-secondary);">' +
+                    (b.supplier_outreach_permitted ? 'Permitted' : 'Not permitted') +
+                '</span>' +
+            '</td>' +
+            '<td class="text-right mono">' + prospectCount + '</td>';
+
+        var cb = tr.querySelector('input[type=checkbox]');
+        cb.addEventListener('change', function() {
+            toggleBuyerOutreach(b.id, cb.checked, cb);
+        });
+
+        tbody.appendChild(tr);
+    });
+}
+
+function toggleBuyerOutreach(buyerId, newValue, checkbox) {
+    if (!sbClient) return;
+    checkbox.disabled = true;
+    var statusEl = document.querySelector('[data-buyer-status="' + buyerId + '"]');
+    if (statusEl) statusEl.textContent = newValue ? 'Enabling…' : 'Disabling…';
+
+    sbClient.from('buyers')
+        .update({ supplier_outreach_permitted: newValue })
+        .eq('id', buyerId)
+        .then(function(res) {
+            if (res.error) {
+                alert('Failed to update buyer: ' + res.error.message);
+                checkbox.checked = !newValue;
+                checkbox.disabled = false;
+                if (statusEl) statusEl.textContent = !newValue ? 'Permitted' : 'Not permitted';
+                return;
+            }
+
+            // Update local state
+            var b = state.buyers.find(function(x) { return x.id === buyerId; });
+            if (b) b.supplier_outreach_permitted = newValue;
+
+            if (newValue) {
+                // Immediately populate prospects for this buyer.
+                if (statusEl) statusEl.textContent = 'Populating prospects…';
+                sbClient.rpc('populate_prospect_suppliers_now', { p_buyer_id: buyerId }).then(function(rpcRes) {
+                    checkbox.disabled = false;
+                    if (rpcRes.error) {
+                        alert('Buyer permission flipped, but prospect population failed: ' + rpcRes.error.message);
+                        if (statusEl) statusEl.textContent = 'Permitted (no prospects yet)';
+                        return;
+                    }
+                    if (statusEl) statusEl.textContent = 'Permitted · ' + (rpcRes.data || 0) + ' new prospects';
+                    // Reload all data so the prospects table refreshes.
+                    loadAllData();
+                });
+            } else {
+                checkbox.disabled = false;
+                if (statusEl) statusEl.textContent = 'Not permitted';
+                loadAllData();
+            }
+        });
+}
+
+// ================================================================
+// LAYER 2c — PROSPECTS TAB (operators only)
+// ================================================================
+// Joins prospect_suppliers (sales pipeline state) to the latest snapshot
+// per buyer (analytics). The buyer dropdown is populated from state.buyers
+// filtered to permitted; rows can be filtered by status, currency, search,
+// and the quick pills.
+
+function renderProspects() {
+    if (!state.prospects) state.prospects = [];
+
+    // Populate the buyer dropdown (permitted buyers only — only they have prospects)
+    var buyerSel = document.getElementById('prFilterBuyer');
+    if (buyerSel && state.buyers) {
+        var current = buyerSel.value;
+        var opts = '<option value="">All buyers</option>';
+        state.buyers
+            .filter(function(b) { return b.supplier_outreach_permitted; })
+            .forEach(function(b) { opts += '<option value="' + escHTML(b.id) + '">' + escHTML(b.name) + '</option>'; });
+        buyerSel.innerHTML = opts;
+        if (current) buyerSel.value = current;
+    }
+
+    wireProspectsFilters();
+
+    // Build the enriched prospect list by joining each row to its buyer's
+    // latest snapshot. Snapshots are loaded lazily per-buyer because they're
+    // large (15MB+) — we only need the per-supplier stats from the 'all'
+    // period block.
+    var permittedBuyerIds = (state.buyers || [])
+        .filter(function(b) { return b.supplier_outreach_permitted; })
+        .map(function(b) { return b.id; });
+
+    if (permittedBuyerIds.length === 0) {
+        applyAndRenderProspects([]);
+        return;
+    }
+
+    ensureProspectSnapshotsLoaded(permittedBuyerIds, function() {
+        var enriched = (state.prospects || []).map(function(p) {
+            var snapData = state._prospectSnapData || {};
+            var snap = snapData[p.buyer_id];
+            var supObj = null;
+            var lastUploadDate = null;
+            if (snap) {
+                var ccyBlock = snap.stats && snap.stats.perPeriod && snap.stats.perPeriod.all
+                    && snap.stats.perPeriod.all.perCurrency && snap.stats.perPeriod.all.perCurrency[p.currency];
+                if (ccyBlock && ccyBlock.suppliers) {
+                    supObj = ccyBlock.suppliers.find(function(s) { return s.identifier === p.supplier_identifier; });
+                }
+                lastUploadDate = snap.uploadCreatedAt;
+            }
+            var buyerName = (state.buyers.find(function(b) { return b.id === p.buyer_id; }) || {}).name || p.buyer_id;
+            // Compute "new this upload" — first_seen_at within ~24h of latest upload
+            var isNewThisUpload = false;
+            if (lastUploadDate && p.first_seen_at) {
+                var diff = new Date(lastUploadDate) - new Date(p.first_seen_at);
+                isNewThisUpload = Math.abs(diff) < 24 * 3600 * 1000;
+            }
+            var silentDays = null;
+            if (lastUploadDate && p.last_seen_at) {
+                silentDays = Math.floor((new Date(lastUploadDate) - new Date(p.last_seen_at)) / 86400000);
+            }
+            return {
+                row: p,
+                buyer_name: buyerName,
+                stats: supObj || null,
+                isNewThisUpload: isNewThisUpload,
+                silentDays: silentDays
+            };
+        });
+        applyAndRenderProspects(enriched);
+    });
+}
+
+// Lazy-load 'all'-period supplier blocks per buyer (one snapshot per buyer).
+// Caches in state._prospectSnapData. Re-fetches on each renderProspects call
+// only if the buyer's latest upload has changed (cheap: 1 row metadata query).
+function ensureProspectSnapshotsLoaded(buyerIds, done) {
+    if (!state._prospectSnapData) state._prospectSnapData = {};
+
+    if (buyerIds.length === 0) { done(); return; }
+
+    // Find the latest upload_id per buyer from state.uploads.
+    var latestUpload = {};
+    state.uploads.forEach(function(u) {
+        if (!u.buyer_id) return;
+        if (!latestUpload[u.buyer_id] || u.created_at > latestUpload[u.buyer_id].created_at) {
+            latestUpload[u.buyer_id] = u;
+        }
+    });
+
+    var toFetch = [];
+    buyerIds.forEach(function(bid) {
+        var u = latestUpload[bid];
+        if (!u || u.snapshot_status !== 'ready') return;
+        var cached = state._prospectSnapData[bid];
+        if (cached && cached.uploadId === u.id) return; // already cached
+        toFetch.push({ buyerId: bid, uploadId: u.id, uploadCreatedAt: u.created_at });
+    });
+
+    if (toFetch.length === 0) { done(); return; }
+
+    var pending = toFetch.length;
+    toFetch.forEach(function(t) {
+        sbClient.from('buyer_upload_snapshots')
+            .select('stats')
+            .eq('upload_id', t.uploadId)
+            .maybeSingle()
+            .then(function(snapRes) {
+                if (snapRes.data) {
+                    state._prospectSnapData[t.buyerId] = {
+                        uploadId: t.uploadId,
+                        uploadCreatedAt: t.uploadCreatedAt,
+                        stats: snapRes.data.stats
+                    };
+                }
+                pending--;
+                if (pending === 0) done();
+            });
+    });
+}
+
+function wireProspectsFilters() {
+    if (window._prFiltersWired) return;
+    window._prFiltersWired = true;
+
+    var f = state.prospectsFilter;
+    var debounceTimer = null;
+    function debouncedRerender() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(renderProspects, 200);
+    }
+
+    document.getElementById('prFilterBuyer').addEventListener('change', function(e) {
+        f.buyer = e.target.value; debouncedRerender();
+    });
+    document.getElementById('prFilterCurrency').addEventListener('change', function(e) {
+        f.currency = e.target.value; debouncedRerender();
+    });
+    document.getElementById('prFilterStatus').addEventListener('change', function(e) {
+        f.status = e.target.value; debouncedRerender();
+    });
+    document.getElementById('prFilterSearch').addEventListener('input', function(e) {
+        f.search = e.target.value; debouncedRerender();
+    });
+    document.getElementById('prFilterReset').addEventListener('click', function() {
+        state.prospectsFilter = { buyer: '', currency: '', status: '', search: '', pills: {} };
+        document.getElementById('prFilterBuyer').value = '';
+        document.getElementById('prFilterCurrency').value = '';
+        document.getElementById('prFilterStatus').value = '';
+        document.getElementById('prFilterSearch').value = '';
+        document.querySelectorAll('.pr-pill').forEach(function(p) { p.classList.remove('active'); });
+        renderProspects();
+    });
+
+    document.querySelectorAll('.pr-pill').forEach(function(pill) {
+        pill.addEventListener('click', function() {
+            var key = pill.getAttribute('data-pill');
+            if (f.pills[key]) {
+                delete f.pills[key];
+                pill.classList.remove('active');
+            } else {
+                f.pills[key] = true;
+                pill.classList.add('active');
+            }
+            renderProspects();
+        });
+    });
+
+    document.querySelectorAll('[data-pr-sort]').forEach(function(th) {
+        th.addEventListener('click', function() {
+            var key = th.getAttribute('data-pr-sort');
+            if (state.prospectsSort.key === key) {
+                state.prospectsSort.dir = state.prospectsSort.dir === 'desc' ? 'asc' : 'desc';
+            } else {
+                state.prospectsSort.key = key;
+                state.prospectsSort.dir = 'desc';
+            }
+            renderProspects();
+        });
+    });
+}
+
+function applyAndRenderProspects(enriched) {
+    var f = state.prospectsFilter;
+
+    // Default: hide converted unless the 'converted' pill is on
+    var filtered = enriched.filter(function(e) {
+        var p = e.row;
+        if (!f.pills.converted && p.status === 'converted') return false;
+        return true;
+    });
+
+    if (f.buyer)    filtered = filtered.filter(function(e) { return e.row.buyer_id === f.buyer; });
+    if (f.currency) filtered = filtered.filter(function(e) { return e.row.currency === f.currency; });
+    if (f.status)   filtered = filtered.filter(function(e) { return e.row.status === f.status; });
+    if (f.search) {
+        var q = f.search.toLowerCase();
+        filtered = filtered.filter(function(e) {
+            var p = e.row;
+            return (p.supplier_identifier || '').toLowerCase().indexOf(q) !== -1
+                || (p.legal_name || '').toLowerCase().indexOf(q) !== -1
+                || (p.contact_name || '').toLowerCase().indexOf(q) !== -1;
+        });
+    }
+
+    // Pills
+    if (f.pills.new)          filtered = filtered.filter(function(e) { return e.isNewThisUpload; });
+    if (f.pills.silent14)     filtered = filtered.filter(function(e) { return e.silentDays !== null && e.silentDays >= 14; });
+    if (f.pills.conversation) filtered = filtered.filter(function(e) { return ['contacted','interested','negotiating'].indexOf(e.row.status) !== -1; });
+    if (f.pills.untouched)    filtered = filtered.filter(function(e) { return e.row.status === 'lead'; });
+    if (f.pills.verified)     filtered = filtered.filter(function(e) { return e.row.ch_verified_at; });
+    if (f.pills.quality)      filtered = filtered.filter(function(e) { return e.stats && e.stats.dilutionRate >= 0.08; });
+    if (f.pills.late)         filtered = filtered.filter(function(e) {
+        return e.stats && e.stats.avgDaysPastDue != null && e.stats.avgDaysPastDue > 30 && e.stats.paidCount >= 3;
+    });
+
+    // Sort
+    var sortKey = state.prospectsSort.key;
+    var dir = state.prospectsSort.dir === 'asc' ? 1 : -1;
+    filtered.sort(function(a, b) {
+        var av, bv;
+        switch (sortKey) {
+            case 'buyer_name': av = a.buyer_name; bv = b.buyer_name; break;
+            case 'supplier':   av = a.row.supplier_identifier; bv = b.row.supplier_identifier; break;
+            case 'status':     av = a.row.status; bv = b.row.status; break;
+            case 'spend':      av = (a.stats && a.stats.totalSpend) || 0; bv = (b.stats && b.stats.totalSpend) || 0; break;
+            case 'invoices':   av = (a.stats && a.stats.invoiceCount) || 0; bv = (b.stats && b.stats.invoiceCount) || 0; break;
+            case 'avgDpd':     av = (a.stats && a.stats.avgDaysPastDue) || 0; bv = (b.stats && b.stats.avgDaysPastDue) || 0; break;
+            case 'dilution':   av = (a.stats && a.stats.dilutionRate) || 0; bv = (b.stats && b.stats.dilutionRate) || 0; break;
+            case 'last_seen_at': av = a.row.last_seen_at; bv = b.row.last_seen_at; break;
+            default: av = 0; bv = 0;
+        }
+        if (av < bv) return -1 * dir;
+        if (av > bv) return  1 * dir;
+        return 0;
+    });
+
+    // Stats row
+    var statsHtml = '';
+    function statCard(label, val, sub) {
+        return '<div class="pr-stat-card"><div class="label">' + escHTML(label) + '</div><div class="value">' + val + '</div><div class="sub">' + escHTML(sub || '') + '</div></div>';
+    }
+    statsHtml += statCard('Total prospects', filtered.length.toLocaleString(), 'matching filters');
+    var statusCounts = {};
+    filtered.forEach(function(e) { statusCounts[e.row.status] = (statusCounts[e.row.status] || 0) + 1; });
+    statsHtml += statCard('In conversation',
+        ((statusCounts.contacted || 0) + (statusCounts.interested || 0) + (statusCounts.negotiating || 0)).toString(),
+        'contacted/interested/negotiating');
+    statsHtml += statCard('Verified', filtered.filter(function(e) { return e.row.ch_verified_at; }).length.toString(), 'CH-verified');
+    statsHtml += statCard('Converted (lifetime)',
+        (state.prospects || []).filter(function(p) { return p.status === 'converted'; }).length.toString(),
+        'across all buyers');
+    document.getElementById('prospectsStats').innerHTML = statsHtml;
+
+    // Body
+    var tbody = document.getElementById('prospectsBody');
+    var empty = document.getElementById('prospectsEmpty');
+    tbody.innerHTML = '';
+    if (filtered.length === 0) {
+        if (empty) empty.classList.remove('hidden');
+    } else {
+        if (empty) empty.classList.add('hidden');
+        // Cap visible rows for performance; status line says how many more.
+        var visible = filtered.slice(0, 500);
+        visible.forEach(function(e) {
+            var p = e.row;
+            var s = e.stats;
+            var verifiedCell = p.ch_verified_at
+                ? '<span class="pr-verified-badge">' + escHTML(p.legal_name || 'Verified') + '</span>'
+                : '<span style="font-size:10px; color:var(--muted);">—</span>';
+            var lastSeen = e.silentDays != null
+                ? (e.silentDays === 0 ? 'today' : e.silentDays + 'd ago')
+                : formatDateTime(p.last_seen_at);
+            var tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.setAttribute('data-pr-id', p.id);
+            tr.innerHTML =
+                '<td>' + escHTML(e.buyer_name) + '</td>' +
+                '<td><strong>' + escHTML(p.supplier_identifier) + '</strong>' +
+                    (p.contact_name ? '<div style="font-size:10px; color:var(--muted);">' + escHTML(p.contact_name) + '</div>' : '') +
+                '</td>' +
+                '<td>' + escHTML(p.currency) + '</td>' +
+                '<td><span class="pr-status-pill pr-status-' + p.status + '">' + p.status + '</span></td>' +
+                '<td class="text-right mono">' + (s ? moneyShort(s.totalSpend, p.currency) : '—') + '</td>' +
+                '<td class="text-right mono">' + (s ? (s.invoiceCount || 0).toLocaleString() : '—') + '</td>' +
+                '<td class="text-right mono">' + (s && s.avgDaysPastDue != null ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd' : '—') + '</td>' +
+                '<td class="text-right mono">' + (s ? pct(s.dilutionRate) : '—') + '</td>' +
+                '<td>' + escHTML(lastSeen) + '</td>' +
+                '<td>' + verifiedCell + '</td>';
+            tr.addEventListener('click', function() {
+                openProspectPanel(p.id);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    var statusLine = document.getElementById('prospectsStatusLine');
+    if (statusLine) {
+        if (filtered.length > 500) {
+            statusLine.textContent = 'Showing first 500 of ' + filtered.length.toLocaleString() + '. Refine filters to narrow.';
+        } else {
+            statusLine.textContent = filtered.length.toLocaleString() + ' prospects.';
+        }
+    }
+}
+
+// ================================================================
+// LAYER 2d — PROSPECT PANEL (slide-out, sales-mode supplier detail)
+// ================================================================
+// Opens the existing supplier slide-out but in "sales mode" — adds the
+// Verify / Status / Notes / Convert sections on top of the analytics view.
+
+function openProspectPanel(prospectId) {
+    var prospect = (state.prospects || []).find(function(p) { return p.id === prospectId; });
+    if (!prospect) { alert('Prospect not found in state — try refreshing.'); return; }
+
+    // Load the latest upload for this buyer so the analytics panel has data
+    var latestUpload = null;
+    state.uploads.forEach(function(u) {
+        if (u.buyer_id !== prospect.buyer_id) return;
+        if (!latestUpload || u.created_at > latestUpload.created_at) latestUpload = u;
+    });
+    if (!latestUpload) {
+        alert('No upload available for this buyer.');
+        return;
+    }
+
+    // Track that we're in sales-mode for the slide-out
+    window._prospectContext = { prospect: prospect };
+
+    // Load the upload if not already loaded; then open the supplier panel.
+    if (window.__upload && window.__upload.uploadId === latestUpload.id) {
+        openSupplierPanel(prospect.supplier_identifier, prospect.currency);
+    } else {
+        loadUpload(latestUpload.id, function() {
+            openSupplierPanel(prospect.supplier_identifier, prospect.currency);
+        });
+    }
 }
 
 // ================================================================
@@ -4487,6 +5151,9 @@ function closeSupplierPanel() {
     // Clear body so old DOM doesn't briefly flash on next open
     var body = document.getElementById('supPanelBody');
     if (body) body.innerHTML = '';
+    // Clear prospect-mode flag so the next open (e.g. from All Suppliers tab)
+    // doesn't accidentally show sales sections.
+    window._prospectContext = null;
 }
 
 function pickSupplierDataSource() {
@@ -4625,8 +5292,13 @@ function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier,
     var contextHtml = renderSupContextStrip(st, lifetimeSupplier, ccy, periodFrom, periodTo);
 
     var body = document.getElementById('supPanelBody');
+    var salesSectionsHtml = '';
+    if (window._prospectContext && window._prospectContext.prospect) {
+        salesSectionsHtml = renderProspectSalesSections(window._prospectContext.prospect);
+    }
     body.innerHTML =
         contextHtml +
+        salesSectionsHtml +
         renderSupAtAGlance(st, ccy, st.sharePct) +
         renderSupVolume(st, ccy) +
         renderSupPayment(st) +
@@ -4634,12 +5306,355 @@ function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier,
         (st.cnCount > 0 ? renderSupDilution(st, ccy) : '');
 
     wireSupSearchHandlers(ccy);
+    if (window._prospectContext && window._prospectContext.prospect) {
+        wireProspectSalesHandlers(window._prospectContext.prospect);
+    }
 
     document.getElementById('supPanel').scrollTop = 0;
 }
 
 // Wire the search input/clear button event handlers. Debounced 300ms so
 // the user can keep typing without hammering the DB.
+// ================================================================
+// SALES-MODE SECTIONS IN THE SUPPLIER SLIDE-OUT
+// ================================================================
+// When window._prospectContext is set (panel opened from Prospects tab),
+// these sections render above the analytics: Status/Contacts, Verify (CH),
+// Notes, Convert. They sit on top of the same analytics view buyers see.
+
+var CH_WORKER_URL = 'https://companies-house-proxy.pelagic.workers.dev';
+var FACTORFLOW_URL = 'https://app.early.money';
+
+function renderProspectSalesSections(prospect) {
+    var statusOpts = ['lead','contacted','interested','negotiating','onboarding','declined','converted']
+        .map(function(s) {
+            return '<option value="' + s + '"' + (prospect.status === s ? ' selected' : '') + (s === 'converted' && prospect.status !== 'converted' ? ' disabled' : '') + '>' + s + '</option>';
+        }).join('');
+
+    var verifiedBlock = prospect.ch_verified_at
+        ? '<div style="padding:10px 12px; background:#10B98110; border:1px solid #10B98140; border-radius:6px; font-size:12px;">' +
+            '<strong>' + escHTML(prospect.legal_name || 'Verified') + '</strong>' +
+            ' · CH: <span class="mono">' + escHTML(prospect.company_number) + '</span>' +
+            ' · verified ' + formatDateTime(prospect.ch_verified_at) +
+            ' <button class="btn btn-xs" id="prReverifyBtn" style="margin-left:8px;">Re-verify</button>' +
+          '</div>'
+        : '<div style="display:flex; gap:6px; align-items:center;">' +
+            '<input type="text" id="prCHInput" placeholder="Companies House number" style="flex:1; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:12px;">' +
+            '<button class="btn btn-sm btn-primary" id="prCHLookupBtn">Lookup</button>' +
+          '</div>' +
+          '<div id="prCHResult" style="margin-top:8px; font-size:11px;"></div>';
+
+    var convertReady = prospect.ch_verified_at && prospect.status !== 'converted';
+    var convertBlock = prospect.status === 'converted'
+        ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
+            'Converted ' + formatDateTime(prospect.converted_at) + (prospect.converted_supplier_id ? ' · FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span>' : '') +
+          '</div>'
+        : '<button class="btn btn-primary" id="prConvertBtn"' + (convertReady ? '' : ' disabled') + '>' +
+            (convertReady ? 'Open FactorFlow & Convert →' : 'Verify CH first to enable conversion') +
+          '</button>' +
+          (convertReady ? '<button class="btn btn-sm" id="prConvertConfirmBtn" style="margin-left:8px; background:var(--success); color:#fff;">Confirm Conversion Complete</button>' : '');
+
+    return '' +
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Sales status</div>' +
+            '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">' +
+                '<select id="prStatusSelect" style="padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px;">' + statusOpts + '</select>' +
+                '<input type="text" id="prContactName"  placeholder="Contact name"  value="' + escHTML(prospect.contact_name  || '') + '" style="padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; min-width:180px;">' +
+                '<input type="text" id="prContactEmail" placeholder="Contact email" value="' + escHTML(prospect.contact_email || '') + '" style="padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; min-width:200px;">' +
+                '<input type="text" id="prContactPhone" placeholder="Contact phone" value="' + escHTML(prospect.contact_phone || '') + '" style="padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; min-width:140px;">' +
+                '<button class="btn btn-sm btn-primary" id="prSaveStatusBtn">Save</button>' +
+            '</div>' +
+            '<div id="prSaveStatusMsg" style="font-size:10px; color:var(--text-secondary); min-height:14px;"></div>' +
+        '</div>' +
+
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Companies House</div>' +
+            verifiedBlock +
+        '</div>' +
+
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Notes</div>' +
+            '<div style="display:flex; gap:6px; margin-bottom:8px;">' +
+                '<textarea id="prNoteInput" placeholder="Add a note…" rows="2" style="flex:1; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; resize:vertical;"></textarea>' +
+                '<button class="btn btn-sm btn-primary" id="prNoteAddBtn">Add</button>' +
+            '</div>' +
+            '<div id="prNotesList" style="max-height:200px; overflow-y:auto;">Loading…</div>' +
+        '</div>' +
+
+        '<div class="sup-panel-section">' +
+            '<div class="sup-panel-section-title">Convert</div>' +
+            convertBlock +
+        '</div>';
+}
+
+function wireProspectSalesHandlers(prospect) {
+    // Status + contact save
+    var saveBtn = document.getElementById('prSaveStatusBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function() {
+        var msg = document.getElementById('prSaveStatusMsg');
+        msg.textContent = 'Saving…';
+        var updates = {
+            status:        document.getElementById('prStatusSelect').value,
+            contact_name:  document.getElementById('prContactName').value || null,
+            contact_email: document.getElementById('prContactEmail').value || null,
+            contact_phone: document.getElementById('prContactPhone').value || null
+        };
+        sbClient.from('prospect_suppliers').update(updates).eq('id', prospect.id).then(function(res) {
+            if (res.error) { msg.textContent = 'Save failed: ' + res.error.message; return; }
+            Object.keys(updates).forEach(function(k) { prospect[k] = updates[k]; });
+            // Update local state
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, updates);
+            msg.textContent = 'Saved.';
+            setTimeout(function() { msg.textContent = ''; }, 2000);
+        });
+    });
+
+    // CH lookup
+    var lookupBtn = document.getElementById('prCHLookupBtn');
+    if (lookupBtn) lookupBtn.addEventListener('click', function() {
+        var num = (document.getElementById('prCHInput').value || '').trim().toUpperCase();
+        if (!num) { document.getElementById('prCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>'; return; }
+        document.getElementById('prCHResult').innerHTML = 'Looking up…';
+        fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || data.error) {
+                    document.getElementById('prCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
+                    return;
+                }
+                var legalName = data.company_name || data.legal_name || '';
+                document.getElementById('prCHResult').innerHTML =
+                    '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
+                        '<strong>' + escHTML(legalName) + '</strong>' +
+                        ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
+                        '<button class="btn btn-xs btn-primary" id="prCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                    '</div>';
+                document.getElementById('prCHSaveBtn').addEventListener('click', function() {
+                    sbClient.from('prospect_suppliers').update({
+                        company_number: num,
+                        legal_name:     legalName,
+                        ch_verified_at: new Date().toISOString()
+                    }).eq('id', prospect.id).then(function(res) {
+                        if (res.error) { alert('Save failed: ' + res.error.message); return; }
+                        prospect.company_number = num;
+                        prospect.legal_name = legalName;
+                        prospect.ch_verified_at = new Date().toISOString();
+                        var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+                        if (sp) Object.assign(sp, { company_number: num, legal_name: legalName, ch_verified_at: prospect.ch_verified_at });
+                        // Re-render just this slide-out panel
+                        var body = document.getElementById('supPanelBody');
+                        var salesEls = body.querySelectorAll('.sup-panel-section');
+                        // Simplest: re-render whole panel via openProspectPanel
+                        closeSupplierPanel();
+                        setTimeout(function() { openProspectPanel(prospect.id); }, 100);
+                    });
+                });
+            })
+            .catch(function(err) {
+                document.getElementById('prCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
+            });
+    });
+
+    var reverifyBtn = document.getElementById('prReverifyBtn');
+    if (reverifyBtn) reverifyBtn.addEventListener('click', function() {
+        if (!confirm('Clear CH verification and re-verify?')) return;
+        sbClient.from('prospect_suppliers').update({
+            company_number: null,
+            legal_name: null,
+            ch_verified_at: null
+        }).eq('id', prospect.id).then(function() {
+            prospect.company_number = null;
+            prospect.legal_name = null;
+            prospect.ch_verified_at = null;
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, { company_number: null, legal_name: null, ch_verified_at: null });
+            closeSupplierPanel();
+            setTimeout(function() { openProspectPanel(prospect.id); }, 100);
+        });
+    });
+
+    // Notes — load + add
+    sbClient.from('prospect_notes')
+        .select('*')
+        .eq('prospect_supplier_id', prospect.id)
+        .order('created_at', { ascending: false })
+        .then(function(res) {
+            var list = document.getElementById('prNotesList');
+            if (!list) return;
+            if (res.error) { list.innerHTML = 'Failed to load notes: ' + escHTML(res.error.message); return; }
+            var notes = res.data || [];
+            if (notes.length === 0) { list.innerHTML = '<div style="font-size:11px; color:var(--muted); padding:8px 0;">No notes yet.</div>'; return; }
+            list.innerHTML = notes.map(function(n) {
+                var typeBadge = n.note_type === 'system'
+                    ? '<span style="font-size:9px; padding:1px 5px; background:var(--border); color:var(--text-secondary); border-radius:3px; margin-right:6px;">SYSTEM</span>'
+                    : '';
+                return '<div style="padding:8px 10px; background:var(--bg); border-radius:4px; margin-bottom:6px;">' +
+                    typeBadge +
+                    '<span style="font-size:11px; color:var(--text);">' + escHTML(n.content) + '</span>' +
+                    '<div style="font-size:9px; color:var(--muted); margin-top:4px;">' + formatDateTime(n.created_at) + '</div>' +
+                '</div>';
+            }).join('');
+        });
+
+    var noteBtn = document.getElementById('prNoteAddBtn');
+    if (noteBtn) noteBtn.addEventListener('click', function() {
+        var input = document.getElementById('prNoteInput');
+        var content = (input.value || '').trim();
+        if (!content) return;
+        noteBtn.disabled = true;
+        sbClient.from('prospect_notes').insert({
+            prospect_supplier_id: prospect.id,
+            content: content,
+            note_type: 'user',
+            created_by: window.__currentUser ? window.__currentUser.id : null
+        }).then(function(res) {
+            noteBtn.disabled = false;
+            if (res.error) { alert('Failed to add note: ' + res.error.message); return; }
+            input.value = '';
+            // Re-trigger the notes reload
+            wireProspectSalesHandlers(prospect);
+        });
+    });
+
+    // Convert: deep-link to main portal
+    var convertBtn = document.getElementById('prConvertBtn');
+    if (convertBtn) convertBtn.addEventListener('click', function() {
+        if (!prospect.company_number) return;
+        var params = new URLSearchParams();
+        params.set('action', 'create-supplier');
+        params.set('company_number', prospect.company_number);
+        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
+        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+    });
+
+    var confirmBtn = document.getElementById('prConvertConfirmBtn');
+    if (confirmBtn) confirmBtn.addEventListener('click', function() {
+        confirmProspectConversion(prospect);
+    });
+}
+
+// Confirm conversion: look up the new supplier in the main portal by
+// company_number, then migrate invoices/CNs from buyer_invoices into the
+// main portal invoices/credit_notes tables.
+function confirmProspectConversion(prospect) {
+    if (!prospect.company_number) { alert('No CH number on prospect.'); return; }
+    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.company_number) + '" has been created in the main portal? This migrates their invoices.')) return;
+
+    sbClient.from('suppliers').select('id,name').eq('company_number', prospect.company_number).maybeSingle().then(function(supRes) {
+        if (supRes.error || !supRes.data) {
+            alert('Could not find supplier with CH ' + prospect.company_number + ' in the main portal. Create it there first, then return here.');
+            return;
+        }
+        var ffSupplierId = supRes.data.id;
+        var ffName = supRes.data.name;
+
+        // Mark as converted
+        sbClient.from('prospect_suppliers').update({
+            status: 'converted',
+            converted_supplier_id: ffSupplierId,
+            converted_at: new Date().toISOString()
+        }).eq('id', prospect.id).then(function(updRes) {
+            if (updRes.error) { alert('Status update failed: ' + updRes.error.message); return; }
+
+            // Migrate invoices from buyer_invoices (latest upload for this buyer)
+            var latestUpload = state.uploads.filter(function(u) { return u.buyer_id === prospect.buyer_id; })[0];
+            if (!latestUpload) {
+                alert('Marked as converted, but no upload to migrate from.');
+                loadAllData();
+                return;
+            }
+
+            migrateProspectInvoicesAndCNs(prospect, latestUpload.id, ffSupplierId, ffName);
+        });
+    });
+}
+
+function migrateProspectInvoicesAndCNs(prospect, uploadId, ffSupplierId, ffName) {
+    // Pull all (non-excluded) invoices for this prospect
+    sbClient.from('buyer_invoices')
+        .select('*')
+        .eq('upload_id', uploadId)
+        .eq('supplier_identifier', prospect.supplier_identifier)
+        .ilike('currency', prospect.currency)
+        .eq('excluded', false)
+        .then(function(invRes) {
+            if (invRes.error) { alert('Invoice load failed: ' + invRes.error.message); return; }
+            var rows = invRes.data || [];
+            if (rows.length === 0) {
+                migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName);
+                return;
+            }
+            var ffRows = rows.map(function(p) {
+                return {
+                    supplier_id: ffSupplierId,
+                    buyer_id:    prospect.buyer_id,
+                    reference:   p.invoice_reference,
+                    amount:      p.amount,
+                    currency:    p.currency,
+                    invoice_date: p.invoice_date,
+                    due_date:    p.due_date,
+                    paid_date:   p.paid_date,
+                    notes:       'Migrated from prospect ' + prospect.supplier_identifier
+                };
+            });
+            sbClient.from('invoices').upsert(ffRows, { onConflict: 'reference,supplier_id' }).then(function(insRes) {
+                if (insRes.error) { alert('Invoice migration failed: ' + insRes.error.message); return; }
+                // Add system note recording migration
+                sbClient.from('prospect_notes').insert({
+                    prospect_supplier_id: prospect.id,
+                    note_type: 'system',
+                    content: 'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.company_number + ', ID: ' + ffSupplierId + '). Migrated ' + ffRows.length + ' invoices.'
+                }).then(function() {
+                    migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName);
+                });
+            });
+        });
+}
+
+function migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName) {
+    sbClient.from('buyer_credit_notes')
+        .select('*')
+        .eq('upload_id', uploadId)
+        .eq('supplier_identifier', prospect.supplier_identifier)
+        .ilike('currency', prospect.currency)
+        .eq('excluded', false)
+        .then(function(cnRes) {
+            var rows = (cnRes.data) || [];
+            if (rows.length === 0) {
+                closeSupplierPanel();
+                loadAllData();
+                alert('Conversion complete. Open the main portal to view ' + ffName + '.');
+                return;
+            }
+            var ffRows = rows.map(function(p) {
+                return {
+                    supplier_id: ffSupplierId,
+                    buyer_id:    prospect.buyer_id,
+                    reference:   p.cn_reference,
+                    amount:      p.amount,
+                    currency:    p.currency,
+                    cn_date:     p.cn_date,
+                    paid_date:   p.paid_date,
+                    notes:       'Migrated from prospect ' + prospect.supplier_identifier
+                };
+            });
+            sbClient.from('credit_notes').upsert(ffRows, { onConflict: 'reference,supplier_id' }).then(function(insRes) {
+                if (insRes.error) {
+                    alert('CN migration failed: ' + insRes.error.message + '\n(Invoices may have already migrated.)');
+                    closeSupplierPanel();
+                    loadAllData();
+                    return;
+                }
+                closeSupplierPanel();
+                loadAllData();
+                alert('Conversion complete. Migrated ' + rows.length + ' credit notes. Open the main portal to view ' + ffName + '.');
+            });
+        });
+}
+
 function wireSupSearchHandlers(ccy) {
     var ctx = window._supSearchContext;
     if (!ctx) return;
