@@ -1142,45 +1142,49 @@ function nextId(prefix, arr, idField, pad) {
   return prefix + String(max + 1).padStart(pad, "0");
 }
 
-async function fetchAllRows(table, filter) {
+async function fetchAllRows(table, filter, idCol) {
   // Loads every row of `table` (optionally filtered), paginated. Uses KEYSET
-  // pagination on the `id` column rather than OFFSET because of a hard
+  // pagination on the PK column rather than OFFSET because of a hard
   // limit in Postgres+Supabase: with OFFSET N, the engine scans N rows then
   // discards them. At ~30k rows per page, a single request to fetch
   // OFFSET 30000 exceeds the Supabase statement timeout and the entire
   // load stalls (Dashboard would show 90-second loads then fail partway).
   //
-  // Keyset is constant-time-per-page: WHERE id > $cursor ORDER BY id LIMIT N
+  // Keyset is constant-time-per-page: WHERE pk > $cursor ORDER BY pk LIMIT N
   // uses the PK index to seek directly to the cursor position, regardless of
   // how far in. Same pattern BI uses for its 500k-row prospect CSV download.
   //
   // Constraints / assumptions:
-  //   * Every paginated table has an `id` column that is unique and sortable.
-  //     True for all tables this function is called on (invoices uses TEXT
-  //     "INV-xxxxx", others use Supabase-default uuid).
-  //   * Results come back ordered by id ascending — needed because the next
-  //     page's cursor is taken from the last row of the current page.
+  //   * The cursor column must be unique and sortable. Default "id" works
+  //     for most tables (invoices, audit_log, payment_allocations,
+  //     supplier_payment_queue). Tables with non-"id" PKs must pass idCol
+  //     explicitly: payments uses "payment_id", holdback_payments uses
+  //     "hb_payment_id".
+  //   * Results come back ordered ascending by idCol — needed because the
+  //     next page's cursor is taken from the last row of the current page.
   //   * `filter` (optional, { column, value }) composes with the cursor —
   //     PostgREST AND-combines all .eq() and .gt() filters.
   //
   // filter: optional { column: "col_name", value: "val" }
+  // idCol: optional cursor column name, defaults to "id"
+  idCol = idCol || "id";
   var all = [];
   var pageSize = 1000;
-  var cursor = null; // last seen id; null on first page
+  var cursor = null; // last seen value of idCol; null on first page
   var safetyMaxPages = 10000; // 10M rows; well past any realistic table size, prevents infinite loops if a PK invariant is ever broken
   var pageCount = 0;
   while (pageCount < safetyMaxPages) {
     pageCount++;
     var query = supabase.from(table).select("*");
     if (filter) query = query.eq(filter.column, filter.value);
-    if (cursor !== null) query = query.gt("id", cursor);
-    query = query.order("id", { ascending: true }).limit(pageSize);
+    if (cursor !== null) query = query.gt(idCol, cursor);
+    query = query.order(idCol, { ascending: true }).limit(pageSize);
     var res = await query;
     if (res.error) { console.error("[fetchAllRows] Error loading " + table + ":", res.error.message); break; }
     if (!res.data || res.data.length === 0) break;
     all = all.concat(res.data);
     if (res.data.length < pageSize) break;
-    var nextCursor = res.data[res.data.length - 1].id;
+    var nextCursor = res.data[res.data.length - 1][idCol];
     if (nextCursor === cursor) { console.warn("[fetchAllRows] cursor did not advance on table " + table + " — breaking to avoid infinite loop"); break; }
     cursor = nextCursor;
   }
@@ -1734,7 +1738,7 @@ async function loadPersistedData() {
       safeFetch(supabase.from("service_providers").select("*"), "service_providers"),                                                                              // 2
       safeFetch(supabase.from("funding_programs").select("*"), "funding_programs"),                                                                                // 3
       safeFetch(fetchAllRows("invoices").then(function(d) { return { data: d }; }), "invoices"),                                                                  // 4
-      safeFetch(fetchAllRows("payments").then(function(d) { return { data: d }; }), "payments"),                                                                  // 5
+      safeFetch(fetchAllRows("payments", null, "payment_id").then(function(d) { return { data: d }; }), "payments"),                                                                  // 5
       safeFetch(fetchAllRows("payment_allocations").then(function(d) { return { data: d }; }), "payment_allocations"),                                            // 6
       safeFetch(supabase.from("holdback_payments").select("*"), "holdback_payments"),                                                                              // 7
       safeFetch(supabase.from("holdback_payment_allocations").select("*"), "holdback_payment_allocations"),                                                        // 8
@@ -2134,7 +2138,7 @@ async function reloadForSupplier(supplierId) {
   // Load payments that have allocations to this supplier's invoices
   // OR are the source of a pass-through remittance to this supplier.
   // For now load all payments (they're usually fewer) and filter client-side.
-  var payData = await fetchAllRows("payments");
+  var payData = await fetchAllRows("payments", null, "payment_id");
   PAYMENTS_DB.length = 0;
   for (var pi = 0; pi < payData.length; pi++) {
     var prow = payData[pi];
@@ -2159,7 +2163,7 @@ async function reloadForSupplier(supplierId) {
   console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
 
   // Load holdback payments for this supplier's invoices
-  var hbpData = await fetchAllRows("holdback_payments");
+  var hbpData = await fetchAllRows("holdback_payments", null, "hb_payment_id");
   HOLDBACK_PAYMENTS_DB.length = 0;
   for (var hi = 0; hi < hbpData.length; hi++) {
     var hrow = hbpData[hi];
