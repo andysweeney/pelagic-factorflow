@@ -3358,8 +3358,9 @@ function renderProspectWorkspace(prospect) {
                     ? '<div style="font-size:10px; margin-top:3px;">FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span></div>'
                     : '') +
             '</div>' +
-            '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); border:1px solid var(--border); width:100%; margin-bottom:6px;">⤓ Download invoices CSV (for main portal import)</button>' +
-            '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); border:1px solid var(--border); width:100%; display:block; text-align:center; text-decoration:none; color:var(--text);">Open in main portal ↗</a>';
+            '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; margin-bottom:6px;">⤓ Download invoices CSV (for main portal import)</button>' +
+            '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; display:block; text-align:center; text-decoration:none;">Open in main portal ↗</a>' +
+            '<div id="pdCsvStatus" style="font-size:10px; color:var(--text-secondary); margin-top:6px;"></div>';
     } else if (!convertReady) {
         convertHtml =
             '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary);">' +
@@ -6649,6 +6650,10 @@ function confirmProspectConversion(prospect) {
 // Download a CSV of this prospect's invoices in a format ops can import via
 // the main portal's "Bulk Import Invoices" feature. Pulls from buyer_invoices
 // scoped to (latest upload for buyer, supplier_identifier, currency).
+//
+// Uses keyset pagination on invoice_date (with id as tiebreaker for stable
+// ordering). Offset-based pagination times out at large offsets because
+// Postgres must scan and discard all earlier rows.
 function downloadProspectInvoicesCSV(prospect) {
     var latestUpload = null;
     state.uploads.forEach(function(u) {
@@ -6660,34 +6665,61 @@ function downloadProspectInvoicesCSV(prospect) {
     var buyerName = ((state.buyers || []).find(function(b) { return b.id === prospect.buyer_id; }) || {}).name || prospect.buyer_id;
     var supplierName = prospect.legal_name || prospect.supplier_name || prospect.supplier_identifier;
 
-    // Chunked fetch — same pattern as elsewhere, to bypass the 1000-row cap.
+    var statusEl = document.getElementById('pdCsvStatus');
+    function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+    setStatus('Loading invoices…');
+
     var allInvs = [];
-    function fetchInvChunk(offset) {
-        var CHUNK = 1000;
-        sbClient.from('buyer_invoices')
-            .select('invoice_reference, amount, currency, invoice_date, due_date, paid_date')
+    var CHUNK = 1000;
+
+    // Keyset cursor: (invoice_date, id). Postgres can use the
+    // (upload_id, supplier_identifier, invoice_date DESC) index to seek.
+    function fetchInvKeyset(cursorDate, cursorId) {
+        var q = sbClient.from('buyer_invoices')
+            .select('id, invoice_reference, amount, currency, invoice_date, due_date, paid_date')
             .eq('upload_id',           latestUpload.id)
             .eq('supplier_identifier', prospect.supplier_identifier)
             .eq('currency',            prospect.currency)
             .eq('excluded',            false)
             .order('invoice_date', { ascending: true })
-            .range(offset, offset + CHUNK - 1)
-            .then(function(res) {
-                if (res.error) { alert('CSV download failed: ' + res.error.message); return; }
-                var batch = res.data || [];
-                allInvs = allInvs.concat(batch);
-                if (batch.length === CHUNK) {
-                    fetchInvChunk(offset + CHUNK);
-                } else {
-                    buildAndDownloadCsv();
-                }
-            });
+            .order('id',           { ascending: true })
+            .limit(CHUNK);
+
+        // For subsequent pages, seek past the last row we saw.
+        if (cursorDate != null) {
+            // (invoice_date > cursorDate) OR (invoice_date = cursorDate AND id > cursorId)
+            // PostgREST supports .or() with a comma-separated list.
+            q = q.or(
+                'invoice_date.gt.' + cursorDate +
+                ',and(invoice_date.eq.' + cursorDate + ',id.gt.' + cursorId + ')'
+            );
+        }
+
+        q.then(function(res) {
+            if (res.error) {
+                setStatus('');
+                alert('CSV download failed: ' + res.error.message);
+                return;
+            }
+            var batch = res.data || [];
+            allInvs = allInvs.concat(batch);
+            setStatus('Loaded ' + allInvs.length.toLocaleString() + ' invoices…');
+            if (batch.length === CHUNK) {
+                var last = batch[batch.length - 1];
+                fetchInvKeyset(last.invoice_date, last.id);
+            } else {
+                buildAndDownloadCsv();
+            }
+        });
     }
 
     function buildAndDownloadCsv() {
-        if (allInvs.length === 0) { alert('No invoices to export for this supplier.'); return; }
-        // Header matches what Dashboard's CSV importer recognises. Conservative
-        // set — we send what we have, ops fills in the rest in main portal.
+        if (allInvs.length === 0) {
+            setStatus('');
+            alert('No invoices to export for this supplier.');
+            return;
+        }
+        setStatus('Building CSV…');
         var header = ['supplier_name','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
         var rows = [header.join(',')];
         allInvs.forEach(function(r) {
@@ -6713,9 +6745,10 @@ function downloadProspectInvoicesCSV(prospect) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        setStatus('Downloaded ' + allInvs.length.toLocaleString() + ' invoices.');
     }
 
-    fetchInvChunk(0);
+    fetchInvKeyset(null, null);
 }
 
 function csvSafe(v) {
