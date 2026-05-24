@@ -3335,15 +3335,36 @@ function renderProspectWorkspace(prospect) {
 
     // Convert section
     var convertReady = prospect.verified_at && prospect.status !== 'converted';
-    var convertHtml = prospect.status === 'converted'
-        ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
-            'Converted ' + formatDateTime(prospect.converted_at) +
-            (prospect.converted_supplier_id ? '<div style="font-size:10px; margin-top:3px;">FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span></div>' : '') +
-          '</div>'
-        : '<button class="btn btn-primary" id="pdConvertBtn"' + (convertReady ? '' : ' disabled') + ' style="width:100%; margin-bottom:6px;">' +
-            (convertReady ? 'Open FactorFlow & Convert →' : 'Verify CH first to enable conversion') +
-          '</button>' +
-          (convertReady ? '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%;">Confirm Conversion Complete</button>' : '');
+    var convertHtml;
+    if (prospect.status === 'converted') {
+        convertHtml =
+            '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px; margin-bottom:8px;">' +
+                '<strong>Converted ' + formatDateTime(prospect.converted_at) + '</strong>' +
+                (prospect.converted_supplier_id
+                    ? '<div style="font-size:10px; margin-top:3px;">FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span></div>'
+                    : '') +
+            '</div>' +
+            '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); border:1px solid var(--border); width:100%; margin-bottom:6px;">⤓ Download invoices CSV (for main portal import)</button>' +
+            '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); border:1px solid var(--border); width:100%; display:block; text-align:center; text-decoration:none; color:var(--text);">Open in main portal ↗</a>';
+    } else if (!convertReady) {
+        convertHtml =
+            '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary);">' +
+                'Verify the supplier first to enable conversion.' +
+            '</div>';
+    } else {
+        convertHtml =
+            '<button class="btn btn-primary" id="pdConvertBtn" style="width:100%; margin-bottom:6px;">' +
+                '<span style="opacity:0.6;">1.</span>&nbsp; Open FactorFlow &amp; Convert →' +
+            '</button>' +
+            '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%;">' +
+                '<span style="opacity:0.7;">2.</span>&nbsp; Confirm Conversion Complete' +
+            '</button>' +
+            '<div style="font-size:10px; color:var(--text-secondary); margin-top:8px; line-height:1.4;">' +
+                'Step 1 opens the main portal pre-filled with the supplier\'s registry data. ' +
+                'Step 2 links the prospect once you\'ve finished creating the entity there. ' +
+                'Invoice import happens separately via the main portal\'s CSV import.' +
+            '</div>';
+    }
 
     var convertSection =
         '<div class="card-section">' +
@@ -3549,6 +3570,11 @@ function wireProspectWorkspaceHandlers(prospect) {
     var confirmBtn = document.getElementById('pdConvertConfirmBtn');
     if (confirmBtn) confirmBtn.addEventListener('click', function() {
         confirmProspectConversion(prospect);
+    });
+
+    var csvBtn = document.getElementById('pdDownloadCsvBtn');
+    if (csvBtn) csvBtn.addEventListener('click', function() {
+        downloadProspectInvoicesCSV(prospect);
     });
 }
 
@@ -6538,11 +6564,16 @@ function wireProspectSalesHandlers(prospect) {
 // Confirm conversion: look up the new supplier in the main portal by
 // company_number, then migrate invoices/CNs from buyer_invoices into the
 // main portal invoices/credit_notes tables.
+// Conversion = mark prospect linked to main-portal supplier. No invoice
+// migration — that's a separate ops step via main portal's CSV import.
+// Sales can download a CSV of the buyer's invoices for this supplier to
+// hand to ops (see downloadProspectInvoicesCSV).
 function confirmProspectConversion(prospect) {
     if (!prospect.registry_id) { alert('No registry identifier on prospect.'); return; }
+    if (prospect.status === 'converted') { alert('Already converted.'); return; }
+
     // Path 1 deferral: the main portal only knows Companies House numbers.
-    // For non-GB / non-CH verifications, sales must create the entity in the
-    // main portal by hand for now.
+    // For non-GB / non-CH verifications, sales creates the entity by hand.
     if (prospect.verification_source !== 'companies_house' || prospect.verification_jurisdiction !== 'GB') {
         alert(
             'This prospect was verified via ' + (prospect.verification_source || 'an unknown source') +
@@ -6552,7 +6583,7 @@ function confirmProspectConversion(prospect) {
         );
         return;
     }
-    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This migrates their invoices.')) return;
+    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This links the prospect; invoices are imported separately via the main portal\'s CSV import.')) return;
 
     sbClient.from('suppliers').select('id,name').eq('company_number', prospect.registry_id).maybeSingle().then(function(supRes) {
         if (supRes.error || !supRes.data) {
@@ -6560,110 +6591,120 @@ function confirmProspectConversion(prospect) {
             return;
         }
         var ffSupplierId = supRes.data.id;
-        var ffName = supRes.data.name;
+        var ffName       = supRes.data.name;
 
-        // Mark as converted
+        // Mark prospect as converted
+        var convertedAt = new Date().toISOString();
         sbClient.from('prospect_suppliers').update({
-            status: 'converted',
+            status:                'converted',
             converted_supplier_id: ffSupplierId,
-            converted_at: new Date().toISOString()
+            converted_at:          convertedAt
         }).eq('id', prospect.id).then(function(updRes) {
             if (updRes.error) { alert('Status update failed: ' + updRes.error.message); return; }
 
-            // Migrate invoices from buyer_invoices (latest upload for this buyer)
-            var latestUpload = state.uploads.filter(function(u) { return u.buyer_id === prospect.buyer_id; })[0];
-            if (!latestUpload) {
-                alert('Marked as converted, but no upload to migrate from.');
-                loadAllData();
-                return;
-            }
+            // Update local state
+            prospect.status                = 'converted';
+            prospect.converted_supplier_id = ffSupplierId;
+            prospect.converted_at          = convertedAt;
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, {
+                status: 'converted',
+                converted_supplier_id: ffSupplierId,
+                converted_at: convertedAt
+            });
 
-            migrateProspectInvoicesAndCNs(prospect, latestUpload.id, ffSupplierId, ffName);
+            // Log system note + re-render
+            sbClient.from('prospect_notes').insert({
+                prospect_supplier_id: prospect.id,
+                note_type:            'system',
+                content:              'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.registry_id + ', ID: ' + ffSupplierId + '). Invoice import handled separately via main portal CSV import.',
+                created_by:           window.__currentUser ? window.__currentUser.id : null
+            }).then(function() {
+                renderProspectDetail(prospect);
+            });
         });
     });
 }
 
-function migrateProspectInvoicesAndCNs(prospect, uploadId, ffSupplierId, ffName) {
-    // Pull all (non-excluded) invoices for this prospect
-    sbClient.from('buyer_invoices')
-        .select('*')
-        .eq('upload_id', uploadId)
-        .eq('supplier_identifier', prospect.supplier_identifier)
-        .eq('currency', prospect.currency)
-        .eq('excluded', false)
-        .then(function(invRes) {
-            if (invRes.error) { alert('Invoice load failed: ' + invRes.error.message); return; }
-            var rows = invRes.data || [];
-            if (rows.length === 0) {
-                migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName);
-                return;
-            }
-            var ffRows = rows.map(function(p) {
-                return {
-                    supplier_id: ffSupplierId,
-                    buyer_id:    prospect.buyer_id,
-                    reference:   p.invoice_reference,
-                    amount:      p.amount,
-                    currency:    p.currency,
-                    invoice_date: p.invoice_date,
-                    due_date:    p.due_date,
-                    paid_date:   p.paid_date,
-                    notes:       'Migrated from prospect ' + prospect.supplier_identifier
-                };
+// Download a CSV of this prospect's invoices in a format ops can import via
+// the main portal's "Bulk Import Invoices" feature. Pulls from buyer_invoices
+// scoped to (latest upload for buyer, supplier_identifier, currency).
+function downloadProspectInvoicesCSV(prospect) {
+    var latestUpload = null;
+    state.uploads.forEach(function(u) {
+        if (u.buyer_id !== prospect.buyer_id) return;
+        if (!latestUpload || u.created_at > latestUpload.created_at) latestUpload = u;
+    });
+    if (!latestUpload) { alert('No upload available for this buyer.'); return; }
+
+    var buyerName = ((state.buyers || []).find(function(b) { return b.id === prospect.buyer_id; }) || {}).name || prospect.buyer_id;
+    var supplierName = prospect.legal_name || prospect.supplier_name || prospect.supplier_identifier;
+
+    // Chunked fetch — same pattern as elsewhere, to bypass the 1000-row cap.
+    var allInvs = [];
+    function fetchInvChunk(offset) {
+        var CHUNK = 1000;
+        sbClient.from('buyer_invoices')
+            .select('invoice_reference, amount, currency, invoice_date, due_date, paid_date')
+            .eq('upload_id',           latestUpload.id)
+            .eq('supplier_identifier', prospect.supplier_identifier)
+            .eq('currency',            prospect.currency)
+            .eq('excluded',            false)
+            .order('invoice_date', { ascending: true })
+            .range(offset, offset + CHUNK - 1)
+            .then(function(res) {
+                if (res.error) { alert('CSV download failed: ' + res.error.message); return; }
+                var batch = res.data || [];
+                allInvs = allInvs.concat(batch);
+                if (batch.length === CHUNK) {
+                    fetchInvChunk(offset + CHUNK);
+                } else {
+                    buildAndDownloadCsv();
+                }
             });
-            sbClient.from('invoices').upsert(ffRows, { onConflict: 'reference,supplier_id' }).then(function(insRes) {
-                if (insRes.error) { alert('Invoice migration failed: ' + insRes.error.message); return; }
-                // Add system note recording migration
-                sbClient.from('prospect_notes').insert({
-                    prospect_supplier_id: prospect.id,
-                    note_type: 'system',
-                    content: 'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.registry_id + ', ID: ' + ffSupplierId + '). Migrated ' + ffRows.length + ' invoices.'
-                }).then(function() {
-                    migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName);
-                });
-            });
+    }
+
+    function buildAndDownloadCsv() {
+        if (allInvs.length === 0) { alert('No invoices to export for this supplier.'); return; }
+        // Header matches what Dashboard's CSV importer recognises. Conservative
+        // set — we send what we have, ops fills in the rest in main portal.
+        var header = ['supplier_name','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
+        var rows = [header.join(',')];
+        allInvs.forEach(function(r) {
+            var row = [
+                csvSafe(supplierName),
+                csvSafe(buyerName),
+                csvSafe(r.invoice_reference || ''),
+                r.amount != null ? r.amount : '',
+                csvSafe(r.currency || ''),
+                r.invoice_date || '',
+                r.due_date || '',
+                r.paid_date || ''
+            ];
+            rows.push(row.join(','));
         });
+        var csv = rows.join('\n');
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (prospect.supplier_identifier || 'prospect') + '_invoices_for_main_portal.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    fetchInvChunk(0);
 }
 
-function migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName) {
-    sbClient.from('buyer_credit_notes')
-        .select('*')
-        .eq('upload_id', uploadId)
-        .eq('supplier_identifier', prospect.supplier_identifier)
-        .eq('currency', prospect.currency)
-        .eq('excluded', false)
-        .then(function(cnRes) {
-            var rows = (cnRes.data) || [];
-            if (rows.length === 0) {
-                closeSupplierPanel();
-                loadAllData();
-                alert('Conversion complete. Open the main portal to view ' + ffName + '.');
-                return;
-            }
-            var ffRows = rows.map(function(p) {
-                return {
-                    supplier_id: ffSupplierId,
-                    buyer_id:    prospect.buyer_id,
-                    reference:   p.cn_reference,
-                    amount:      p.amount,
-                    currency:    p.currency,
-                    cn_date:     p.cn_date,
-                    paid_date:   p.paid_date,
-                    notes:       'Migrated from prospect ' + prospect.supplier_identifier
-                };
-            });
-            sbClient.from('credit_notes').upsert(ffRows, { onConflict: 'reference,supplier_id' }).then(function(insRes) {
-                if (insRes.error) {
-                    alert('CN migration failed: ' + insRes.error.message + '\n(Invoices may have already migrated.)');
-                    closeSupplierPanel();
-                    loadAllData();
-                    return;
-                }
-                closeSupplierPanel();
-                loadAllData();
-                alert('Conversion complete. Migrated ' + rows.length + ' credit notes. Open the main portal to view ' + ffName + '.');
-            });
-        });
+function csvSafe(v) {
+    if (v == null) return '';
+    var s = String(v);
+    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+        return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
 }
 
 function wireSupSearchHandlers(ccy) {
