@@ -317,7 +317,128 @@
             font-weight: 600;
         }
 
-        /* ── Outreach toggle (Upload History → Buyers card) ── */
+        /* ── Prospect detail view (full-page) ── */
+        .pd-header {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px 24px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .pd-back-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .pd-back-btn:hover { color: var(--text); border-color: var(--text-secondary); }
+
+        .pd-title-block { flex: 1; min-width: 0; }
+        .pd-title-row {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.3;
+        }
+        .pd-title-row .pd-arrow { color: var(--muted); margin: 0 8px; }
+        .pd-title-row .pd-ccy { color: var(--text-secondary); font-size: 16px; margin-left: 8px; }
+        .pd-meta-row {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            font-family: var(--mono);
+        }
+        .pd-meta-row .ch-mark { color: #10B981; }
+
+        .pd-status-pill-lg {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 14px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .pd-grid {
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+        @media (max-width: 1100px) {
+            .pd-grid { grid-template-columns: 1fr; }
+        }
+        .pd-col-left, .pd-col-right { min-width: 0; }
+        .pd-col-right .card { position: sticky; top: 12px; }
+
+        /* Workspace specifics */
+        .pd-workspace .card-section + .card-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+        .pd-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+
+        /* Activity timeline */
+        .pd-timeline { display: flex; flex-direction: column; gap: 0; }
+        .pd-timeline-item {
+            display: flex;
+            gap: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .pd-timeline-item:last-child { border-bottom: none; }
+        .pd-timeline-icon {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+        .pd-timeline-icon.user   { background: var(--accent); color: #fff; }
+        .pd-timeline-icon.system { background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary); }
+        .pd-timeline-body { flex: 1; min-width: 0; }
+        .pd-timeline-content { font-size: 12px; color: var(--text); line-height: 1.4; word-break: break-word; }
+        .pd-timeline-date { font-size: 10px; color: var(--muted); margin-top: 2px; }
+        .pd-timeline-empty { font-size: 11px; color: var(--muted); padding: 10px 0; font-style: italic; }
+
+        /* Form rows */
+        .pd-form-row { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+        .pd-form-row label {
+            min-width: 90px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .pd-form-row input[type="text"],
+        .pd-form-row input[type="email"],
+        .pd-form-row input[type="tel"],
+        .pd-form-row input[type="datetime-local"],
+        .pd-form-row select {
+            flex: 1;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 12px;
+        }
+        .pd-due-now { color: var(--danger); font-weight: 600; }
+
         .outreach-switch {
             position: relative;
             display: inline-block;
@@ -1237,69 +1358,77 @@
     <!-- ── UPLOAD HISTORY TAB ── -->
     <!-- ── PROSPECTS TAB ── (operators only — buyer-mode CSS hides it) -->
     <div id="tab-prospects" class="tab-content hidden operator-only">
-        <div class="card">
-            <div class="card-title">Active Prospects</div>
-            <div class="card-subtitle">Suppliers from outreach-permitted buyers. Click a row to verify, take notes, and convert.</div>
+        <!-- LIST VIEW -->
+        <div id="prospectsListView">
+            <div class="card">
+                <div class="card-title">Active Prospects</div>
+                <div class="card-subtitle">Suppliers from outreach-permitted buyers. Click a row to verify, take notes, and convert.</div>
 
-            <div id="prospectsStats" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;"></div>
+                <div id="prospectsStats" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;"></div>
 
-            <div id="prospectsFilters" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin-bottom:14px;">
-                <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-secondary); margin-bottom:10px;">Filters</div>
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-                    <select id="prFilterBuyer"     style="min-width:180px;"><option value="">All buyers</option></select>
-                    <select id="prFilterCurrency"  style="min-width:100px;">
-                        <option value="">All currencies</option>
-                        <option value="GBP">GBP</option><option value="EUR">EUR</option><option value="USD">USD</option>
-                    </select>
-                    <select id="prFilterStatus" style="min-width:140px;">
-                        <option value="">All statuses</option>
-                        <option value="lead">Lead</option>
-                        <option value="contacted">Contacted</option>
-                        <option value="interested">Interested</option>
-                        <option value="negotiating">Negotiating</option>
-                        <option value="onboarding">Onboarding</option>
-                        <option value="declined">Declined</option>
-                    </select>
-                    <input type="text" id="prFilterSearch" placeholder="Search supplier name / ID / legal name / contact..." style="flex:1; min-width:220px;">
-                    <button class="btn btn-xs" id="prFilterReset" style="background:var(--card); color:var(--text-secondary); border:1px solid var(--border);">Reset</button>
+                <div id="prospectsFilters" style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:14px 18px; margin-bottom:14px;">
+                    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-secondary); margin-bottom:10px;">Filters</div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                        <select id="prFilterBuyer"     style="min-width:180px;"><option value="">All buyers</option></select>
+                        <select id="prFilterCurrency"  style="min-width:100px;">
+                            <option value="">All currencies</option>
+                            <option value="GBP">GBP</option><option value="EUR">EUR</option><option value="USD">USD</option>
+                        </select>
+                        <select id="prFilterStatus" style="min-width:140px;">
+                            <option value="">All statuses</option>
+                            <option value="lead">Lead</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="interested">Interested</option>
+                            <option value="negotiating">Negotiating</option>
+                            <option value="onboarding">Onboarding</option>
+                            <option value="declined">Declined</option>
+                        </select>
+                        <input type="text" id="prFilterSearch" placeholder="Search supplier name / ID / legal name / contact..." style="flex:1; min-width:220px;">
+                        <button class="btn btn-xs" id="prFilterReset" style="background:var(--card); color:var(--text-secondary); border:1px solid var(--border);">Reset</button>
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="pr-pill" data-pill="new"          >🆕 New this upload</button>
+                        <button class="pr-pill" data-pill="silent14"     >🔇 Silent ≥14d</button>
+                        <button class="pr-pill" data-pill="due"          >🗓️ Due now</button>
+                        <button class="pr-pill" data-pill="conversation" >💬 In conversation</button>
+                        <button class="pr-pill" data-pill="untouched"    >🎯 Untouched</button>
+                        <button class="pr-pill" data-pill="verified"     >✅ CH-verified</button>
+                        <button class="pr-pill" data-pill="quality"      >⚠️ Quality concerns</button>
+                        <button class="pr-pill" data-pill="late"         >🐌 Consistently late</button>
+                        <button class="pr-pill" data-pill="converted"    >Show converted</button>
+                    </div>
                 </div>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="pr-pill" data-pill="new"          >🆕 New this upload</button>
-                    <button class="pr-pill" data-pill="silent14"     >🔇 Silent ≥14d</button>
-                    <button class="pr-pill" data-pill="conversation" >💬 In conversation</button>
-                    <button class="pr-pill" data-pill="untouched"    >🎯 Untouched</button>
-                    <button class="pr-pill" data-pill="verified"     >✅ CH-verified</button>
-                    <button class="pr-pill" data-pill="quality"      >⚠️ Quality concerns</button>
-                    <button class="pr-pill" data-pill="late"         >🐌 Consistently late</button>
-                    <button class="pr-pill" data-pill="converted"    >Show converted</button>
-                </div>
-            </div>
 
-            <div class="table-wrap">
-                <table class="report-table">
-                    <thead>
-                        <tr>
-                            <th style="cursor:pointer;" data-pr-sort="buyer_name">Buyer</th>
-                            <th style="cursor:pointer;" data-pr-sort="supplier">Supplier</th>
-                            <th>Currency</th>
-                            <th style="cursor:pointer;" data-pr-sort="status">Status</th>
-                            <th class="text-right" style="cursor:pointer;" data-pr-sort="spend">Spend</th>
-                            <th class="text-right" style="cursor:pointer;" data-pr-sort="invoices">Invoices</th>
-                            <th class="text-right" style="cursor:pointer;" data-pr-sort="avgDpd">Avg DPD</th>
-                            <th class="text-right" style="cursor:pointer;" data-pr-sort="dilution">Dilution</th>
-                            <th style="cursor:pointer;" data-pr-sort="last_seen_at">Last seen</th>
-                            <th>Verified</th>
-                        </tr>
-                    </thead>
-                    <tbody id="prospectsBody"></tbody>
-                </table>
+                <div class="table-wrap">
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th style="cursor:pointer;" data-pr-sort="buyer_name">Buyer</th>
+                                <th style="cursor:pointer;" data-pr-sort="supplier">Supplier</th>
+                                <th>Currency</th>
+                                <th style="cursor:pointer;" data-pr-sort="status">Status</th>
+                                <th class="text-right" style="cursor:pointer;" data-pr-sort="spend">Spend</th>
+                                <th class="text-right" style="cursor:pointer;" data-pr-sort="invoices">Invoices</th>
+                                <th class="text-right" style="cursor:pointer;" data-pr-sort="avgDpd">Avg DPD</th>
+                                <th class="text-right" style="cursor:pointer;" data-pr-sort="dilution">Dilution</th>
+                                <th style="cursor:pointer;" data-pr-sort="last_seen_at">Last seen</th>
+                                <th style="cursor:pointer;" data-pr-sort="next_action_at">Next action</th>
+                                <th>Verified</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prospectsBody"></tbody>
+                    </table>
+                </div>
+                <div id="prospectsEmpty" class="empty-state hidden">
+                    <div class="empty-state-title">No prospects match the current filters</div>
+                    <div class="empty-state-sub">Try resetting filters, or enable outreach on a buyer in Upload History.</div>
+                </div>
+                <div id="prospectsStatusLine" style="margin-top:8px; font-size:11px; color:var(--text-secondary);"></div>
             </div>
-            <div id="prospectsEmpty" class="empty-state hidden">
-                <div class="empty-state-title">No prospects match the current filters</div>
-                <div class="empty-state-sub">Try resetting filters, or enable outreach on a buyer in Upload History.</div>
-            </div>
-            <div id="prospectsStatusLine" style="margin-top:8px; font-size:11px; color:var(--text-secondary);"></div>
         </div>
+
+        <!-- DETAIL VIEW (rendered into when a row is clicked) -->
+        <div id="prospectsDetailView" class="hidden"></div>
     </div>
 
     <div id="tab-uploads-history" class="tab-content hidden">
@@ -1611,7 +1740,15 @@ function setupTabs() {
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
             document.getElementById('tab-' + tab).classList.remove('hidden');
             if (tab === 'uploads-history') renderUploadsHistory();
-            if (tab === 'prospects') renderProspects();
+            if (tab === 'prospects') {
+                // Always return to list view when switching back to the tab
+                var dv = document.getElementById('prospectsDetailView');
+                var lv = document.getElementById('prospectsListView');
+                if (dv) { dv.classList.add('hidden'); dv.innerHTML = ''; }
+                if (lv) lv.classList.remove('hidden');
+                window._activeProspect = null;
+                renderProspects();
+            }
             if (tab === 'reports') {
                 // With Step 2 architecture: if an upload is loaded but no
                 // Reports view exists yet, open the Reports view automatically.
@@ -2612,6 +2749,9 @@ function applyAndRenderProspects(enriched) {
     // Pills
     if (f.pills.new)          filtered = filtered.filter(function(e) { return e.isNewThisUpload; });
     if (f.pills.silent14)     filtered = filtered.filter(function(e) { return e.silentDays !== null && e.silentDays >= 14; });
+    if (f.pills.due)          filtered = filtered.filter(function(e) {
+        return e.row.next_action_at && new Date(e.row.next_action_at) <= new Date();
+    });
     if (f.pills.conversation) filtered = filtered.filter(function(e) { return ['contacted','interested','negotiating'].indexOf(e.row.status) !== -1; });
     if (f.pills.untouched)    filtered = filtered.filter(function(e) { return e.row.status === 'lead'; });
     if (f.pills.verified)     filtered = filtered.filter(function(e) { return e.row.ch_verified_at; });
@@ -2627,13 +2767,14 @@ function applyAndRenderProspects(enriched) {
         var av, bv;
         switch (sortKey) {
             case 'buyer_name': av = a.buyer_name; bv = b.buyer_name; break;
-            case 'supplier':   av = a.row.supplier_identifier; bv = b.row.supplier_identifier; break;
+            case 'supplier':   av = a.row.supplier_name || a.row.supplier_identifier; bv = b.row.supplier_name || b.row.supplier_identifier; break;
             case 'status':     av = a.row.status; bv = b.row.status; break;
             case 'spend':      av = (a.stats && a.stats.totalSpend) || 0; bv = (b.stats && b.stats.totalSpend) || 0; break;
             case 'invoices':   av = (a.stats && a.stats.invoiceCount) || 0; bv = (b.stats && b.stats.invoiceCount) || 0; break;
             case 'avgDpd':     av = (a.stats && a.stats.avgDaysPastDue) || 0; bv = (b.stats && b.stats.avgDaysPastDue) || 0; break;
             case 'dilution':   av = (a.stats && a.stats.dilutionRate) || 0; bv = (b.stats && b.stats.dilutionRate) || 0; break;
-            case 'last_seen_at': av = a.row.last_seen_at; bv = b.row.last_seen_at; break;
+            case 'last_seen_at':   av = a.row.last_seen_at; bv = b.row.last_seen_at; break;
+            case 'next_action_at': av = a.row.next_action_at || '9999'; bv = b.row.next_action_at || '9999'; break;
             default: av = 0; bv = 0;
         }
         if (av < bv) return -1 * dir;
@@ -2695,6 +2836,14 @@ function applyAndRenderProspects(enriched) {
             } else {
                 subtitle = '';
             }
+            var nextActionCell = '<span style="font-size:10px; color:var(--muted);">—</span>';
+            if (p.next_action_at) {
+                var na = new Date(p.next_action_at);
+                var isDue = na <= new Date();
+                nextActionCell = '<span style="font-size:11px;' + (isDue ? ' color:var(--danger); font-weight:600;' : '') + '">' +
+                    (isDue ? 'DUE · ' : '') + formatDateTime(p.next_action_at) +
+                    '</span>';
+            }
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
                 '<td><strong>' + escHTML(displayName) + '</strong>' +
@@ -2707,6 +2856,7 @@ function applyAndRenderProspects(enriched) {
                 '<td class="text-right mono">' + (s && s.avgDaysPastDue != null ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd' : '—') + '</td>' +
                 '<td class="text-right mono">' + (s ? pct(s.dilutionRate) : '—') + '</td>' +
                 '<td>' + escHTML(lastSeen) + '</td>' +
+                '<td>' + nextActionCell + '</td>' +
                 '<td>' + verifiedCell + '</td>';
             tr.addEventListener('click', function() {
                 openProspectPanel(p.id);
@@ -2731,11 +2881,19 @@ function applyAndRenderProspects(enriched) {
 // Opens the existing supplier slide-out but in "sales mode" — adds the
 // Verify / Status / Notes / Convert sections on top of the analytics view.
 
+// ================================================================
+// PROSPECT DETAIL VIEW (full-page, in-app)
+// ================================================================
+// When a row is clicked in the Prospects list, we swap the list container
+// for a full-page detail view. Two columns: left = supplier analytics
+// (reusing the existing supplier-panel render helpers), right = sales
+// workspace (status/contacts/CH/follow-up/timeline/convert).
+
 function openProspectPanel(prospectId) {
     var prospect = (state.prospects || []).find(function(p) { return p.id === prospectId; });
     if (!prospect) { alert('Prospect not found in state — try refreshing.'); return; }
 
-    // Load the latest upload for this buyer so the analytics panel has data
+    // Latest upload for this buyer feeds the analytics view
     var latestUpload = null;
     state.uploads.forEach(function(u) {
         if (u.buyer_id !== prospect.buyer_id) return;
@@ -2746,17 +2904,581 @@ function openProspectPanel(prospectId) {
         return;
     }
 
-    // Track that we're in sales-mode for the slide-out
-    window._prospectContext = { prospect: prospect };
+    // Swap containers
+    document.getElementById('prospectsListView').classList.add('hidden');
+    var detailEl = document.getElementById('prospectsDetailView');
+    detailEl.classList.remove('hidden');
+    detailEl.innerHTML = '<div class="empty-state"><div class="empty-state-sub">Loading supplier detail…</div></div>';
 
-    // Load the upload if not already loaded; then open the supplier panel.
+    // Stash the active prospect for handlers
+    window._activeProspect = prospect;
+
+    // Load the upload if not already loaded; renderProspectDetail uses
+    // window.__upload like the supplier slide-out does.
     if (window.__upload && window.__upload.uploadId === latestUpload.id) {
-        openSupplierPanel(prospect.supplier_identifier, prospect.currency);
+        renderProspectDetail(prospect);
     } else {
         loadUpload(latestUpload.id, function() {
-            openSupplierPanel(prospect.supplier_identifier, prospect.currency);
+            renderProspectDetail(prospect);
         });
     }
+}
+
+function closeProspectDetail() {
+    document.getElementById('prospectsDetailView').classList.add('hidden');
+    document.getElementById('prospectsDetailView').innerHTML = '';
+    document.getElementById('prospectsListView').classList.remove('hidden');
+    window._activeProspect = null;
+    // Refresh the prospect list (so any edits made are reflected)
+    renderProspects();
+}
+
+function renderProspectDetail(prospect) {
+    var detailEl = document.getElementById('prospectsDetailView');
+    var ccy = prospect.currency;
+    var buyerName = ((state.buyers || []).find(function(b) { return b.id === prospect.buyer_id; }) || {}).name || prospect.buyer_id;
+
+    // Look up the snapshot's supplier object for this prospect (period = 'all'
+    // gives lifetime stats; matches the conversation context)
+    var stats = (window.__upload && window.__upload.snapshot && window.__upload.snapshot.stats &&
+        window.__upload.snapshot.stats.perPeriod &&
+        window.__upload.snapshot.stats.perPeriod.all &&
+        window.__upload.snapshot.stats.perPeriod.all.perCurrency &&
+        window.__upload.snapshot.stats.perPeriod.all.perCurrency[ccy]) || null;
+    var supplier = stats && stats.suppliers
+        ? stats.suppliers.find(function(s) { return s.identifier === prospect.supplier_identifier; })
+        : null;
+
+    var displayName = prospect.supplier_name || supplier && supplier.name || prospect.supplier_identifier;
+    var statusPill =
+        '<span class="pr-status-pill pr-status-' + prospect.status + ' pd-status-pill-lg">' +
+            prospect.status +
+        '</span>';
+
+    // Header
+    var chMark = prospect.ch_verified_at
+        ? ' · CH <span class="mono">' + escHTML(prospect.company_number) + '</span> <span class="ch-mark">✓</span> ' + escHTML(prospect.legal_name || '')
+        : '';
+    var nextActionInfo = '';
+    if (prospect.next_action_at) {
+        var due = new Date(prospect.next_action_at);
+        var isDue = due <= new Date();
+        nextActionInfo = ' · <span' + (isDue ? ' class="pd-due-now"' : '') + '>Next: ' + formatDateTime(prospect.next_action_at) +
+            (prospect.next_action_note ? ' (' + escHTML(prospect.next_action_note) + ')' : '') + '</span>';
+    }
+
+    var headerHtml =
+        '<div class="pd-header">' +
+            '<button class="pd-back-btn" id="pdBackBtn">← Back to prospects</button>' +
+            '<div class="pd-title-block">' +
+                '<div class="pd-title-row">' +
+                    escHTML(buyerName) +
+                    '<span class="pd-arrow">→</span>' +
+                    escHTML(displayName) +
+                    '<span class="pd-ccy">· ' + escHTML(ccy) + '</span>' +
+                '</div>' +
+                '<div class="pd-meta-row">' +
+                    escHTML(prospect.supplier_identifier) +
+                    chMark +
+                    nextActionInfo +
+                '</div>' +
+            '</div>' +
+            '<div>' + statusPill + '</div>' +
+        '</div>';
+
+    // Build a "panelStats" object compatible with the existing supplier-panel
+    // renderers, then call them to produce the analytics column. This reuses
+    // all the work in renderSupAtAGlance / renderSupVolume / renderSupPayment
+    // / renderSupRecentInvoices / renderSupDilution.
+    var paidCount  = supplier && supplier.paidCount || 0;
+    var totalLate     = Math.round(((supplier && supplier.latePct) || 0) * paidCount);
+    var totalVeryLate = Math.round(((supplier && supplier.veryLatePct) || 0) * paidCount);
+    var earlyOrOnTime = Math.max(0, paidCount - totalLate);
+    var distribution = {
+        earlyOrOnTime: earlyOrOnTime,
+        late1to14:     Math.round((totalLate - totalVeryLate) * 0.5),
+        late15to30:    Math.round((totalLate - totalVeryLate) * 0.5),
+        late31to60:    Math.round(totalVeryLate * 0.6),
+        late61plus:    Math.round(totalVeryLate * 0.4)
+    };
+    var monthlyCount = (supplier && supplier.monthlyInvoiceCount) || {};
+    var monthlyAmount = (supplier && supplier.monthlyInvoiceAmount) || {};
+    var months = Object.keys(monthlyCount).sort();
+    var monthlySeries = months.map(function(m) {
+        return { month: m, count: monthlyCount[m] || 0, spend: monthlyAmount[m] || 0 };
+    });
+
+    var panelStats = {
+        invoiceCount:      (supplier && supplier.invoiceCount) || 0,
+        totalSpend:        (supplier && supplier.totalSpend) || 0,
+        avgInvoiceAmount:  (supplier && supplier.avgInvoiceAmount) || 0,
+        maxInvoiceAmount:  (supplier && supplier.maxInvoiceAmount) || 0,
+        paidCount:         paidCount,
+        unpaidCount:       (supplier && supplier.unpaidCount) || 0,
+        avgDpd:            supplier && supplier.avgDaysPastDue,
+        dpdDistribution:   distribution,
+        firstInvoice:      supplier && supplier.firstInvoice,
+        lastInvoice:       supplier && supplier.lastInvoice,
+        daysSinceLast:     null,
+        cnCount:           (supplier && supplier.cnCount) || 0,
+        cnTotal:           (supplier && supplier.cnTotal) || 0,
+        dilutionRate:      (supplier && supplier.dilutionRate) || 0,
+        monthlySeries:     monthlySeries,
+        creditNotes:       [],
+        recentInvoices:    [],
+        totalInvoiceCount: (supplier && supplier.invoiceCount) || 0,
+        sharePct:          (supplier && supplier.sharePct) || 0,
+        _rowsLoaded:       false
+    };
+
+    // We need a sup-search context so the search bars inside the table work.
+    window._supSearchContext = {
+        uploadId:   window.__upload.uploadId,
+        supId:      prospect.supplier_identifier,
+        ccy:        ccy,
+        periodFrom: null,
+        periodTo:   null,
+        invDebounceTimer: null,
+        cnDebounceTimer:  null
+    };
+
+    // Workspace HTML (right column)
+    var workspaceHtml = renderProspectWorkspace(prospect);
+
+    // Analytics HTML (left column)
+    var analyticsHtml =
+        '<div class="card">' +
+            '<div class="card-title">Supplier detail · ' + escHTML(displayName) + ' (' + escHTML(ccy) + ')</div>' +
+            renderSupAtAGlance(panelStats, ccy, panelStats.sharePct) +
+            renderSupVolume(panelStats, ccy) +
+            renderSupPayment(panelStats) +
+            renderSupRecentInvoices(panelStats, ccy, false, null, null) +
+            (panelStats.cnCount > 0 ? renderSupDilution(panelStats, ccy) : '') +
+        '</div>';
+
+    detailEl.innerHTML =
+        headerHtml +
+        '<div class="pd-grid">' +
+            '<div class="pd-col-left">' + analyticsHtml + '</div>' +
+            '<div class="pd-col-right">' +
+                '<div class="card pd-workspace">' +
+                    '<div class="card-title">Sales workspace</div>' +
+                    workspaceHtml +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    // Wire handlers
+    document.getElementById('pdBackBtn').addEventListener('click', closeProspectDetail);
+    wireProspectWorkspaceHandlers(prospect);
+    wireSupSearchHandlers(ccy);
+
+    // Draw charts after DOM ready (the canvases inside renderSupVolume/Payment
+    // need to be in the document)
+    requestAnimationFrame(function() {
+        drawSupplierVolumeChart(panelStats, ccy);
+        drawSupplierPaymentChart(panelStats);
+    });
+
+    // Lazy-load row-level invoice/CN data for the recent-invoices/CN tables.
+    var DRILL_LIMIT = 250;
+    var invQ = sbClient.from('buyer_invoices')
+        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
+        .eq('upload_id', window.__upload.uploadId)
+        .eq('supplier_identifier', prospect.supplier_identifier)
+        .eq('currency', ccy)
+        .eq('excluded', false)
+        .order('invoice_date', { ascending: false })
+        .limit(DRILL_LIMIT);
+    var cnQ = sbClient.from('buyer_credit_notes')
+        .select('cn_date, cn_reference, amount, paid_date, currency')
+        .eq('upload_id', window.__upload.uploadId)
+        .eq('supplier_identifier', prospect.supplier_identifier)
+        .eq('currency', ccy)
+        .eq('excluded', false)
+        .order('cn_date', { ascending: false })
+        .limit(DRILL_LIMIT);
+
+    Promise.all([invQ, cnQ]).then(function(results) {
+        var invRows = results[0].data || [];
+        var cnRows  = results[1].data || [];
+        panelStats.recentInvoices = invRows.slice(0, 20);
+        panelStats.creditNotes = cnRows;
+        panelStats._rowsLoaded = true;
+
+        // Re-render the row-level sections
+        var detailContainer = document.getElementById('prospectsDetailView');
+        var recentEl = detailContainer.querySelector('.sup-section-recent');
+        var dilEl    = detailContainer.querySelector('.sup-section-dilution');
+        if (recentEl) {
+            recentEl.outerHTML = renderSupRecentInvoices(panelStats, ccy, invRows.length === DRILL_LIMIT, null, null);
+        }
+        if (dilEl && panelStats.cnCount > 0) {
+            dilEl.outerHTML = renderSupDilution(panelStats, ccy);
+        }
+        wireSupSearchHandlers(ccy);
+    });
+}
+
+// ── Sales workspace (right column) ─────────────────────────────────────
+function renderProspectWorkspace(prospect) {
+    // Status + contact form
+    var statusOpts = ['lead','contacted','interested','negotiating','onboarding','declined','converted']
+        .map(function(s) {
+            return '<option value="' + s + '"' + (prospect.status === s ? ' selected' : '') + (s === 'converted' && prospect.status !== 'converted' ? ' disabled' : '') + '>' + s + '</option>';
+        }).join('');
+
+    var statusFormHtml =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Status &amp; contact</div>' +
+            '<div class="pd-form-row"><label>Status</label>' +
+                '<select id="pdStatusSelect">' + statusOpts + '</select>' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Contact name</label>' +
+                '<input type="text" id="pdContactName"  value="' + escHTML(prospect.contact_name  || '') + '">' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Email</label>' +
+                '<input type="email" id="pdContactEmail" value="' + escHTML(prospect.contact_email || '') + '">' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Phone</label>' +
+                '<input type="tel" id="pdContactPhone" value="' + escHTML(prospect.contact_phone || '') + '">' +
+            '</div>' +
+            '<div style="display:flex; gap:8px; align-items:center; margin-top:6px;">' +
+                '<button class="btn btn-sm btn-primary" id="pdSaveStatusBtn">Save</button>' +
+                '<span id="pdSaveStatusMsg" style="font-size:10px; color:var(--text-secondary);"></span>' +
+            '</div>' +
+        '</div>';
+
+    // CH section
+    var chHtml = prospect.ch_verified_at
+        ? '<div style="padding:10px 12px; background:#10B98110; border:1px solid #10B98140; border-radius:6px; font-size:12px;">' +
+            '<strong>' + escHTML(prospect.legal_name || 'Verified') + '</strong>' +
+            ' · CH: <span class="mono">' + escHTML(prospect.company_number) + '</span>' +
+            ' · verified ' + formatDateTime(prospect.ch_verified_at) +
+            ' <button class="btn btn-xs" id="pdReverifyBtn" style="margin-left:8px;">Re-verify</button>' +
+          '</div>'
+        : '<div class="pd-form-row" style="margin-bottom:0;">' +
+            '<input type="text" id="pdCHInput" placeholder="Companies House number" style="font-family:var(--mono);">' +
+            '<button class="btn btn-sm btn-primary" id="pdCHLookupBtn">Lookup</button>' +
+          '</div>' +
+          '<div id="pdCHResult" style="margin-top:8px; font-size:11px;"></div>';
+
+    var chSection =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Companies House</div>' +
+            chHtml +
+        '</div>';
+
+    // Follow-up section
+    var followupHtml = '';
+    if (prospect.next_action_at) {
+        var due = new Date(prospect.next_action_at);
+        var dueBadge = due <= new Date() ? '<span class="pd-due-now"> · DUE NOW</span>' : '';
+        followupHtml =
+            '<div style="padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px;">' +
+                '<strong>' + formatDateTime(prospect.next_action_at) + '</strong>' + dueBadge +
+                (prospect.next_action_note ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:3px;">' + escHTML(prospect.next_action_note) + '</div>' : '') +
+                '<div style="margin-top:6px;">' +
+                    '<button class="btn btn-xs" id="pdClearFollowupBtn" style="background:var(--card); border:1px solid var(--border);">Clear</button>' +
+                    '<button class="btn btn-xs" id="pdEditFollowupBtn"  style="background:var(--card); border:1px solid var(--border); margin-left:6px;">Edit</button>' +
+                '</div>' +
+            '</div>';
+    } else {
+        followupHtml = '<button class="btn btn-sm btn-primary" id="pdSetFollowupBtn">Set follow-up</button>';
+    }
+
+    var followupSection =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Follow-up</div>' +
+            '<div id="pdFollowupBlock">' + followupHtml + '</div>' +
+        '</div>';
+
+    // Activity timeline (loaded async)
+    var timelineSection =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Activity</div>' +
+            '<div class="pd-form-row">' +
+                '<textarea id="pdNoteInput" placeholder="Add a note…" rows="2" style="flex:1; padding:6px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px; resize:vertical; min-width:0;"></textarea>' +
+                '<button class="btn btn-sm btn-primary" id="pdNoteAddBtn">Add</button>' +
+            '</div>' +
+            '<div id="pdTimeline" style="margin-top:10px; max-height:380px; overflow-y:auto;">Loading…</div>' +
+        '</div>';
+
+    // Convert section
+    var convertReady = prospect.ch_verified_at && prospect.status !== 'converted';
+    var convertHtml = prospect.status === 'converted'
+        ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
+            'Converted ' + formatDateTime(prospect.converted_at) +
+            (prospect.converted_supplier_id ? '<div style="font-size:10px; margin-top:3px;">FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span></div>' : '') +
+          '</div>'
+        : '<button class="btn btn-primary" id="pdConvertBtn"' + (convertReady ? '' : ' disabled') + ' style="width:100%; margin-bottom:6px;">' +
+            (convertReady ? 'Open FactorFlow & Convert →' : 'Verify CH first to enable conversion') +
+          '</button>' +
+          (convertReady ? '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%;">Confirm Conversion Complete</button>' : '');
+
+    var convertSection =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Convert</div>' +
+            convertHtml +
+        '</div>';
+
+    return statusFormHtml + chSection + followupSection + timelineSection + convertSection;
+}
+
+// ── Wire workspace handlers ─────────────────────────────────────────────
+function wireProspectWorkspaceHandlers(prospect) {
+    // SAVE STATUS + CONTACTS
+    var saveBtn = document.getElementById('pdSaveStatusBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function() {
+        var msg = document.getElementById('pdSaveStatusMsg');
+        msg.textContent = 'Saving…';
+        var oldStatus = prospect.status;
+        var oldContact = {
+            name:  prospect.contact_name,
+            email: prospect.contact_email,
+            phone: prospect.contact_phone
+        };
+        var updates = {
+            status:        document.getElementById('pdStatusSelect').value,
+            contact_name:  document.getElementById('pdContactName').value || null,
+            contact_email: document.getElementById('pdContactEmail').value || null,
+            contact_phone: document.getElementById('pdContactPhone').value || null
+        };
+        sbClient.from('prospect_suppliers').update(updates).eq('id', prospect.id).then(function(res) {
+            if (res.error) { msg.textContent = 'Save failed: ' + res.error.message; return; }
+
+            // Update in-memory + state
+            Object.keys(updates).forEach(function(k) { prospect[k] = updates[k]; });
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, updates);
+
+            // Log system note(s) for changes
+            var changedNotes = [];
+            if (updates.status !== oldStatus) changedNotes.push('Status changed: ' + oldStatus + ' → ' + updates.status);
+            var contactChanged = (updates.contact_name  !== oldContact.name)
+                              || (updates.contact_email !== oldContact.email)
+                              || (updates.contact_phone !== oldContact.phone);
+            if (contactChanged) changedNotes.push('Contact details updated');
+            if (changedNotes.length > 0) {
+                Promise.all(changedNotes.map(function(content) {
+                    return sbClient.from('prospect_notes').insert({
+                        prospect_supplier_id: prospect.id,
+                        content: content,
+                        note_type: 'system',
+                        created_by: window.__currentUser ? window.__currentUser.id : null
+                    });
+                })).then(function() { reloadProspectTimeline(prospect.id); });
+            }
+
+            msg.textContent = 'Saved.';
+            setTimeout(function() { msg.textContent = ''; }, 2000);
+        });
+    });
+
+    // CH LOOKUP
+    var lookupBtn = document.getElementById('pdCHLookupBtn');
+    if (lookupBtn) lookupBtn.addEventListener('click', function() {
+        var num = (document.getElementById('pdCHInput').value || '').trim().toUpperCase();
+        if (!num) { document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>'; return; }
+        document.getElementById('pdCHResult').innerHTML = 'Looking up…';
+        fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || data.error) {
+                    document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
+                    return;
+                }
+                var legalName = data.company_name || data.legal_name || '';
+                document.getElementById('pdCHResult').innerHTML =
+                    '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
+                        '<strong>' + escHTML(legalName) + '</strong>' +
+                        ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
+                        '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                    '</div>';
+                document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
+                    sbClient.from('prospect_suppliers').update({
+                        company_number: num,
+                        legal_name:     legalName,
+                        ch_verified_at: new Date().toISOString()
+                    }).eq('id', prospect.id).then(function(res) {
+                        if (res.error) { alert('Save failed: ' + res.error.message); return; }
+                        prospect.company_number = num;
+                        prospect.legal_name = legalName;
+                        prospect.ch_verified_at = new Date().toISOString();
+                        var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+                        if (sp) Object.assign(sp, { company_number: num, legal_name: legalName, ch_verified_at: prospect.ch_verified_at });
+
+                        // System note
+                        sbClient.from('prospect_notes').insert({
+                            prospect_supplier_id: prospect.id,
+                            content: 'CH verified: ' + legalName + ' (' + num + ')',
+                            note_type: 'system',
+                            created_by: window.__currentUser ? window.__currentUser.id : null
+                        }).then(function() { renderProspectDetail(prospect); });
+                    });
+                });
+            })
+            .catch(function(err) {
+                document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
+            });
+    });
+
+    var reverifyBtn = document.getElementById('pdReverifyBtn');
+    if (reverifyBtn) reverifyBtn.addEventListener('click', function() {
+        if (!confirm('Clear CH verification and re-verify?')) return;
+        sbClient.from('prospect_suppliers').update({
+            company_number: null,
+            legal_name:     null,
+            ch_verified_at: null
+        }).eq('id', prospect.id).then(function() {
+            prospect.company_number = null;
+            prospect.legal_name = null;
+            prospect.ch_verified_at = null;
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, { company_number: null, legal_name: null, ch_verified_at: null });
+            sbClient.from('prospect_notes').insert({
+                prospect_supplier_id: prospect.id,
+                content: 'CH verification cleared',
+                note_type: 'system'
+            }).then(function() { renderProspectDetail(prospect); });
+        });
+    });
+
+    // FOLLOW-UP set / edit / clear
+    function openFollowupDialog() {
+        var existing = prospect.next_action_at ? new Date(prospect.next_action_at) : null;
+        var defaultDate = existing
+            ? existing.toISOString().slice(0, 16)
+            : new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 16);
+        var block = document.getElementById('pdFollowupBlock');
+        block.innerHTML =
+            '<div class="pd-form-row"><label>Date</label>' +
+                '<input type="datetime-local" id="pdFollowupDate" value="' + defaultDate + '">' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Note</label>' +
+                '<input type="text" id="pdFollowupNote" placeholder="What needs doing?" value="' + escHTML(prospect.next_action_note || '') + '">' +
+            '</div>' +
+            '<div style="display:flex; gap:6px; margin-top:6px;">' +
+                '<button class="btn btn-sm btn-primary" id="pdFollowupSaveBtn">Save</button>' +
+                '<button class="btn btn-xs" id="pdFollowupCancelBtn" style="background:var(--card); border:1px solid var(--border);">Cancel</button>' +
+            '</div>';
+
+        document.getElementById('pdFollowupSaveBtn').addEventListener('click', function() {
+            var dateVal = document.getElementById('pdFollowupDate').value;
+            var noteVal = document.getElementById('pdFollowupNote').value || null;
+            if (!dateVal) return;
+            var iso = new Date(dateVal).toISOString();
+            sbClient.from('prospect_suppliers').update({
+                next_action_at: iso,
+                next_action_note: noteVal
+            }).eq('id', prospect.id).then(function(res) {
+                if (res.error) { alert('Failed: ' + res.error.message); return; }
+                prospect.next_action_at   = iso;
+                prospect.next_action_note = noteVal;
+                var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+                if (sp) Object.assign(sp, { next_action_at: iso, next_action_note: noteVal });
+                sbClient.from('prospect_notes').insert({
+                    prospect_supplier_id: prospect.id,
+                    content: 'Follow-up set for ' + formatDateTime(iso) + (noteVal ? ' — ' + noteVal : ''),
+                    note_type: 'system'
+                }).then(function() { renderProspectDetail(prospect); });
+            });
+        });
+        document.getElementById('pdFollowupCancelBtn').addEventListener('click', function() {
+            renderProspectDetail(prospect);
+        });
+    }
+    var setBtn  = document.getElementById('pdSetFollowupBtn');
+    var editBtn = document.getElementById('pdEditFollowupBtn');
+    var clearBtn = document.getElementById('pdClearFollowupBtn');
+    if (setBtn)  setBtn.addEventListener('click', openFollowupDialog);
+    if (editBtn) editBtn.addEventListener('click', openFollowupDialog);
+    if (clearBtn) clearBtn.addEventListener('click', function() {
+        sbClient.from('prospect_suppliers').update({
+            next_action_at: null,
+            next_action_note: null
+        }).eq('id', prospect.id).then(function() {
+            prospect.next_action_at = null;
+            prospect.next_action_note = null;
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) Object.assign(sp, { next_action_at: null, next_action_note: null });
+            sbClient.from('prospect_notes').insert({
+                prospect_supplier_id: prospect.id,
+                content: 'Follow-up cleared',
+                note_type: 'system'
+            }).then(function() { renderProspectDetail(prospect); });
+        });
+    });
+
+    // NOTES: add + load
+    var noteBtn = document.getElementById('pdNoteAddBtn');
+    if (noteBtn) noteBtn.addEventListener('click', function() {
+        var input = document.getElementById('pdNoteInput');
+        var content = (input.value || '').trim();
+        if (!content) return;
+        noteBtn.disabled = true;
+        sbClient.from('prospect_notes').insert({
+            prospect_supplier_id: prospect.id,
+            content: content,
+            note_type: 'user',
+            created_by: window.__currentUser ? window.__currentUser.id : null
+        }).then(function(res) {
+            noteBtn.disabled = false;
+            if (res.error) { alert('Failed: ' + res.error.message); return; }
+            input.value = '';
+            reloadProspectTimeline(prospect.id);
+        });
+    });
+    reloadProspectTimeline(prospect.id);
+
+    // CONVERT
+    var convertBtn = document.getElementById('pdConvertBtn');
+    if (convertBtn) convertBtn.addEventListener('click', function() {
+        if (!prospect.company_number) return;
+        var params = new URLSearchParams();
+        params.set('action', 'create-supplier');
+        params.set('company_number', prospect.company_number);
+        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
+        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+    });
+
+    var confirmBtn = document.getElementById('pdConvertConfirmBtn');
+    if (confirmBtn) confirmBtn.addEventListener('click', function() {
+        confirmProspectConversion(prospect);
+    });
+}
+
+function reloadProspectTimeline(prospectId) {
+    var tl = document.getElementById('pdTimeline');
+    if (!tl) return;
+    sbClient.from('prospect_notes')
+        .select('*')
+        .eq('prospect_supplier_id', prospectId)
+        .order('created_at', { ascending: false })
+        .then(function(res) {
+            if (res.error) {
+                tl.innerHTML = '<div class="pd-timeline-empty">Failed to load: ' + escHTML(res.error.message) + '</div>';
+                return;
+            }
+            var notes = res.data || [];
+            if (notes.length === 0) {
+                tl.innerHTML = '<div class="pd-timeline-empty">No activity yet. Add a note to get started.</div>';
+                return;
+            }
+            tl.innerHTML = '<div class="pd-timeline">' + notes.map(function(n) {
+                var cls = n.note_type === 'system' ? 'system' : 'user';
+                var icon = n.note_type === 'system' ? '⚙' : '✎';
+                return '<div class="pd-timeline-item">' +
+                    '<div class="pd-timeline-icon ' + cls + '">' + icon + '</div>' +
+                    '<div class="pd-timeline-body">' +
+                        '<div class="pd-timeline-content">' + escHTML(n.content) + '</div>' +
+                        '<div class="pd-timeline-date">' + formatDateTime(n.created_at) + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('') + '</div>';
+        });
 }
 
 // ================================================================
