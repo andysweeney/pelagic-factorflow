@@ -1260,7 +1260,7 @@
                         <option value="onboarding">Onboarding</option>
                         <option value="declined">Declined</option>
                     </select>
-                    <input type="text" id="prFilterSearch" placeholder="Search supplier ID / legal name / contact..." style="flex:1; min-width:220px;">
+                    <input type="text" id="prFilterSearch" placeholder="Search supplier name / ID / legal name / contact..." style="flex:1; min-width:220px;">
                     <button class="btn btn-xs" id="prFilterReset" style="background:var(--card); color:var(--text-secondary); border:1px solid var(--border);">Reset</button>
                 </div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -2603,6 +2603,7 @@ function applyAndRenderProspects(enriched) {
         filtered = filtered.filter(function(e) {
             var p = e.row;
             return (p.supplier_identifier || '').toLowerCase().indexOf(q) !== -1
+                || (p.supplier_name || '').toLowerCase().indexOf(q) !== -1
                 || (p.legal_name || '').toLowerCase().indexOf(q) !== -1
                 || (p.contact_name || '').toLowerCase().indexOf(q) !== -1;
         });
@@ -2679,15 +2680,24 @@ function applyAndRenderProspects(enriched) {
             var tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
             tr.setAttribute('data-pr-id', p.id);
-            var subtitle = '';
-            if (p.legal_name) {
+            // Display name primary, vendor ID secondary. Even when anonymised
+            // the upload often has VEND-01000 as both name and ID, which renders
+            // identically — but when it's "Acme Widgets Ltd" we want that prominent.
+            var displayName = p.supplier_name || p.supplier_identifier;
+            var showIdSeparately = p.supplier_name && p.supplier_name !== p.supplier_identifier;
+            var subtitle;
+            if (p.legal_name && p.legal_name !== displayName) {
                 subtitle = '<div style="font-size:10px; color:var(--text-secondary); font-style:italic;">' + escHTML(p.legal_name) + '</div>';
+            } else if (showIdSeparately) {
+                subtitle = '<div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(p.supplier_identifier) + '</div>';
             } else if (p.contact_name) {
                 subtitle = '<div style="font-size:10px; color:var(--muted);">' + escHTML(p.contact_name) + '</div>';
+            } else {
+                subtitle = '';
             }
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
-                '<td><strong>' + escHTML(p.supplier_identifier) + '</strong>' +
+                '<td><strong>' + escHTML(displayName) + '</strong>' +
                     subtitle +
                 '</td>' +
                 '<td>' + escHTML(p.currency) + '</td>' +
