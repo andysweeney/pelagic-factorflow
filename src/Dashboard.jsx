@@ -192,11 +192,57 @@ function isSameParentSupplier(id1, id2) {
 }
 // Resolve a supplierId to display name (used in tables etc)
 function supName(entityId) { return getEntityDisplayName(entityId); }
-// Get buyer display name by ID
-function buyName(buyerId) {
-  if (!buyerId) return "";
-  var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
-  return b ? b.name : buyerId;
+
+// ======== Buyer-side entity helpers ========
+// Mirror of the supplier-side family above. Composite ID syntax is identical
+// ("BUY-001" or "BUY-001:BR-001"); parseEntityId / makeEntityId are reused
+// since they're prefix-agnostic. The .supplierId field returned from
+// parseEntityId is misnamed — it just holds "the parent part" regardless of
+// whether the entity is a supplier or a buyer. Don't be misled by the name.
+function getBuyerById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  return BUYERS_DB.find(function(b) { return b.id === parsed.supplierId; }) || null;
+}
+function getBuyerBranchById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  if (!parsed.branchId) return null;
+  var buy = BUYERS_DB.find(function(b) { return b.id === parsed.supplierId; });
+  if (!buy || !buy.branches) return null;
+  return buy.branches.find(function(b) { return b.branchId === parsed.branchId; }) || null;
+}
+function getBuyerEntityDisplayName(entityId) {
+  if (!entityId) return "";
+  var buy = getBuyerById(entityId);
+  if (!buy) return entityId;
+  var br = getBuyerBranchById(entityId);
+  return br ? buy.name + " \u2014 " + br.branchName : buy.name;
+}
+function getAllBuyerEntities() {
+  var result = [];
+  BUYERS_DB.forEach(function(b) {
+    result.push({ value: b.id, label: b.name, buyerId: b.id, isBranch: false });
+    if (b.branches) b.branches.forEach(function(br) {
+      var eid = makeEntityId(b.id, br.branchId);
+      result.push({ value: eid, label: b.name + " \u2014 " + br.branchName, buyerId: b.id, isBranch: true, branchId: br.branchId || "" });
+    });
+  });
+  return result;
+}
+// Backward-compatible flat-buyer name helper. Now branch-aware: given a
+// composite entity ID it returns "Parent — Branch"; given a flat parent ID
+// it returns just the parent name. Callers that pass a plain "BUY-001" keep
+// working unchanged.
+function buyName(buyerEntityId) {
+  if (!buyerEntityId) return "";
+  // If it looks like a composite or known buyer ID, route through the new helper
+  if (buyerEntityId.match && buyerEntityId.match(/^BUY-/)) {
+    return getBuyerEntityDisplayName(buyerEntityId);
+  }
+  // Fallback: treat as flat parent ID (legacy callers)
+  var b = BUYERS_DB.find(function(x) { return x.id === buyerEntityId; });
+  return b ? b.name : buyerEntityId;
 }
 
 // Get bank details by entity ID and program — cascades: branch program → parent program → branch flat → parent flat
@@ -1068,6 +1114,14 @@ var FUNDING_PROGRAMS_DB = [];
 var ENTITY_NOTES_DB = [];
 var CSV_REVIEW_QUEUE_DB = [];
 var ENTITY_ALIASES_DB = [];
+// CSV provider registry and the (provider_id, entity_type, external_string)
+// -> pelagic_entity_id mapping. Lets MP ingest CSVs from external providers
+// (Coupa, AndyCo-on-behalf-of, supplier AR direct) where the data carries
+// the provider's own opaque ID strings rather than Pelagic IDs.
+// See csv_providers_and_aliases.sql for the schema, design notes, and the
+// rationale for per-buyer conduit registration.
+var CSV_PROVIDERS_DB = [];
+var PROVIDER_ALIASES_DB = [];
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -1347,6 +1401,7 @@ async function saveBuyer(buyId) {
       paused: b.paused || false,
       credit_limits: b.creditLimits || {},
       single_invoice_limits: b.singleInvoiceLimits || {},
+      branches: b.branches || [],
       // Companies House persistence fields (added in stage 1.6)
       entity_source: b.entitySource || "manual",
       directors: b.directors || [],
@@ -1408,6 +1463,183 @@ async function saveCreditNote(cnId) {
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
   } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
   _isSaving = false;
+}
+
+// ----------------------------------------------------------------------------
+// CSV Provider + Provider Entity Alias persistence
+// ----------------------------------------------------------------------------
+async function saveCsvProvider(providerId) {
+  var p = CSV_PROVIDERS_DB.find(function(x) { return x.id === providerId; });
+  if (!p) return;
+  _isSaving = true;
+  try {
+    var row = {
+      provider_id: p.id, provider_name: p.name, provider_kind: p.kind,
+      associated_buyer_id: p.associatedBuyerId || null,
+      associated_supplier_id: p.associatedSupplierId || null,
+      status: p.status || "active",
+      superseded_by_provider_id: p.supersededByProviderId || null,
+      superseded_at: p.supersededAt || null,
+      notes: p.notes || []
+    };
+    var cpRes = await supabase.from("csv_providers").upsert([row], { onConflict: "provider_id" });
+    if (cpRes && cpRes.error) { console.error("[SaveCsvProvider]:", cpRes.error); toast.error("Provider save failed", cpRes.error.message || "Database error."); }
+  } catch (e) { console.error("[SaveCsvProvider] Error:", e); toast.error("Provider save error", e.message || String(e)); }
+  _isSaving = false;
+}
+
+// Validates that pelagic_entity_id resolves to a real entity (and a real
+// branch on that parent if the ID is composite). This validation lives here,
+// not in the DB, because we can't FK to a composite ID — Postgres can't see
+// into the JSONB branches array. Every alias insertion path goes through this
+// function; that keeps the bug surface small. See SQL header for context.
+function validateAliasTarget(entityType, pelagicEntityId) {
+  if (!pelagicEntityId) return { ok: false, reason: "pelagic_entity_id required" };
+  var parsed = parseEntityId(pelagicEntityId);
+  if (entityType === "supplier") {
+    var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; });
+    if (!sup) return { ok: false, reason: "Supplier '" + parsed.supplierId + "' not found in Main Portal" };
+    if (parsed.branchId) {
+      var supBr = (sup.branches || []).find(function(b) { return b.branchId === parsed.branchId; });
+      if (!supBr) return { ok: false, reason: "Branch '" + parsed.branchId + "' not found on supplier " + sup.id };
+    }
+  } else if (entityType === "buyer") {
+    var buy = BUYERS_DB.find(function(b) { return b.id === parsed.supplierId; });
+    if (!buy) return { ok: false, reason: "Buyer '" + parsed.supplierId + "' not found in Main Portal" };
+    if (parsed.branchId) {
+      var buyBr = (buy.branches || []).find(function(b) { return b.branchId === parsed.branchId; });
+      if (!buyBr) return { ok: false, reason: "Branch '" + parsed.branchId + "' not found on buyer " + buy.id };
+    }
+  } else {
+    return { ok: false, reason: "entity_type must be 'supplier' or 'buyer'" };
+  }
+  return { ok: true };
+}
+
+async function saveProviderAlias(alias) {
+  // alias: { providerId, entityType, externalString, pelagicEntityId, firstSeenInUploadId?, verifiedBy?, verifiedAt?, notes? }
+  // Idempotent upsert keyed on (provider_id, entity_type, external_string). If a row already
+  // exists for that triple, this overwrites pelagic_entity_id — that's intentional, it's
+  // how the admin UI's "edit alias" action lands.
+  if (!alias || !alias.providerId || !alias.entityType || !alias.externalString) return { ok: false, reason: "missing required fields" };
+  var v = validateAliasTarget(alias.entityType, alias.pelagicEntityId);
+  if (!v.ok) { toast.error("Cannot save alias", v.reason); return v; }
+  _isSaving = true;
+  try {
+    var row = {
+      provider_id: alias.providerId,
+      entity_type: alias.entityType,
+      external_string: alias.externalString,
+      pelagic_entity_id: alias.pelagicEntityId,
+      first_seen_at: alias.firstSeenAt || new Date().toISOString(),
+      first_seen_in_upload_id: alias.firstSeenInUploadId || null,
+      verified_by: alias.verifiedBy || null,
+      verified_at: alias.verifiedAt || null,
+      notes: alias.notes || null
+    };
+    var paRes = await supabase.from("provider_entity_aliases").upsert([row], { onConflict: "provider_id,entity_type,external_string" });
+    if (paRes && paRes.error) { console.error("[SaveAlias]:", paRes.error); toast.error("Alias save failed", paRes.error.message || "Database error."); _isSaving = false; return { ok: false, reason: paRes.error.message }; }
+    // Mirror into in-memory cache
+    var existingIdx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a.providerId === alias.providerId && a.entityType === alias.entityType && a.externalString === alias.externalString; });
+    var cacheEntry = {
+      providerId: alias.providerId, entityType: alias.entityType, externalString: alias.externalString,
+      pelagicEntityId: alias.pelagicEntityId,
+      firstSeenAt: row.first_seen_at, firstSeenInUploadId: row.first_seen_in_upload_id,
+      verifiedBy: row.verified_by, verifiedAt: row.verified_at, notes: row.notes
+    };
+    if (existingIdx >= 0) PROVIDER_ALIASES_DB[existingIdx] = cacheEntry;
+    else PROVIDER_ALIASES_DB.push(cacheEntry);
+  } catch (e) { console.error("[SaveAlias] Error:", e); toast.error("Alias save error", e.message || String(e)); _isSaving = false; return { ok: false, reason: e.message }; }
+  _isSaving = false;
+  return { ok: true };
+}
+
+async function deleteProviderAlias(providerId, entityType, externalString) {
+  _isSaving = true;
+  try {
+    var delRes = await supabase.from("provider_entity_aliases").delete()
+      .eq("provider_id", providerId)
+      .eq("entity_type", entityType)
+      .eq("external_string", externalString);
+    if (delRes && delRes.error) { console.error("[DeleteAlias]:", delRes.error); toast.error("Alias delete failed", delRes.error.message); }
+    else {
+      // Drop from in-memory cache
+      var idx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a.providerId === providerId && a.entityType === entityType && a.externalString === externalString; });
+      if (idx >= 0) PROVIDER_ALIASES_DB.splice(idx, 1);
+    }
+  } catch (e) { console.error("[DeleteAlias] Error:", e); toast.error("Alias delete error", e.message || String(e)); }
+  _isSaving = false;
+}
+
+// Transfer aliases from one provider to another. Conflicts (same external_string
+// already exists on the destination, mapped to a different pelagic_entity_id)
+// are rejected — the operator must resolve them manually first. Same-target
+// conflicts are silently merged (the destination row already says what the
+// source row would have said).
+async function transferProviderAliases(sourceProviderId, destinationProviderId) {
+  if (sourceProviderId === destinationProviderId) return { ok: false, reason: "source and destination are the same" };
+  var sourceAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === sourceProviderId; });
+  var destAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === destinationProviderId; });
+  var destByKey = {};
+  destAliases.forEach(function(a) { destByKey[a.entityType + "|" + a.externalString] = a; });
+
+  var conflicts = [];
+  var willMove = [];
+  var willMerge = [];
+  sourceAliases.forEach(function(a) {
+    var key = a.entityType + "|" + a.externalString;
+    var dest = destByKey[key];
+    if (!dest) { willMove.push(a); return; }
+    if (dest.pelagicEntityId === a.pelagicEntityId) { willMerge.push(a); return; }
+    conflicts.push({ sourceAlias: a, destAlias: dest });
+  });
+
+  if (conflicts.length > 0) {
+    return { ok: false, reason: "conflicts", conflicts: conflicts, willMove: willMove, willMerge: willMerge };
+  }
+  // No conflicts — proceed.
+  _isSaving = true;
+  try {
+    // Move (rows that aren't present in destination): UPDATE provider_id
+    if (willMove.length > 0) {
+      var movePayload = willMove.map(function(a) {
+        return {
+          provider_id: destinationProviderId,
+          entity_type: a.entityType,
+          external_string: a.externalString,
+          pelagic_entity_id: a.pelagicEntityId,
+          first_seen_at: a.firstSeenAt,
+          first_seen_in_upload_id: a.firstSeenInUploadId,
+          verified_by: a.verifiedBy,
+          verified_at: a.verifiedAt,
+          notes: a.notes
+        };
+      });
+      // Insert at destination (this is the "move" half)
+      var insRes = await supabase.from("provider_entity_aliases").upsert(movePayload, { onConflict: "provider_id,entity_type,external_string" });
+      if (insRes && insRes.error) { console.error("[TransferAliases] insert error:", insRes.error); toast.error("Transfer failed", insRes.error.message); _isSaving = false; return { ok: false, reason: insRes.error.message }; }
+    }
+    // Delete source rows (both moved and merged — they no longer need to exist on the source)
+    var delRes = await supabase.from("provider_entity_aliases").delete().eq("provider_id", sourceProviderId);
+    if (delRes && delRes.error) { console.error("[TransferAliases] delete error:", delRes.error); toast.error("Transfer cleanup failed", delRes.error.message); _isSaving = false; return { ok: false, reason: delRes.error.message }; }
+    // Mark source provider as superseded
+    var srcProv = CSV_PROVIDERS_DB.find(function(p) { return p.id === sourceProviderId; });
+    if (srcProv) {
+      srcProv.status = "superseded";
+      srcProv.supersededByProviderId = destinationProviderId;
+      srcProv.supersededAt = new Date().toISOString();
+      await saveCsvProvider(sourceProviderId);
+    }
+    // Mirror into in-memory cache: move source aliases to destination, dropping any that were merged
+    willMove.forEach(function(a) { a.providerId = destinationProviderId; });
+    // Remove merged duplicates from the source side
+    willMerge.forEach(function(mergedAlias) {
+      var srcIdx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a === mergedAlias; });
+      if (srcIdx >= 0) PROVIDER_ALIASES_DB.splice(srcIdx, 1);
+    });
+  } catch (e) { console.error("[TransferAliases] Error:", e); toast.error("Transfer error", e.message || String(e)); _isSaving = false; return { ok: false, reason: e.message }; }
+  _isSaving = false;
+  return { ok: true, moved: willMove.length, merged: willMerge.length };
 }
 
 async function saveHoldbackPayment(hbpId) {
@@ -1483,7 +1715,9 @@ async function loadPersistedData() {
       safeFetch(fetchAllRows("audit_log").then(function(d) { return { data: d }; }), "audit_log"),                                                                // 11
       safeFetch(supabase.from("entity_notes").select("*").order("created_at", { ascending: true }), "entity_notes"),                                               // 12
       safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true }), "csv_review_queue"),               // 13
-      safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases")                                                                                     // 14
+      safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases"),                                                                                    // 14
+      safeFetch(supabase.from("csv_providers").select("*"), "csv_providers"),                                                                                      // 15
+      safeFetch(supabase.from("provider_entity_aliases").select("*"), "provider_entity_aliases")                                                                   // 16
     ]);
     console.log("[Load] Parallel fetches completed in " + (Date.now() - t0) + "ms");
 
@@ -1493,6 +1727,7 @@ async function loadPersistedData() {
     var spqRes = results[9], cnRes = results[10];
     var auditRes = results[11], enRes = results[12];
     var rqRes = results[13], alRes = results[14];
+    var cpRes = results[15], paRes = results[16];
 
     // Normalise: the fetchAllRows-wrapped entries hold data arrays directly
     var invData = (invRes && invRes.data) || [];
@@ -1553,6 +1788,7 @@ async function loadPersistedData() {
           paused: row.paused || false,
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          branches: row.branches || [],
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
           directors: row.directors || [],
@@ -1718,6 +1954,46 @@ async function loadPersistedData() {
     } else if (alRes && alRes.data) {
       ENTITY_ALIASES_DB = alRes.data.map(function(row) {
         return { id: row.id, aliasName: row.alias_name, entityType: row.entity_type, entityId: row.entity_id, entityName: row.entity_name };
+      });
+    }
+    // Process CSV providers (table may not exist yet — graceful degradation
+    // means the rest of the app still loads while we're rolling out the schema)
+    if (cpRes && cpRes._failed) {
+      console.warn("csv_providers table not found — skipping. Run csv_providers_and_aliases.sql to enable.");
+    } else if (cpRes && cpRes.data) {
+      CSV_PROVIDERS_DB.length = 0;
+      cpRes.data.forEach(function(row) {
+        CSV_PROVIDERS_DB.push({
+          id: row.provider_id,
+          name: row.provider_name,
+          kind: row.provider_kind,
+          associatedBuyerId: row.associated_buyer_id || null,
+          associatedSupplierId: row.associated_supplier_id || null,
+          status: row.status,
+          supersededByProviderId: row.superseded_by_provider_id || null,
+          supersededAt: row.superseded_at || null,
+          notes: row.notes || [],
+          createdAt: row.created_at
+        });
+      });
+    }
+    // Process provider entity aliases
+    if (paRes && paRes._failed) {
+      console.warn("provider_entity_aliases table not found — skipping.");
+    } else if (paRes && paRes.data) {
+      PROVIDER_ALIASES_DB.length = 0;
+      paRes.data.forEach(function(row) {
+        PROVIDER_ALIASES_DB.push({
+          providerId: row.provider_id,
+          entityType: row.entity_type,
+          externalString: row.external_string,
+          pelagicEntityId: row.pelagic_entity_id,
+          firstSeenAt: row.first_seen_at,
+          firstSeenInUploadId: row.first_seen_in_upload_id || null,
+          verifiedBy: row.verified_by || null,
+          verifiedAt: row.verified_at || null,
+          notes: row.notes || null
+        });
       });
     }
 
@@ -2053,6 +2329,7 @@ async function reloadBuyers() {
           paused: row.paused || false,
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          branches: row.branches || [],
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
           directors: row.directors || [],
@@ -2161,6 +2438,7 @@ async function savePersistedData() {
         paused: b.paused || false,
         credit_limits: b.creditLimits || {},
         single_invoice_limits: b.singleInvoiceLimits || {},
+        branches: b.branches || [],
         // Companies House persistence fields (added in stage 1.6)
         entity_source: b.entitySource || "manual",
         directors: b.directors || [],
@@ -3834,6 +4112,10 @@ export default function FactoringDashboard() {
   var csvRev1 = useState([]), csvReviewQueue = csvRev1[0], setCsvReviewQueue = csvRev1[1];
   var csvRes1 = useState(null), csvResolution = csvRes1[0], setCsvResolution = csvRes1[1]; // { suppliers: {csvName: entityId}, buyers: {csvName: entityId}, unresolved: [...] }
   var csvRes2 = useState("mapping"), csvImportStep = csvRes2[0], setCsvImportStep = csvRes2[1]; // "mapping" | "resolution" | "processing" | "done"
+  // Selected provider for this CSV import. null = no provider selected (the BI-style
+  // direct-Pelagic-ID flow stays available for back-compat). When set, external string
+  // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
+  var csvProv1 = useState(null), csvProvider = csvProv1[0], setCsvProvider = csvProv1[1];
   var ps1 = useState(25), PS = ps1[0], setPS = ps1[1];
   var sel1 = useState({}), selectedInvs = sel1[0], setSelectedInvs = sel1[1]; // {invoiceId: true} for bulk actions
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isI = view === "invoices", isUI = view === "unpurchased", isM = view === "manage";
@@ -4625,7 +4907,11 @@ export default function FactoringDashboard() {
   }
 
   // Buyer-side exposure/headroom — mirrors getSupplierProgramExposure but
-  // matches inv.buyerId. Buyers don't have branches so no parent rollup.
+  // matches inv.buyerId. Phase 2 TODO: buyer branches now exist; this function
+  // currently treats inv.buyerId as flat. Once Phase 2 lands, decide whether
+  // limits roll up to the parent buyer or are branch-scoped, and update the
+  // match accordingly (likely: parent rollup when limit is set on parent,
+  // exact match when set on branch — same shape as the supplier side).
   // Same "live exposure" semantics: cap+int+pen O/S, plus queued capital, plus pending top-up.
   function getBuyerProgramExposure(buyerId, programId, excludeInvoiceId) {
     if (!buyerId || !programId) return 0;
@@ -4712,10 +4998,54 @@ export default function FactoringDashboard() {
     return r2(totalInflows - totalFundsOut - pendingDisbursalsAmt - pendingFundingAmt);
   }
 
+  // Helper: has any prior invoice for the (parentSup, parentBuy) pair ever
+  // been funded? Used by Warning 2 below — the goal is "first time we'd
+  // advance capital for this combination". Funded statuses include the
+  // post-pending lifecycle (purchased, funded, at_risk, overdue, fully_repaid,
+  // historic) — basically any state past the "pending review" gate.
+  function hasPriorFundedForPair(parentSupId, parentBuyId, excludeInvoiceId) {
+    if (!parentSupId || !parentBuyId) return true; // can't check — fail open
+    var fundedStatuses = { purchased: 1, funded: 1, at_risk: 1, overdue: 1, fully_repaid: 1, historic: 1 };
+    return INVOICES_DB.some(function(inv) {
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return false;
+      if (!fundedStatuses[inv.fundingStatus]) return false;
+      var sP = getParentEntityId(inv.supplierId);
+      var bP = getParentEntityId(inv.buyerId);
+      return sP === parentSupId && bP === parentBuyId;
+    });
+  }
+
   function fundInvoice(invId, programId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "pending") return;
     if (!programId) return;
+
+    // Warning 2: first-time funded (supplier, buyer) pair. Blocking modal.
+    // Funding is the irreversible step; the warning is intentionally heavier
+    // than Warning 1 at upload time. The check is parent-scoped (branch-level
+    // first-funding is not warned — too noisy once a parent relationship is
+    // established).
+    var supParent = getParentEntityId(raw.supplierId);
+    var buyParent = getParentEntityId(raw.buyerId);
+    if (!hasPriorFundedForPair(supParent, buyParent, raw.id)) {
+      var supDisplay = raw.supplierName || supParent;
+      var buyDisplay = raw.buyerName || buyParent;
+      var msg = "FIRST FUNDING for this supplier-buyer pair:\n\n" +
+                "Supplier: " + supDisplay + " (" + supParent + ")\n" +
+                "Buyer: " + buyDisplay + " (" + buyParent + ")\n\n" +
+                "No prior invoice for this combination has ever been funded.\n" +
+                "An unexpected pairing here can indicate an alias verification mistake.\n\n" +
+                "Proceed with funding?";
+      if (!window.confirm(msg)) {
+        auditLog("Invoice Funding Cancelled (First-Pair Warning)", invId + ": operator cancelled funding at the first-pair warning. Supplier " + supParent + " / Buyer " + buyParent, { invoiceId: invId, supplierId: supParent, buyerId: buyParent, source: "warning_2" });
+        return;
+      }
+      // Operator confirmed — log it. Differentiates "this is genuinely first
+      // funding for a new relationship" from "operator hit fund without
+      // pausing", in post-mortem terms.
+      auditLog("Invoice Funding Confirmed (First-Pair Warning)", invId + ": operator confirmed first-pair funding warning. Supplier " + supParent + " / Buyer " + buyParent, { invoiceId: invId, supplierId: supParent, buyerId: buyParent, source: "warning_2" });
+    }
+
     raw.fundingStatus = "purchased";
     raw.approvedDate = fundPopupFields.paymentDate || viewDate;
     raw.fundingProgram = programId;
@@ -5630,7 +5960,12 @@ export default function FactoringDashboard() {
             <button onClick={async function() {
               if (isBuyer) {
                 // Buyer flow: no rates, just limits + add to fp.eligibleBuyers.
-                var buy = BUYERS_DB.find(function(b) { return b.id === entityId; });
+                // Branch-aware: entityId may be either "BUY-001" (parent) or
+                // "BUY-001:BR-001" (branch). Limits are stored on the parent
+                // buyer record either way — they cascade to branches the same
+                // way supplier rates/limits do.
+                var parentBuyId = getParentEntityId(entityId) || entityId;
+                var buy = BUYERS_DB.find(function(b) { return b.id === parentBuyId; });
                 if (!buy) { alert("Buyer not found."); return; }
                 if (m.creditLimit) {
                   if (!buy.creditLimits) buy.creditLimits = {};
@@ -5644,22 +5979,31 @@ export default function FactoringDashboard() {
                 // programs" to "on at least one program". This is the onboarding
                 // moment — Admin must KYC them before they can be unpaused.
                 // Subsequent program additions don't re-pause an already-active buyer.
-                var buyerWasOnNoPrograms = programsForBuyer(entityId).length === 0;
+                // Branch additions count as "on the program" via the parent, so use
+                // the parent ID for the programsForBuyer check.
+                var buyerWasOnNoPrograms = programsForBuyer(parentBuyId).length === 0;
                 var buyerForcePaused = false;
                 if (buyerWasOnNoPrograms && !buy.paused) {
                   buy.paused = true;
                   buyerForcePaused = true;
                 }
-                await saveBuyer(entityId);
+                await saveBuyer(parentBuyId);
                 var fpB = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
                 if (fpB) {
                   var fpArrB = (fpB.eligibleBuyers || []).slice();
-                  if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
+                  if (m.isBranch) {
+                    // Adding a branch: just push the composite ID (parent may or may not be there)
+                    if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
+                  } else {
+                    // Adding the parent: strip any existing branch entries to avoid double-counting
+                    fpArrB = fpArrB.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                    if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
+                  }
                   fpB.eligibleBuyers = fpArrB;
                   await saveFundingProgram(fpB.id);
                 }
                 // Mirror into manageFields if currently editing this buyer
-                if (manageEdit === entityId) {
+                if (manageEdit === parentBuyId) {
                   setManageFields(function(prev) {
                     var next = Object.assign({}, prev);
                     if (m.creditLimit) {
@@ -5677,10 +6021,15 @@ export default function FactoringDashboard() {
                 setProgFields(function(p) {
                   if (!p) return p;
                   var arr = (p.eligibleBuyers || []).slice();
-                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                  if (m.isBranch) {
+                    if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                  } else {
+                    arr = arr.filter(function(n) { return !n.startsWith(entityId + ":"); });
+                    if (arr.indexOf(entityId) === -1) arr.push(entityId);
+                  }
                   return Object.assign({}, p, { eligibleBuyers: arr });
                 });
-                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program") + (buyerForcePaused ? " \u2014 paused pending KYC" : ""), { buyerId: entityId, buyer: entityName, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: buyerForcePaused });
+                auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program") + (buyerForcePaused ? " \u2014 paused pending KYC" : ""), { buyerId: entityId, buyer: entityName, isBranch: !!m.isBranch, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: buyerForcePaused });
                 setAddToProgramModal(null);
                 setDataVer(function(v) { return v + 1; });
                 return;
@@ -18209,7 +18558,7 @@ export default function FactoringDashboard() {
           return <div>
             <div style={{ padding: "8px 16px", background: "#0EA5E920", border: "1px solid #0EA5E9", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#0EA5E9", fontWeight: 600 }}>v14 — CSV Import + Review Queue enabled</div>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 16, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
-              {["suppliers", "buyers", "service_providers", "programs", "csv_import", "csv_review", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "csv_import", "csv_review", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -18953,6 +19302,20 @@ export default function FactoringDashboard() {
                     var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: "BR-" + String((branches.length || 0) + 1).padStart(3, "0"), branchName: "", addressLine1: "", addressLine2: "", city: "", county: "", country: "United Kingdom", postcode: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
                     setManagePopup({ type: "branchEdit", idx: idx, data: br });
                   }
+                  // Dispatch the right save function for the parent entity that
+                  // owns this branch. Previously this was hardcoded to
+                  // saveSupplier(selectedSupplier), which (a) used the wrong
+                  // selected-entity variable for buyers, and (b) silently
+                  // dropped writes for buyer branches. Also the edit path
+                  // never called save at all — only the create path did —
+                  // which meant edits to existing branches never persisted.
+                  // Both bugs fixed here.
+                  function persistBranchOwner() {
+                    if (!detEntity) return;
+                    if (manageTab === "suppliers") saveSupplier(detEntity.id);
+                    else if (manageTab === "service_providers") saveServiceProvider(detEntity.id);
+                    else if (manageTab === "buyers") saveBuyer(detEntity.id);
+                  }
                   function saveBranch() {
                     if (!ebData || !ebData.branchName || !detEntity) return;
                     if (!detEntity.branches) detEntity.branches = [];
@@ -18987,11 +19350,12 @@ export default function FactoringDashboard() {
                       });
                       var brDetail = brChanges.length > 0 ? brChanges.join("; ") : "No field changes";
                       detEntity.branches[ebIdx] = ebData;
+                      persistBranchOwner();
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
                     } else {
                       detEntity.branches.push(ebData);
-                      saveSupplier(selectedSupplier);
-                    auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
+                      persistBranchOwner();
+                      auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
                     }
                     setManagePopup(null);
                     setDataVer(function(v) { return v + 1; });
@@ -19000,8 +19364,8 @@ export default function FactoringDashboard() {
                     if (!detEntity || !detEntity.branches) return;
                     var removed = detEntity.branches[idx];
                     detEntity.branches.splice(idx, 1);
-                    saveSupplier(selectedSupplier);
-                        auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
+                    persistBranchOwner();
+                    auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
                     setDataVer(function(v) { return v + 1; });
                   }
                   function bfld(label, key, type) {
@@ -20110,37 +20474,91 @@ export default function FactoringDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() {
-                        if (sel) {
-                          // Deselect: remove from eligibleBuyers and persist (mirrors supplier-side semantics).
-                          // Existing limits on the buyer object are intentionally left in place (so re-adding restores them);
-                          // the funding gate only consults limits when the buyer is in eligibleBuyers anyway.
-                          setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); });
-                          var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                          if (dpEditingProgBuy) {
-                            dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id; });
-                            saveFundingProgram(dpEditingProgBuy.id);
+                      <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
+                        // Mirror of the supplier-side widget below. Same three-state pattern:
+                        //   (1) parent selected: branches shown as "(auto)" — covered by parent
+                        //   (2) parent not selected: branches shown as individually toggleable
+                        //   (3) branch individually selected: composite ID stored in eligibleBuyers
+                        // Parent-and-branch coexistence is prevented at toggle time: selecting a
+                        // parent strips any branch entries; selecting a branch leaves the parent
+                        // status alone (the parent must already be off, since (1) auto-disables
+                        // branch toggles).
+                        var items = [];
+                        BUYERS_DB.forEach(function(b) {
+                          var parentSel = (pf.eligibleBuyers || []).indexOf(b.id) > -1;
+                          items.push(React.createElement("span", { key: b.id, onClick: function() {
+                            if (parentSel) {
+                              // Deselect parent: remove parent AND any branches under it
+                              setProgFields(function(p) {
+                                var arr = (p.eligibleBuyers || []).slice();
+                                arr = arr.filter(function(n) { return n !== b.id && !n.startsWith(b.id + ":"); });
+                                return Object.assign({}, p, { eligibleBuyers: arr });
+                              });
+                              var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (dpEditingProgBuy) {
+                                dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id && !n.startsWith(b.id + ":"); });
+                                saveFundingProgram(dpEditingProgBuy.id);
+                              }
+                            } else {
+                              // Select parent: open add-to-program modal in buyer mode
+                              var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                              if (!editingProgramObjBuy) {
+                                toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                return;
+                              }
+                              setAddToProgramModal({
+                                entityKind: "buyer",
+                                entityId: b.id, entityName: b.name,
+                                isBranch: false,
+                                programId: editingProgramObjBuy.id, programName: pf.name || "",
+                                programCcy: pf.currency || "GBP",
+                                creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
+                                singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
+                              });
+                            }
+                          }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#2B4C7E20" : "transparent", color: parentSel ? "#0EA5E9" : "var(--muted)", borderColor: parentSel ? "#0EA5E9" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, b.name));
+                          // Branches: individually toggleable when parent is NOT selected
+                          if (b.branches && b.branches.length > 0 && !parentSel) {
+                            b.branches.forEach(function(br) {
+                              var brEntityId = makeEntityId(b.id, br.branchId);
+                              var brSel = (pf.eligibleBuyers || []).indexOf(brEntityId) > -1;
+                              items.push(React.createElement("span", { key: brEntityId, onClick: function() {
+                                if (brSel) {
+                                  setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], brEntityId) }); });
+                                  var dpEditingProgBB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (dpEditingProgBB) {
+                                    dpEditingProgBB.eligibleBuyers = (dpEditingProgBB.eligibleBuyers || []).filter(function(n) { return n !== brEntityId; });
+                                    saveFundingProgram(dpEditingProgBB.id);
+                                  }
+                                } else {
+                                  var editingProgramObjBB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                                  if (!editingProgramObjBB) {
+                                    toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
+                                    return;
+                                  }
+                                  setAddToProgramModal({
+                                    entityKind: "buyer",
+                                    entityId: brEntityId, entityName: b.name + " \u2014 " + br.branchName,
+                                    isBranch: true,
+                                    programId: editingProgramObjBB.id, programName: pf.name || "",
+                                    programCcy: pf.currency || "GBP",
+                                    // Limits cascade from parent buyer record (same as supplier rates/limits — kept on parent).
+                                    creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBB.id] !== undefined) ? String(b.creditLimits[editingProgramObjBB.id]) : "",
+                                    singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBB.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBB.id]) : ""
+                                  });
+                                }
+                              }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#2B4C7E20" : "transparent", color: brSel ? "#0EA5E9" : "var(--muted)", borderColor: brSel ? "#0EA5E9" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
+                            });
                           }
-                        } else {
-                          // Select: open generalised add-to-program modal in buyer mode (no rates, just limits).
-                          // Guard: a new (unsaved) program has no stable ID yet, so adding entities to it
-                          // would silently key their limits/rates against an empty programId. Block until saved.
-                          var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                          if (!editingProgramObjBuy) {
-                            toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
-                            return;
+                          // Branches: shown as "(auto)" when parent IS selected
+                          if (b.branches && b.branches.length > 0 && parentSel) {
+                            b.branches.forEach(function(br) {
+                              items.push(React.createElement("span", { key: b.id + ":" + (br.branchId || br.branchName) + "-auto", style: Object.assign({}, multiSelStyle, { background: "#2B4C7E10", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
+                            });
                           }
-                          setAddToProgramModal({
-                            entityKind: "buyer",
-                            entityId: b.id, entityName: b.name,
-                            programId: editingProgramObjBuy.id, programName: pf.name || "",
-                            programCcy: pf.currency || "GBP",
-                            // Pre-populate with any limits already set on the buyer for this program (re-add convenience).
-                            creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
-                            singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
-                          });
-                        }
-                      }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
+                        });
+                        return items;
+                      })()}</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Suppliers</label>
@@ -20333,8 +20751,25 @@ export default function FactoringDashboard() {
                         {!manageDetail && manageTab === "csv_import" && (function() {
               var CSV_FIELDS = [
                 { key: "invoice_ref", label: "Invoice Reference", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no","buyer_invoice_ref","buyer_ref"] },
-                { key: "supplier", label: "Supplier", required: true, hints: ["supplier","supplier_name","supplier_id","vendor","vendor_name"] },
-                { key: "buyer", label: "Buyer", required: true, hints: ["buyer","buyer_name","buyer_id","customer","debtor"] },
+                // supplier_id / buyer_id are the AUTHORITATIVE identity columns.
+                // The BI module is the only source of valid CSVs for this importer,
+                // and it always emits both ID columns having already resolved identity
+                // via Main Portal at supplier-verification / buyer-onboarding time.
+                // Name columns are kept for human verification / audit trail only —
+                // they are NOT used for lookup. See: BRIEF item #1 (identity-by-ID).
+                { key: "supplier_id", label: "Supplier ID", required: false, hints: ["supplier_id","supplierid","supplier_code"] },
+                { key: "supplier_branch_id", label: "Supplier Branch ID", required: false, hints: ["supplier_branch_id","supplierbranchid","supplier_branch","branch_id_supplier"] },
+                { key: "buyer_id", label: "Buyer ID", required: false, hints: ["buyer_id","buyerid","buyer_code"] },
+                { key: "buyer_branch_id", label: "Buyer Branch ID", required: false, hints: ["buyer_branch_id","buyerbranchid","buyer_branch","branch_id_buyer"] },
+                // External-string columns: present in provider CSVs (Coupa, etc.) where the
+                // provider supplies their own opaque ID strings rather than Pelagic IDs.
+                // Resolution against provider_entity_aliases happens at validate time, scoped
+                // to the selected csvProvider. Mutually exclusive at the row level with the
+                // pelagic *_id columns above (validation enforces this — see validateImport).
+                { key: "external_supplier_string", label: "External Supplier ID (provider string)", required: false, hints: ["external_supplier_id","externalsupplierid","provider_supplier_id","external_vendor_id","vendor_external","provider_vendor_id"] },
+                { key: "external_buyer_string", label: "External Buyer ID (provider string)", required: false, hints: ["external_buyer_id","externalbuyerid","provider_buyer_id","external_customer_id","provider_customer_id"] },
+                { key: "supplier", label: "Supplier Name (label)", required: false, hints: ["supplier_name","suppliername","vendor_name","supplier"] },
+                { key: "buyer", label: "Buyer Name (label)", required: false, hints: ["buyer_name","buyername","customer_name","buyer"] },
                 { key: "invoice_amount", label: "Invoice Amount", required: true, hints: ["invoice_amount","amount","inv_amount","invoice_value","gross_amount","total"] },
                 { key: "approved_amount", label: "Approved Amount", required: false, hints: ["approved_amount","purchased","net_amount"] },
                 { key: "currency", label: "Currency", required: false, hints: ["currency","ccy","curr"] },
@@ -20408,80 +20843,166 @@ export default function FactoringDashboard() {
                 return !isNaN(dt.getTime()) ? dt.toISOString().split("T")[0] : null;
               }
 
-              // --- RESOLUTION STEP: resolve CSV names to entities ---
-              function resolveEntities() {
-                var supplierNames = {};
-                var buyerNames = {};
-                csvImportData.forEach(function(row) {
-                  var s = getMapped(row, "supplier");
-                  var b = getMapped(row, "buyer");
-                  if (s) supplierNames[s] = (supplierNames[s] || 0) + 1;
-                  if (b) buyerNames[b] = (buyerNames[b] || 0) + 1;
-                });
-
-                var supplierMap = {};
-                var buyerMap = {};
-                var unresolved = [];
-
-                // Try exact match against entities and aliases
-                Object.keys(supplierNames).forEach(function(csvName) {
-                  var exactSup = SUPPLIERS_DB.find(function(s) { return s.name === csvName; });
-                  if (exactSup) { supplierMap[csvName] = { id: exactSup.id, name: exactSup.name, match: "exact" }; return; }
-                  var alias = ENTITY_ALIASES_DB.find(function(a) { return a.aliasName === csvName && a.entityType === "supplier"; });
-                  if (alias) { supplierMap[csvName] = { id: alias.entityId, name: alias.entityName, match: "alias" }; return; }
-                  unresolved.push({ csvName: csvName, type: "supplier", count: supplierNames[csvName], resolvedTo: null });
-                });
-
-                Object.keys(buyerNames).forEach(function(csvName) {
-                  var exactBuy = BUYERS_DB.find(function(b) { return b.name === csvName; });
-                  if (exactBuy) { buyerMap[csvName] = { id: exactBuy.id, name: exactBuy.name, match: "exact" }; return; }
-                  var alias = ENTITY_ALIASES_DB.find(function(a) { return a.aliasName === csvName && a.entityType === "buyer"; });
-                  if (alias) { buyerMap[csvName] = { id: alias.entityId, name: alias.entityName, match: "alias" }; return; }
-                  unresolved.push({ csvName: csvName, type: "buyer", count: buyerNames[csvName], resolvedTo: null });
-                });
-
-                setCsvResolution({ suppliers: supplierMap, buyers: buyerMap, unresolved: unresolved });
-                setCsvImportStep(unresolved.length > 0 ? "resolution" : "processing");
-              }
-
-              function resolveEntity(idx, entityId) {
-                setCsvResolution(function(prev) {
-                  var updated = JSON.parse(JSON.stringify(prev));
-                  var item = updated.unresolved[idx];
-                  if (!entityId) { item.resolvedTo = null; return updated; }
-                  var entity = item.type === "supplier"
-                    ? SUPPLIERS_DB.find(function(s) { return s.id === entityId; })
-                    : BUYERS_DB.find(function(b) { return b.id === entityId; });
-                  if (entity) {
-                    item.resolvedTo = { id: entity.id, name: entity.name };
+              // --- VALIDATION STEP: confirm every row has a known supplier_id and buyer_id ---
+              // The importer supports two identity modes, interleaved per row:
+              //
+              //   Mode A — direct Pelagic IDs. Row has supplier_id / buyer_id columns
+              //   populated. Resolution is a direct lookup against SUPPLIERS_DB /
+              //   BUYERS_DB. Branch columns optional. csvProvider may be unset.
+              //   This is the BI handoff (CSV emitted by BI already carries Pelagic
+              //   IDs because identity was resolved in BI's prospect flow).
+              //
+              //   Mode B — provider-scoped external strings. Row has
+              //   external_supplier_string / external_buyer_string. csvProvider must
+              //   be set. Lookup goes through provider_entity_aliases keyed on
+              //   (provider, entity_type, external_string). Unrecognised strings
+              //   are hard errors — operator must resolve them in the provider
+              //   admin UI first.
+              //
+              // Mixed mode per row (some columns Mode A, some Mode B): Pelagic IDs
+              // take precedence on the side they're given. Validation enforces
+              // that each side of the row resolves SOMEHOW.
+              function validateImport() {
+                var errors = [];
+                var unknownSupIds = {};
+                var unknownBuyIds = {};
+                var unknownSupBranches = {};
+                var unknownBuyBranches = {};
+                var unrecognisedSupExt = {}; // key: external_string, val: count
+                var unrecognisedBuyExt = {};
+                var nameDivergences = [];
+                var newPairs = {}; // key: "SUP-XXX|BUY-YYY", val: { supId, buyId, count }
+                // Index existing PROVIDER_ALIASES_DB for fast lookup
+                var aliasIdx = {};
+                if (csvProvider) {
+                  PROVIDER_ALIASES_DB.forEach(function(a) {
+                    if (a.providerId !== csvProvider.id) return;
+                    aliasIdx[a.entityType + "|" + a.externalString] = a.pelagicEntityId;
+                  });
+                }
+                // Index existing INVOICES_DB by parent-level (supplier, buyer) pair so
+                // Warning 1 can check "have we ever seen this combination before?". Done
+                // once before the row loop so it's O(n+m) not O(n*m).
+                var seenPairs = {};
+                INVOICES_DB.forEach(function(inv) {
+                  if (inv.supplierId && inv.buyerId) {
+                    var supParent = getParentEntityId(inv.supplierId);
+                    var buyParent = getParentEntityId(inv.buyerId);
+                    seenPairs[supParent + "|" + buyParent] = true;
                   }
-                  return updated;
                 });
-              }
 
-              function confirmResolution() {
-                var res = csvResolution;
-                var allResolved = res.unresolved.every(function(u) { return u.resolvedTo; });
-                if (!allResolved) { alert("Please resolve all unmatched names before proceeding."); return; }
+                csvImportData.forEach(function(row, rowIdx) {
+                  var ref = getMapped(row, "invoice_ref") || "(no ref)";
+                  var supId = getMapped(row, "supplier_id");
+                  var buyId = getMapped(row, "buyer_id");
+                  var supBranchId = getMapped(row, "supplier_branch_id");
+                  var buyBranchId = getMapped(row, "buyer_branch_id");
+                  var extSupStr = getMapped(row, "external_supplier_string");
+                  var extBuyStr = getMapped(row, "external_buyer_string");
+                  var csvSupName = getMapped(row, "supplier");
+                  var csvBuyName = getMapped(row, "buyer");
 
-                // Save aliases and apply resolutions
-                res.unresolved.forEach(function(u) {
-                  if (u.type === "supplier") {
-                    res.suppliers[u.csvName] = { id: u.resolvedTo.id, name: u.resolvedTo.name, match: "resolved" };
+                  // Supplier resolution
+                  var resolvedSupId = null;
+                  var resolvedSupBranchId = null;
+                  if (supId) {
+                    resolvedSupId = supId;
+                    resolvedSupBranchId = supBranchId || null;
+                  } else if (extSupStr) {
+                    if (!csvProvider) { errors.push({ row: rowIdx + 2, ref: ref, msg: "external_supplier_string set but no provider selected. Choose a provider before validating." }); return; }
+                    var aliasHit = aliasIdx["supplier|" + extSupStr];
+                    if (!aliasHit) { unrecognisedSupExt[extSupStr] = (unrecognisedSupExt[extSupStr] || 0) + 1; return; }
+                    var parsed = parseEntityId(aliasHit);
+                    resolvedSupId = parsed.supplierId;
+                    resolvedSupBranchId = parsed.branchId || null;
                   } else {
-                    res.buyers[u.csvName] = { id: u.resolvedTo.id, name: u.resolvedTo.name, match: "resolved" };
+                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no supplier identity (need supplier_id OR external_supplier_string)" });
+                    return;
                   }
-                  // Save alias to DB
-                  var newAlias = { aliasName: u.csvName, entityType: u.type, entityId: u.resolvedTo.id, entityName: u.resolvedTo.name };
-                  ENTITY_ALIASES_DB.push(newAlias);
-                  if (supabase) {
-                    supabase.from("entity_aliases").insert({ alias_name: u.csvName, entity_type: u.type, entity_id: u.resolvedTo.id, entity_name: u.resolvedTo.name });
+
+                  // Buyer resolution
+                  var resolvedBuyId = null;
+                  var resolvedBuyBranchId = null;
+                  if (buyId) {
+                    resolvedBuyId = buyId;
+                    resolvedBuyBranchId = buyBranchId || null;
+                  } else if (extBuyStr) {
+                    if (!csvProvider) { errors.push({ row: rowIdx + 2, ref: ref, msg: "external_buyer_string set but no provider selected. Choose a provider before validating." }); return; }
+                    var aliasHitB = aliasIdx["buyer|" + extBuyStr];
+                    if (!aliasHitB) { unrecognisedBuyExt[extBuyStr] = (unrecognisedBuyExt[extBuyStr] || 0) + 1; return; }
+                    var parsedB = parseEntityId(aliasHitB);
+                    resolvedBuyId = parsedB.supplierId;
+                    resolvedBuyBranchId = parsedB.branchId || null;
+                  } else {
+                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no buyer identity (need buyer_id OR external_buyer_string)" });
+                    return;
+                  }
+
+                  // Validate parent entities exist
+                  var sup = SUPPLIERS_DB.find(function(s) { return s.id === resolvedSupId; });
+                  var buy = BUYERS_DB.find(function(b) { return b.id === resolvedBuyId; });
+                  if (!sup) { unknownSupIds[resolvedSupId] = (unknownSupIds[resolvedSupId] || 0) + 1; return; }
+                  if (!buy) { unknownBuyIds[resolvedBuyId] = (unknownBuyIds[resolvedBuyId] || 0) + 1; return; }
+
+                  // Validate branches if specified
+                  if (resolvedSupBranchId) {
+                    var supBr = (sup.branches || []).find(function(br) { return br.branchId === resolvedSupBranchId; });
+                    if (!supBr) {
+                      var supBrKey = resolvedSupId + ":" + resolvedSupBranchId;
+                      unknownSupBranches[supBrKey] = (unknownSupBranches[supBrKey] || 0) + 1;
+                      return;
+                    }
+                  }
+                  if (resolvedBuyBranchId) {
+                    var buyBr = (buy.branches || []).find(function(br) { return br.branchId === resolvedBuyBranchId; });
+                    if (!buyBr) {
+                      var buyBrKey = resolvedBuyId + ":" + resolvedBuyBranchId;
+                      unknownBuyBranches[buyBrKey] = (unknownBuyBranches[buyBrKey] || 0) + 1;
+                      return;
+                    }
+                  }
+
+                  if (csvSupName && csvSupName !== sup.name) nameDivergences.push({ kind: "supplier", id: resolvedSupId, csv: csvSupName, db: sup.name });
+                  if (csvBuyName && csvBuyName !== buy.name) nameDivergences.push({ kind: "buyer", id: resolvedBuyId, csv: csvBuyName, db: buy.name });
+
+                  // Warning 1 collection: (parent supplier, parent buyer) pair never
+                  // seen before in INVOICES_DB. Branch-level interactions for an
+                  // already-known parent pair don't trigger — too noisy. The check
+                  // is deliberately parent-scoped, matching the warning's intent
+                  // (catching "wrong supplier" / "wrong buyer" mistakes, not branch
+                  // routing differences within a known relationship).
+                  var pairKey = resolvedSupId + "|" + resolvedBuyId;
+                  if (!seenPairs[pairKey]) {
+                    if (!newPairs[pairKey]) newPairs[pairKey] = { supId: resolvedSupId, supName: sup.name, buyId: resolvedBuyId, buyName: buy.name, count: 0 };
+                    newPairs[pairKey].count++;
                   }
                 });
 
-                res.unresolved = [];
-                setCsvResolution(res);
-                setCsvImportStep("processing");
+                Object.keys(unknownSupIds).forEach(function(id) {
+                  errors.push({ row: null, ref: null, msg: "unknown supplier_id '" + id + "' (" + unknownSupIds[id] + " row" + (unknownSupIds[id] === 1 ? "" : "s") + "). Onboard this supplier in Main Portal before importing." });
+                });
+                Object.keys(unknownBuyIds).forEach(function(id) {
+                  errors.push({ row: null, ref: null, msg: "unknown buyer_id '" + id + "' (" + unknownBuyIds[id] + " row" + (unknownBuyIds[id] === 1 ? "" : "s") + "). Onboard this buyer in Main Portal before importing." });
+                });
+                Object.keys(unknownSupBranches).forEach(function(key) {
+                  var parts = key.split(":");
+                  errors.push({ row: null, ref: null, msg: "unknown supplier_branch_id '" + parts[1] + "' on supplier " + parts[0] + " (" + unknownSupBranches[key] + " row" + (unknownSupBranches[key] === 1 ? "" : "s") + "). Add the branch in Main Portal first." });
+                });
+                Object.keys(unknownBuyBranches).forEach(function(key) {
+                  var parts = key.split(":");
+                  errors.push({ row: null, ref: null, msg: "unknown buyer_branch_id '" + parts[1] + "' on buyer " + parts[0] + " (" + unknownBuyBranches[key] + " row" + (unknownBuyBranches[key] === 1 ? "" : "s") + "). Add the branch in Main Portal first." });
+                });
+                Object.keys(unrecognisedSupExt).forEach(function(str) {
+                  errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + str + "' (" + unrecognisedSupExt[str] + " row" + (unrecognisedSupExt[str] === 1 ? "" : "s") + "). Add this alias under " + (csvProvider ? csvProvider.name : "the provider") + " in Admin \u2192 CSV Providers before importing." });
+                });
+                Object.keys(unrecognisedBuyExt).forEach(function(str) {
+                  errors.push({ row: null, ref: null, msg: "unrecognised external buyer string '" + str + "' (" + unrecognisedBuyExt[str] + " row" + (unrecognisedBuyExt[str] === 1 ? "" : "s") + "). Add this alias under " + (csvProvider ? csvProvider.name : "the provider") + " in Admin \u2192 CSV Providers before importing." });
+                });
+
+                var newPairsArr = Object.keys(newPairs).map(function(k) { return newPairs[k]; });
+                setCsvResolution({ errors: errors, nameDivergences: nameDivergences, newPairs: newPairsArr });
+                setCsvImportStep(errors.length > 0 ? "validation_failed" : "processing");
               }
 
               // --- PROCESSING ---
@@ -20490,25 +21011,72 @@ export default function FactoringDashboard() {
                 setCsvImportProcessing(true);
                 setCsvImportProgress("Processing rows...");
                 _isSaving = true; // Suppress realtime reloads during import
+                // Synthetic upload ID. Threaded into audit log entries and into
+                // provider_entity_aliases.first_seen_in_upload_id so an alias
+                // can be traced back to the import that introduced it.
+                var uploadId = "UPL-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
                 var created = 0, updated = 0, queued = 0, skipped = 0, errors = [];
                 var reviewItems = [];
                 var now = new Date();
                 var nowStr = now.toISOString().split("T")[0];
                 var nowDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                var res = csvResolution || { suppliers: {}, buyers: {} };
 
                 csvImportData.forEach(function(row, rowIdx) {
                   var ref = getMapped(row, "invoice_ref");
                   if (!ref) { errors.push("Row " + (rowIdx + 2) + ": no invoice reference"); return; }
 
+                  // Dual-mode identity resolution — see validateImport for the
+                  // detailed shape. Direct Pelagic ID columns take precedence
+                  // when present; otherwise external strings are resolved via
+                  // PROVIDER_ALIASES_DB scoped to csvProvider. By the time we
+                  // get here, validateImport has already rejected unresolvable
+                  // rows — the lookups below are defence-in-depth but should
+                  // not in practice produce errors.
+                  var csvSupplierId = getMapped(row, "supplier_id");
+                  var csvBuyerId = getMapped(row, "buyer_id");
+                  var csvSupplierBranchId = getMapped(row, "supplier_branch_id");
+                  var csvBuyerBranchId = getMapped(row, "buyer_branch_id");
+                  var csvExtSupStr = getMapped(row, "external_supplier_string");
+                  var csvExtBuyStr = getMapped(row, "external_buyer_string");
                   var csvSupplierName = getMapped(row, "supplier");
                   var csvBuyerName = getMapped(row, "buyer");
 
-                  // Resolve names via alias map
-                  var supResolved = csvSupplierName ? (res.suppliers[csvSupplierName] || null) : null;
-                  var buyResolved = csvBuyerName ? (res.buyers[csvBuyerName] || null) : null;
-                  var supplierName = supResolved ? supResolved.name : csvSupplierName;
-                  var buyerName = buyResolved ? buyResolved.name : csvBuyerName;
+                  // Resolve supplier identity
+                  var supParentId = null, supBranchIdFinal = null;
+                  if (csvSupplierId) {
+                    supParentId = csvSupplierId;
+                    supBranchIdFinal = csvSupplierBranchId || null;
+                  } else if (csvExtSupStr && csvProvider) {
+                    var aliasRowS = PROVIDER_ALIASES_DB.find(function(a) { return a.providerId === csvProvider.id && a.entityType === "supplier" && a.externalString === csvExtSupStr; });
+                    if (aliasRowS) {
+                      var parsedS = parseEntityId(aliasRowS.pelagicEntityId);
+                      supParentId = parsedS.supplierId;
+                      supBranchIdFinal = parsedS.branchId || null;
+                    }
+                  }
+                  // Resolve buyer identity
+                  var buyParentId = null, buyBranchIdFinal = null;
+                  if (csvBuyerId) {
+                    buyParentId = csvBuyerId;
+                    buyBranchIdFinal = csvBuyerBranchId || null;
+                  } else if (csvExtBuyStr && csvProvider) {
+                    var aliasRowB = PROVIDER_ALIASES_DB.find(function(a) { return a.providerId === csvProvider.id && a.entityType === "buyer" && a.externalString === csvExtBuyStr; });
+                    if (aliasRowB) {
+                      var parsedB = parseEntityId(aliasRowB.pelagicEntityId);
+                      buyParentId = parsedB.supplierId;
+                      buyBranchIdFinal = parsedB.branchId || null;
+                    }
+                  }
+
+                  var resolvedSup = supParentId ? SUPPLIERS_DB.find(function(s) { return s.id === supParentId; }) : null;
+                  var resolvedBuy = buyParentId ? BUYERS_DB.find(function(b) { return b.id === buyParentId; }) : null;
+                  var resolvedSupBranch = (resolvedSup && supBranchIdFinal) ? (resolvedSup.branches || []).find(function(br) { return br.branchId === supBranchIdFinal; }) : null;
+                  var resolvedBuyBranch = (resolvedBuy && buyBranchIdFinal) ? (resolvedBuy.branches || []).find(function(br) { return br.branchId === buyBranchIdFinal; }) : null;
+
+                  // Authoritative name = DB name. CSV name is kept around purely for the audit note.
+                  // For display, decorate with branch name when present.
+                  var supplierName = resolvedSup ? (resolvedSupBranch ? resolvedSup.name + " \u2014 " + resolvedSupBranch.branchName : resolvedSup.name) : csvSupplierName;
+                  var buyerName = resolvedBuy ? (resolvedBuyBranch ? resolvedBuy.name + " \u2014 " + resolvedBuyBranch.branchName : resolvedBuy.name) : csvBuyerName;
 
                   var amountStr = getMapped(row, "invoice_amount");
                   var amount = amountStr ? parseFloat(amountStr) : null;
@@ -20532,14 +21100,19 @@ export default function FactoringDashboard() {
 
                   if (!existing) {
                     // CREATE new invoice
-                    if (!supplierName || !buyerName || amount === null || !invoiceDate || !dueDate) {
-                      errors.push("Row " + (rowIdx + 2) + " (" + ref + "): missing required fields for new invoice");
+                    if (amount === null || !invoiceDate || !dueDate) {
+                      errors.push("Row " + (rowIdx + 2) + " (" + ref + "): missing required fields for new invoice (amount / invoice_date / due_date)");
                       return;
                     }
-                    var sup = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                    var buy = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                    if (!sup) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): supplier '" + supplierName + "' not found (CSV: '" + csvSupplierName + "')"); return; }
-                    if (!buy) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): buyer '" + buyerName + "' not found (CSV: '" + csvBuyerName + "')"); return; }
+                    if (!supParentId) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): no supplier identity could be resolved"); return; }
+                    if (!buyParentId) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): no buyer identity could be resolved"); return; }
+                    var sup = resolvedSup;
+                    var buy = resolvedBuy;
+                    if (!sup) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): supplier '" + supParentId + "' not found in Main Portal. Onboard this supplier first."); return; }
+                    if (!buy) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): buyer '" + buyParentId + "' not found in Main Portal. Onboard this buyer first."); return; }
+                    // Branch existence already validated by validateImport(); these are defence-in-depth.
+                    if (supBranchIdFinal && !resolvedSupBranch) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): supplier branch '" + supBranchIdFinal + "' not found on " + sup.id); return; }
+                    if (buyBranchIdFinal && !resolvedBuyBranch) { errors.push("Row " + (rowIdx + 2) + " (" + ref + "): buyer branch '" + buyBranchIdFinal + "' not found on " + buy.id); return; }
 
                     var newId = "INV-" + String(INVOICES_DB.length + created + 1).padStart(5, "0");
                     var statusHist = [{ status: "Received", date: nowStr, note: "Created via CSV import" }];
@@ -20559,11 +21132,18 @@ export default function FactoringDashboard() {
 
                     var csvNotes = ["Created via CSV import" + (isHistoric ? " (Historic)" : "")];
                     if (amountPaid !== null) csvNotes.push("Amount Paid to Date: " + money(amountPaid, currency) + " (Payments to Invoice: " + money(amount - amountPaid, currency) + ")");
-                    if (supResolved && supResolved.match !== "exact") csvNotes.push("Supplier resolved: '" + csvSupplierName + "' \u2192 " + sup.name);
-                    if (buyResolved && buyResolved.match !== "exact") csvNotes.push("Buyer resolved: '" + csvBuyerName + "' \u2192 " + buy.name);
+                    if (resolvedSupBranch) csvNotes.push("Supplier branch: " + resolvedSupBranch.branchName + " (" + sup.id + ":" + resolvedSupBranch.branchId + ")");
+                    if (resolvedBuyBranch) csvNotes.push("Buyer branch: " + resolvedBuyBranch.branchName + " (" + buy.id + ":" + resolvedBuyBranch.branchId + ")");
+                    // Name divergence is a soft warning — lookup succeeded by ID, names just disagree.
+                    if (csvSupplierName && csvSupplierName !== sup.name) csvNotes.push("Note: CSV supplier name '" + csvSupplierName + "' differs from Main Portal name '" + sup.name + "' (matched by supplier_id " + sup.id + ")");
+                    if (csvBuyerName && csvBuyerName !== buy.name) csvNotes.push("Note: CSV buyer name '" + csvBuyerName + "' differs from Main Portal name '" + buy.name + "' (matched by buyer_id " + buy.id + ")");
 
                     INVOICES_DB.push({
-                      id: newId, supplierName: sup.name, supplierId: sup.id, buyerName: buy.name, buyerId: buy.id,
+                      // Option B identity: parent IDs and branch IDs are separate flat fields.
+                      // Branch IDs are null when the invoice is on the parent entity.
+                      id: newId,
+                      supplierName: supplierName, supplierId: sup.id, supplierBranchId: resolvedSupBranch ? resolvedSupBranch.branchId : null,
+                      buyerName: buyerName, buyerId: buy.id, buyerBranchId: resolvedBuyBranch ? resolvedBuyBranch.branchId : null,
                       amount: amount, currency: currency.toUpperCase(),
                       capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
                       advanceRate: 0, annualRate: 0, penaltyRate: 0,
@@ -20577,7 +21157,7 @@ export default function FactoringDashboard() {
                       csvAmountPaid: amountPaid,
                       notes: csvNotes.map(function(t) { return { text: t, display: nowDisplay }; })
                     });
-                    auditLog("Invoice Created (CSV)", "Invoice " + newId + " (" + ref + ") created via CSV import. " + sup.name + " / " + buy.name + " / " + money(amount, currency), { invoiceId: newId, reference: ref, source: "csv_import" });
+                    auditLog("Invoice Created (CSV)", "Invoice " + newId + " (" + ref + ") created via CSV import. " + supplierName + " / " + buyerName + " / " + money(amount, currency), { invoiceId: newId, reference: ref, source: "csv_import", uploadId: uploadId, supplierId: sup.id, supplierBranchId: resolvedSupBranch ? resolvedSupBranch.branchId : null, buyerId: buy.id, buyerBranchId: resolvedBuyBranch ? resolvedBuyBranch.branchId : null });
                     created++;
                     return;
                   }
@@ -20696,9 +21276,36 @@ export default function FactoringDashboard() {
                 setCsvImportProgress("");
                 _isSaving = false;
 
+                // Audit envelope: one entry per import, summarising the whole file.
+                // Per-invoice "Invoice Created (CSV)" entries continue alongside —
+                // they give detail, this gives the envelope. csvProvider may be
+                // null when no provider was selected (BI-style upload with direct
+                // Pelagic IDs — back-compat path). isFirstForProvider derives from
+                // the existing audit log so we don't need a separate "ever seen
+                // this provider?" table.
+                var providerForAudit = (typeof csvProvider !== "undefined" && csvProvider) ? csvProvider : null;
+                var isFirstForProvider = false;
+                if (providerForAudit) {
+                  isFirstForProvider = !AUDIT_LOG.some(function(e) {
+                    return e.action === "CSV Imported"
+                      && e.context && e.context.providerId === providerForAudit.id;
+                  });
+                }
+                var envelopeDetails = "CSV import: " + created + " created, " + updated + " updated, " + reviewItems.length + " queued for review, " + skipped + " skipped, " + errors.length + " errors (of " + csvImportData.length + " rows)";
+                if (providerForAudit) envelopeDetails += " — provider: " + providerForAudit.name + (isFirstForProvider ? " (FIRST UPLOAD)" : "");
+                auditLog("CSV Imported", envelopeDetails, {
+                  uploadId: uploadId,
+                  providerId: providerForAudit ? providerForAudit.id : null,
+                  providerName: providerForAudit ? providerForAudit.name : null,
+                  isFirstForProvider: isFirstForProvider,
+                  rows: { created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errored: errors.length, total: csvImportData.length },
+                  source: "csv_import"
+                });
+
                 setCsvImportResult({
                   created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errors: errors,
-                  total: csvImportData.length
+                  total: csvImportData.length,
+                  uploadId: uploadId
                 });
                 setDataVer(function(v) { return v + 1; });
                 setCsvImportProcessing(false);
@@ -20737,6 +21344,32 @@ export default function FactoringDashboard() {
 
                   {/* STEP 1: File upload & column mapping */}
                   {step === "mapping" && <div>
+                    {/* Provider selector. Optional — back-compat with BI-generated CSVs
+                        which already carry Pelagic IDs and don't need alias resolution.
+                        Required only when the CSV uses external_supplier_string or
+                        external_buyer_string columns (validateImport enforces this). */}
+                    <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 6, letterSpacing: "0.05em" }}>CSV Provider <span style={{ color: "var(--text-secondary)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional — leave blank for BI-generated CSVs with Pelagic IDs)</span></label>
+                      <select value={csvProvider ? csvProvider.id : ""} onChange={function(e) {
+                        var pid = e.target.value;
+                        setCsvProvider(pid ? (CSV_PROVIDERS_DB.find(function(p) { return p.id === pid; }) || null) : null);
+                      }} style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 12, minWidth: 320 }}>
+                        <option value="">— No provider (direct Pelagic IDs) —</option>
+                        {CSV_PROVIDERS_DB.filter(function(p) { return p.status === "active"; }).map(function(p) {
+                          var label = p.name;
+                          if (p.kind === "buyer_direct" && p.associatedBuyerId) {
+                            var bb = BUYERS_DB.find(function(x) { return x.id === p.associatedBuyerId; });
+                            label += " — " + (bb ? bb.name : p.associatedBuyerId);
+                          } else if (p.kind === "supplier_direct" && p.associatedSupplierId) {
+                            var ss = SUPPLIERS_DB.find(function(x) { return x.id === p.associatedSupplierId; });
+                            label += " — " + (ss ? ss.name : p.associatedSupplierId);
+                          }
+                          return <option key={p.id} value={p.id}>{label}</option>;
+                        })}
+                      </select>
+                      {csvProvider && <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>Aliases registered: <strong>{PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === csvProvider.id; }).length}</strong></div>}
+                    </div>
+
                     <div style={{ marginBottom: 20 }}>
                       <input type="file" accept=".csv" onChange={function(e) { if (e.target.files[0]) handleCsvFile(e.target.files[0]); }} style={{ fontSize: 13 }} />
                     </div>
@@ -20772,62 +21405,74 @@ export default function FactoringDashboard() {
                         </table>
                       </div>
 
-                      <button onClick={resolveEntities} disabled={!requiredOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: requiredOk ? "var(--accent)" : "var(--border)", color: requiredOk ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: requiredOk ? "pointer" : "default" }}>Next: Resolve Entities {"\u2192"}</button>
+                      <button onClick={validateImport} disabled={!requiredOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: requiredOk ? "var(--accent)" : "var(--border)", color: requiredOk ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: requiredOk ? "pointer" : "default" }}>Next: Validate {"\u2192"}</button>
                       {!requiredOk && <span style={{ marginLeft: 12, fontSize: 11, color: "#EF4444" }}>Map all required fields (*) to proceed</span>}
                     </div>}
                   </div>}
 
-                  {/* STEP 2: Entity resolution */}
-                  {step === "resolution" && csvResolution && <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Resolve Entity Names</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>The following CSV names could not be exactly matched to existing entities. Map each one to an existing supplier or buyer. This mapping will be saved for future imports.</div>
+                  {/* STEP 2: Validation failed — show what's wrong, no manual resolution */}
+                  {step === "validation_failed" && csvResolution && <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: "#EF4444" }}>Validation Failed</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>This importer accepts CSVs generated by the BI module, which include authoritative <code>supplier_id</code> and <code>buyer_id</code> columns. The following issues must be fixed at source (re-generate the CSV from BI, or onboard the missing entity in Main Portal first) — they cannot be resolved here.</div>
 
-                    {/* Show resolved matches summary */}
-                    {(Object.keys(csvResolution.suppliers).length > 0 || Object.keys(csvResolution.buyers).length > 0) && <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#10B98108", border: "1px solid #10B98130" }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "#10B981", marginBottom: 6 }}>Auto-resolved ({Object.keys(csvResolution.suppliers).length + Object.keys(csvResolution.buyers).length} matched)</div>
+                    <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#EF444408", border: "1px solid #EF444430" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#EF4444", marginBottom: 6 }}>{csvResolution.errors.length} issue{csvResolution.errors.length === 1 ? "" : "s"}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8, fontFamily: "'JetBrains Mono', monospace" }}>
+                        {csvResolution.errors.map(function(e, i) {
+                          return <div key={i}>{e.row ? "Row " + e.row + (e.ref ? " (" + e.ref + ")" : "") + ": " : ""}{e.msg}</div>;
+                        })}
+                      </div>
+                    </div>
+
+                    {csvResolution.nameDivergences && csvResolution.nameDivergences.length > 0 && <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#F59E0B08", border: "1px solid #F59E0B30" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", marginBottom: 6 }}>{csvResolution.nameDivergences.length} name divergence{csvResolution.nameDivergences.length === 1 ? "" : "s"} (informational)</div>
                       <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8 }}>
-                        {Object.entries(csvResolution.suppliers).map(function(e) { return <div key={e[0]}><span style={{ color: "var(--muted)" }}>Supplier:</span> "{e[0]}" {"\u2192"} <strong>{e[1].name}</strong> <span style={{ fontSize: 9, color: "#10B981" }}>({e[1].match})</span></div>; })}
-                        {Object.entries(csvResolution.buyers).map(function(e) { return <div key={e[0]}><span style={{ color: "var(--muted)" }}>Buyer:</span> "{e[0]}" {"\u2192"} <strong>{e[1].name}</strong> <span style={{ fontSize: 9, color: "#10B981" }}>({e[1].match})</span></div>; })}
+                        {csvResolution.nameDivergences.slice(0, 20).map(function(d, i) {
+                          return <div key={i}><span style={{ color: "var(--muted)" }}>{d.kind === "supplier" ? "Supplier" : "Buyer"} {d.id}:</span> CSV says "{d.csv}", Main Portal has "{d.db}"</div>;
+                        })}
+                        {csvResolution.nameDivergences.length > 20 && <div style={{ color: "var(--muted)" }}>... +{csvResolution.nameDivergences.length - 20} more</div>}
                       </div>
                     </div>}
 
-                    {/* Unresolved items */}
-                    {csvResolution.unresolved.length > 0 && <div style={{ overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16 }}>
-                        <thead><tr>
-                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>CSV Name</th>
-                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Type</th>
-                          <th style={{ textAlign: "right", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Invoices</th>
-                          <th style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Map To</th>
-                        </tr></thead>
-                        <tbody>{csvResolution.unresolved.map(function(item, idx) {
-                          var entities = item.type === "supplier" ? SUPPLIERS_DB : BUYERS_DB;
-                          return <tr key={idx} style={{ borderBottom: "1px solid var(--border)", background: item.resolvedTo ? "#10B98108" : "#F59E0B08" }}>
-                            <td style={{ padding: "10px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>"{item.csvName}"</td>
-                            <td style={{ padding: "10px 12px" }}><span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: item.type === "supplier" ? "#0EA5E914" : "#8B5CF614", color: item.type === "supplier" ? "#0EA5E9" : "#8B5CF6", fontWeight: 700, textTransform: "uppercase" }}>{item.type}</span></td>
-                            <td style={{ padding: "10px 12px", textAlign: "right", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{item.count}</td>
-                            <td style={{ padding: "10px 12px" }}>
-                              <select value={item.resolvedTo ? item.resolvedTo.id : ""} onChange={function(e) { resolveEntity(idx, e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + (item.resolvedTo ? "#10B98140" : "#F59E0B40"), background: "var(--bg)", color: "var(--text)", fontSize: 12, minWidth: 200 }}>
-                                <option value="">— Select {item.type} —</option>
-                                {entities.map(function(ent) { return <option key={ent.id} value={ent.id}>{ent.name}</option>; })}
-                              </select>
-                              {item.resolvedTo && <span style={{ marginLeft: 8, fontSize: 10, color: "#10B981", fontWeight: 600 }}>{"\u2713"} {item.resolvedTo.name}</span>}
-                            </td>
-                          </tr>;
-                        })}</tbody>
-                      </table>
-                    </div>}
-
                     <div style={{ display: "flex", gap: 10 }}>
-                      <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back</button>
-                      <button onClick={confirmResolution} disabled={csvResolution.unresolved.some(function(u) { return !u.resolvedTo; })} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "var(--accent)" : "var(--border)", color: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: csvResolution.unresolved.every(function(u) { return u.resolvedTo; }) ? "pointer" : "default" }}>Confirm & Process {"\u2192"}</button>
+                      <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
                     </div>
                   </div>}
 
-                  {/* STEP 3: Ready to process (auto-advances if no resolution needed) */}
-                  {step === "processing" && <div style={{ textAlign: "center", padding: "30px 0" }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>All entities resolved. Ready to process {csvImportData.length.toLocaleString()} rows.</div>
-                    <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                  {/* STEP 3: Ready to process — all rows have valid supplier_id and buyer_id */}
+                  {step === "processing" && <div style={{ padding: "20px 0" }}>
+                    <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Validated. Ready to process {csvImportData.length.toLocaleString()} rows.</div>
+                    {csvResolution && csvResolution.nameDivergences && csvResolution.nameDivergences.length > 0 && <div style={{ textAlign: "center", fontSize: 11, color: "#F59E0B", marginBottom: 12 }}>{csvResolution.nameDivergences.length} row{csvResolution.nameDivergences.length === 1 ? "" : "s"} have name mismatches between CSV and Main Portal — IDs match, names will be normalised to Main Portal values and a note logged on each affected invoice.</div>}
+
+                    {/* Warning 1: new (supplier, buyer) pairs.
+                        Non-blocking — operator can proceed. Pairs are derived from
+                        comparing this upload's rows against existing INVOICES_DB; once
+                        any invoice for a pair exists, the warning suppresses on future
+                        uploads. Designed to catch the alias-mistake pattern of "this
+                        Supplier suddenly shows up against a Buyer we'd never expect" —
+                        which is the most likely manifestation of a verification slip. */}
+                    {csvResolution && csvResolution.newPairs && csvResolution.newPairs.length > 0 && <div style={{ marginBottom: 16, padding: "14px 18px", borderRadius: 8, background: "#F59E0B08", border: "1px solid #F59E0B40" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#D97706", marginBottom: 8 }}>{"\u26A0"} {csvResolution.newPairs.length} new supplier-buyer combination{csvResolution.newPairs.length === 1 ? "" : "s"} in this upload</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8 }}>The following supplier-buyer pairs have never been seen in any prior invoice. Review them before proceeding — an unexpected pairing is often a sign that an alias was verified to the wrong entity.</div>
+                      <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, background: "var(--card)" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                          <thead><tr style={{ background: "var(--bg)" }}>
+                            <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Supplier</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Buyer</th>
+                            <th style={{ textAlign: "right", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Rows</th>
+                          </tr></thead>
+                          <tbody>{csvResolution.newPairs.map(function(p, i) {
+                            return <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "6px 10px", color: "var(--text)" }}>{p.supName} <span style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>({p.supId})</span></td>
+                              <td style={{ padding: "6px 10px", color: "var(--text)" }}>{p.buyName} <span style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>({p.buyId})</span></td>
+                              <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.count}</td>
+                            </tr>;
+                          })}</tbody>
+                        </table>
+                      </div>
+                    </div>}
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 12 }}>
                       <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
                       <button onClick={processCsvImport} disabled={csvImportProcessing} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: csvImportProcessing ? "default" : "pointer" }}>{csvImportProcessing ? "Processing..." : "Process Import"}</button>
                     </div>
@@ -20935,6 +21580,272 @@ export default function FactoringDashboard() {
                     </div>
                   </div>}
                 </div>
+              </div>;
+            })()}
+
+            {/* CSV Providers tab: registry of external CSV sources + their aliases.
+                Sales registers a provider (e.g. Coupa) and adds (external_string -> Pelagic ID)
+                mappings; uploads from that provider auto-resolve identity at validate time.
+                Per-buyer registration for conduits — see SQL header for the design.
+                MVP UI: provider list with inline alias browser, add/edit/delete, transfer.
+                Adequate for sales workflow; not polished to admin-page standard yet. */}
+            {!manageDetail && manageTab === "csv_providers" && (function() {
+              var nowDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+              var prov = managePopup && managePopup.type === "providerEdit" ? managePopup.data : null;
+              var alias = managePopup && managePopup.type === "aliasEdit" ? managePopup.data : null;
+              var transfer = managePopup && managePopup.type === "providerTransfer" ? managePopup : null;
+
+              function startProviderEdit(p) {
+                var data = p ? Object.assign({}, p) : { id: "PROV-" + String(CSV_PROVIDERS_DB.length + 1).padStart(3, "0"), name: "", kind: "platform", associatedBuyerId: null, associatedSupplierId: null, status: "active", notes: [] };
+                setManagePopup({ type: "providerEdit", data: data, isNew: !p });
+              }
+              async function saveProvider() {
+                if (!prov || !prov.name || !prov.id) return;
+                // Provenance integrity: enforce that buyer_direct has a buyer, supplier_direct has a supplier
+                if (prov.kind === "buyer_direct" && !prov.associatedBuyerId) { toast.error("Missing buyer", "Buyer-direct providers must reference a specific buyer."); return; }
+                if (prov.kind === "supplier_direct" && !prov.associatedSupplierId) { toast.error("Missing supplier", "Supplier-direct providers must reference a specific supplier."); return; }
+                // platform / other: clear any stale associations
+                if (prov.kind !== "buyer_direct") prov.associatedBuyerId = null;
+                if (prov.kind !== "supplier_direct") prov.associatedSupplierId = null;
+                var existing = CSV_PROVIDERS_DB.find(function(p) { return p.id === prov.id; });
+                if (existing) {
+                  Object.assign(existing, prov);
+                  auditLog("Provider Edited", prov.name + " (" + prov.id + ") edited.", { providerId: prov.id, providerName: prov.name });
+                } else {
+                  CSV_PROVIDERS_DB.push(prov);
+                  auditLog("Provider Created", prov.name + " (" + prov.id + ") added as " + prov.kind + ".", { providerId: prov.id, providerName: prov.name, providerKind: prov.kind });
+                }
+                await saveCsvProvider(prov.id);
+                setManagePopup(null);
+                setDataVer(function(v) { return v + 1; });
+              }
+              async function removeProvider(p) {
+                var aliasCount = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === p.id; }).length;
+                if (aliasCount > 0) { toast.error("Cannot delete", "Provider has " + aliasCount + " aliases. Transfer or delete them first, or use the Transfer action to move them to another provider."); return; }
+                if (!window.confirm("Delete provider \"" + p.name + "\"? This cannot be undone.")) return;
+                await supabase.from("csv_providers").delete().eq("provider_id", p.id);
+                var idx = CSV_PROVIDERS_DB.findIndex(function(x) { return x.id === p.id; });
+                if (idx >= 0) CSV_PROVIDERS_DB.splice(idx, 1);
+                auditLog("Provider Deleted", p.name + " (" + p.id + ") removed.", { providerId: p.id, providerName: p.name });
+                setDataVer(function(v) { return v + 1; });
+              }
+
+              function startAliasEdit(providerId, a) {
+                var data = a ? Object.assign({}, a) : { providerId: providerId, entityType: "supplier", externalString: "", pelagicEntityId: "" };
+                setManagePopup({ type: "aliasEdit", data: data, isNew: !a, originalKey: a ? (a.entityType + "|" + a.externalString) : null });
+              }
+              async function saveAliasFromModal() {
+                if (!alias) return;
+                if (!alias.externalString || !alias.pelagicEntityId) { toast.error("Missing fields", "External string and Pelagic ID are both required."); return; }
+                // If editing and the (entity_type, external_string) key changed, delete the old row first
+                if (managePopup.originalKey && managePopup.originalKey !== (alias.entityType + "|" + alias.externalString)) {
+                  var parts = managePopup.originalKey.split("|");
+                  await deleteProviderAlias(alias.providerId, parts[0], parts[1]);
+                }
+                var ctx = { providerId: alias.providerId, entityType: alias.entityType, externalString: alias.externalString, pelagicEntityId: alias.pelagicEntityId };
+                var verifiedBy = (typeof userProfile !== "undefined" && userProfile) ? userProfile.id : null;
+                var result = await saveProviderAlias(Object.assign({}, alias, { verifiedBy: verifiedBy, verifiedAt: new Date().toISOString() }));
+                if (!result.ok) return;
+                auditLog(managePopup.isNew ? "Alias Created" : "Alias Edited", "Alias " + alias.entityType + " '" + alias.externalString + "' \u2192 " + alias.pelagicEntityId + " (provider: " + alias.providerId + ")", ctx);
+                setManagePopup(null);
+                setDataVer(function(v) { return v + 1; });
+              }
+              async function removeAlias(a) {
+                if (!window.confirm("Remove alias '" + a.externalString + "' \u2192 " + a.pelagicEntityId + "?")) return;
+                await deleteProviderAlias(a.providerId, a.entityType, a.externalString);
+                auditLog("Alias Removed", "Alias " + a.entityType + " '" + a.externalString + "' removed from " + a.providerId, { providerId: a.providerId, entityType: a.entityType, externalString: a.externalString, pelagicEntityId: a.pelagicEntityId });
+                setDataVer(function(v) { return v + 1; });
+              }
+
+              function startTransfer(sourceProvider) {
+                setManagePopup({ type: "providerTransfer", sourceProvider: sourceProvider, destinationProviderId: "", conflicts: null, dryRun: null });
+              }
+              async function runTransferDryRun() {
+                if (!transfer.destinationProviderId) return;
+                var result = await transferProviderAliases(transfer.sourceProvider.id, transfer.destinationProviderId);
+                if (result.ok) {
+                  // No conflicts — already executed. Audit and close.
+                  auditLog("Provider Aliases Transferred", "Aliases moved from " + transfer.sourceProvider.name + " (" + transfer.sourceProvider.id + ") to " + transfer.destinationProviderId + ". Moved: " + result.moved + ", merged duplicates: " + result.merged + ".", { sourceProviderId: transfer.sourceProvider.id, destinationProviderId: transfer.destinationProviderId, moved: result.moved, merged: result.merged });
+                  setManagePopup(null);
+                  setDataVer(function(v) { return v + 1; });
+                } else if (result.reason === "conflicts") {
+                  setManagePopup(function(prev) { return Object.assign({}, prev, { conflicts: result.conflicts, willMove: result.willMove, willMerge: result.willMerge }); });
+                } else {
+                  toast.error("Transfer failed", result.reason || "Unknown error");
+                }
+              }
+
+              var sortedProviders = CSV_PROVIDERS_DB.slice().sort(function(a, b) {
+                if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+                return a.name.localeCompare(b.name);
+              });
+
+              return <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>CSV Providers</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Registry of external CSV sources. Each provider has its own alias namespace mapping external strings to Pelagic entity IDs.</div>
+                  </div>
+                  <button onClick={function() { startProviderEdit(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>+ Add Provider</button>
+                </div>
+
+                {CSV_PROVIDERS_DB.length === 0 && <div style={{ padding: "32px", textAlign: "center", color: "var(--muted)", fontStyle: "italic", border: "1px dashed var(--border)", borderRadius: 8 }}>No providers yet. Click "+ Add Provider" to register one.</div>}
+
+                {sortedProviders.map(function(p) {
+                  var providerAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === p.id; });
+                  var assocLabel = "";
+                  if (p.kind === "buyer_direct" && p.associatedBuyerId) {
+                    var b = BUYERS_DB.find(function(x) { return x.id === p.associatedBuyerId; });
+                    assocLabel = b ? b.name + " (" + b.id + ")" : p.associatedBuyerId;
+                  } else if (p.kind === "supplier_direct" && p.associatedSupplierId) {
+                    var s = SUPPLIERS_DB.find(function(x) { return x.id === p.associatedSupplierId; });
+                    assocLabel = s ? s.name + " (" + s.id + ")" : p.associatedSupplierId;
+                  }
+                  var supersededTo = p.supersededByProviderId ? CSV_PROVIDERS_DB.find(function(x) { return x.id === p.supersededByProviderId; }) : null;
+                  return <div key={p.id} style={{ marginBottom: 12, border: "1px solid var(--border)", borderRadius: 8, background: "var(--card)", opacity: p.status === "superseded" ? 0.6 : 1 }}>
+                    <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{p.name}</span>
+                          <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{p.id}</span>
+                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: p.kind === "platform" ? "#0EA5E920" : p.kind === "buyer_direct" ? "#10B98120" : p.kind === "supplier_direct" ? "#8B5CF620" : "#64748B20", color: p.kind === "platform" ? "#0EA5E9" : p.kind === "buyer_direct" ? "#10B981" : p.kind === "supplier_direct" ? "#8B5CF6" : "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>{p.kind.replace("_", " ")}</span>
+                          {p.status === "superseded" && <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "#EF444420", color: "#EF4444", fontWeight: 700, textTransform: "uppercase" }}>SUPERSEDED</span>}
+                        </div>
+                        {assocLabel && <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>Linked to: {assocLabel}</div>}
+                        {supersededTo && <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>Aliases transferred to: {supersededTo.name}</div>}
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>{providerAliases.length} alias{providerAliases.length === 1 ? "" : "es"} registered</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {p.status === "active" && <button onClick={function() { startAliasEdit(p.id, null); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Alias</button>}
+                        {p.status === "active" && providerAliases.length > 0 && <button onClick={function() { startTransfer(p); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Transfer</button>}
+                        <button onClick={function() { startProviderEdit(p); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                        <button onClick={function() { removeProvider(p); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #EF444440", background: "transparent", color: "#EF4444", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Delete</button>
+                      </div>
+                    </div>
+                    {providerAliases.length > 0 && <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                        <thead><tr style={{ background: "var(--bg)" }}>
+                          <th style={{ textAlign: "left", padding: "6px 12px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Type</th>
+                          <th style={{ textAlign: "left", padding: "6px 12px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>External String</th>
+                          <th style={{ textAlign: "left", padding: "6px 12px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Pelagic Entity</th>
+                          <th style={{ textAlign: "left", padding: "6px 12px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Verified</th>
+                          <th style={{ padding: "6px 12px", borderBottom: "1px solid var(--border)" }}></th>
+                        </tr></thead>
+                        <tbody>{providerAliases.map(function(a) {
+                          var displayName = a.entityType === "supplier" ? getEntityDisplayName(a.pelagicEntityId) : getBuyerEntityDisplayName(a.pelagicEntityId);
+                          return <tr key={a.entityType + "|" + a.externalString} style={{ borderBottom: "1px solid var(--border)" }}>
+                            <td style={{ padding: "6px 12px", textTransform: "capitalize" }}><span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: a.entityType === "supplier" ? "#0EA5E914" : "#8B5CF614", color: a.entityType === "supplier" ? "#0EA5E9" : "#8B5CF6", fontWeight: 700 }}>{a.entityType}</span></td>
+                            <td style={{ padding: "6px 12px", fontFamily: "'JetBrains Mono', monospace" }}>{a.externalString}</td>
+                            <td style={{ padding: "6px 12px" }}>{displayName} <span style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>({a.pelagicEntityId})</span></td>
+                            <td style={{ padding: "6px 12px", fontSize: 10, color: "var(--muted)" }}>{a.verifiedAt ? new Date(a.verifiedAt).toLocaleDateString("en-GB") : "\u2014"}</td>
+                            <td style={{ padding: "6px 12px", textAlign: "right" }}>
+                              <button onClick={function() { startAliasEdit(p.id, a); }} style={{ padding: "3px 9px", borderRadius: 4, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer", marginRight: 4 }}>Edit</button>
+                              <button onClick={function() { removeAlias(a); }} style={{ padding: "3px 9px", borderRadius: 4, border: "1px solid #EF444440", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
+                            </td>
+                          </tr>;
+                        })}</tbody>
+                      </table>
+                    </div>}
+                  </div>;
+                })}
+
+                {/* Provider edit/create modal */}
+                {prov && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, padding: 28, maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 16 }}>{managePopup.isNew ? "Add CSV Provider" : "Edit CSV Provider"}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                      <div><label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Provider ID</label><input type="text" value={prov.id} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { id: e.target.value }) }); }); }} disabled={!managePopup.isNew} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" }} /></div>
+                      <div><label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Display Name</label><input type="text" value={prov.name} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { name: e.target.value }) }); }); }} placeholder="e.g. Coupa, AndyCo (IBM)" style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%", boxSizing: "border-box" }} /></div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Kind</label>
+                      <select value={prov.kind} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { kind: e.target.value, associatedBuyerId: null, associatedSupplierId: null }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="platform">Platform (Coupa, Tradeshift, Ariba — serves many buyers)</option>
+                        <option value="buyer_direct">Buyer Direct (a specific buyer uploading their own AP data)</option>
+                        <option value="supplier_direct">Supplier Direct (a specific supplier uploading their AR data)</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>For a conduit serving multiple buyers (e.g. "AndyCo on behalf of IBM"), register each buyer relationship as a SEPARATE provider — each one has its own globally-coherent namespace within its own row. Don't lump them under one provider.</div>
+                    </div>
+                    {prov.kind === "buyer_direct" && <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Associated Buyer</label>
+                      <select value={prov.associatedBuyerId || ""} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { associatedBuyerId: e.target.value || null }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="">— Select buyer —</option>
+                        {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name} ({b.id})</option>; })}
+                      </select>
+                    </div>}
+                    {prov.kind === "supplier_direct" && <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Associated Supplier</label>
+                      <select value={prov.associatedSupplierId || ""} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { associatedSupplierId: e.target.value || null }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="">— Select supplier —</option>
+                        {SUPPLIERS_DB.map(function(s) { return <option key={s.id} value={s.id}>{s.name} ({s.id})</option>; })}
+                      </select>
+                    </div>}
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+                      <button onClick={function() { setManagePopup(null); }} style={{ padding: "9px 18px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={saveProvider} disabled={!prov.name || !prov.id} style={{ padding: "9px 20px", borderRadius: 7, border: "none", background: (prov.name && prov.id) ? "var(--accent)" : "var(--border)", color: (prov.name && prov.id) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: (prov.name && prov.id) ? "pointer" : "default" }}>{managePopup.isNew ? "Create" : "Save"}</button>
+                    </div>
+                  </div>
+                </div>}
+
+                {/* Alias edit/create modal */}
+                {alias && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, padding: 28, maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 16 }}>{managePopup.isNew ? "Add Alias" : "Edit Alias"}</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Entity Type</label>
+                      <select value={alias.entityType} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { entityType: e.target.value, pelagicEntityId: "" }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="supplier">Supplier</option>
+                        <option value="buyer">Buyer</option>
+                      </select>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>External String (as it appears in the provider's CSV)</label>
+                      <input type="text" value={alias.externalString} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { externalString: e.target.value }) }); }); }} placeholder="e.g. VEND-4837" style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Pelagic Entity {alias.entityType === "supplier" ? "Supplier" : "Buyer"} (parent or branch)</label>
+                      <select value={alias.pelagicEntityId} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { pelagicEntityId: e.target.value }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="">— Select —</option>
+                        {(alias.entityType === "supplier" ? getAllSupplierEntities() : getAllBuyerEntities()).map(function(o) {
+                          return <option key={o.value} value={o.value}>{o.label} ({o.value})</option>;
+                        })}
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+                      <button onClick={function() { setManagePopup(null); }} style={{ padding: "9px 18px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={saveAliasFromModal} disabled={!alias.externalString || !alias.pelagicEntityId} style={{ padding: "9px 20px", borderRadius: 7, border: "none", background: (alias.externalString && alias.pelagicEntityId) ? "var(--accent)" : "var(--border)", color: (alias.externalString && alias.pelagicEntityId) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: (alias.externalString && alias.pelagicEntityId) ? "pointer" : "default" }}>{managePopup.isNew ? "Create" : "Save"}</button>
+                    </div>
+                  </div>
+                </div>}
+
+                {/* Transfer modal */}
+                {transfer && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setManagePopup(null); }}>
+                  <div style={{ background: "var(--card)", borderRadius: 16, padding: 28, maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Transfer Aliases</div>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>Move all aliases from <strong>{transfer.sourceProvider.name}</strong> to another provider. The source provider will be marked as superseded.</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Destination Provider</label>
+                      <select value={transfer.destinationProviderId} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { destinationProviderId: e.target.value, conflicts: null }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="">— Select destination —</option>
+                        {CSV_PROVIDERS_DB.filter(function(p) { return p.id !== transfer.sourceProvider.id && p.status === "active"; }).map(function(p) { return <option key={p.id} value={p.id}>{p.name} ({p.id})</option>; })}
+                      </select>
+                    </div>
+                    {transfer.conflicts && transfer.conflicts.length > 0 && <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 8, background: "#EF444408", border: "1px solid #EF444440" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#EF4444", marginBottom: 8 }}>{transfer.conflicts.length} conflict{transfer.conflicts.length === 1 ? "" : "s"} — transfer blocked</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8 }}>The destination already has aliases for these external strings, pointing at different Pelagic entities. Resolve each conflict in the destination provider first (delete or edit the destination alias), then retry the transfer.</div>
+                      <div style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.6 }}>
+                        {transfer.conflicts.map(function(c, i) {
+                          return <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid var(--border)" }}>{c.sourceAlias.entityType} '{c.sourceAlias.externalString}': source \u2192 {c.sourceAlias.pelagicEntityId}, destination \u2192 {c.destAlias.pelagicEntityId}</div>;
+                        })}
+                      </div>
+                    </div>}
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
+                      <button onClick={function() { setManagePopup(null); }} style={{ padding: "9px 18px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={runTransferDryRun} disabled={!transfer.destinationProviderId} style={{ padding: "9px 20px", borderRadius: 7, border: "none", background: transfer.destinationProviderId ? "var(--accent)" : "var(--border)", color: transfer.destinationProviderId ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: transfer.destinationProviderId ? "pointer" : "default" }}>Transfer Aliases</button>
+                    </div>
+                  </div>
+                </div>}
               </div>;
             })()}
 
