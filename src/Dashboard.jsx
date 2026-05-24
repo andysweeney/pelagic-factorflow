@@ -1143,21 +1143,49 @@ function nextId(prefix, arr, idField, pad) {
 }
 
 async function fetchAllRows(table, filter) {
+  // Loads every row of `table` (optionally filtered), paginated. Uses KEYSET
+  // pagination on the `id` column rather than OFFSET because of a hard
+  // limit in Postgres+Supabase: with OFFSET N, the engine scans N rows then
+  // discards them. At ~30k rows per page, a single request to fetch
+  // OFFSET 30000 exceeds the Supabase statement timeout and the entire
+  // load stalls (Dashboard would show 90-second loads then fail partway).
+  //
+  // Keyset is constant-time-per-page: WHERE id > $cursor ORDER BY id LIMIT N
+  // uses the PK index to seek directly to the cursor position, regardless of
+  // how far in. Same pattern BI uses for its 500k-row prospect CSV download.
+  //
+  // Constraints / assumptions:
+  //   * Every paginated table has an `id` column that is unique and sortable.
+  //     True for all tables this function is called on (invoices uses TEXT
+  //     "INV-xxxxx", others use Supabase-default uuid).
+  //   * Results come back ordered by id ascending — needed because the next
+  //     page's cursor is taken from the last row of the current page.
+  //   * `filter` (optional, { column, value }) composes with the cursor —
+  //     PostgREST AND-combines all .eq() and .gt() filters.
+  //
   // filter: optional { column: "col_name", value: "val" }
   var all = [];
   var pageSize = 1000;
-  var from = 0;
-  while (true) {
+  var cursor = null; // last seen id; null on first page
+  var safetyMaxPages = 10000; // 10M rows; well past any realistic table size, prevents infinite loops if a PK invariant is ever broken
+  var pageCount = 0;
+  while (pageCount < safetyMaxPages) {
+    pageCount++;
     var query = supabase.from(table).select("*");
     if (filter) query = query.eq(filter.column, filter.value);
-    var res = await query.range(from, from + pageSize - 1);
+    if (cursor !== null) query = query.gt("id", cursor);
+    query = query.order("id", { ascending: true }).limit(pageSize);
+    var res = await query;
     if (res.error) { console.error("[fetchAllRows] Error loading " + table + ":", res.error.message); break; }
     if (!res.data || res.data.length === 0) break;
     all = all.concat(res.data);
     if (res.data.length < pageSize) break;
-    from += pageSize;
+    var nextCursor = res.data[res.data.length - 1].id;
+    if (nextCursor === cursor) { console.warn("[fetchAllRows] cursor did not advance on table " + table + " — breaking to avoid infinite loop"); break; }
+    cursor = nextCursor;
   }
-  console.log("[fetchAllRows] " + table + ": " + all.length + " rows loaded");
+  if (pageCount === safetyMaxPages) console.warn("[fetchAllRows] hit safety page limit on table " + table + " — load may be incomplete");
+  console.log("[fetchAllRows] " + table + ": " + all.length + " rows loaded in " + pageCount + " pages");
   return all;
 }
 
