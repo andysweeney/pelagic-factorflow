@@ -2622,6 +2622,20 @@ function renderProspects() {
 
     wireProspectsFilters();
 
+    // Sync pill visual state from state (so programmatic state changes,
+    // e.g. auto-enabling 'converted' after a conversion, reflect in the UI).
+    var f = state.prospectsFilter;
+    document.querySelectorAll('.pr-pill').forEach(function(pill) {
+        var key = pill.getAttribute('data-pill');
+        if (f.pills && f.pills[key]) pill.classList.add('active');
+        else pill.classList.remove('active');
+    });
+    // Sync select / search inputs too, in case state was set programmatically
+    var bSel = document.getElementById('prFilterBuyer');    if (bSel) bSel.value = f.buyer || '';
+    var cSel = document.getElementById('prFilterCurrency'); if (cSel) cSel.value = f.currency || '';
+    var sSel = document.getElementById('prFilterStatus');   if (sSel) sSel.value = f.status || '';
+    var srch = document.getElementById('prFilterSearch');   if (srch && srch.value !== (f.search || '')) srch.value = f.search || '';
+
     // Build the enriched prospect list by joining each row to its buyer's
     // latest snapshot. Snapshots are loaded lazily per-buyer because they're
     // large (15MB+) — we only need the per-supplier stats from the 'all'
@@ -6612,6 +6626,12 @@ function confirmProspectConversion(prospect) {
                 converted_supplier_id: ffSupplierId,
                 converted_at: convertedAt
             });
+
+            // Auto-enable the "Show converted" pill so when the user
+            // navigates back, they can find their newly-converted prospect.
+            // Converted prospects hide by default to keep the active pipeline
+            // clean — but after a fresh conversion, sales wants to see it.
+            state.prospectsFilter.pills.converted = true;
 
             // Log system note + re-render
             sbClient.from('prospect_notes').insert({
