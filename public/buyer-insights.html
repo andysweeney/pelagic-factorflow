@@ -2679,10 +2679,16 @@ function applyAndRenderProspects(enriched) {
             var tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
             tr.setAttribute('data-pr-id', p.id);
+            var subtitle = '';
+            if (p.legal_name) {
+                subtitle = '<div style="font-size:10px; color:var(--text-secondary); font-style:italic;">' + escHTML(p.legal_name) + '</div>';
+            } else if (p.contact_name) {
+                subtitle = '<div style="font-size:10px; color:var(--muted);">' + escHTML(p.contact_name) + '</div>';
+            }
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
                 '<td><strong>' + escHTML(p.supplier_identifier) + '</strong>' +
-                    (p.contact_name ? '<div style="font-size:10px; color:var(--muted);">' + escHTML(p.contact_name) + '</div>' : '') +
+                    subtitle +
                 '</td>' +
                 '<td>' + escHTML(p.currency) + '</td>' +
                 '<td><span class="pr-status-pill pr-status-' + p.status + '">' + p.status + '</span></td>' +
@@ -5425,6 +5431,9 @@ function wireProspectSalesHandlers(prospect) {
             if (sp) Object.assign(sp, updates);
             msg.textContent = 'Saved.';
             setTimeout(function() { msg.textContent = ''; }, 2000);
+            // Refresh the prospects list behind the panel so the row updates
+            // when the user closes the slide-out.
+            renderProspects();
         });
     });
 
