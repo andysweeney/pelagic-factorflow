@@ -2203,6 +2203,7 @@ function loadAllData() {
     sbClient.from('prospect_suppliers')
         .select('*')
         .order('last_seen_at', { ascending: false })
+        .limit(50000)
         .then(function(res) {
             if (res.error) {
                 // Non-fatal: prospects may not be set up yet on a fresh DB.
@@ -5087,7 +5088,7 @@ function openSupplierPanel(supId, ccy) {
         .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
-        .ilike('currency', ccy)
+        .eq('currency', ccy)
         .eq('excluded', false)
         .order('invoice_date', { ascending: false })
         .limit(DRILL_LIMIT);
@@ -5098,7 +5099,7 @@ function openSupplierPanel(supId, ccy) {
         .select('cn_date, cn_reference, amount, paid_date, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
-        .ilike('currency', ccy)
+        .eq('currency', ccy)
         .eq('excluded', false)
         .order('cn_date', { ascending: false })
         .limit(DRILL_LIMIT);
@@ -5578,7 +5579,7 @@ function migrateProspectInvoicesAndCNs(prospect, uploadId, ffSupplierId, ffName)
         .select('*')
         .eq('upload_id', uploadId)
         .eq('supplier_identifier', prospect.supplier_identifier)
-        .ilike('currency', prospect.currency)
+        .eq('currency', prospect.currency)
         .eq('excluded', false)
         .then(function(invRes) {
             if (invRes.error) { alert('Invoice load failed: ' + invRes.error.message); return; }
@@ -5619,7 +5620,7 @@ function migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName) {
         .select('*')
         .eq('upload_id', uploadId)
         .eq('supplier_identifier', prospect.supplier_identifier)
-        .ilike('currency', prospect.currency)
+        .eq('currency', prospect.currency)
         .eq('excluded', false)
         .then(function(cnRes) {
             var rows = (cnRes.data) || [];
@@ -5723,7 +5724,7 @@ function runSupInvoiceSearch(ccy) {
         .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
         .eq('upload_id', ctx.uploadId)
         .eq('supplier_identifier', ctx.supId)
-        .ilike('currency', ctx.ccy)
+        .eq('currency', ctx.ccy)
         .eq('excluded', false)
         .order('invoice_date', { ascending: false })
         .limit(hasFilter ? 250 : 20);
@@ -5769,7 +5770,7 @@ function runSupCnSearch(ccy) {
         .select('cn_date, cn_reference, amount, paid_date, currency')
         .eq('upload_id', ctx.uploadId)
         .eq('supplier_identifier', ctx.supId)
-        .ilike('currency', ctx.ccy)
+        .eq('currency', ctx.ccy)
         .eq('excluded', false)
         .order('cn_date', { ascending: false })
         .limit(hasFilter ? 250 : 15);
