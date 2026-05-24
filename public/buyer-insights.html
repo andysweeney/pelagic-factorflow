@@ -6720,11 +6720,17 @@ function downloadProspectInvoicesCSV(prospect) {
             return;
         }
         setStatus('Building CSV…');
-        var header = ['supplier_name','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
+        // Include IDs as the structural identity (collision-safe) and names
+        // as human-verifiable labels. Dashboard's importer currently matches
+        // by name — that's a known bug; see brief for new-chat agenda.
+        var header = ['supplier_id','supplier_name','buyer_id','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
         var rows = [header.join(',')];
+        var supplierId = prospect.converted_supplier_id || '';
         allInvs.forEach(function(r) {
             var row = [
+                csvSafe(supplierId),
                 csvSafe(supplierName),
+                csvSafe(prospect.buyer_id),
                 csvSafe(buyerName),
                 csvSafe(r.invoice_reference || ''),
                 r.amount != null ? r.amount : '',
