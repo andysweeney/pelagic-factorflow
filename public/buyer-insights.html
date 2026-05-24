@@ -437,6 +437,13 @@
             color: var(--text);
             font-size: 12px;
         }
+        .pr-row-link {
+            color: var(--text);
+            text-decoration: none;
+            display: block;
+        }
+        .pr-row-link:hover { color: var(--accent); }
+
         .pd-due-now { color: var(--danger); font-weight: 600; }
 
         .outreach-switch {
@@ -1583,6 +1590,7 @@ function initApp() {
     setupTabs();
     setupUpload();
     setupProcessHandler();
+    setupUrlRouting();
 
     if (SUPABASE_URL && SUPABASE_ANON_KEY) {
         var sbRetries = 0;
@@ -1630,6 +1638,53 @@ function initApp() {
         }
         tryInitSupabase();
     }
+}
+
+// ================================================================
+// URL ROUTING — deep linking for prospect detail
+// ================================================================
+// Behaviour:
+//   /buyer-insights                    → normal app, list view
+//   /buyer-insights?prospect=UUID      → open prospect detail directly
+//
+// On page load, we record the requested prospect ID (if any) and wait
+// for prospects to finish loading; then we open the detail.
+//
+// Browser back/forward navigation between list ↔ detail is supported via
+// popstate listener.
+
+function setupUrlRouting() {
+    // On initial load, capture any ?prospect= request
+    var initialUrl = new URLSearchParams(window.location.search);
+    var initialProspectId = initialUrl.get('prospect');
+
+    if (initialProspectId) {
+        // Hide tab bar + all content until routing completes, to avoid the
+        // default Upload tab flashing first.
+        var tabBar = document.querySelector('.tab-bar');
+        if (tabBar) tabBar.style.visibility = 'hidden';
+        document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
+
+        var openOnce = function() {
+            document.removeEventListener('bi:prospectsLoaded', openOnce);
+            if (tabBar) tabBar.style.visibility = '';
+            openProspectPanel(initialProspectId, { fromPopstate: true });
+        };
+        document.addEventListener('bi:prospectsLoaded', openOnce);
+    }
+
+    // Back/forward navigation
+    window.addEventListener('popstate', function() {
+        var url = new URLSearchParams(window.location.search);
+        var pid = url.get('prospect');
+        if (pid) {
+            openProspectPanel(pid, { fromPopstate: true });
+        } else {
+            if (window._activeProspect) {
+                closeProspectDetail({ fromPopstate: true });
+            }
+        }
+    });
 }
 
 // ================================================================
@@ -2357,6 +2412,7 @@ function fetchProspectsChunk(offset) {
                 if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
                     renderProspects();
                 }
+                document.dispatchEvent(new CustomEvent('bi:prospectsLoaded'));
                 return;
             }
             var batch = res.data || [];
@@ -2368,6 +2424,9 @@ function fetchProspectsChunk(offset) {
                 if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
                     renderProspects();
                 }
+                // Final chunk: signal that prospects are fully loaded so URL
+                // routing can open a deep-linked prospect now.
+                document.dispatchEvent(new CustomEvent('bi:prospectsLoaded'));
             }
         });
 }
@@ -2754,7 +2813,7 @@ function applyAndRenderProspects(enriched) {
     });
     if (f.pills.conversation) filtered = filtered.filter(function(e) { return ['contacted','interested','negotiating'].indexOf(e.row.status) !== -1; });
     if (f.pills.untouched)    filtered = filtered.filter(function(e) { return e.row.status === 'lead'; });
-    if (f.pills.verified)     filtered = filtered.filter(function(e) { return e.row.ch_verified_at; });
+    if (f.pills.verified)     filtered = filtered.filter(function(e) { return e.row.verified_at; });
     if (f.pills.quality)      filtered = filtered.filter(function(e) { return e.stats && e.stats.dilutionRate >= 0.08; });
     if (f.pills.late)         filtered = filtered.filter(function(e) {
         return e.stats && e.stats.avgDaysPastDue != null && e.stats.avgDaysPastDue > 30 && e.stats.paidCount >= 3;
@@ -2793,7 +2852,7 @@ function applyAndRenderProspects(enriched) {
     statsHtml += statCard('In conversation',
         ((statusCounts.contacted || 0) + (statusCounts.interested || 0) + (statusCounts.negotiating || 0)).toString(),
         'contacted/interested/negotiating');
-    statsHtml += statCard('Verified', filtered.filter(function(e) { return e.row.ch_verified_at; }).length.toString(), 'CH-verified');
+    statsHtml += statCard('Verified', filtered.filter(function(e) { return e.row.verified_at; }).length.toString(), 'CH-verified');
     statsHtml += statCard('Converted (lifetime)',
         (state.prospects || []).filter(function(p) { return p.status === 'converted'; }).length.toString(),
         'across all buyers');
@@ -2812,7 +2871,7 @@ function applyAndRenderProspects(enriched) {
         visible.forEach(function(e) {
             var p = e.row;
             var s = e.stats;
-            var verifiedCell = p.ch_verified_at
+            var verifiedCell = p.verified_at
                 ? '<span class="pr-verified-badge">' + escHTML(p.legal_name || 'Verified') + '</span>'
                 : '<span style="font-size:10px; color:var(--muted);">—</span>';
             var lastSeen = e.silentDays != null
@@ -2844,11 +2903,12 @@ function applyAndRenderProspects(enriched) {
                     (isDue ? 'DUE · ' : '') + formatDateTime(p.next_action_at) +
                     '</span>';
             }
+            var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(p.id);
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
-                '<td><strong>' + escHTML(displayName) + '</strong>' +
+                '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' +
                     subtitle +
-                '</td>' +
+                '</a></td>' +
                 '<td>' + escHTML(p.currency) + '</td>' +
                 '<td><span class="pr-status-pill pr-status-' + p.status + '">' + p.status + '</span></td>' +
                 '<td class="text-right mono">' + (s ? moneyShort(s.totalSpend, p.currency) : '—') + '</td>' +
@@ -2858,7 +2918,16 @@ function applyAndRenderProspects(enriched) {
                 '<td>' + escHTML(lastSeen) + '</td>' +
                 '<td>' + nextActionCell + '</td>' +
                 '<td>' + verifiedCell + '</td>';
-            tr.addEventListener('click', function() {
+            // Row-wide click → open prospect, BUT respect modifier keys + middle-click
+            // so native "open in new tab" / "open in new window" still works.
+            tr.addEventListener('click', function(ev) {
+                // If the user clicked on the anchor itself or used a modifier,
+                // let the browser handle it natively.
+                if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) return;
+                // Anchor itself: the anchor's click handler below also catches it,
+                // but only when the user clicks the anchor area. The tr click for
+                // other cells should still open the detail in-app.
+                ev.preventDefault();
                 openProspectPanel(p.id);
             });
             tbody.appendChild(tr);
@@ -2889,7 +2958,8 @@ function applyAndRenderProspects(enriched) {
 // (reusing the existing supplier-panel render helpers), right = sales
 // workspace (status/contacts/CH/follow-up/timeline/convert).
 
-function openProspectPanel(prospectId) {
+function openProspectPanel(prospectId, opts) {
+    opts = opts || {};
     var prospect = (state.prospects || []).find(function(p) { return p.id === prospectId; });
     if (!prospect) { alert('Prospect not found in state — try refreshing.'); return; }
 
@@ -2904,6 +2974,27 @@ function openProspectPanel(prospectId) {
         return;
     }
 
+    // Push URL state. opts.fromPopstate = true means we're responding to a
+    // browser navigation, so don't push again (would cause infinite loop).
+    if (!opts.fromPopstate) {
+        var url = window.location.pathname + '?prospect=' + encodeURIComponent(prospectId);
+        history.pushState({ prospect: prospectId }, '', url);
+    }
+
+    // Make sure we're on the Prospects tab (deep-link case)
+    var prospectsTab = document.getElementById('tab-prospects');
+    if (prospectsTab && prospectsTab.classList.contains('hidden')) {
+        var btn = document.querySelector('.tab-btn[data-tab="prospects"]');
+        if (btn) {
+            // Skip the tab handler's "reset to list" behaviour by toggling
+            // classes directly. We want detail view to appear.
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            prospectsTab.classList.remove('hidden');
+            btn.classList.add('active');
+        }
+    }
+
     // Swap containers
     document.getElementById('prospectsListView').classList.add('hidden');
     var detailEl = document.getElementById('prospectsDetailView');
@@ -2913,8 +3004,6 @@ function openProspectPanel(prospectId) {
     // Stash the active prospect for handlers
     window._activeProspect = prospect;
 
-    // Load the upload if not already loaded; renderProspectDetail uses
-    // window.__upload like the supplier slide-out does.
     if (window.__upload && window.__upload.uploadId === latestUpload.id) {
         renderProspectDetail(prospect);
     } else {
@@ -2924,13 +3013,18 @@ function openProspectPanel(prospectId) {
     }
 }
 
-function closeProspectDetail() {
+function closeProspectDetail(opts) {
+    opts = opts || {};
     document.getElementById('prospectsDetailView').classList.add('hidden');
     document.getElementById('prospectsDetailView').innerHTML = '';
     document.getElementById('prospectsListView').classList.remove('hidden');
     window._activeProspect = null;
-    // Refresh the prospect list (so any edits made are reflected)
     renderProspects();
+
+    // Clear the URL param unless we're responding to a popstate
+    if (!opts.fromPopstate) {
+        history.pushState({}, '', window.location.pathname);
+    }
 }
 
 function renderProspectDetail(prospect) {
@@ -2956,9 +3050,20 @@ function renderProspectDetail(prospect) {
         '</span>';
 
     // Header
-    var chMark = prospect.ch_verified_at
-        ? ' · CH <span class="mono">' + escHTML(prospect.company_number) + '</span> <span class="ch-mark">✓</span> ' + escHTML(prospect.legal_name || '')
-        : '';
+    var verifyMark = '';
+    if (prospect.verified_at) {
+        var srcPrefix =
+            prospect.verification_source === 'companies_house' ? 'CH' :
+            prospect.verification_source === 'manual'          ? 'Manual' :
+            prospect.verification_source === 'other'           ? 'Reg' :
+            'Verified';
+        var jurisSuffix = prospect.verification_jurisdiction
+            ? ' (' + escHTML(prospect.verification_jurisdiction) + ')'
+            : '';
+        verifyMark = ' · ' + srcPrefix +
+            (prospect.registry_id ? ' <span class="mono">' + escHTML(prospect.registry_id) + '</span>' : '') +
+            ' <span class="ch-mark">✓</span> ' + escHTML(prospect.legal_name || '') + jurisSuffix;
+    }
     var nextActionInfo = '';
     if (prospect.next_action_at) {
         var due = new Date(prospect.next_action_at);
@@ -2979,7 +3084,7 @@ function renderProspectDetail(prospect) {
                 '</div>' +
                 '<div class="pd-meta-row">' +
                     escHTML(prospect.supplier_identifier) +
-                    chMark +
+                    verifyMark +
                     nextActionInfo +
                 '</div>' +
             '</div>' +
@@ -3149,24 +3254,48 @@ function renderProspectWorkspace(prospect) {
             '</div>' +
         '</div>';
 
-    // CH section
-    var chHtml = prospect.ch_verified_at
-        ? '<div style="padding:10px 12px; background:#10B98110; border:1px solid #10B98140; border-radius:6px; font-size:12px;">' +
-            '<strong>' + escHTML(prospect.legal_name || 'Verified') + '</strong>' +
-            ' · CH: <span class="mono">' + escHTML(prospect.company_number) + '</span>' +
-            ' · verified ' + formatDateTime(prospect.ch_verified_at) +
-            ' <button class="btn btn-xs" id="pdReverifyBtn" style="margin-left:8px;">Re-verify</button>' +
-          '</div>'
-        : '<div class="pd-form-row" style="margin-bottom:0;">' +
-            '<input type="text" id="pdCHInput" placeholder="Companies House number" style="font-family:var(--mono);">' +
-            '<button class="btn btn-sm btn-primary" id="pdCHLookupBtn">Lookup</button>' +
-          '</div>' +
-          '<div id="pdCHResult" style="margin-top:8px; font-size:11px;"></div>';
+    // Verification section — source-aware (Companies House / Manual / Other)
+    var verifiedHtml = '';
+    if (prospect.verified_at) {
+        var sourceLabel =
+            prospect.verification_source === 'companies_house' ? 'Companies House' :
+            prospect.verification_source === 'manual'          ? 'Manual verification' :
+            prospect.verification_source === 'other'           ? 'Other registry' :
+            'Verified';
+        var jurisLabel = prospect.verification_jurisdiction
+            ? ' · <span class="mono">' + escHTML(prospect.verification_jurisdiction) + '</span>'
+            : '';
+        verifiedHtml =
+            '<div style="padding:10px 12px; background:#10B98110; border:1px solid #10B98140; border-radius:6px; font-size:12px;">' +
+                '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#10B981; margin-bottom:4px;">' + escHTML(sourceLabel) + jurisLabel + '</div>' +
+                '<strong>' + escHTML(prospect.legal_name || 'Verified') + '</strong>' +
+                (prospect.registry_id ? ' · <span class="mono">' + escHTML(prospect.registry_id) + '</span>' : '') +
+                '<div style="font-size:10px; color:var(--text-secondary); margin-top:4px;">' +
+                    'verified ' + formatDateTime(prospect.verified_at) +
+                '</div>' +
+                (prospect.verification_notes
+                    ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:6px; font-style:italic;">' + escHTML(prospect.verification_notes) + '</div>'
+                    : '') +
+                '<button class="btn btn-xs" id="pdReverifyBtn" style="margin-top:8px;">Re-verify</button>' +
+            '</div>';
+    } else {
+        // Source picker + conditional inputs
+        verifiedHtml =
+            '<div class="pd-form-row">' +
+                '<label>Source</label>' +
+                '<select id="pdVerifySource">' +
+                    '<option value="companies_house" selected>Companies House (GB)</option>' +
+                    '<option value="manual">Manual verification</option>' +
+                    '<option value="other">Other registry</option>' +
+                '</select>' +
+            '</div>' +
+            '<div id="pdVerifyFields"></div>';
+    }
 
     var chSection =
         '<div class="card-section">' +
-            '<div class="pd-section-title">Companies House</div>' +
-            chHtml +
+            '<div class="pd-section-title">Verification</div>' +
+            verifiedHtml +
         '</div>';
 
     // Follow-up section
@@ -3205,7 +3334,7 @@ function renderProspectWorkspace(prospect) {
         '</div>';
 
     // Convert section
-    var convertReady = prospect.ch_verified_at && prospect.status !== 'converted';
+    var convertReady = prospect.verified_at && prospect.status !== 'converted';
     var convertHtml = prospect.status === 'converted'
         ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
             'Converted ' + formatDateTime(prospect.converted_at) +
@@ -3275,71 +3404,44 @@ function wireProspectWorkspaceHandlers(prospect) {
         });
     });
 
-    // CH LOOKUP
-    var lookupBtn = document.getElementById('pdCHLookupBtn');
-    if (lookupBtn) lookupBtn.addEventListener('click', function() {
-        var num = (document.getElementById('pdCHInput').value || '').trim().toUpperCase();
-        if (!num) { document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>'; return; }
-        document.getElementById('pdCHResult').innerHTML = 'Looking up…';
-        fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!data || data.error) {
-                    document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
-                    return;
-                }
-                var legalName = data.company_name || data.legal_name || '';
-                document.getElementById('pdCHResult').innerHTML =
-                    '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
-                        '<strong>' + escHTML(legalName) + '</strong>' +
-                        ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
-                        '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
-                    '</div>';
-                document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
-                    sbClient.from('prospect_suppliers').update({
-                        company_number: num,
-                        legal_name:     legalName,
-                        ch_verified_at: new Date().toISOString()
-                    }).eq('id', prospect.id).then(function(res) {
-                        if (res.error) { alert('Save failed: ' + res.error.message); return; }
-                        prospect.company_number = num;
-                        prospect.legal_name = legalName;
-                        prospect.ch_verified_at = new Date().toISOString();
-                        var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
-                        if (sp) Object.assign(sp, { company_number: num, legal_name: legalName, ch_verified_at: prospect.ch_verified_at });
-
-                        // System note
-                        sbClient.from('prospect_notes').insert({
-                            prospect_supplier_id: prospect.id,
-                            content: 'CH verified: ' + legalName + ' (' + num + ')',
-                            note_type: 'system',
-                            created_by: window.__currentUser ? window.__currentUser.id : null
-                        }).then(function() { renderProspectDetail(prospect); });
-                    });
-                });
-            })
-            .catch(function(err) {
-                document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
-            });
-    });
+    // VERIFICATION — source-aware
+    var verifySourceSel = document.getElementById('pdVerifySource');
+    if (verifySourceSel) {
+        renderVerifyFields(verifySourceSel.value, prospect);
+        verifySourceSel.addEventListener('change', function() {
+            renderVerifyFields(verifySourceSel.value, prospect);
+        });
+    }
 
     var reverifyBtn = document.getElementById('pdReverifyBtn');
     if (reverifyBtn) reverifyBtn.addEventListener('click', function() {
-        if (!confirm('Clear CH verification and re-verify?')) return;
+        if (!confirm('Clear verification and re-verify?')) return;
         sbClient.from('prospect_suppliers').update({
-            company_number: null,
-            legal_name:     null,
-            ch_verified_at: null
+            registry_id:               null,
+            legal_name:                null,
+            verified_at:               null,
+            verification_source:       null,
+            verification_jurisdiction: null,
+            verified_by:               null,
+            verification_notes:        null,
+            verification_raw:          null
         }).eq('id', prospect.id).then(function() {
-            prospect.company_number = null;
-            prospect.legal_name = null;
-            prospect.ch_verified_at = null;
+            Object.assign(prospect, {
+                registry_id: null, legal_name: null, verified_at: null,
+                verification_source: null, verification_jurisdiction: null,
+                verified_by: null, verification_notes: null, verification_raw: null
+            });
             var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
-            if (sp) Object.assign(sp, { company_number: null, legal_name: null, ch_verified_at: null });
+            if (sp) Object.assign(sp, {
+                registry_id: null, legal_name: null, verified_at: null,
+                verification_source: null, verification_jurisdiction: null,
+                verified_by: null, verification_notes: null, verification_raw: null
+            });
             sbClient.from('prospect_notes').insert({
                 prospect_supplier_id: prospect.id,
-                content: 'CH verification cleared',
-                note_type: 'system'
+                content: 'Verification cleared',
+                note_type: 'system',
+                created_by: window.__currentUser ? window.__currentUser.id : null
             }).then(function() { renderProspectDetail(prospect); });
         });
     });
@@ -3434,10 +3536,10 @@ function wireProspectWorkspaceHandlers(prospect) {
     // CONVERT
     var convertBtn = document.getElementById('pdConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
-        if (!prospect.company_number) return;
+        if (!prospect.registry_id) return;
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
-        params.set('company_number', prospect.company_number);
+        params.set('company_number', prospect.registry_id);
         if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
         if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
         if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
@@ -3447,6 +3549,144 @@ function wireProspectWorkspaceHandlers(prospect) {
     var confirmBtn = document.getElementById('pdConvertConfirmBtn');
     if (confirmBtn) confirmBtn.addEventListener('click', function() {
         confirmProspectConversion(prospect);
+    });
+}
+
+// Render the verification sub-form based on the selected source.
+// Companies House → number input + Lookup button (live API).
+// Manual / Other   → free-text fields + Save (no API).
+function renderVerifyFields(source, prospect) {
+    var fieldsEl = document.getElementById('pdVerifyFields');
+    if (!fieldsEl) return;
+
+    if (source === 'companies_house') {
+        fieldsEl.innerHTML =
+            '<div class="pd-form-row" style="margin-bottom:6px;">' +
+                '<label>CH number</label>' +
+                '<input type="text" id="pdCHInput" placeholder="e.g. 00445790" style="font-family:var(--mono); text-transform:uppercase;">' +
+                '<button class="btn btn-sm btn-primary" id="pdCHLookupBtn">Lookup</button>' +
+            '</div>' +
+            '<div id="pdCHResult" style="font-size:11px; margin-top:6px;"></div>';
+
+        document.getElementById('pdCHLookupBtn').addEventListener('click', function() {
+            var num = (document.getElementById('pdCHInput').value || '').trim().toUpperCase();
+            if (!num) {
+                document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>';
+                return;
+            }
+            document.getElementById('pdCHResult').innerHTML = 'Looking up…';
+            fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data || data.error) {
+                        document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
+                        return;
+                    }
+                    var legalName = data.company_name || data.legal_name || '';
+                    document.getElementById('pdCHResult').innerHTML =
+                        '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
+                            '<strong>' + escHTML(legalName) + '</strong>' +
+                            ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
+                            '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                        '</div>';
+                    document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
+                        saveVerification(prospect, {
+                            registry_id:               num,
+                            legal_name:                legalName,
+                            verification_source:       'companies_house',
+                            verification_jurisdiction: 'GB',
+                            verification_raw:          data,
+                            verification_notes:        null
+                        });
+                    });
+                })
+                .catch(function(err) {
+                    document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
+                });
+        });
+    } else {
+        // Manual / Other — free-text entry, no API
+        var isManual = (source === 'manual');
+        fieldsEl.innerHTML =
+            '<div class="pd-form-row"><label>Legal name</label>' +
+                '<input type="text" id="pdManualName" placeholder="e.g. Acme Widgets Ltd">' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Registry ID</label>' +
+                '<input type="text" id="pdManualRegId" placeholder="e.g. company number, D-U-N-S" style="font-family:var(--mono);">' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Jurisdiction</label>' +
+                '<select id="pdManualJuris">' +
+                    '<option value="GB">GB — United Kingdom</option>' +
+                    '<option value="IE">IE — Ireland</option>' +
+                    '<option value="US">US — United States</option>' +
+                    '<option value="DE">DE — Germany</option>' +
+                    '<option value="FR">FR — France</option>' +
+                    '<option value="NL">NL — Netherlands</option>' +
+                    '<option value="OTHER">Other</option>' +
+                '</select>' +
+            '</div>' +
+            '<div class="pd-form-row"><label>Notes</label>' +
+                '<input type="text" id="pdManualNotes" placeholder="' + (isManual ? 'How did you confirm? (called, email, etc.)' : 'Which registry?') + '">' +
+            '</div>' +
+            '<button class="btn btn-sm btn-primary" id="pdManualSaveBtn" style="margin-top:6px;">Save verification</button>' +
+            '<div id="pdManualMsg" style="font-size:11px; margin-top:6px; color:var(--text-secondary);"></div>';
+
+        document.getElementById('pdManualSaveBtn').addEventListener('click', function() {
+            var name  = (document.getElementById('pdManualName').value || '').trim();
+            var regId = (document.getElementById('pdManualRegId').value || '').trim();
+            var juris = document.getElementById('pdManualJuris').value;
+            var notes = (document.getElementById('pdManualNotes').value || '').trim() || null;
+            if (!name) {
+                document.getElementById('pdManualMsg').innerHTML = '<span style="color:var(--danger);">Legal name is required.</span>';
+                return;
+            }
+            saveVerification(prospect, {
+                registry_id:               regId || null,
+                legal_name:                name,
+                verification_source:       source,
+                verification_jurisdiction: juris,
+                verification_raw:          null,
+                verification_notes:        notes
+            });
+        });
+    }
+}
+
+// Save verification fields + add system note + re-render.
+function saveVerification(prospect, fields) {
+    var updates = {
+        registry_id:               fields.registry_id,
+        legal_name:                fields.legal_name,
+        verification_source:       fields.verification_source,
+        verification_jurisdiction: fields.verification_jurisdiction,
+        verification_notes:        fields.verification_notes,
+        verification_raw:          fields.verification_raw,
+        verified_at:               new Date().toISOString(),
+        verified_by:               window.__currentUser ? window.__currentUser.id : null
+    };
+    sbClient.from('prospect_suppliers').update(updates).eq('id', prospect.id).then(function(res) {
+        if (res.error) { alert('Save failed: ' + res.error.message); return; }
+
+        // Update local state
+        Object.keys(updates).forEach(function(k) { prospect[k] = updates[k]; });
+        var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+        if (sp) Object.assign(sp, updates);
+
+        // System note
+        var sourceLabel =
+            fields.verification_source === 'companies_house' ? 'Companies House' :
+            fields.verification_source === 'manual'          ? 'Manual' :
+            'Other registry';
+        var noteContent = 'Verified via ' + sourceLabel +
+            ': ' + fields.legal_name +
+            (fields.registry_id ? ' (' + fields.registry_id + ')' : '') +
+            ' [' + fields.verification_jurisdiction + ']';
+        sbClient.from('prospect_notes').insert({
+            prospect_supplier_id: prospect.id,
+            content: noteContent,
+            note_type: 'system',
+            created_by: window.__currentUser ? window.__currentUser.id : null
+        }).then(function() { renderProspectDetail(prospect); });
     });
 }
 
@@ -6087,11 +6327,11 @@ function renderProspectSalesSections(prospect) {
             return '<option value="' + s + '"' + (prospect.status === s ? ' selected' : '') + (s === 'converted' && prospect.status !== 'converted' ? ' disabled' : '') + '>' + s + '</option>';
         }).join('');
 
-    var verifiedBlock = prospect.ch_verified_at
+    var verifiedBlock = prospect.verified_at
         ? '<div style="padding:10px 12px; background:#10B98110; border:1px solid #10B98140; border-radius:6px; font-size:12px;">' +
             '<strong>' + escHTML(prospect.legal_name || 'Verified') + '</strong>' +
-            ' · CH: <span class="mono">' + escHTML(prospect.company_number) + '</span>' +
-            ' · verified ' + formatDateTime(prospect.ch_verified_at) +
+            ' · CH: <span class="mono">' + escHTML(prospect.registry_id) + '</span>' +
+            ' · verified ' + formatDateTime(prospect.verified_at) +
             ' <button class="btn btn-xs" id="prReverifyBtn" style="margin-left:8px;">Re-verify</button>' +
           '</div>'
         : '<div style="display:flex; gap:6px; align-items:center;">' +
@@ -6100,7 +6340,7 @@ function renderProspectSalesSections(prospect) {
           '</div>' +
           '<div id="prCHResult" style="margin-top:8px; font-size:11px;"></div>';
 
-    var convertReady = prospect.ch_verified_at && prospect.status !== 'converted';
+    var convertReady = prospect.verified_at && prospect.status !== 'converted';
     var convertBlock = prospect.status === 'converted'
         ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
             'Converted ' + formatDateTime(prospect.converted_at) + (prospect.converted_supplier_id ? ' · FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span>' : '') +
@@ -6191,16 +6431,16 @@ function wireProspectSalesHandlers(prospect) {
                     '</div>';
                 document.getElementById('prCHSaveBtn').addEventListener('click', function() {
                     sbClient.from('prospect_suppliers').update({
-                        company_number: num,
+                        registry_id: num,
                         legal_name:     legalName,
-                        ch_verified_at: new Date().toISOString()
+                        verified_at: new Date().toISOString()
                     }).eq('id', prospect.id).then(function(res) {
                         if (res.error) { alert('Save failed: ' + res.error.message); return; }
-                        prospect.company_number = num;
+                        prospect.registry_id = num;
                         prospect.legal_name = legalName;
-                        prospect.ch_verified_at = new Date().toISOString();
+                        prospect.verified_at = new Date().toISOString();
                         var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
-                        if (sp) Object.assign(sp, { company_number: num, legal_name: legalName, ch_verified_at: prospect.ch_verified_at });
+                        if (sp) Object.assign(sp, { registry_id: num, legal_name: legalName, verified_at: prospect.verified_at });
                         // Re-render just this slide-out panel
                         var body = document.getElementById('supPanelBody');
                         var salesEls = body.querySelectorAll('.sup-panel-section');
@@ -6219,15 +6459,15 @@ function wireProspectSalesHandlers(prospect) {
     if (reverifyBtn) reverifyBtn.addEventListener('click', function() {
         if (!confirm('Clear CH verification and re-verify?')) return;
         sbClient.from('prospect_suppliers').update({
-            company_number: null,
+            registry_id: null,
             legal_name: null,
-            ch_verified_at: null
+            verified_at: null
         }).eq('id', prospect.id).then(function() {
-            prospect.company_number = null;
+            prospect.registry_id = null;
             prospect.legal_name = null;
-            prospect.ch_verified_at = null;
+            prospect.verified_at = null;
             var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
-            if (sp) Object.assign(sp, { company_number: null, legal_name: null, ch_verified_at: null });
+            if (sp) Object.assign(sp, { registry_id: null, legal_name: null, verified_at: null });
             closeSupplierPanel();
             setTimeout(function() { openProspectPanel(prospect.id); }, 100);
         });
@@ -6279,10 +6519,10 @@ function wireProspectSalesHandlers(prospect) {
     // Convert: deep-link to main portal
     var convertBtn = document.getElementById('prConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
-        if (!prospect.company_number) return;
+        if (!prospect.registry_id) return;
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
-        params.set('company_number', prospect.company_number);
+        params.set('company_number', prospect.registry_id);
         if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
         if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
         if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
@@ -6299,12 +6539,24 @@ function wireProspectSalesHandlers(prospect) {
 // company_number, then migrate invoices/CNs from buyer_invoices into the
 // main portal invoices/credit_notes tables.
 function confirmProspectConversion(prospect) {
-    if (!prospect.company_number) { alert('No CH number on prospect.'); return; }
-    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.company_number) + '" has been created in the main portal? This migrates their invoices.')) return;
+    if (!prospect.registry_id) { alert('No registry identifier on prospect.'); return; }
+    // Path 1 deferral: the main portal only knows Companies House numbers.
+    // For non-GB / non-CH verifications, sales must create the entity in the
+    // main portal by hand for now.
+    if (prospect.verification_source !== 'companies_house' || prospect.verification_jurisdiction !== 'GB') {
+        alert(
+            'This prospect was verified via ' + (prospect.verification_source || 'an unknown source') +
+            ' (' + (prospect.verification_jurisdiction || 'unknown jurisdiction') + ').\n\n' +
+            'The main portal currently only supports Companies House (GB) conversions automatically. ' +
+            'Please create this entity manually in the main portal, then return here.'
+        );
+        return;
+    }
+    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This migrates their invoices.')) return;
 
-    sbClient.from('suppliers').select('id,name').eq('company_number', prospect.company_number).maybeSingle().then(function(supRes) {
+    sbClient.from('suppliers').select('id,name').eq('company_number', prospect.registry_id).maybeSingle().then(function(supRes) {
         if (supRes.error || !supRes.data) {
-            alert('Could not find supplier with CH ' + prospect.company_number + ' in the main portal. Create it there first, then return here.');
+            alert('Could not find supplier with CH ' + prospect.registry_id + ' in the main portal. Create it there first, then return here.');
             return;
         }
         var ffSupplierId = supRes.data.id;
@@ -6365,7 +6617,7 @@ function migrateProspectInvoicesAndCNs(prospect, uploadId, ffSupplierId, ffName)
                 sbClient.from('prospect_notes').insert({
                     prospect_supplier_id: prospect.id,
                     note_type: 'system',
-                    content: 'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.company_number + ', ID: ' + ffSupplierId + '). Migrated ' + ffRows.length + ' invoices.'
+                    content: 'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.registry_id + ', ID: ' + ffSupplierId + '). Migrated ' + ffRows.length + ' invoices.'
                 }).then(function() {
                     migrateProspectCNs(prospect, uploadId, ffSupplierId, ffName);
                 });
