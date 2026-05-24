@@ -2200,20 +2200,37 @@ function loadAllData() {
             renderBuyersOutreachTable();
         });
 
+    // Load prospect_suppliers in chunks. Supabase's PostgREST caps response
+    // size at db-max-rows (default 1000) regardless of limit/range. Paginate
+    // until we get a partial page back, meaning we've hit the end.
+    state.prospects = [];
+    fetchProspectsChunk(0);
+}
+
+function fetchProspectsChunk(offset) {
+    var CHUNK = 1000;
     sbClient.from('prospect_suppliers')
         .select('*')
         .order('last_seen_at', { ascending: false })
-        .limit(50000)
+        .range(offset, offset + CHUNK - 1)
         .then(function(res) {
             if (res.error) {
-                // Non-fatal: prospects may not be set up yet on a fresh DB.
-                console.warn('loadProspects: ', res.error.message);
-                state.prospects = [];
-            } else {
-                state.prospects = res.data || [];
+                console.warn('loadProspects chunk @' + offset + ':', res.error.message);
+                if (offset === 0) state.prospects = [];
+                if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
+                    renderProspects();
+                }
+                return;
             }
-            if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
-                renderProspects();
+            var batch = res.data || [];
+            state.prospects = state.prospects.concat(batch);
+            // Continue if we got a full page
+            if (batch.length === CHUNK) {
+                fetchProspectsChunk(offset + CHUNK);
+            } else {
+                if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
+                    renderProspects();
+                }
             }
         });
 }
