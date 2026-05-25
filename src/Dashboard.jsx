@@ -260,11 +260,105 @@ function isEntityPaused(entityId) {
   return false;
 }
 
-// Check if a buyer is paused
-function isBuyerPaused(buyerId) {
-  if (!buyerId) return false;
-  var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
-  return b ? !!b.paused : false;
+// Check if a buyer entity (parent or branch) is paused.
+// Branch paused OR parent paused = entity is paused. Mirrors isEntityPaused
+// on the supplier side; previously buyer-side was parent-only, an asymmetry
+// left over from Phase 1's initial buyer-branch landing.
+//
+// Caller-supplied ID may be flat ("BUY-001") or composite ("BUY-001:BR-002").
+// Today most callers pass inv.buyerId, which is the flat parent ID — so the
+// branch-pause check is a no-op for that path. Once callers are migrated to
+// pass inv.buyerEntityId, branch-pause becomes effective automatically.
+function isBuyerPaused(buyerEntityId) {
+  if (!buyerEntityId) return false;
+  var b = getBuyerById(buyerEntityId);
+  if (!b) return false;
+  // Check parent pause first
+  if (b.paused) return true;
+  // Check branch pause
+  var branch = getBuyerBranchById(buyerEntityId);
+  if (branch && branch.paused) return true;
+  return false;
+}
+
+// ======== Cascade-aware limit helpers (module scope, pure) ========
+// These are pure functions: they read SUPPLIERS_DB / BUYERS_DB and the
+// invoice's own fields, nothing component-scoped. Module scope lets
+// non-component sites (e.g. getEligiblePrograms) use them.
+// The exposure-summing primitives, which need viewData.invoices, stay
+// inside the component — see getSupplierProgramExposureScoped et al.
+function _invSupplierBranchOf(inv) {
+  // Decode an invoice's supplier branch from whatever fields it carries.
+  // Importer-created invoices: inv.supplierBranchId directly.
+  // Stage-3 invoices: inv.supplierEntityId is composite ("SUP-001:BR-002").
+  // Legacy: composite stored in inv.supplierId itself.
+  if (!inv) return null;
+  if (inv.supplierBranchId) return inv.supplierBranchId;
+  var ent = inv.supplierEntityId || inv.supplierId;
+  if (!ent) return null;
+  var br = parseEntityId(ent).branchId;
+  return br || null;
+}
+function _invBuyerBranchOf(inv) {
+  if (!inv) return null;
+  if (inv.buyerBranchId) return inv.buyerBranchId;
+  var ent = inv.buyerEntityId || inv.buyerId;
+  if (!ent) return null;
+  var br = parseEntityId(ent).branchId;
+  return br || null;
+}
+
+// Check whether an invoice's amount fits under the cascading single-invoice
+// limit (parent's cap AND, if applicable, branch's cap). Returns null if
+// the invoice clears, or a string reason if it doesn't.
+function checkSupplierProgramCascadingSingleInvoiceLimit(inv, programId) {
+  if (!inv || !programId) return null;
+  var entityId = inv.supplierEntityId || inv.supplierId;
+  if (!entityId) return null;
+  var parentId = parseEntityId(entityId).supplierId || entityId;
+  var branchId = _invSupplierBranchOf(inv);
+  var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
+  if (!sup) return null;
+  var amt = inv.amount || 0;
+  var parentSIL = (sup.singleInvoiceLimits || {})[programId];
+  if (parentSIL && parentSIL > 0 && amt > parentSIL) {
+    return "Invoice exceeds supplier's single-invoice limit (" + money(parentSIL, inv.currency) + ")";
+  }
+  if (branchId) {
+    var branch = (sup.branches || []).find(function(b) { return b.branchId === branchId; });
+    if (branch) {
+      var branchSIL = (branch.singleInvoiceLimits || {})[programId];
+      if (branchSIL && branchSIL > 0 && amt > branchSIL) {
+        return "Invoice exceeds branch's single-invoice limit (" + money(branchSIL, inv.currency) + ")";
+      }
+    }
+  }
+  return null;
+}
+
+function checkBuyerProgramCascadingSingleInvoiceLimit(inv, programId) {
+  if (!inv || !programId) return null;
+  var entityId = inv.buyerEntityId || inv.buyerId;
+  if (!entityId) return null;
+  var parentId = parseEntityId(entityId).supplierId || entityId;
+  var branchId = _invBuyerBranchOf(inv);
+  var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+  if (!buy) return null;
+  var amt = inv.amount || 0;
+  var parentSIL = (buy.singleInvoiceLimits || {})[programId];
+  if (parentSIL && parentSIL > 0 && amt > parentSIL) {
+    return "Invoice exceeds buyer's single-invoice limit (" + money(parentSIL, inv.currency) + ")";
+  }
+  if (branchId) {
+    var branch = (buy.branches || []).find(function(b) { return b.branchId === branchId; });
+    if (branch) {
+      var branchSIL = (branch.singleInvoiceLimits || {})[programId];
+      if (branchSIL && branchSIL > 0 && amt > branchSIL) {
+        return "Invoice exceeds buyer branch's single-invoice limit (" + money(branchSIL, inv.currency) + ")";
+      }
+    }
+  }
+  return null;
 }
 
 // Determines whether Pelagic has economic exposure to an invoice. Used as
@@ -773,15 +867,33 @@ function getSupplierBankDetails(entityId, programId) {
 
 // Look up a supplier's rate for a specific program at a given point in time.
 // Returns null if the supplier has no rates set for that program.
-// History is stored as supplier.programRates[programId] = [{annualRate, advanceRate, penaltyRate, effectiveDate, effectiveTimestamp}, ...].
-// We pick the most recent entry whose effectiveTimestamp <= asOfTimestamp (or now if not provided).
-function getSupplierRateForProgram(entityId, programId, asOfTimestamp) {
+// History is stored as supplier.programRates[programId] in one of two shapes:
+//   OLD:  [history-entries...]                 — flat array, pre-rate-chain work
+//   NEW:  { "__default": [history-entries...], "BUY-001": [history-entries...] }
+//         — dict keyed by buyerId, with "__default" as the catch-all
+// We resolve the buyer-keyed entry first when a buyerId is supplied, then fall
+// back to "__default". Old-shape arrays are treated as "__default" for
+// backward compatibility — the JSX reads them transparently regardless of
+// whether the data has been migrated to the new shape.
+// We pick the most recent entry whose effectiveTimestamp <= asOfTimestamp.
+function _resolveProgramRateHistory(pr, programId, buyerId) {
+  if (!pr) return null;
+  var entry = pr[programId];
+  if (!entry) return null;
+  // Old shape: a bare array. Treat as "__default".
+  if (Array.isArray(entry)) return entry;
+  // New shape: dict. Try buyer-specific first, then default.
+  if (buyerId && Array.isArray(entry[buyerId])) return entry[buyerId];
+  if (Array.isArray(entry["__default"])) return entry["__default"];
+  return null;
+}
+
+function getSupplierRateForProgram(entityId, programId, asOfTimestamp, buyerId) {
   if (!programId) return null;
   var supplier = getSupplierById(entityId);
   if (!supplier) supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
   if (!supplier) return null;
-  var pr = supplier.programRates || {};
-  var arr = pr[programId];
+  var arr = _resolveProgramRateHistory(supplier.programRates, programId, buyerId || null);
   if (!arr || arr.length === 0) return null;
   var ts = asOfTimestamp || new Date().toISOString();
   var sorted = arr.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
@@ -812,6 +924,33 @@ function getSupplierRate(entityId, asOfTimestamp) {
   return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
 }
 
+// ======== Benchmark helpers (placeholder stubs) ========
+// The rate-chain architecture is a schema-only landing in this pass. These
+// stubs let the rest of the codebase reference benchmarks without crashing,
+// and define the call signatures the future recomputation engine will use.
+// None of the existing call sites use these — they read materialised rate
+// values (inv.annualRate etc) directly. See branch_cascade_and_rate_architecture.sql
+// for the full rateDefinition spec.
+function getBenchmark(benchmarkId) {
+  if (!benchmarkId) return null;
+  return BENCHMARKS_DB.find(function(b) { return b.id === benchmarkId; }) || null;
+}
+
+// Resolve a rateDefinition object into a numeric rate. Currently only the
+// "fixed" mode is supported; the benchmark/buyer/parent modes are
+// placeholder-returns-null until the recomputation engine is built.
+// context (optional): { benchmark, parentRate, buyerRate } — values the
+// future engine will pass in so this function can resolve chained modes.
+function resolveRateDefinition(def, context) {
+  if (!def || typeof def !== "object") return null;
+  if (def.mode === "fixed") return (typeof def.value === "number") ? def.value : null;
+  // benchmark / buyer / parent modes intentionally not yet implemented.
+  // Returning null means callers fall back to the materialised numeric rate
+  // already stored on the entry (annualRate / penaltyRate / advanceRate),
+  // which is the source of truth until the engine is in place.
+  return null;
+}
+
 // Programs the given supplier ID participates in (member of eligible_suppliers).
 // Used to populate the program filter dropdown on the Suppliers view (Tweak #1).
 function programsForSupplier(supplierId) {
@@ -826,8 +965,13 @@ function programsForSupplier(supplierId) {
 // Programs the given buyer ID participates in. Used for the Buyers view filter (Tweak #2).
 function programsForBuyer(buyerId) {
   if (!buyerId) return [];
+  // Composite "BUY-001:BR-001" resolves to its parent for eligibility — programs
+  // list eligible buyers at the parent level, branches inherit their parent's
+  // program eligibility. (Branch-specific program restrictions would be a
+  // future feature; not on the roadmap.)
+  var parentId = parseEntityId(buyerId).supplierId || buyerId;
   return FUNDING_PROGRAMS_DB.filter(function(fp) {
-    return (fp.eligibleBuyers || []).indexOf(buyerId) > -1;
+    return (fp.eligibleBuyers || []).indexOf(parentId) > -1;
   });
 }
 
@@ -892,16 +1036,12 @@ function getEligiblePrograms(inv, supDilRates) {
     if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) return false;
     if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) return false;
     if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) return false;
-    // Single invoice limit per supplier per program
-    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
-    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
-      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
-    }
-    // Single invoice limit per buyer per program (mirrors supplier rule). Lower of the two prevails by virtue of both being checked.
-    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
-    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
-      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) return false;
-    }
+    // Cascading single-invoice limit checks. Each function evaluates both
+    // parent's cap and (if invoice is on a branch) the branch's cap.
+    // Returns null on pass, string reason on fail; eligibility just cares
+    // about pass/fail here — getEligibilityReasons surfaces the message.
+    if (checkSupplierProgramCascadingSingleInvoiceLimit(inv, fp.id)) return false;
+    if (checkBuyerProgramCascadingSingleInvoiceLimit(inv, fp.id)) return false;
     return true;
   });
 }
@@ -959,18 +1099,13 @@ function getEligibilityReasons(inv, supDilRates) {
     if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) reasons.push("Funded live dilution exceeds program limit");
     if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) reasons.push("Funded 30-day dilution exceeds program limit");
     if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) reasons.push("Funded 90-day dilution exceeds program limit");
-    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
-    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
-      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) {
-        reasons.push("Invoice exceeds supplier's single-invoice limit (" + money(parentSupObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
-      }
-    }
-    var buyerObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
-    if (buyerObj && buyerObj.singleInvoiceLimits && buyerObj.singleInvoiceLimits[fp.id]) {
-      if (inv.amount > buyerObj.singleInvoiceLimits[fp.id]) {
-        reasons.push("Invoice exceeds buyer's single-invoice limit (" + money(buyerObj.singleInvoiceLimits[fp.id], inv.currency) + ")");
-      }
-    }
+    // Cascading single-invoice limit checks — each returns null on pass or
+    // the specific reason string on fail. The string already tells the
+    // operator whether the parent's or the branch's cap was breached.
+    var supSilReason = checkSupplierProgramCascadingSingleInvoiceLimit(inv, fp.id);
+    if (supSilReason) reasons.push(supSilReason);
+    var buySilReason = checkBuyerProgramCascadingSingleInvoiceLimit(inv, fp.id);
+    if (buySilReason) reasons.push(buySilReason);
     if (reasons.length === 0) {
       eligibleCount += 1;
     } else {
@@ -1122,6 +1257,16 @@ var ENTITY_ALIASES_DB = [];
 // rationale for per-buyer conduit registration.
 var CSV_PROVIDERS_DB = [];
 var PROVIDER_ALIASES_DB = [];
+
+// Benchmark rates (SOFR, SONIA, ESTR, ...). Architectural placeholder for the
+// rate-chain work. The schema and seed values exist; the recomputation engine
+// that would walk supplier/buyer/branch rateDefinitions when a benchmark moves
+// is NOT yet built. Reads of materialised rates (inv.annualRate etc) continue
+// to go through the existing programRates history and remain unaffected.
+// See branch_cascade_and_rate_architecture.sql for the data shape and the
+// "notes on data shape" block in that file for the rateDefinition spec.
+var BENCHMARKS_DB = [];
+
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
 
@@ -1255,7 +1400,13 @@ async function saveFundingProgram(progId) {
       eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
       eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
       created_date: fp.createdDate || null,
-      fund_flows: fp.fundFlows || []
+      fund_flows: fp.fundFlows || [],
+      // Optional benchmark FK (rate-chain architecture placeholder). Null means
+      // the program is fixed-rate-only; non-null binds the program to a
+      // benchmark (SOFR/SONIA/ESTR) so its suppliers and buyers may use
+      // benchmark-linked rate definitions. No engine yet — this is just
+      // persisting the choice so a future build doesn't require a migration.
+      benchmark: fp.benchmark || null
     };
     var progRes = await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
     if (progRes && progRes.error) { console.error("[SaveProgram] Supabase error:", progRes.error); toast.error("Funding program save failed", progRes.error.message || "Database rejected the program record."); }
@@ -1520,6 +1671,32 @@ async function saveCsvProvider(providerId) {
   _isSaving = false;
 }
 
+// Persist a benchmark row (SOFR, SONIA, ESTR, ...). Used by the future admin
+// UI when an operator updates the live rate. For now no caller — the function
+// exists alongside the schema so the eventual UI work is just a JSX edit.
+async function saveBenchmark(benchmarkId) {
+  var b = BENCHMARKS_DB.find(function(x) { return x.id === benchmarkId; });
+  if (!b) return;
+  _isSaving = true;
+  try {
+    var row = {
+      id: b.id,
+      name: b.name,
+      currency: b.currency,
+      current_rate: b.currentRate != null ? Number(b.currentRate) : 0,
+      effective_date: b.effectiveDate || null,
+      source: b.source || "manual",
+      external_id: b.externalId || null,
+      history: b.history || [],
+      notes: b.notes || "",
+      updated_at: new Date().toISOString()
+    };
+    var bmRes = await supabase.from("benchmarks").upsert([row], { onConflict: "id" });
+    if (bmRes && bmRes.error) { console.error("[SaveBenchmark]:", bmRes.error); toast.error("Benchmark save failed", bmRes.error.message || "Database error."); }
+  } catch (e) { console.error("[SaveBenchmark] Error:", e); toast.error("Benchmark save error", e.message || String(e)); }
+  _isSaving = false;
+}
+
 // Validates that pelagic_entity_id resolves to a real entity (and a real
 // branch on that parent if the ID is composite). This validation lives here,
 // not in the DB, because we can't FK to a composite ID — Postgres can't see
@@ -1749,7 +1926,8 @@ async function loadPersistedData() {
       safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true }), "csv_review_queue"),               // 13
       safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases"),                                                                                    // 14
       safeFetch(supabase.from("csv_providers").select("*"), "csv_providers"),                                                                                      // 15
-      safeFetch(supabase.from("provider_entity_aliases").select("*"), "provider_entity_aliases")                                                                   // 16
+      safeFetch(supabase.from("provider_entity_aliases").select("*"), "provider_entity_aliases"),                                                                  // 16
+      safeFetch(supabase.from("benchmarks").select("*"), "benchmarks")                                                                                              // 17
     ]);
     console.log("[Load] Parallel fetches completed in " + (Date.now() - t0) + "ms");
 
@@ -1760,6 +1938,7 @@ async function loadPersistedData() {
     var auditRes = results[11], enRes = results[12];
     var rqRes = results[13], alRes = results[14];
     var cpRes = results[15], paRes = results[16];
+    var bmRes = results[17];
 
     // Normalise: the fetchAllRows-wrapped entries hold data arrays directly
     var invData = (invRes && invRes.data) || [];
@@ -1882,7 +2061,8 @@ async function loadPersistedData() {
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
-          fundFlows: row.fund_flows || []
+          fundFlows: row.fund_flows || [],
+          benchmark: row.benchmark || null
         });
       });
     }
@@ -2025,6 +2205,29 @@ async function loadPersistedData() {
           verifiedBy: row.verified_by || null,
           verifiedAt: row.verified_at || null,
           notes: row.notes || null
+        });
+      });
+    }
+
+    // Process benchmarks (rate-chain architectural placeholder). Graceful
+    // degradation: if the table doesn't exist yet (pre-migration env), the
+    // rest of the app still loads and the benchmark machinery just stays
+    // empty — nothing reads from it yet anyway.
+    if (bmRes && bmRes._failed) {
+      console.warn("benchmarks table not found — skipping. Run branch_cascade_and_rate_architecture.sql to enable.");
+    } else if (bmRes && bmRes.data) {
+      BENCHMARKS_DB.length = 0;
+      bmRes.data.forEach(function(row) {
+        BENCHMARKS_DB.push({
+          id: row.id,
+          name: row.name,
+          currency: row.currency,
+          currentRate: row.current_rate != null ? Number(row.current_rate) : 0,
+          effectiveDate: row.effective_date || null,
+          source: row.source || "manual",
+          externalId: row.external_id || null,
+          history: row.history || [],
+          notes: row.notes || ""
         });
       });
     }
@@ -2398,7 +2601,8 @@ async function reloadFundingPrograms() {
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
-          fundFlows: row.fund_flows || []
+          fundFlows: row.fund_flows || [],
+          benchmark: row.benchmark || null
         });
       });
     }
@@ -4167,6 +4371,13 @@ export default function FactoringDashboard() {
   var csvRev1 = useState([]), csvReviewQueue = csvRev1[0], setCsvReviewQueue = csvRev1[1];
   var csvRes1 = useState(null), csvResolution = csvRes1[0], setCsvResolution = csvRes1[1]; // { suppliers: {csvName: entityId}, buyers: {csvName: entityId}, unresolved: [...] }
   var csvRes2 = useState("mapping"), csvImportStep = csvRes2[0], setCsvImportStep = csvRes2[1]; // "mapping" | "resolution" | "processing" | "done"
+  // Per-row picker state for the inline alias resolution UI on the
+  // validation_failed step. Keyed by entityType + "|" + externalString;
+  // value is the target Pelagic ID the operator has chosen but not yet saved.
+  // Cleared each time the importer step resets to mapping.
+  var csvAr1 = useState({}), csvAliasPicks = csvAr1[0], setCsvAliasPicks = csvAr1[1];
+  // Tracks which inline alias adds are currently in-flight (entityType + "|" + externalString → true).
+  var csvAr2 = useState({}), csvAliasSaving = csvAr2[0], setCsvAliasSaving = csvAr2[1];
   // Selected provider for this CSV import. null = no provider selected (the BI-style
   // direct-Pelagic-ID flow stays available for back-compat). When set, external string
   // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
@@ -4234,18 +4445,43 @@ export default function FactoringDashboard() {
     return function() { cancelAnimationFrame(raf); };
   }, [pendingFocusPayId, view, payTab, inPage, payFilter, pdSearch, pdCcyFilter, pdDateFilter, dataVer]);
 
-  // Precompute supplier dilution rates for eligibility checks
+  // Precompute supplier dilution rates for eligibility checks.
+  //
+  // Bucketing strategy:
+  //   - bySupplier[parentName] AND bySupplier[parentId]  — parent rollup
+  //     (every invoice of every branch is included). This is what the
+  //     existing eligibility checks read, and it doesn't change behaviour.
+  //   - bySupplier[parentId + ":" + branchId]  — branch-only (just the
+  //     invoices tagged to that specific branch). The rates dict gets a
+  //     row at the composite-id key with the same shape, so a caller that
+  //     wants "this branch's dilution" can look it up directly.
+  // The two buckets are computed independently — a branch row is NOT the
+  // parent rollup with branch invoices subtracted; it's the branch's own
+  // numerator/denominator. That matters because the program-level dilution
+  // caps may want to evaluate both rollups in the future.
   var supDilRates = useMemo(function() {
     var rates = {};
     var bySupplier = {};
     viewData.invoices.forEach(function(inv) {
       var parentName = getParentSupplierName(inv.supplierName);
       var parentId = getParentEntityId(inv.supplierId) || parentName;
+      // Parent rollup (existing behaviour)
       if (!bySupplier[parentName]) bySupplier[parentName] = [];
       bySupplier[parentName].push(inv);
-      // Also track by ID for ID-based lookups
       if (parentId !== parentName) {
         if (!bySupplier[parentId]) bySupplier[parentId] = bySupplier[parentName];
+      }
+      // Per-branch bucket — only when the invoice carries branch info.
+      var branchId = _invSupplierBranchOf(inv);
+      if (branchId && parentId) {
+        var compositeKey = parentId + ":" + branchId;
+        if (!bySupplier[compositeKey]) bySupplier[compositeKey] = [];
+        // Branch bucket is a separate array (don't alias to parent's array —
+        // parent's array contains MORE invoices than the branch's).
+        if (bySupplier[compositeKey] === bySupplier[parentId] || bySupplier[compositeKey] === bySupplier[parentName]) {
+          bySupplier[compositeKey] = [];
+        }
+        bySupplier[compositeKey].push(inv);
       }
     });
     var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
@@ -4259,7 +4495,11 @@ export default function FactoringDashboard() {
       // exclude them from the numerator so dilution rate reflects Pelagic's risk.
       var dN = 0, dD = 0;
       invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
-      // Add unallocated credit note amounts for this supplier
+      // Add unallocated credit note amounts for this supplier. Note: branch-keyed
+      // buckets don't have a corresponding cnUnallocBySupplier entry yet — the
+      // unallocated CN tracking is parent-keyed in viewData. Branch dilution
+      // therefore omits unallocated CN contribution today; if branch-keyed CN
+      // tracking gets added later, wire it here.
       var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(sup) || 0) : 0;
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
@@ -4295,7 +4535,17 @@ export default function FactoringDashboard() {
       }
     }
     if (isB && selectedBuyer) {
-      d = d.filter(function(x) { return x.buyerId === selectedBuyer || x.buyerName === selectedBuyer; });
+      // Branch-aware buyer filter. selectedBuyer can be a parent ID
+      // ("BUY-001") or a composite ID ("BUY-001:BR-002"). When composite,
+      // match only invoices on that exact branch; when parent, match the
+      // whole parent rollup. Mirrors the per-tab buyInvs filters.
+      var selBuyBranchId = parseEntityId(selectedBuyer).branchId;
+      var selBuyParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+      if (selBuyBranchId) {
+        d = d.filter(function(x) { return (x.buyerEntityId === selectedBuyer) || (x.buyerId === selBuyParentId && x.buyerBranchId === selBuyBranchId); });
+      } else {
+        d = d.filter(function(x) { return x.buyerId === selBuyParentId || x.buyerName === buyName(selectedBuyer); });
+      }
     }
     if (isS && supProgram) d = d.filter(function(x) { return invInProgramScope(x, supProgram); });
     if (isB && buyProgram) d = d.filter(function(x) { return invInProgramScope(x, buyProgram); });
@@ -4918,85 +5168,213 @@ export default function FactoringDashboard() {
   }
   function cancelEdit() { setEditInv(null); setEditFields({}); }
 
-  // Compute current credit limit exposure for a supplier on a program.
-  // Exposure = sum of (capitalOutstanding + interestOutstanding + penaltyInterest)
-  // for live invoices, plus pendingTopUpAmount for queued top-ups, plus capitalDue
-  // for purchased invoices (capital queued but not yet deployed). Excluding the
-  // invoice currently being funded (excludeInvoiceId) lets the caller compute
-  // headroom without double-counting that invoice's existing exposure.
-  function getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId) {
-    if (!supplierEntityId || !programId) return 0;
-    var parentId = getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId;
+  // ======================================================================
+  // Cascade-aware exposure and credit-limit primitives.
+  //
+  // The cascading model (recorded in PARENT_VS_BRANCH_INVENTORY.md): a limit
+  // can sit at the parent OR at a branch level. An invoice against a branch
+  // consumes from BOTH that branch's bucket AND the parent's bucket — both
+  // must clear. An invoice against the parent itself consumes only from the
+  // parent's bucket. For an invoice to be eligible, every applicable limit
+  // must have room; the binding constraint is whichever bucket is closest
+  // to its cap.
+  //
+  // Read these in pairs (supplier / buyer), and remember:
+  //   - scope: "branch-only"    → sum invoices for this exact (parent, branch)
+  //                               (when branch is null: invoices on parent itself)
+  //   - scope: "parent-rollup"  → sum ALL invoices for this parent regardless
+  //                               of branch (the cascade rollup)
+  //
+  // Backward compat: legacy signatures
+  //   getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId)
+  //   getBuyerProgramExposure(buyerId, programId, excludeInvoiceId)
+  // are preserved as thin shims that compute parent-rollup exposure. They
+  // remain correct for "what's the total exposure for this whole parent on
+  // this program" queries, which is what 9 D-class call sites already expect.
+  // ======================================================================
+
+  // (Pure cascade-decoder helpers _invSupplierBranchOf, _invBuyerBranchOf,
+  // checkSupplierProgramCascadingSingleInvoiceLimit, and
+  // checkBuyerProgramCascadingSingleInvoiceLimit live at module scope so
+  // non-component sites — getEligiblePrograms, getEligibilityReasons — can
+  // reach them.)
+
+  // Compute current credit limit exposure for a supplier on a program, scoped
+  // to either an exact branch ("branch-only") or to all branches under the
+  // parent ("parent-rollup"). Same "live exposure" semantics as the legacy
+  // function: cap+int+pen outstanding, plus queued capital for purchased,
+  // plus pendingTopUpAmount. Excluding excludeInvoiceId lets the caller
+  // compute headroom without double-counting the invoice currently being
+  // evaluated.
+  function getSupplierProgramExposureScoped(parentId, branchId, programId, scope, excludeInvoiceId) {
+    if (!parentId || !programId) return 0;
     var exposure = 0;
     viewData.invoices.forEach(function(inv) {
       if (inv.fundingProgram !== programId) return;
       if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
-      // Match supplier — accept either an exact entity-id match (branch-level) or
-      // a parent-level match so credit limits set on the parent supplier roll up
-      // exposure across all branches.
+      // Match the parent
       var invSupId = inv.supplierEntityId || inv.supplierId;
       if (!invSupId) return;
-      var invParentId = getParentEntityId ? getParentEntityId(invSupId) : invSupId;
-      if (invSupId !== supplierEntityId && invParentId !== parentId) return;
-      // Skip pending invoices (no exposure committed yet — they go through the popup which gates them)
+      var invParentId = parseEntityId(invSupId).supplierId || invSupId;
+      if (invParentId !== parentId) return;
+      // For branch-only, also require the branch to match. When branchId is
+      // null the caller means "invoices tagged to the parent itself."
+      if (scope === "branch-only") {
+        var invBranchId = _invSupplierBranchOf(inv);
+        if (invBranchId !== branchId) return;  // null === null when neither branch is set
+      }
+      // Skip pending invoices (no exposure committed yet)
       if (inv.fundingStatus === "pending") return;
-      // Live exposure: capital + interest + penalty outstanding
       exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
-      // Queued capital that hasn't yet executed (purchased state OR top-up pending)
       if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
       exposure += inv.pendingTopUpAmount || 0;
     });
     return r2(exposure);
   }
 
-  // Returns headroom under credit limit, or Infinity if no limit set.
-  // limit value of 0 / undefined / null = no limit (not "zero allowed").
-  function getSupplierProgramCreditHeadroom(supplierEntityId, programId, excludeInvoiceId) {
-    if (!supplierEntityId || !programId) return Infinity;
-    var sup = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId ? getParentEntityId(supplierEntityId) : supplierEntityId); });
-    if (!sup || !sup.creditLimits) return Infinity;
-    var limit = sup.creditLimits[programId];
-    if (!limit || limit <= 0) return Infinity;
-    var exposure = getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId);
-    return r2(Math.max(0, limit - exposure));
+  // Legacy signature — preserved for existing callers (D-class sites). Maps
+  // to parent-rollup since today's callers all want "all-branches-of-parent."
+  function getSupplierProgramExposure(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return 0;
+    var parentId = parseEntityId(supplierEntityId).supplierId || supplierEntityId;
+    return getSupplierProgramExposureScoped(parentId, null, programId, "parent-rollup", excludeInvoiceId);
   }
 
-  // Buyer-side exposure/headroom — mirrors getSupplierProgramExposure but
-  // matches inv.buyerId. Phase 2 TODO: buyer branches now exist; this function
-  // currently treats inv.buyerId as flat. Once Phase 2 lands, decide whether
-  // limits roll up to the parent buyer or are branch-scoped, and update the
-  // match accordingly (likely: parent rollup when limit is set on parent,
-  // exact match when set on branch — same shape as the supplier side).
-  // Same "live exposure" semantics: cap+int+pen O/S, plus queued capital, plus pending top-up.
-  function getBuyerProgramExposure(buyerId, programId, excludeInvoiceId) {
-    if (!buyerId || !programId) return 0;
+  // Returns the cascading credit headroom for an invoice: the MIN of the
+  // parent-bucket headroom and the branch-bucket headroom (where applicable).
+  // This is the "binding constraint" — the amount that can actually be funded
+  // without breaching any cap. Infinity if no caps apply.
+  //
+  // For convenience also returns which bucket binds and what each bucket's
+  // own headroom is, so the fund popup can show the breakdown.
+  function getSupplierProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId) {
+    if (!inv || !programId) return { headroom: Infinity, binding: null, parent: null, branch: null };
+    var entityId = inv.supplierEntityId || inv.supplierId;
+    if (!entityId) return { headroom: Infinity, binding: null, parent: null, branch: null };
+    var parentId = parseEntityId(entityId).supplierId || entityId;
+    var branchId = _invSupplierBranchOf(inv);
+    var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
+    if (!sup) return { headroom: Infinity, binding: null, parent: null, branch: null };
+
+    var result = { headroom: Infinity, binding: null, parent: null, branch: null };
+
+    // Parent bucket
+    var parentLimit = (sup.creditLimits || {})[programId];
+    if (parentLimit && parentLimit > 0) {
+      var parentExp = getSupplierProgramExposureScoped(parentId, null, programId, "parent-rollup", excludeInvoiceId);
+      var parentHr = r2(Math.max(0, parentLimit - parentExp));
+      result.parent = { limit: parentLimit, exposure: parentExp, headroom: parentHr };
+      if (parentHr < result.headroom) { result.headroom = parentHr; result.binding = "parent"; }
+    }
+    // Branch bucket (only if invoice is on a branch and the branch has its own limit)
+    if (branchId) {
+      var branch = (sup.branches || []).find(function(b) { return b.branchId === branchId; });
+      if (branch) {
+        var branchLimit = (branch.creditLimits || {})[programId];
+        if (branchLimit && branchLimit > 0) {
+          var branchExp = getSupplierProgramExposureScoped(parentId, branchId, programId, "branch-only", excludeInvoiceId);
+          var branchHr = r2(Math.max(0, branchLimit - branchExp));
+          result.branch = { limit: branchLimit, exposure: branchExp, headroom: branchHr };
+          if (branchHr < result.headroom) { result.headroom = branchHr; result.binding = "branch"; }
+        }
+      }
+    }
+    return result;
+  }
+
+  // Legacy signature — preserved. Returns just the headroom number. Callers
+  // wanting the breakdown should use getSupplierProgramCascadingCreditHeadroom
+  // directly. This shim no longer hides branch caps: it returns the cascading
+  // (binding) headroom, which is the stricter of parent and branch buckets.
+  function getSupplierProgramCreditHeadroom(supplierEntityId, programId, excludeInvoiceId) {
+    if (!supplierEntityId || !programId) return Infinity;
+    // Synthesize a minimal invoice-like object so the cascading function can
+    // decode parent/branch from the entity id.
+    var inv = { supplierEntityId: supplierEntityId, id: null };
+    return getSupplierProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId).headroom;
+  }
+
+  // Check whether an invoice's amount fits under the cascading single-invoice
+  // limit. This is just a local-scope alias for the module-level function so
+  // existing component-internal call sites don't need to be retargeted.
+  // The module-scope original is the source of truth.
+  // (No re-implementation here.)
+
+  // -------- Buyer-side mirrors --------
+
+  function getBuyerProgramExposureScoped(parentId, branchId, programId, scope, excludeInvoiceId) {
+    if (!parentId || !programId) return 0;
     var exposure = 0;
     viewData.invoices.forEach(function(inv) {
       if (inv.fundingProgram !== programId) return;
       if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
-      if (inv.buyerId !== buyerId) return;
-      // Skip pending invoices (no exposure committed yet — gated via popup)
+      var invBuyId = inv.buyerEntityId || inv.buyerId;
+      if (!invBuyId) return;
+      var invParentId = parseEntityId(invBuyId).supplierId || invBuyId;
+      if (invParentId !== parentId) return;
+      if (scope === "branch-only") {
+        var invBranchId = _invBuyerBranchOf(inv);
+        if (invBranchId !== branchId) return;
+      }
       if (inv.fundingStatus === "pending") return;
-      // Live exposure: capital + interest + penalty outstanding
       exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
-      // Queued capital that hasn't yet executed
       if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
       exposure += inv.pendingTopUpAmount || 0;
     });
     return r2(exposure);
   }
 
-  // Returns headroom under buyer credit limit, or Infinity if no limit set.
-  // limit value of 0 / undefined / null = no limit (not "zero allowed").
+  // Legacy signature — preserved. The original implementation only matched on
+  // exact inv.buyerId; this shim is broader (parent-rollup), which is the
+  // correct cascade behaviour and what the original was approximating.
+  function getBuyerProgramExposure(buyerId, programId, excludeInvoiceId) {
+    if (!buyerId || !programId) return 0;
+    // buyerId may be flat or composite. Always reduce to parent for rollup.
+    var parentId = parseEntityId(buyerId).supplierId || buyerId;
+    return getBuyerProgramExposureScoped(parentId, null, programId, "parent-rollup", excludeInvoiceId);
+  }
+
+  function getBuyerProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId) {
+    if (!inv || !programId) return { headroom: Infinity, binding: null, parent: null, branch: null };
+    var entityId = inv.buyerEntityId || inv.buyerId;
+    if (!entityId) return { headroom: Infinity, binding: null, parent: null, branch: null };
+    var parentId = parseEntityId(entityId).supplierId || entityId;
+    var branchId = _invBuyerBranchOf(inv);
+    var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+    if (!buy) return { headroom: Infinity, binding: null, parent: null, branch: null };
+
+    var result = { headroom: Infinity, binding: null, parent: null, branch: null };
+
+    var parentLimit = (buy.creditLimits || {})[programId];
+    if (parentLimit && parentLimit > 0) {
+      var parentExp = getBuyerProgramExposureScoped(parentId, null, programId, "parent-rollup", excludeInvoiceId);
+      var parentHr = r2(Math.max(0, parentLimit - parentExp));
+      result.parent = { limit: parentLimit, exposure: parentExp, headroom: parentHr };
+      if (parentHr < result.headroom) { result.headroom = parentHr; result.binding = "parent"; }
+    }
+    if (branchId) {
+      var branch = (buy.branches || []).find(function(b) { return b.branchId === branchId; });
+      if (branch) {
+        var branchLimit = (branch.creditLimits || {})[programId];
+        if (branchLimit && branchLimit > 0) {
+          var branchExp = getBuyerProgramExposureScoped(parentId, branchId, programId, "branch-only", excludeInvoiceId);
+          var branchHr = r2(Math.max(0, branchLimit - branchExp));
+          result.branch = { limit: branchLimit, exposure: branchExp, headroom: branchHr };
+          if (branchHr < result.headroom) { result.headroom = branchHr; result.binding = "branch"; }
+        }
+      }
+    }
+    return result;
+  }
+
+  // Legacy signature — preserved. Returns binding (cascading) headroom.
   function getBuyerProgramCreditHeadroom(buyerId, programId, excludeInvoiceId) {
     if (!buyerId || !programId) return Infinity;
-    var buy = BUYERS_DB.find(function(b) { return b.id === buyerId; });
-    if (!buy || !buy.creditLimits) return Infinity;
-    var limit = buy.creditLimits[programId];
-    if (!limit || limit <= 0) return Infinity;
-    var exposure = getBuyerProgramExposure(buyerId, programId, excludeInvoiceId);
-    return r2(Math.max(0, limit - exposure));
+    var inv = { buyerEntityId: buyerId, id: null };
+    return getBuyerProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId).headroom;
   }
+
+  // checkBuyerProgramCascadingSingleInvoiceLimit lives at module scope.
 
   function getProgramAvailableBalance(programId) {
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
@@ -5364,21 +5742,22 @@ export default function FactoringDashboard() {
     // Committed = executed capital + any queued top-up not yet executed
     var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
-    // Credit limit gate — both supplier-side and buyer-side caps on total exposure for this program.
-    // Compute each headroom excluding this invoice (its existing exposure is captured by currentCap).
-    // Spec: when both apply, the LOWER remaining limit prevails — i.e. take the min of both headrooms.
-    var creditHeadroom = getSupplierProgramCreditHeadroom(raw.supplierEntityId || raw.supplierId, prog.id, raw.id);
-    var creditLimitApplied = 0;
-    var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === (getParentEntityId(raw.supplierEntityId || raw.supplierId)); });
-    if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[prog.id] > 0) {
-      creditLimitApplied = supForLimit.creditLimits[prog.id];
-    }
-    var buyerCreditHeadroom = getBuyerProgramCreditHeadroom(raw.buyerId, prog.id, raw.id);
-    var buyerCreditLimitApplied = 0;
-    var buyForLimit = BUYERS_DB.find(function(b) { return b.id === raw.buyerId; });
-    if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[prog.id] > 0) {
-      buyerCreditLimitApplied = buyForLimit.creditLimits[prog.id];
-    }
+    // Credit limit gate — cascading: parent's limit AND (if invoice is on a
+    // branch) the branch's limit both must clear. The cascading function
+    // returns a breakdown so we can show parent and branch caps separately
+    // when both apply, and surface which bucket is binding.
+    var supBreakdown = getSupplierProgramCascadingCreditHeadroom(raw, prog.id, raw.id);
+    var buyBreakdown = getBuyerProgramCascadingCreditHeadroom(raw, prog.id, raw.id);
+    var creditHeadroom = supBreakdown.headroom;  // binding (min of parent/branch)
+    var buyerCreditHeadroom = buyBreakdown.headroom;
+    // For the legacy "limit applied" indicator, prefer the binding bucket's
+    // limit; fall back to parent's when nothing's binding.
+    var creditLimitApplied = supBreakdown.binding === "branch" && supBreakdown.branch
+      ? supBreakdown.branch.limit
+      : (supBreakdown.parent ? supBreakdown.parent.limit : 0);
+    var buyerCreditLimitApplied = buyBreakdown.binding === "branch" && buyBreakdown.branch
+      ? buyBreakdown.branch.limit
+      : (buyBreakdown.parent ? buyBreakdown.parent.limit : 0);
     var supBlocked = creditLimitApplied > 0 && creditHeadroom <= 0.01;
     var buyBlocked = buyerCreditLimitApplied > 0 && buyerCreditHeadroom <= 0.01;
     if (supBlocked || buyBlocked) {
@@ -5386,15 +5765,22 @@ export default function FactoringDashboard() {
       if (supBlocked && buyBlocked) {
         msgParts.push("\nBoth supplier and buyer credit limits are fully consumed on " + prog.name + ".");
       } else if (supBlocked) {
-        msgParts.push("\nSupplier credit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + ".");
+        msgParts.push("\nSupplier credit limit fully consumed for " + (raw.supplierName || raw.supplierId) + " on " + prog.name + " (" + (supBreakdown.binding || "parent") + " bucket).");
       } else {
-        msgParts.push("\nBuyer credit limit fully consumed for " + (raw.buyerName || raw.buyerId) + " on " + prog.name + ".");
+        msgParts.push("\nBuyer credit limit fully consumed for " + (raw.buyerName || raw.buyerId) + " on " + prog.name + " (" + (buyBreakdown.binding || "parent") + " bucket).");
       }
-      if (creditLimitApplied > 0) {
-        msgParts.push("\nSupplier limit: " + money(creditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(creditLimitApplied - creditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, creditHeadroom), raw.currency));
+      // Show parent bucket details if present
+      if (supBreakdown.parent) {
+        msgParts.push("\nSupplier parent limit: " + money(supBreakdown.parent.limit, raw.currency) + "  \u00b7  Used: " + money(supBreakdown.parent.exposure, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, supBreakdown.parent.headroom), raw.currency));
       }
-      if (buyerCreditLimitApplied > 0) {
-        msgParts.push("\nBuyer limit: " + money(buyerCreditLimitApplied, raw.currency) + "  \u00b7  Used: " + money(buyerCreditLimitApplied - buyerCreditHeadroom, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, buyerCreditHeadroom), raw.currency));
+      if (supBreakdown.branch) {
+        msgParts.push("\nSupplier branch limit: " + money(supBreakdown.branch.limit, raw.currency) + "  \u00b7  Used: " + money(supBreakdown.branch.exposure, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, supBreakdown.branch.headroom), raw.currency));
+      }
+      if (buyBreakdown.parent) {
+        msgParts.push("\nBuyer parent limit: " + money(buyBreakdown.parent.limit, raw.currency) + "  \u00b7  Used: " + money(buyBreakdown.parent.exposure, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, buyBreakdown.parent.headroom), raw.currency));
+      }
+      if (buyBreakdown.branch) {
+        msgParts.push("\nBuyer branch limit: " + money(buyBreakdown.branch.limit, raw.currency) + "  \u00b7  Used: " + money(buyBreakdown.branch.exposure, raw.currency) + "  \u00b7  Remaining: " + money(Math.max(0, buyBreakdown.branch.headroom), raw.currency));
       }
       msgParts.push("\n\nReduce outstanding exposure or raise the limit before funding more.");
       alert(msgParts.join(""));
@@ -5407,7 +5793,28 @@ export default function FactoringDashboard() {
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, creditLimitApplied: creditLimitApplied, creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0, creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0, buyerCreditLimitApplied: buyerCreditLimitApplied, buyerCreditExposure: buyerCreditLimitApplied > 0 ? r2(buyerCreditLimitApplied - buyerCreditHeadroom) : 0, buyerCreditHeadroom: buyerCreditLimitApplied > 0 ? buyerCreditHeadroom : 0 });
+    setFundPopupFields({
+      capitalDue: String(defaultNewCap),
+      annualRate: String((supRate.annualRate * 100).toFixed(2)),
+      maxCap: headroom,
+      minRate: prog.minInterestRate,
+      paymentDate: viewDate,
+      programId: prog.id,
+      eligibleProgIds: eligibleProgIds,
+      creditLimitApplied: creditLimitApplied,
+      creditExposure: creditLimitApplied > 0 ? r2(creditLimitApplied - creditHeadroom) : 0,
+      creditHeadroom: creditLimitApplied > 0 ? creditHeadroom : 0,
+      buyerCreditLimitApplied: buyerCreditLimitApplied,
+      buyerCreditExposure: buyerCreditLimitApplied > 0 ? r2(buyerCreditLimitApplied - buyerCreditHeadroom) : 0,
+      buyerCreditHeadroom: buyerCreditLimitApplied > 0 ? buyerCreditHeadroom : 0,
+      // Cascade-aware breakdowns — populated for the fund popup's bucket
+      // display. supBreakdown / buyBreakdown were computed at the start of
+      // this function (cascade gate). They survive into the popup so the
+      // UI can show "Parent £8k of £10k used, branch £3k of £6k used" with
+      // the binding bucket highlighted.
+      supCreditBreakdown: supBreakdown,
+      buyCreditBreakdown: buyBreakdown
+    });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -6227,26 +6634,39 @@ export default function FactoringDashboard() {
                 var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
                 var currentCap = fundPopup.currentCapital || 0;
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
-                // Re-apply credit-limit gate for new program (both supplier and buyer)
-                var newCreditHeadroom = getSupplierProgramCreditHeadroom(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId, newProgId, fundPopup.inv.id);
-                var newCreditLimitApplied = 0;
-                var supForLimit = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(fundPopup.inv.supplierEntityId || fundPopup.inv.supplierId); });
-                if (supForLimit && supForLimit.creditLimits && supForLimit.creditLimits[newProgId] > 0) {
-                  newCreditLimitApplied = supForLimit.creditLimits[newProgId];
-                  if (newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
-                }
-                var newBuyerCreditHeadroom = getBuyerProgramCreditHeadroom(fundPopup.inv.buyerId, newProgId, fundPopup.inv.id);
-                var newBuyerCreditLimitApplied = 0;
-                var buyForLimit = BUYERS_DB.find(function(b) { return b.id === fundPopup.inv.buyerId; });
-                if (buyForLimit && buyForLimit.creditLimits && buyForLimit.creditLimits[newProgId] > 0) {
-                  newBuyerCreditLimitApplied = buyForLimit.creditLimits[newProgId];
-                  if (newBuyerCreditHeadroom < newHeadroom) newHeadroom = newBuyerCreditHeadroom;
-                }
+                // Re-apply credit-limit gate for new program — cascading
+                // (parent and branch buckets, binding constraint applies).
+                var supBd = getSupplierProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, fundPopup.inv.id);
+                var newCreditHeadroom = supBd.headroom;
+                var newCreditLimitApplied = supBd.binding === "branch" && supBd.branch
+                  ? supBd.branch.limit
+                  : (supBd.parent ? supBd.parent.limit : 0);
+                if (newCreditLimitApplied > 0 && newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
+                var buyBd = getBuyerProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, fundPopup.inv.id);
+                var newBuyerCreditHeadroom = buyBd.headroom;
+                var newBuyerCreditLimitApplied = buyBd.binding === "branch" && buyBd.branch
+                  ? buyBd.branch.limit
+                  : (buyBd.parent ? buyBd.parent.limit : 0);
+                if (newBuyerCreditLimitApplied > 0 && newBuyerCreditHeadroom < newHeadroom) newHeadroom = newBuyerCreditHeadroom;
                 var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
-                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), creditLimitApplied: newCreditLimitApplied, creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0, creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0, buyerCreditLimitApplied: newBuyerCreditLimitApplied, buyerCreditExposure: newBuyerCreditLimitApplied > 0 ? r2(newBuyerCreditLimitApplied - newBuyerCreditHeadroom) : 0, buyerCreditHeadroom: newBuyerCreditLimitApplied > 0 ? newBuyerCreditHeadroom : 0 }); });
+                setFundPopupFields(function(f) { return Object.assign({}, f, {
+                  programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate,
+                  capitalDue: String(newDefault),
+                  creditLimitApplied: newCreditLimitApplied,
+                  creditExposure: newCreditLimitApplied > 0 ? r2(newCreditLimitApplied - newCreditHeadroom) : 0,
+                  creditHeadroom: newCreditLimitApplied > 0 ? newCreditHeadroom : 0,
+                  buyerCreditLimitApplied: newBuyerCreditLimitApplied,
+                  buyerCreditExposure: newBuyerCreditLimitApplied > 0 ? r2(newBuyerCreditLimitApplied - newBuyerCreditHeadroom) : 0,
+                  buyerCreditHeadroom: newBuyerCreditLimitApplied > 0 ? newBuyerCreditHeadroom : 0,
+                  // New: full breakdowns so the popup display can show both
+                  // parent and branch buckets explicitly (binding bucket
+                  // highlighted in the UI rendering below).
+                  supCreditBreakdown: supBd,
+                  buyCreditBreakdown: buyBd
+                }); });
               }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
                 {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
               </select>
@@ -6256,15 +6676,46 @@ export default function FactoringDashboard() {
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
           {(fundPopupFields.creditLimitApplied > 0 || fundPopupFields.buyerCreditLimitApplied > 0) && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>
-            {fundPopupFields.creditLimitApplied > 0 && <>
-              <div style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
-            </>}
-            {fundPopupFields.buyerCreditLimitApplied > 0 && <>
-              <div style={{ fontWeight: 700, marginTop: fundPopupFields.creditLimitApplied > 0 ? 6 : 0, marginBottom: 3 }}>Buyer credit limit applies on this program</div>
-              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.buyerCreditLimitApplied, fundPopup.inv.currency)} {"\u00b7"} Used: {money(fundPopupFields.buyerCreditExposure || 0, fundPopup.inv.currency)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.buyerCreditHeadroom || 0, fundPopup.inv.currency)}</strong></div>
-            </>}
-            <div style={{ marginTop: 6 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong>{fundPopupFields.creditLimitApplied > 0 && fundPopupFields.buyerCreditLimitApplied > 0 ? <span style={{ fontSize: 10, opacity: 0.85 }}>{" \u2014 capped by the lower of the two limits"}</span> : null}</div>
+            {(function() {
+              // Cascade-aware display. supCreditBreakdown / buyCreditBreakdown
+              // hold { headroom, binding, parent, branch } for the current
+              // (invoice, program) pair. Show each populated bucket on its
+              // own row; highlight the binding bucket. Fall back to the
+              // legacy single-line display when no breakdown is populated
+              // (e.g. invoices loaded into the popup before the breakdown
+              // fields were threaded through — rare but defensible).
+              var supBd = fundPopupFields.supCreditBreakdown || null;
+              var buyBd = fundPopupFields.buyCreditBreakdown || null;
+              var ccy = fundPopup.inv.currency;
+              function bucketRow(label, bucket, isBinding) {
+                if (!bucket) return null;
+                var bindingColor = isBinding ? "#B91C1C" : "#D97706";
+                return <div key={label} style={{ fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+                  <span style={{ fontWeight: isBinding ? 700 : 400, color: bindingColor }}>{label}{isBinding ? " (binding)" : ""}: </span>
+                  Limit {money(bucket.limit, ccy)} {"\u00b7"} Used {money(bucket.exposure, ccy)} {"\u00b7"} Remaining <strong style={{ color: bindingColor }}>{money(Math.max(0, bucket.headroom), ccy)}</strong>
+                </div>;
+              }
+              var rows = [];
+              if (supBd && (supBd.parent || supBd.branch)) {
+                rows.push(<div key="sup-hdr" style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>);
+                if (supBd.parent) rows.push(bucketRow("Parent", supBd.parent, supBd.binding === "parent"));
+                if (supBd.branch) rows.push(bucketRow("Branch", supBd.branch, supBd.binding === "branch"));
+              } else if (fundPopupFields.creditLimitApplied > 0) {
+                // Legacy single-bucket fallback
+                rows.push(<div key="sup-legacy-hdr" style={{ fontWeight: 700, marginBottom: 3 }}>Supplier credit limit applies on this program</div>);
+                rows.push(<div key="sup-legacy" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.creditLimitApplied, ccy)} {"\u00b7"} Used: {money(fundPopupFields.creditExposure || 0, ccy)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.creditHeadroom || 0, ccy)}</strong></div>);
+              }
+              if (buyBd && (buyBd.parent || buyBd.branch)) {
+                rows.push(<div key="buy-hdr" style={{ fontWeight: 700, marginTop: rows.length > 0 ? 6 : 0, marginBottom: 3 }}>Buyer credit limit applies on this program</div>);
+                if (buyBd.parent) rows.push(bucketRow("Parent", buyBd.parent, buyBd.binding === "parent"));
+                if (buyBd.branch) rows.push(bucketRow("Branch", buyBd.branch, buyBd.binding === "branch"));
+              } else if (fundPopupFields.buyerCreditLimitApplied > 0) {
+                rows.push(<div key="buy-legacy-hdr" style={{ fontWeight: 700, marginTop: rows.length > 0 ? 6 : 0, marginBottom: 3 }}>Buyer credit limit applies on this program</div>);
+                rows.push(<div key="buy-legacy" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Limit: {money(fundPopupFields.buyerCreditLimitApplied, ccy)} {"\u00b7"} Used: {money(fundPopupFields.buyerCreditExposure || 0, ccy)} {"\u00b7"} Remaining: <strong>{money(fundPopupFields.buyerCreditHeadroom || 0, ccy)}</strong></div>);
+              }
+              return rows;
+            })()}
+            <div style={{ marginTop: 6 }}>Maximum capital you can advance now: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopupFields.maxCap, fundPopup.inv.currency)}</strong>{fundPopupFields.creditLimitApplied > 0 && fundPopupFields.buyerCreditLimitApplied > 0 ? <span style={{ fontSize: 10, opacity: 0.85 }}>{" \u2014 capped by the binding bucket across supplier and buyer caps"}</span> : null}</div>
           </div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
@@ -8664,7 +9115,7 @@ export default function FactoringDashboard() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <select value={selectedBuyer} onChange={function(e) { setSelectedBuyer(e.target.value); setPg(0); setBiPage(0); setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBaPage(0); setBaExp(null); setBaSearch(""); setBaDateFilter(""); setBhPage(0); setBhExp(null); setBhSearch(""); setBhDateFilter(""); setBfPage(0); setBfSearch(""); setBfStatusFilter("all"); setBfDateFilter(""); setFundPayExp(null); setExp(null); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer", minWidth: 220 }}>
-              {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name + " (" + b.id + ")"}</option>; })}
+              {getAllBuyerEntities().map(function(be) { return <option key={be.value} value={be.value}>{be.label + " (" + be.value + ")"}</option>; })}
             </select>
             <select value={buyProgram} onChange={function(e) { setBuyProgram(e.target.value); setPg(0); }} style={{ padding: "8px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
               {(function() {
@@ -9116,7 +9567,20 @@ export default function FactoringDashboard() {
           if (bf !== "all") activeFilters.push("buyer");
           var hasActive = activeFilters.length > 0;
           // Unfiltered row count — we need to compare. Use the prefilter source.
-          var scopedInvs = viewData.invoices.filter(function(inv) { if (isB) return inv.buyerName === (BUYERS_DB.find(function(b) { return b.id === selectedBuyer; }) || {}).name; if (isS) { var selBrId = parseEntityId(selectedSupplier).branchId; return selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); } return true; });
+          var scopedInvs = viewData.invoices.filter(function(inv) {
+            if (isB) {
+              // Branch-aware buyer match: composite ID matches branch only,
+              // parent ID matches all of parent's invoices (incl. branches).
+              var selBrId = parseEntityId(selectedBuyer).branchId;
+              var selParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+              if (selBrId) {
+                return (inv.buyerEntityId === selectedBuyer) || (inv.buyerId === selParentId && inv.buyerBranchId === selBrId);
+              }
+              return (inv.buyerId === selParentId) || (inv.buyerName === buyName(selectedBuyer));
+            }
+            if (isS) { var selBrId = parseEntityId(selectedSupplier).branchId; return selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); }
+            return true;
+          });
           var totalCount = scopedInvs.length;
           // Per-buyer counts for the buyer filter dropdown (only counts within current supplier scope)
           var buyerCounts = {};
@@ -9597,6 +10061,24 @@ export default function FactoringDashboard() {
           if (supUnallocCN > 0) fdilNumerator += supUnallocCN;
           var fdilutionRate = fdilDenominator > 0.01 ? (fdilNumerator / fdilDenominator) * 100 : 0;
 
+          // Parent-rollup dilution context. When the user has drilled into a
+          // specific branch (selectedSupplier carries a branchId), we show the
+          // parent rollup beneath the branch's own number so the operator can
+          // compare branch vs parent average. supDilRates carries entries for
+          // both the parent (keyed by parent ID) and per-branch (keyed by
+          // parentId:branchId). On a parent view, parentRollup is null and
+          // the contextual lines below don't render.
+          var _selBranchId = parseEntityId(selectedSupplier).branchId;
+          var _selParentId = parseEntityId(selectedSupplier).supplierId || selectedSupplier;
+          var parentRollup = null;
+          if (_selBranchId && supDilRates && supDilRates[_selParentId]) {
+            // Show parent's "current" supplier dilution and "current funded" dilution
+            parentRollup = {
+              dilRate: supDilRates[_selParentId].dilRate || 0,
+              fdilRate: supDilRates[_selParentId].fdilRate || 0
+            };
+          }
+
           // Period-based Supplier Dilution (by invoice date)
           var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
           function calcPeriodDilution(days) {
@@ -9777,20 +10259,46 @@ export default function FactoringDashboard() {
                 </div>
                 {/* Limits sub-row — Credit Limit + Max Invoice Size for the active program.
                     Always shown so "no limit" is visible (informative, distinct from "unknown").
-                    Same visual style as the 3x2 stat grid above. */}
+                    Branch-aware: when viewing a branch, shows the branch-level limit (if set)
+                    with the parent's value as context underneath. Display-only — the cascade
+                    enforcement happens via getSupplierProgramCascadingCreditHeadroom etc. */}
                 {(function() {
                   if (!supProgram || !selectedSupplier) return null;
                   var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
-                  var clVal = sup && sup.creditLimits && sup.creditLimits[supProgram] > 0 ? sup.creditLimits[supProgram] : null;
-                  var silVal = sup && sup.singleInvoiceLimits && sup.singleInvoiceLimits[supProgram] > 0 ? sup.singleInvoiceLimits[supProgram] : null;
+                  if (!sup) return null;
+                  // Parent-level limits (always relevant — cascade enforces them)
+                  var parentCL = sup.creditLimits && sup.creditLimits[supProgram] > 0 ? sup.creditLimits[supProgram] : null;
+                  var parentSIL = sup.singleInvoiceLimits && sup.singleInvoiceLimits[supProgram] > 0 ? sup.singleInvoiceLimits[supProgram] : null;
+                  // Branch-level limits (only when viewing a specific branch)
+                  var branchId = parseEntityId(selectedSupplier).branchId;
+                  var branch = branchId ? (sup.branches || []).find(function(b) { return b.branchId === branchId; }) : null;
+                  var branchCL = branch && branch.creditLimits && branch.creditLimits[supProgram] > 0 ? branch.creditLimits[supProgram] : null;
+                  var branchSIL = branch && branch.singleInvoiceLimits && branch.singleInvoiceLimits[supProgram] > 0 ? branch.singleInvoiceLimits[supProgram] : null;
+                  // Headline value: branch's if on a branch with a branch-level
+                  // cap, else parent. Sub-text reveals the other bucket.
+                  var clHead = branchCL != null ? branchCL : parentCL;
+                  var silHead = branchSIL != null ? branchSIL : parentSIL;
+                  var clSub = null, silSub = null;
+                  if (branch) {
+                    // On a branch — show whichever isn't the headline (or both labels
+                    // when no branch cap to clarify "this is the parent's number").
+                    clSub = branchCL != null
+                      ? "Parent: " + (parentCL != null ? money(parentCL, displayCcy) : "no limit")
+                      : "Branch: no cap \u00B7 cascade uses parent";
+                    silSub = branchSIL != null
+                      ? "Parent: " + (parentSIL != null ? money(parentSIL, displayCcy) : "no limit")
+                      : "Branch: no cap \u00B7 cascade uses parent";
+                  }
                   return <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 28px" }}>
                     <div style={{ borderLeft: "3px solid #059669", paddingLeft: 12 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Credit Limit</div>
-                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: clVal != null ? "var(--text)" : "var(--muted)" }}>{clVal != null ? money(clVal, displayCcy) : "\u2014"}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Credit Limit{branch && branchCL != null ? <span style={{ marginLeft: 6, fontSize: 8, color: "var(--accent)" }}>(branch)</span> : null}</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: clHead != null ? "var(--text)" : "var(--muted)" }}>{clHead != null ? money(clHead, displayCcy) : "\u2014"}</div>
+                      {clSub && <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{clSub}</div>}
                     </div>
                     <div style={{ borderLeft: "3px solid #0EA5E9", paddingLeft: 12 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Max Invoice Size</div>
-                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: silVal != null ? "var(--text)" : "var(--muted)" }}>{silVal != null ? money(silVal, displayCcy) : "\u2014"}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>{"\u25cf"} Max Invoice Size{branch && branchSIL != null ? <span style={{ marginLeft: 6, fontSize: 8, color: "var(--accent)" }}>(branch)</span> : null}</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: silHead != null ? "var(--text)" : "var(--muted)" }}>{silHead != null ? money(silHead, displayCcy) : "\u2014"}</div>
+                      {silSub && <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{silSub}</div>}
                     </div>
                   </div>;
                 })()}
@@ -9800,7 +10308,8 @@ export default function FactoringDashboard() {
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Supplier Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices in period"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: dilutionRate > 10 ? "#DC2626" : dilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
-                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
+                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.dilRate > 10 ? "#DC2626" : parentRollup.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.dilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span></div>
@@ -9813,7 +10322,8 @@ export default function FactoringDashboard() {
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 24, fontWeight: 700, color: fdilutionRate > 10 ? "#DC2626" : fdilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
-                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
+                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.fdilRate > 10 ? "#DC2626" : parentRollup.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.fdilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span></div>
@@ -9827,30 +10337,53 @@ export default function FactoringDashboard() {
             </div>
 
             {/* Credit Limit Utilisation — full-width row below the top section.
-                Only shown when an active program with a credit limit exists. */}
+                Branch-aware: when on a branch with a branch-level limit, the
+                headline shows the branch utilisation and a row below shows
+                the parent rollup. Renders when EITHER bucket has a limit. */}
             {(function() {
               if (!supProgram || !selectedSupplier) return null;
               var sup = SUPPLIERS_DB.find(function(s) { return s.id === getParentEntityId(selectedSupplier); });
-              if (!sup || !sup.creditLimits || !sup.creditLimits[supProgram] || sup.creditLimits[supProgram] <= 0) return null;
-              var limit = sup.creditLimits[supProgram];
-              var exposure = getSupplierProgramExposure(selectedSupplier, supProgram, null);
-              var headroom = r2(Math.max(0, limit - exposure));
-              var pct = limit > 0 ? (exposure / limit) * 100 : 0;
-              var fillPct = Math.min(100, pct);
-              var color = pct >= 100 ? "#DC2626" : pct >= 80 ? "#D97706" : "#059669";
+              if (!sup) return null;
+              var supBranchId = parseEntityId(selectedSupplier).branchId;
+              var supBranchObj = supBranchId ? (sup.branches || []).find(function(b) { return b.branchId === supBranchId; }) : null;
+              var parentLimit = (sup.creditLimits || {})[supProgram];
+              var branchLimit = supBranchObj ? (supBranchObj.creditLimits || {})[supProgram] : null;
+              if ((!parentLimit || parentLimit <= 0) && (!branchLimit || branchLimit <= 0)) return null;
+              var supParentId = parseEntityId(selectedSupplier).supplierId || selectedSupplier;
+              var parentExp = parentLimit > 0 ? getSupplierProgramExposureScoped(supParentId, null, supProgram, "parent-rollup", null) : 0;
+              var branchExp = branchLimit > 0 ? getSupplierProgramExposureScoped(supParentId, supBranchId, supProgram, "branch-only", null) : 0;
+              var headLimit, headExposure, headLabel;
+              if (branchLimit > 0) { headLimit = branchLimit; headExposure = branchExp; headLabel = "Branch credit limit utilisation"; }
+              else                 { headLimit = parentLimit; headExposure = parentExp; headLabel = "Credit Limit Utilisation"; }
+              var headHeadroom = r2(Math.max(0, headLimit - headExposure));
+              var headPct = headLimit > 0 ? (headExposure / headLimit) * 100 : 0;
+              var headFillPct = Math.min(100, headPct);
+              var headColor = headPct >= 100 ? "#DC2626" : headPct >= 80 ? "#D97706" : "#059669";
+              var showParentLine = branchLimit > 0 && parentLimit > 0;
               return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "16px 22px", marginBottom: 22 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)" }}>Credit Limit Utilisation</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: color }}>{pct.toFixed(1)}%</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)" }}>{headLabel}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: headColor }}>{headPct.toFixed(1)}%</div>
                 </div>
                 <div style={{ position: "relative", height: 8, background: "var(--bg)", borderRadius: 4, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 8 }}>
-                  <div style={{ width: fillPct + "%", height: "100%", background: color, transition: "width 0.25s ease" }}></div>
+                  <div style={{ width: headFillPct + "%", height: "100%", background: headColor, transition: "width 0.25s ease" }}></div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                  <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(limit, displayCcy)}</span>
-                  <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(exposure, displayCcy)}</span>
-                  <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: color }}>{money(headroom, displayCcy)}</strong></span>
+                  <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(headLimit, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(headExposure, displayCcy)}</span>
+                  <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: headColor }}>{money(headHeadroom, displayCcy)}</strong></span>
                 </div>
+                {showParentLine && (function() {
+                  var pHeadroom = r2(Math.max(0, parentLimit - parentExp));
+                  var pPct = parentLimit > 0 ? (parentExp / parentLimit) * 100 : 0;
+                  var pColor = pPct >= 100 ? "#DC2626" : pPct >= 80 ? "#D97706" : "#059669";
+                  return <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--border)", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                      <span>Parent rollup: <strong style={{ color: pColor }}>{pPct.toFixed(1)}%</strong></span>
+                      <span>Limit {money(parentLimit, displayCcy)} {"\u00B7"} Used {money(parentExp, displayCcy)} {"\u00B7"} Remaining {money(pHeadroom, displayCcy)}</span>
+                    </div>
+                  </div>;
+                })()}
               </div>;
             })()}
 
@@ -11335,9 +11868,25 @@ export default function FactoringDashboard() {
 
         {/* Buyer Overview Tab */}
         {isB && buyTab === "overview" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          // Branch-aware buyer filter. selectedBuyer can be a parent ID
+          // ("BUY-001") or a composite ID ("BUY-001:BR-002"). When composite,
+          // match only invoices on that exact branch; when parent, match the
+          // whole parent rollup. Note: on the buyer side inv.buyerId is
+          // always the parent ID (unlike the supplier side); the composite
+          // lives in inv.buyerEntityId.
+          var buyInvs = viewData.invoices.filter(function(inv) {
+            var selBrId = parseEntityId(selectedBuyer).branchId;
+            var selParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+            var match;
+            if (selBrId) {
+              match = (inv.buyerEntityId === selectedBuyer) || (inv.buyerId === selParentId && inv.buyerBranchId === selBrId);
+            } else {
+              match = (inv.buyerId === selParentId) || (inv.buyerName === buyName(selectedBuyer));
+            }
+            return match && invInProgramScope(inv, buyProgram);
+          });
           var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
-          var buyer = BUYERS_DB.find(function(b) { return b.id === selectedBuyer; });
+          var buyer = getBuyerById(selectedBuyer) || BUYERS_DB.find(function(b) { return b.id === selectedBuyer; });
 
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
           buyInvs.forEach(function(inv) {
@@ -11479,29 +12028,61 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
-                {/* Buyer credit limit row — program-scoped, shows limit / used / remaining if a limit is set. Mirrors supplier overview. */}
+                {/* Buyer credit limit utilisation. Branch-aware: when on a
+                    branch with a branch-level limit, the headline shows the
+                    branch utilisation (the tighter bucket in most cases); a
+                    second row underneath shows the parent rollup utilisation.
+                    When no branch-level limit is set but a parent limit is,
+                    headline shows parent. When neither is set, the block
+                    doesn't render. */}
                 {(function() {
                   if (!buyProgram || !selectedBuyer) return null;
-                  if (!buyer || !buyer.creditLimits || !buyer.creditLimits[buyProgram] || buyer.creditLimits[buyProgram] <= 0) return null;
-                  var blimit = buyer.creditLimits[buyProgram];
-                  var bexposure = getBuyerProgramExposure(selectedBuyer, buyProgram, null);
-                  var bheadroom = r2(Math.max(0, blimit - bexposure));
-                  var bpct = blimit > 0 ? (bexposure / blimit) * 100 : 0;
-                  var bfillPct = Math.min(100, bpct);
-                  var bcolor = bpct >= 100 ? "#DC2626" : bpct >= 80 ? "#D97706" : "#059669";
+                  if (!buyer) return null;
+                  var buyBranchId = parseEntityId(selectedBuyer).branchId;
+                  var buyBranchObj = buyBranchId ? (buyer.branches || []).find(function(b) { return b.branchId === buyBranchId; }) : null;
+                  var parentLimit = (buyer.creditLimits || {})[buyProgram];
+                  var branchLimit = buyBranchObj ? (buyBranchObj.creditLimits || {})[buyProgram] : null;
+                  if ((!parentLimit || parentLimit <= 0) && (!branchLimit || branchLimit <= 0)) return null;
+                  // Compute scoped exposures via the cascade primitive.
+                  // Pass-through: we need parent exposure even when viewing
+                  // a branch, to show the parent context underneath.
+                  var buyParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+                  var parentExp = parentLimit > 0 ? getBuyerProgramExposureScoped(buyParentId, null, buyProgram, "parent-rollup", null) : 0;
+                  var branchExp = branchLimit > 0 ? getBuyerProgramExposureScoped(buyParentId, buyBranchId, buyProgram, "branch-only", null) : 0;
+                  // Headline bucket — prefer the branch (specific) over parent.
+                  var headLimit, headExposure, headLabel;
+                  if (branchLimit > 0) { headLimit = branchLimit; headExposure = branchExp; headLabel = "Branch credit limit utilisation"; }
+                  else                 { headLimit = parentLimit; headExposure = parentExp; headLabel = "Credit Limit Utilisation"; }
+                  var headHeadroom = r2(Math.max(0, headLimit - headExposure));
+                  var headPct = headLimit > 0 ? (headExposure / headLimit) * 100 : 0;
+                  var headFillPct = Math.min(100, headPct);
+                  var headColor = headPct >= 100 ? "#DC2626" : headPct >= 80 ? "#D97706" : "#059669";
+                  // Whether to also show parent context (only when branch is the headline AND parent exists)
+                  var showParentLine = branchLimit > 0 && parentLimit > 0;
                   return <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Credit Limit Utilisation</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bcolor }}>{bpct.toFixed(1)}%</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>{headLabel}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: headColor }}>{headPct.toFixed(1)}%</div>
                     </div>
                     <div style={{ position: "relative", height: 6, background: "var(--bg)", borderRadius: 3, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 6 }}>
-                      <div style={{ width: bfillPct + "%", height: "100%", background: bcolor, transition: "width 0.25s ease" }}></div>
+                      <div style={{ width: headFillPct + "%", height: "100%", background: headColor, transition: "width 0.25s ease" }}></div>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>
-                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(blimit, displayCcy)}</span>
-                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(bexposure, displayCcy)}</span>
-                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: bcolor }}>{money(bheadroom, displayCcy)}</strong></span>
+                      <span><span style={{ color: "var(--muted)" }}>Limit: </span>{money(headLimit, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Used: </span>{money(headExposure, displayCcy)}</span>
+                      <span><span style={{ color: "var(--muted)" }}>Remaining: </span><strong style={{ color: headColor }}>{money(headHeadroom, displayCcy)}</strong></span>
                     </div>
+                    {showParentLine && (function() {
+                      var pHeadroom = r2(Math.max(0, parentLimit - parentExp));
+                      var pPct = parentLimit > 0 ? (parentExp / parentLimit) * 100 : 0;
+                      var pColor = pPct >= 100 ? "#DC2626" : pPct >= 80 ? "#D97706" : "#059669";
+                      return <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px dashed var(--border)", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                          <span>Parent rollup: <strong style={{ color: pColor }}>{pPct.toFixed(1)}%</strong></span>
+                          <span>Limit {money(parentLimit, displayCcy)} {"\u00B7"} Used {money(parentExp, displayCcy)} {"\u00B7"} Remaining {money(pHeadroom, displayCcy)}</span>
+                        </div>
+                      </div>;
+                    })()}
                   </div>;
                 })()}
               </div>
@@ -11529,10 +12110,41 @@ export default function FactoringDashboard() {
                   function bfpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0, inc = {}; buyInvs.forEach(function(inv) { var dt = inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; }); buyInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
                   var bf30 = bfpDil(30), bf90 = bfpDil(90);
 
+                  // Parent-rollup dilution context. When the operator has
+                  // drilled into a specific branch on the buyer view, compute
+                  // the parent-rollup dilution numbers separately so we can
+                  // show "this branch X% / parent rollup Y%" on each card.
+                  // On a parent view (no branchId in selectedBuyer), parentBd
+                  // is null and the contextual lines below are skipped.
+                  var _buyBranchId = parseEntityId(selectedBuyer).branchId;
+                  var _buyParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+                  var parentBd = null;
+                  if (_buyBranchId) {
+                    // Build the parent-rollup invoice set: every invoice on
+                    // this parent regardless of branch, same program scope.
+                    var parentInvs = viewData.invoices.filter(function(inv) {
+                      return (inv.buyerId === _buyParentId) && invInProgramScope(inv, buyProgram);
+                    });
+                    var pN = 0, pD = 0;
+                    parentInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; pD += a; pN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") pN += a; });
+                    // Parent unallocated CN: use the parent's display name
+                    var parentBuyName = buyName(_buyParentId);
+                    var parentUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(parentBuyName) || 0) : 0;
+                    if (parentUnalloc > 0) pN += parentUnalloc;
+                    var pfN = 0, pfD = 0;
+                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; pfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pfN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") pfN += a; });
+                    if (parentUnalloc > 0) pfN += parentUnalloc;
+                    parentBd = {
+                      dilRate: pD > 0.01 ? (pN / pD) * 100 : 0,
+                      fdilRate: pfD > 0.01 ? (pfN / pfD) * 100 : 0
+                    };
+                  }
+
                   return <><div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Buyer Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bdRate > 10 ? "#DC2626" : bdRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bdRate > 0 ? bdRate.toFixed(1) + "%" : "0.0%"}</div>
-                    <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
+                    <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
+                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.dilRate > 10 ? "#DC2626" : parentBd.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.dilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(bdN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bdD), displayCcy)}</span></div>
@@ -11545,7 +12157,8 @@ export default function FactoringDashboard() {
                   <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bfRate > 10 ? "#DC2626" : bfRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bfRate > 0 ? bfRate.toFixed(1) + "%" : "0.0%"}</div>
-                    <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
+                    <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
+                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.fdilRate > 10 ? "#DC2626" : parentBd.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.fdilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(bfN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bfD), displayCcy)}</span></div>
@@ -11714,7 +12327,18 @@ export default function FactoringDashboard() {
 
         {/* Buyer Invoices Tab */}
         {isB && buyTab === "invoices" && (function() {
-          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          // Branch-aware buyer filter — same logic as Overview / Allocations.
+          var allBuyInvs = viewData.invoices.filter(function(inv) {
+            var selBrId = parseEntityId(selectedBuyer).branchId;
+            var selParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+            var match;
+            if (selBrId) {
+              match = (inv.buyerEntityId === selectedBuyer) || (inv.buyerId === selParentId && inv.buyerBranchId === selBrId);
+            } else {
+              match = (inv.buyerId === selParentId) || (inv.buyerName === buyName(selectedBuyer));
+            }
+            return match && invInProgramScope(inv, buyProgram);
+          });
           var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
 
           // Filter
@@ -11916,7 +12540,18 @@ export default function FactoringDashboard() {
 
         {/* Buyer Payment Allocations Tab */}
         {isB && buyTab === "allocations" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && invInProgramScope(inv, buyProgram); });
+          // Branch-aware buyer filter — same logic as the Overview tab.
+          var buyInvs = viewData.invoices.filter(function(inv) {
+            var selBrId = parseEntityId(selectedBuyer).branchId;
+            var selParentId = parseEntityId(selectedBuyer).supplierId || selectedBuyer;
+            var match;
+            if (selBrId) {
+              match = (inv.buyerEntityId === selectedBuyer) || (inv.buyerId === selParentId && inv.buyerBranchId === selBrId);
+            } else {
+              match = (inv.buyerId === selParentId) || (inv.buyerName === buyName(selectedBuyer));
+            }
+            return match && invInProgramScope(inv, buyProgram);
+          });
           var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === buyProgram; }); return fp ? fp.currency : "GBP"; })();
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
@@ -18613,7 +19248,7 @@ export default function FactoringDashboard() {
           return <div>
             <div style={{ padding: "8px 16px", background: "#0EA5E920", border: "1px solid #0EA5E9", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#0EA5E9", fontWeight: 600 }}>v14 — CSV Import + Review Queue enabled</div>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 16, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
-              {["suppliers", "buyers", "service_providers", "programs", "csv_import", "csv_review", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "benchmarks", "csv_import", "csv_review", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t === "benchmarks" ? "Benchmarks" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -19331,9 +19966,19 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 18 }}>Select services to enable ongoing monitoring for this entity. Services will be configured when available.</div>
                     {[{ key: "monitorRefinitiv", label: "Refinitiv", desc: "Credit risk, ESG, sanctions and compliance screening" }, { key: "monitorDnB", label: "Dun & Bradstreet", desc: "Business credit reports, D-U-N-S number verification, trade payment data" }, { key: "monitorWSJ", label: "WSJ", desc: "Wall Street Journal news alerts and market intelligence" }].map(function(svc) {
                       var checked = !!(detEntity && detEntity[svc.key]);
-                      return <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 10, border: "1px solid " + (checked ? "var(--accent)30" : "var(--border)"), background: checked ? "var(--accent)08" : "transparent", marginBottom: 10, cursor: "pointer" }} onClick={function() { if (detEntity) { detEntity[svc.key] = !checked; saveSupplier(selectedSupplier);
-                    saveSupplier(selectedSupplier);
-                        auditLog("Monitoring " + (checked ? "Disabled" : "Enabled"), svc.label + " monitoring " + (checked ? "disabled" : "enabled") + " for " + det.id + " (" + det.name + ")", { entityId: det.id, service: svc.key, enabled: !checked }); setDataVer(function(v) { return v + 1; }); } }}>
+                      return <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 10, border: "1px solid " + (checked ? "var(--accent)30" : "var(--border)"), background: checked ? "var(--accent)08" : "transparent", marginBottom: 10, cursor: "pointer" }} onClick={function() {
+                        if (!detEntity) return;
+                        detEntity[svc.key] = !checked;
+                        // Route to the right save function based on entity
+                        // type — previously this always called saveSupplier
+                        // (twice!) regardless of whether det was a supplier
+                        // or buyer, which silently failed for buyers.
+                        if (isSup) saveSupplier(det.id);
+                        else if (isSp) saveServiceProvider(det.id);
+                        else saveBuyer(det.id);
+                        auditLog("Monitoring " + (checked ? "Disabled" : "Enabled"), svc.label + " monitoring " + (checked ? "disabled" : "enabled") + " for " + det.id + " (" + det.name + ")", { entityId: det.id, service: svc.key, enabled: !checked });
+                        setDataVer(function(v) { return v + 1; });
+                      }}>
                         <div style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid " + (checked ? "var(--accent)" : "var(--border)"), background: checked ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{checked ? "\u2713" : ""}</div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{svc.label}</div>
@@ -19401,6 +20046,28 @@ export default function FactoringDashboard() {
                               brChanges.push(pName + " " + dirLabel + " " + fLabel + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\"");
                             }
                           });
+                        });
+                      });
+                      // Track branch credit / single-invoice limit changes.
+                      // Branch limits cascade with the parent's limits — see the
+                      // strict cascade documented in PARENT_VS_BRANCH_INVENTORY.md.
+                      ["creditLimits", "singleInvoiceLimits"].forEach(function(limKey) {
+                        var oldLim = oldBr[limKey] || {};
+                        var newLim = ebData[limKey] || {};
+                        var allProgs = {};
+                        Object.keys(oldLim).forEach(function(k) { allProgs[k] = true; });
+                        Object.keys(newLim).forEach(function(k) { allProgs[k] = true; });
+                        var limLabel = limKey === "creditLimits" ? "Credit Limit" : "Single Invoice Limit";
+                        Object.keys(allProgs).forEach(function(fpId) {
+                          var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+                          var pName = prog ? prog.name : fpId;
+                          var ov = oldLim[fpId];
+                          var nv = newLim[fpId];
+                          if (ov !== nv) {
+                            var ovStr = (ov != null && ov !== "") ? String(ov) : "\u2014";
+                            var nvStr = (nv != null && nv !== "") ? String(nv) : "\u2014";
+                            brChanges.push(pName + " " + limLabel + ": \"" + ovStr + "\" \u2192 \"" + nvStr + "\"");
+                          }
                         });
                       });
                       var brDetail = brChanges.length > 0 ? brChanges.join("; ") : "No field changes";
@@ -19580,6 +20247,66 @@ export default function FactoringDashboard() {
                                   {isUSD && brBankField("incoming", "aba", "ABA/Routing")}
                                   {brBankField("incoming", "bic", "BIC/SWIFT")}
                                   {!isUSD && brBankField("incoming", "iban", "IBAN")}
+                                </div>
+                              </div>
+                            </div>;
+                          })}
+                        </div>}
+                        {/* Branch-level Limits by Program. Strict cascade: blank/0
+                            means "no branch-level cap" — parent limit (if set)
+                            still applies via cascade. When both parent and
+                            branch limits are present, an invoice must clear
+                            both buckets independently.
+                            Same data shape as parent: creditLimits[programId]
+                            and singleInvoiceLimits[programId] dicts on the
+                            branch object. UI shows parent's value as context. */}
+                        {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 6 }}>Limits by Program</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10, fontStyle: "italic" }}>Branch-level caps. Blank = no branch cap (parent limit still applies via cascade). When both are set, invoices must clear both.</div>
+                          {FUNDING_PROGRAMS_DB.map(function(fp) {
+                            var ccy = fp.currency || "GBP";
+                            var brCL = ((ebData.creditLimits || {})[fp.id]);
+                            var brSIL = ((ebData.singleInvoiceLimits || {})[fp.id]);
+                            var parentCL = ((det.creditLimits || {})[fp.id]);
+                            var parentSIL = ((det.singleInvoiceLimits || {})[fp.id]);
+                            function updateBrLimit(kind, value) {
+                              setManagePopup(function(p) {
+                                var key = kind === "credit" ? "creditLimits" : "singleInvoiceLimits";
+                                var next = Object.assign({}, (p.data[key] || {}));
+                                if (value === "" || value === null || value === undefined) {
+                                  delete next[fp.id];
+                                } else {
+                                  var num = parseFloat(value);
+                                  if (!isFinite(num) || num <= 0) {
+                                    // Treat 0/invalid/negative as "no limit"
+                                    delete next[fp.id];
+                                  } else {
+                                    next[fp.id] = num;
+                                  }
+                                }
+                                var patch = {};
+                                patch[key] = next;
+                                return Object.assign({}, p, { data: Object.assign({}, p.data, patch) });
+                              });
+                            }
+                            var bInp = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" };
+                            var bLbl = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 };
+                            function parentHint(v) {
+                              if (v == null || v === "" || !(v > 0)) return "Parent: no limit";
+                              return "Parent: " + money(v, ccy);
+                            }
+                            return <div key={fp.id} style={{ background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px", marginBottom: 10 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>{fp.name} <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>({ccy})</span></div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 14px" }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <label style={bLbl}>Credit Limit</label>
+                                  <input type="number" step="0.01" placeholder="No branch cap" value={brCL != null ? String(brCL) : ""} onChange={function(e) { updateBrLimit("credit", e.target.value); }} style={bInp} />
+                                  <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{parentHint(parentCL)}</div>
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <label style={bLbl}>Single Invoice Limit</label>
+                                  <input type="number" step="0.01" placeholder="No branch cap" value={brSIL != null ? String(brSIL) : ""} onChange={function(e) { updateBrLimit("single", e.target.value); }} style={bInp} />
+                                  <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{parentHint(parentSIL)}</div>
                                 </div>
                               </div>
                             </div>;
@@ -20353,8 +21080,17 @@ export default function FactoringDashboard() {
 
               function saveProgram() {
                 if (!pf.name || !pf.currency) return;
+                // Benchmark validation: if a benchmark is set, it must exist
+                // and its currency must match the program's currency. Catch
+                // typos and stale references on save rather than at render.
+                if (pf.benchmark) {
+                  var bm = BENCHMARKS_DB.find(function(b) { return b.id === pf.benchmark; });
+                  if (!bm) { toast.error("Unknown benchmark", "Benchmark '" + pf.benchmark + "' not found. Pick from the dropdown or seed it in the Benchmarks tab."); return; }
+                  if (bm.currency !== pf.currency) { toast.error("Benchmark currency mismatch", bm.name + " is " + bm.currency + ", but this program is " + pf.currency + ". Pick a matching benchmark or clear the field."); return; }
+                }
                 var prog = {
                   name: pf.name, currency: pf.currency,
+                  benchmark: pf.benchmark || null,
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
@@ -20400,6 +21136,7 @@ export default function FactoringDashboard() {
                 setEditProg(idx);
                 setProgFields({
                   name: p.name, currency: p.currency,
+                  benchmark: p.benchmark || null,
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
                   minInterestRate: String((p.minInterestRate * 100).toFixed(1)),
@@ -20439,7 +21176,23 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Currency</label>
-                      <select value={pf.currency || "GBP"} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { currency: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                      <select value={pf.currency || "GBP"} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { currency: e.target.value, benchmark: null }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {/* Reference benchmark for this program. Filtered to
+                          benchmarks matching the program's currency — a
+                          SONIA-linked program in EUR doesn't make sense. */}
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Reference Benchmark</label>
+                      {(function() {
+                        var availBms = BENCHMARKS_DB.filter(function(b) { return b.currency === (pf.currency || "GBP"); });
+                        if (availBms.length === 0) {
+                          return <div style={Object.assign({}, inpS, { fontSize: 11, color: "var(--muted)", fontStyle: "italic", display: "flex", alignItems: "center" })}>No benchmarks for {pf.currency || "GBP"} — seed in Benchmarks tab</div>;
+                        }
+                        return <select value={pf.benchmark || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { benchmark: e.target.value || null }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
+                          <option value="">{"\u2014 None (fixed rate program) \u2014"}</option>
+                          {availBms.map(function(b) { return <option key={b.id} value={b.id}>{b.name} ({b.currentRate != null ? (b.currentRate * 100).toFixed(4) + "%" : "n/a"})</option>; })}
+                        </select>;
+                      })()}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Maximum Size</label>
@@ -20870,6 +21623,8 @@ export default function FactoringDashboard() {
                   setCsvImportResult(null);
                   setCsvImportStep("mapping");
                   setCsvResolution(null);
+                  setCsvAliasPicks({});
+                  setCsvAliasSaving({});
                   var mapping = {};
                   CSV_FIELDS.forEach(function(f) {
                     var match = autoMatch(f.hints, headers);
@@ -21048,16 +21803,51 @@ export default function FactoringDashboard() {
                   var parts = key.split(":");
                   errors.push({ row: null, ref: null, msg: "unknown buyer_branch_id '" + parts[1] + "' on buyer " + parts[0] + " (" + unknownBuyBranches[key] + " row" + (unknownBuyBranches[key] === 1 ? "" : "s") + "). Add the branch in Main Portal first." });
                 });
-                Object.keys(unrecognisedSupExt).forEach(function(str) {
-                  errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + str + "' (" + unrecognisedSupExt[str] + " row" + (unrecognisedSupExt[str] === 1 ? "" : "s") + "). Add this alias under " + (csvProvider ? csvProvider.name : "the provider") + " in Admin \u2192 CSV Providers before importing." });
-                });
-                Object.keys(unrecognisedBuyExt).forEach(function(str) {
-                  errors.push({ row: null, ref: null, msg: "unrecognised external buyer string '" + str + "' (" + unrecognisedBuyExt[str] + " row" + (unrecognisedBuyExt[str] === 1 ? "" : "s") + "). Add this alias under " + (csvProvider ? csvProvider.name : "the provider") + " in Admin \u2192 CSV Providers before importing." });
-                });
+                // Unrecognised external strings: when a CSV provider IS selected,
+                // route these into the structured `unrecognisedAliases` field so
+                // the validation_failed screen can resolve them inline. When NO
+                // provider is selected, alias creation isn't possible at all, so
+                // we fall back to the legacy text-error format directing the
+                // operator to pick a provider first.
+                if (!csvProvider) {
+                  Object.keys(unrecognisedSupExt).forEach(function(str) {
+                    errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + str + "' (" + unrecognisedSupExt[str] + " row" + (unrecognisedSupExt[str] === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
+                  });
+                  Object.keys(unrecognisedBuyExt).forEach(function(str) {
+                    errors.push({ row: null, ref: null, msg: "unrecognised external buyer string '" + str + "' (" + unrecognisedBuyExt[str] + " row" + (unrecognisedBuyExt[str] === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
+                  });
+                }
+
+                // Build a structured list of unrecognised aliases — the
+                // validation_failed screen renders these as an interactive
+                // section ("Inline Alias Resolution") so the operator can
+                // assign each external string to a Pelagic entity without
+                // leaving the importer flow. Only populated when a provider
+                // is selected — without a provider, aliases can't be added
+                // (and the text errors above already explain that).
+                var unrecognisedAliases = [];
+                if (csvProvider) {
+                  Object.keys(unrecognisedSupExt).forEach(function(str) {
+                    unrecognisedAliases.push({ entityType: "supplier", externalString: str, count: unrecognisedSupExt[str] });
+                  });
+                  Object.keys(unrecognisedBuyExt).forEach(function(str) {
+                    unrecognisedAliases.push({ entityType: "buyer", externalString: str, count: unrecognisedBuyExt[str] });
+                  });
+                  // Stable sort: suppliers first, then alphabetical within type
+                  unrecognisedAliases.sort(function(a, b) {
+                    if (a.entityType !== b.entityType) return a.entityType < b.entityType ? -1 : 1;
+                    return a.externalString.toLowerCase() < b.externalString.toLowerCase() ? -1 : 1;
+                  });
+                }
 
                 var newPairsArr = Object.keys(newPairs).map(function(k) { return newPairs[k]; });
-                setCsvResolution({ errors: errors, nameDivergences: nameDivergences, newPairs: newPairsArr });
-                setCsvImportStep(errors.length > 0 ? "validation_failed" : "processing");
+                setCsvResolution({ errors: errors, nameDivergences: nameDivergences, newPairs: newPairsArr, unrecognisedAliases: unrecognisedAliases });
+                // Transition to validation_failed when EITHER hard errors exist
+                // OR there are unresolved aliases to handle. unrecognisedAliases
+                // alone (with no hard errors) still blocks processing because
+                // those rows wouldn't have known IDs to import.
+                var hasBlockingIssues = errors.length > 0 || unrecognisedAliases.length > 0;
+                setCsvImportStep(hasBlockingIssues ? "validation_failed" : "processing");
               }
 
               // --- PROCESSING ---
@@ -21196,9 +21986,21 @@ export default function FactoringDashboard() {
                     INVOICES_DB.push({
                       // Option B identity: parent IDs and branch IDs are separate flat fields.
                       // Branch IDs are null when the invoice is on the parent entity.
+                      //
+                      // We ALSO populate supplierEntityId / buyerEntityId — the composite-
+                      // or-flat representation — because that's the field packInvoiceRow
+                      // reads when writing the DB row's supplier_entity_id / buyer_entity_id
+                      // columns. Without these, branch info written to supplierBranchId
+                      // would never survive a round-trip through Supabase — the importer
+                      // would have set it in memory only for the next reload to drop it.
+                      // makeEntityId returns the flat parent ID when branchId is null,
+                      // so non-branch invoices write the same value to both columns,
+                      // matching what packInvoiceRow does for non-importer invoices.
                       id: newId,
                       supplierName: supplierName, supplierId: sup.id, supplierBranchId: resolvedSupBranch ? resolvedSupBranch.branchId : null,
+                      supplierEntityId: makeEntityId(sup.id, resolvedSupBranch ? resolvedSupBranch.branchId : null),
                       buyerName: buyerName, buyerId: buy.id, buyerBranchId: resolvedBuyBranch ? resolvedBuyBranch.branchId : null,
+                      buyerEntityId: makeEntityId(buy.id, resolvedBuyBranch ? resolvedBuyBranch.branchId : null),
                       amount: amount, currency: currency.toUpperCase(),
                       capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
                       advanceRate: 0, annualRate: 0, penaltyRate: 0,
@@ -21465,19 +22267,91 @@ export default function FactoringDashboard() {
                     </div>}
                   </div>}
 
-                  {/* STEP 2: Validation failed — show what's wrong, no manual resolution */}
-                  {step === "validation_failed" && csvResolution && <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: "#EF4444" }}>Validation Failed</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>This importer accepts CSVs generated by the BI module, which include authoritative <code>supplier_id</code> and <code>buyer_id</code> columns. The following issues must be fixed at source (re-generate the CSV from BI, or onboard the missing entity in Main Portal first) — they cannot be resolved here.</div>
+                  {/* STEP 2: Validation failed — show what's wrong, plus inline alias resolution UI for items that CAN be fixed here */}
+                  {step === "validation_failed" && csvResolution && (function() {
+                    var unrecAliases = csvResolution.unrecognisedAliases || [];
+                    var hasResolvable = unrecAliases.length > 0;
+                    // Save a single alias inline. On success, re-run validateImport so
+                    // the errors list (and unrecognisedAliases list) refresh — if all
+                    // unrecognised strings are now resolved (and nothing else is wrong),
+                    // the step transitions automatically to "processing".
+                    async function saveInlineAlias(entityType, externalString) {
+                      if (!csvProvider) { toast.error("No provider selected", "Pick a provider before adding aliases."); return; }
+                      var pickKey = entityType + "|" + externalString;
+                      var target = csvAliasPicks[pickKey];
+                      if (!target) { toast.error("No target selected", "Pick a Pelagic entity for this alias first."); return; }
+                      setCsvAliasSaving(function(p) { var n = Object.assign({}, p); n[pickKey] = true; return n; });
+                      var verifiedBy = (typeof userProfile !== "undefined" && userProfile) ? userProfile.id : null;
+                      var result = await saveProviderAlias({
+                        providerId: csvProvider.id,
+                        entityType: entityType,
+                        externalString: externalString,
+                        pelagicEntityId: target,
+                        verifiedBy: verifiedBy,
+                        verifiedAt: new Date().toISOString()
+                      });
+                      setCsvAliasSaving(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
+                      if (!result.ok) return;
+                      auditLog("Alias Created", "Alias " + entityType + " '" + externalString + "' \u2192 " + target + " (provider: " + csvProvider.id + ", via CSV validation)", { providerId: csvProvider.id, entityType: entityType, externalString: externalString, pelagicEntityId: target, source: "csv_validation_inline" });
+                      // Drop this pick from local state (now persisted) and re-validate.
+                      setCsvAliasPicks(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
+                      validateImport();
+                    }
+                    return <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: hasResolvable ? "#D97706" : "#EF4444" }}>{hasResolvable ? "Validation Issues" : "Validation Failed"}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>{hasResolvable
+                      ? "Some issues can be resolved here by assigning aliases. Other issues (unknown IDs, malformed rows) must be fixed at source \u2014 re-generate the CSV from BI, or onboard the missing entity in Main Portal first."
+                      : "This importer accepts CSVs generated by the BI module, which include authoritative supplier_id and buyer_id columns. The following issues must be fixed at source \u2014 they cannot be resolved here."}</div>
 
-                    <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#EF444408", border: "1px solid #EF444430" }}>
+                    {hasResolvable && <div style={{ marginBottom: 16, padding: "14px 18px", borderRadius: 8, background: "#0EA5E908", border: "1px solid #0EA5E940" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginBottom: 4 }}>{unrecAliases.length} unrecognised alias{unrecAliases.length === 1 ? "" : "es"} \u2014 resolve inline</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12 }}>Each external string below appeared in the CSV but has no alias defined under <strong>{csvProvider ? csvProvider.name : "this provider"}</strong>. Pick the matching Pelagic entity and click Save to add the alias \u2014 validation will re-run automatically.</div>
+                      <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, background: "var(--card)" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                          <thead><tr style={{ background: "var(--bg)" }}>
+                            <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", width: 60 }}>Type</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>External String</th>
+                            <th style={{ textAlign: "right", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", width: 50 }}>Rows</th>
+                            <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Assign To (parent or branch)</th>
+                            <th style={{ padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", width: 80 }}></th>
+                          </tr></thead>
+                          <tbody>{unrecAliases.map(function(ua) {
+                            var pickKey = ua.entityType + "|" + ua.externalString;
+                            var picked = csvAliasPicks[pickKey] || "";
+                            var saving = !!csvAliasSaving[pickKey];
+                            var entityOptions = ua.entityType === "supplier" ? getAllSupplierEntities() : getAllBuyerEntities();
+                            return <tr key={pickKey} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "8px 10px" }}>
+                                <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: "uppercase", background: ua.entityType === "supplier" ? "#10B98120" : "#8B5CF620", color: ua.entityType === "supplier" ? "#10B981" : "#8B5CF6" }}>{ua.entityType}</span>
+                              </td>
+                              <td style={{ padding: "8px 10px", fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", wordBreak: "break-all" }}>{ua.externalString}</td>
+                              <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{ua.count}</td>
+                              <td style={{ padding: "8px 10px" }}>
+                                <select value={picked} onChange={function(e) {
+                                  var v = e.target.value;
+                                  setCsvAliasPicks(function(p) { var n = Object.assign({}, p); if (v) n[pickKey] = v; else delete n[pickKey]; return n; });
+                                }} disabled={saving} style={{ padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, width: "100%", boxSizing: "border-box" }}>
+                                  <option value="">{"\u2014 Select \u2014"}</option>
+                                  {entityOptions.map(function(o) { return <option key={o.value} value={o.value}>{o.label} ({o.value})</option>; })}
+                                </select>
+                              </td>
+                              <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                                <button onClick={function() { saveInlineAlias(ua.entityType, ua.externalString); }} disabled={!picked || saving} style={{ padding: "5px 12px", borderRadius: 5, border: "none", background: (picked && !saving) ? "var(--accent)" : "var(--border)", color: (picked && !saving) ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: (picked && !saving) ? "pointer" : "default" }}>{saving ? "Saving\u2026" : "Save"}</button>
+                              </td>
+                            </tr>;
+                          })}</tbody>
+                        </table>
+                      </div>
+                    </div>}
+
+                    {csvResolution.errors.length > 0 && <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#EF444408", border: "1px solid #EF444430" }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "#EF4444", marginBottom: 6 }}>{csvResolution.errors.length} issue{csvResolution.errors.length === 1 ? "" : "s"}</div>
                       <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.8, fontFamily: "'JetBrains Mono', monospace" }}>
                         {csvResolution.errors.map(function(e, i) {
                           return <div key={i}>{e.row ? "Row " + e.row + (e.ref ? " (" + e.ref + ")" : "") + ": " : ""}{e.msg}</div>;
                         })}
                       </div>
-                    </div>
+                    </div>}
 
                     {csvResolution.nameDivergences && csvResolution.nameDivergences.length > 0 && <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 8, background: "#F59E0B08", border: "1px solid #F59E0B30" }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", marginBottom: 6 }}>{csvResolution.nameDivergences.length} name divergence{csvResolution.nameDivergences.length === 1 ? "" : "s"} (informational)</div>
@@ -21491,8 +22365,10 @@ export default function FactoringDashboard() {
 
                     <div style={{ display: "flex", gap: 10 }}>
                       <button onClick={function() { setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
+                      {hasResolvable && <button onClick={validateImport} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Re-validate</button>}
                     </div>
-                  </div>}
+                  </div>;
+                  })()}
 
                   {/* STEP 3: Ready to process — all rows have valid supplier_id and buyer_id */}
                   {step === "processing" && <div style={{ padding: "20px 0" }}>
@@ -21547,7 +22423,7 @@ export default function FactoringDashboard() {
                       {csvImportResult.errors.map(function(err, ei) { return <div key={ei}>{err}</div>; })}
                     </div>}
                     {csvImportResult.queued > 0 && <div style={{ marginTop: 10, fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{csvImportResult.queued} items require admin review. <span onClick={function() { setManageTab("csv_review"); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>Go to Review Queue {"\u2192"}</span></div>}
-                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
+                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); setCsvAliasPicks({}); setCsvAliasSaving({}); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
                   </div>}
                 </div>
               </div>;
@@ -21644,6 +22520,111 @@ export default function FactoringDashboard() {
                 Per-buyer registration for conduits — see SQL header for the design.
                 MVP UI: provider list with inline alias browser, add/edit/delete, transfer.
                 Adequate for sales workflow; not polished to admin-page standard yet. */}
+            {/* Benchmarks tab — operator UI for updating SOFR / SONIA / ESTR
+                rates. Benchmarks are seeded by SQL migration; this UI doesn't
+                create or delete them. Updating a rate appends to history so
+                the time series is preserved. Future: API-driven feeds will
+                write directly to the same `benchmarks` table, so this UI
+                stays useful as a manual fallback / audit view. */}
+            {!manageDetail && manageTab === "benchmarks" && (function() {
+              var nowIso = new Date().toISOString();
+              var bmEdit = managePopup && managePopup.type === "benchmarkEdit" ? managePopup.data : null;
+              function startBenchmarkEdit(b) {
+                // Pre-fill with today's date and the current rate (as a %).
+                // Operator changes one or both, then Save.
+                setManagePopup({ type: "benchmarkEdit", data: {
+                  id: b.id, name: b.name, currency: b.currency,
+                  newRatePct: b.currentRate != null ? (b.currentRate * 100).toFixed(4) : "",
+                  newEffectiveDate: viewDate,
+                  noteText: ""
+                } });
+              }
+              async function saveBmEdit() {
+                if (!bmEdit) return;
+                var b = BENCHMARKS_DB.find(function(x) { return x.id === bmEdit.id; });
+                if (!b) { toast.error("Benchmark not found", "ID " + bmEdit.id + " no longer exists."); return; }
+                var newPct = parseFloat(bmEdit.newRatePct);
+                if (!isFinite(newPct)) { toast.error("Invalid rate", "Enter a numeric rate (e.g. 5.25 for 5.25%)."); return; }
+                if (newPct < 0 || newPct > 100) { toast.error("Out of range", "Rate must be between 0 and 100 percent."); return; }
+                if (!bmEdit.newEffectiveDate) { toast.error("Date required", "Pick the effective date for the new rate."); return; }
+                var newRate = newPct / 100;
+                // Snapshot the OLD value into history before mutating currentRate.
+                // The history entry records what the rate WAS up to the new
+                // effective date. New entry shape mirrors the JSONB documented
+                // in the SQL migration: { rate, effectiveDate, source, note,
+                // recordedAt }.
+                var hist = (b.history || []).slice();
+                hist.push({
+                  rate: b.currentRate != null ? b.currentRate : 0,
+                  effectiveDate: b.effectiveDate || null,
+                  source: b.source || "manual",
+                  note: bmEdit.noteText || "",
+                  recordedAt: nowIso
+                });
+                b.history = hist;
+                b.currentRate = newRate;
+                b.effectiveDate = bmEdit.newEffectiveDate;
+                b.source = "manual";
+                await saveBenchmark(b.id);
+                auditLog("Benchmark Updated", b.name + " (" + b.id + ") set to " + (newRate * 100).toFixed(4) + "% effective " + bmEdit.newEffectiveDate + ".", { benchmarkId: b.id, benchmarkName: b.name, newRate: newRate, effectiveDate: bmEdit.newEffectiveDate, note: bmEdit.noteText || "" });
+                setManagePopup(null);
+                setDataVer(function(v) { return v + 1; });
+              }
+              return <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Benchmarks ({BENCHMARKS_DB.length})</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Reference rates referenced by funding programs (SOFR, SONIA, ESTR, etc.). Updates append to history.</div>
+                </div>
+                {BENCHMARKS_DB.length === 0 && <div style={{ padding: "30px 24px", background: "var(--card)", borderRadius: 10, color: "var(--muted)", fontSize: 13, textAlign: "center" }}>No benchmarks loaded. Run the SQL migration to seed SOFR / SONIA / ESTR.</div>}
+                {BENCHMARKS_DB.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", overflow: "hidden" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 100px 110px 130px 160px 1fr 100px", padding: "10px 14px", borderBottom: "1px solid var(--border)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.06em", background: "var(--bg)" }}>
+                    <div>ID</div><div>Name</div><div>Currency</div><div>Current</div><div>Effective</div><div>Source</div><div>Notes</div><div style={{ textAlign: "right" }}>Action</div>
+                  </div>
+                  {BENCHMARKS_DB.map(function(b) {
+                    var histCount = (b.history || []).length;
+                    return <div key={b.id} style={{ display: "grid", gridTemplateColumns: "120px 1fr 100px 110px 130px 160px 1fr 100px", padding: "12px 14px", borderBottom: "1px solid var(--border)", fontSize: 12, alignItems: "center" }}>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{b.id}</div>
+                      <div style={{ fontWeight: 600 }}>{b.name}</div>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.currency}</div>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: b.currentRate > 0 ? "var(--text)" : "var(--muted)" }}>{b.currentRate != null ? (b.currentRate * 100).toFixed(4) + "%" : "\u2014"}</div>
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: "var(--text-secondary)" }}>{b.effectiveDate || "\u2014"}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{b.source || "manual"}{histCount > 0 ? <span style={{ marginLeft: 8, fontSize: 10, color: "var(--muted)" }}>({histCount} prior)</span> : null}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.notes || ""}</div>
+                      <div style={{ textAlign: "right" }}>
+                        <button onClick={function() { startBenchmarkEdit(b); }} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Update</button>
+                      </div>
+                    </div>;
+                  })}
+                </div>}
+                {bmEdit && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+                  <div style={{ background: "var(--card)", borderRadius: 12, padding: 24, width: 480, maxWidth: "90vw", boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Update {bmEdit.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16 }}>The current value will be appended to history. New value applies from the effective date you set.</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>New Rate (%)</label>
+                        <input type="number" step="0.0001" value={bmEdit.newRatePct} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { newRatePct: e.target.value }) }); }); }} placeholder="e.g. 5.25" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>Enter as a percentage. 5.25 means 5.25% per annum. Stored internally as 0.0525.</div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Effective Date</label>
+                        <input type="date" value={bmEdit.newEffectiveDate} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { newEffectiveDate: e.target.value }) }); }); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 14, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4, display: "block" }}>Note (optional)</label>
+                        <input type="text" value={bmEdit.noteText} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { noteText: e.target.value }) }); }); }} placeholder="e.g. Bloomberg fix at 16:00 London" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>Annotation stored against the history entry. Useful for source/timing context.</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 20, justifyContent: "flex-end" }}>
+                      <button onClick={function() { setManagePopup(null); }} style={{ padding: "8px 22px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                      <button onClick={saveBmEdit} style={{ padding: "8px 22px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Save Update</button>
+                    </div>
+                  </div>
+                </div>}
+              </div>;
+            })()}
+
             {!manageDetail && manageTab === "csv_providers" && (function() {
               var nowDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
               var prov = managePopup && managePopup.type === "providerEdit" ? managePopup.data : null;
