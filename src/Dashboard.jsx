@@ -3554,12 +3554,29 @@ export default function FactoringDashboard() {
   //
   // Waiting for session before loading guarantees RLS-allowed queries
   // and removes the race entirely. The useEffect re-fires whenever the
-  // session object changes; _dataLoaded acts as a one-shot guard so a
-  // mid-session token refresh doesn't trigger a redundant reload.
+  // session object changes; _dataLoaded acts as a guard against redundant
+  // reloads.
+  //
+  // _dataLoaded states:
+  //   false   — no load has started
+  //   <Promise>— a load is in flight; concurrent useEffect re-fires
+  //             attach to the same promise rather than starting a new load
+  //   true    — load complete, no further loads needed
+  //
+  // Before this guard, with a 14-second load and Supabase's session token
+  // refreshing every ~10s, useEffect would fire mid-load with _dataLoaded
+  // still === false, kicking off a parallel duplicate load. Three full
+  // loads stacking on top of each other was the observed behaviour with
+  // 41k invoices: 45 seconds of duplicated work before things settled.
   useEffect(function() {
     if (!session) return;
-    if (_dataLoaded) { setStorageLoading(false); return; }
-    loadPersistedData().then(function() {
+    if (_dataLoaded === true) { setStorageLoading(false); return; }
+    if (_dataLoaded && typeof _dataLoaded.then === "function") {
+      // Already loading — attach to the existing promise instead of starting again
+      _dataLoaded.then(function() { setStorageLoading(false); });
+      return;
+    }
+    var loadPromise = loadPersistedData().then(function() {
       _dataLoaded = true;
       setStorageLoading(false);
       // Re-sync state with loaded data. selectedSupplier / selectedBuyer hold IDs
@@ -3571,6 +3588,12 @@ export default function FactoringDashboard() {
       setDataVer(function(v) { return v + 1; });
       if (CSV_REVIEW_QUEUE_DB.length > 0) setCsvReviewQueue(CSV_REVIEW_QUEUE_DB);
     });
+    // Park the promise on the guard. While it's pending, any re-fire of this
+    // useEffect (e.g. session token refresh) will see the promise and await
+    // it rather than starting a duplicate load. This was the 3x duplicate-load
+    // bug — without this assignment, useEffect saw _dataLoaded === false and
+    // kicked off a fresh parallel load on each re-fire.
+    _dataLoaded = loadPromise;
   }, [session]);
 
   // dataVer changes trigger re-render only, NOT automatic saves
