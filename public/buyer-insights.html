@@ -3418,9 +3418,11 @@ function renderGroupPanel(group) {
                     'Per-constituent branch decisions appear in the table above. Once each is set to ' +
                     '<strong>parent_main</strong>, <strong>branch</strong>, or <strong>skip</strong>, the CSV export will route invoices correctly.' +
                 '</div>' +
-                '<div style="display:flex; gap:8px;">' +
+                '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
                     '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); color:var(--text); border:1px solid var(--border); text-decoration:none;">Open FactorFlow \u2197</a>' +
+                    '<button class="btn btn-sm" id="pdGroupExportCsvBtn" style="background:var(--accent); color:#fff; border:none;">Export group CSV \u2193</button>' +
                     '<button class="btn btn-sm" id="pdGroupUnlinkBtn" style="background:var(--card); border:1px solid #DC262630; color:#EF4444;">Unlink from FactorFlow</button>' +
+                    '<span id="pdGroupCsvStatus" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-left:6px;"></span>' +
                 '</div>' +
             '</div>';
     } else {
@@ -3709,6 +3711,16 @@ function renderGroupPanel(group) {
                 // Re-render the group panel to reflect the new state
                 renderGroupPanel(group);
             });
+    });
+
+    // Group-wide CSV export. Mirrors the single-prospect Export CSV in the
+    // prospect detail view, but iterates over every constituent of the group.
+    // The button is only rendered for converted groups (see managementHtml),
+    // because exporting before conversion produces blank supplier_id columns
+    // which MP cannot ingest.
+    var exportBtn = document.getElementById('pdGroupExportCsvBtn');
+    if (exportBtn) exportBtn.addEventListener('click', function() {
+        downloadGroupInvoicesCSV(group);
     });
 }
 
@@ -7736,6 +7748,175 @@ function downloadProspectInvoicesCSV(prospect) {
     }
 
     fetchInvKeyset(null, null);
+}
+
+// Group-wide export: aggregate invoices across all constituents in a prospect
+// group into a single MP-importable CSV. Mirrors the single-prospect export
+// (downloadProspectInvoicesCSV) but loops over the group's constituents and
+// emits one row per (constituent, invoice).
+//
+// Key behaviours:
+//   - Skips constituents with branch_decision === 'skip'. Same gate as the
+//     single-prospect export — those are explicitly not yet onboarded.
+//   - Collates branch-decision warnings (constituents marked 'branch' with
+//     no converted_branch_id) into a single consolidated confirm BEFORE
+//     fetching anything. Avoids prompt fatigue on multi-constituent groups.
+//   - Fails the whole export if any constituent's fetch errors. A partial
+//     CSV is worse than no CSV — it'd silently lose constituents on import.
+//   - Uses the same keyset pagination (invoice_date, id) per constituent
+//     as the single-prospect path.
+//   - File name: <registry_id>_group_invoices_for_main_portal.csv
+function downloadGroupInvoicesCSV(group) {
+    if (!group) return;
+    var constituents = getConstituentsOfGroup(group.id);
+    if (constituents.length === 0) { alert('This group has no constituents to export.'); return; }
+    if (!group.converted_supplier_id) {
+        alert('This group is not yet linked to a FactorFlow supplier. Link from any constituent\u2019s Convert section before exporting \u2014 otherwise the supplier_id column would be blank and MP cannot ingest the rows.');
+        return;
+    }
+
+    var statusEl = document.getElementById('pdGroupCsvStatus');
+    function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+
+    // Filter out skipped constituents up-front. Collate branch-without-id
+    // warnings for a single consolidated confirm.
+    var toExport = [];
+    var skippedNames = [];
+    var branchWarnNames = [];
+    constituents.forEach(function(p) {
+        if (p.branch_decision === 'skip') {
+            skippedNames.push(p.supplier_name || p.supplier_identifier);
+            return;
+        }
+        if (p.branch_decision === 'branch' && !p.converted_branch_id) {
+            branchWarnNames.push(p.supplier_name || p.supplier_identifier);
+        }
+        toExport.push(p);
+    });
+    if (toExport.length === 0) {
+        alert('Nothing to export \u2014 every constituent is marked "skip". Change branch decisions in the constituent table to enable export.');
+        return;
+    }
+    if (branchWarnNames.length > 0) {
+        var msg = branchWarnNames.length + ' constituent' + (branchWarnNames.length === 1 ? '' : 's') +
+            ' marked as "branch" but no MP branch has been created yet:\n\n  \u2022 ' +
+            branchWarnNames.join('\n  \u2022 ') +
+            '\n\nIf you proceed, their invoices will attribute to the PARENT supplier (no branch routing). ' +
+            'Click OK to proceed anyway, or Cancel to go back and create the branches first.';
+        if (!confirm(msg)) return;
+    }
+
+    // Aggregated state for the multi-constituent fetch loop.
+    var allRows = [];
+    var skippedSummary = skippedNames.length > 0 ? ' (skipped ' + skippedNames.length + ')' : '';
+    setStatus('Loading constituent 1 of ' + toExport.length + skippedSummary + '\u2026');
+
+    var CHUNK = 1000;
+    var ci = 0;
+    var allInvsForConstituent = [];
+
+    function done() {
+        if (allRows.length === 0) {
+            setStatus('');
+            alert('No invoices to export across this group\u2019s constituents.');
+            return;
+        }
+        setStatus('Building CSV\u2026');
+        var header = ['supplier_id','supplier_branch_id','supplier_name','buyer_id','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
+        var lines = [header.join(',')];
+        allRows.forEach(function(r) { lines.push(r.join(',')); });
+        var csv = lines.join('\n');
+        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (group.registry_id || 'group') + '_group_invoices_for_main_portal.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus('Downloaded ' + allRows.length.toLocaleString() + ' invoices across ' + toExport.length + ' constituent' + (toExport.length === 1 ? '' : 's') + skippedSummary + '.');
+    }
+
+    function startConstituent() {
+        if (ci >= toExport.length) { done(); return; }
+        var p = toExport[ci];
+        allInvsForConstituent = [];
+        setStatus('Loading constituent ' + (ci + 1) + ' of ' + toExport.length + ': ' + (p.supplier_name || p.supplier_identifier) + skippedSummary + '\u2026');
+        // Find latest upload for this constituent's buyer. Constituents in a
+        // group can come from different buyers (the cross-buyer case), so
+        // each one has its own latest upload to resolve against.
+        var latestUpload = null;
+        state.uploads.forEach(function(u) {
+            if (u.buyer_id !== p.buyer_id) return;
+            if (!latestUpload || u.created_at > latestUpload.created_at) latestUpload = u;
+        });
+        if (!latestUpload) {
+            setStatus('');
+            alert('No upload available for buyer ' + p.buyer_id + ' (constituent: ' + (p.supplier_name || p.supplier_identifier) + '). Aborting export.');
+            return;
+        }
+        fetchForConstituent(p, latestUpload, null, null);
+    }
+
+    function fetchForConstituent(p, upload, cursorDate, cursorId) {
+        var q = sbClient.from('buyer_invoices')
+            .select('id, invoice_reference, amount, currency, invoice_date, due_date, paid_date')
+            .eq('upload_id',           upload.id)
+            .eq('supplier_identifier', p.supplier_identifier)
+            .eq('currency',            p.currency)
+            .eq('excluded',            false)
+            .order('invoice_date', { ascending: true })
+            .order('id',           { ascending: true })
+            .limit(CHUNK);
+        if (cursorDate != null) {
+            q = q.or(
+                'invoice_date.gt.' + cursorDate +
+                ',and(invoice_date.eq.' + cursorDate + ',id.gt.' + cursorId + ')'
+            );
+        }
+        q.then(function(res) {
+            if (res.error) {
+                setStatus('');
+                alert('CSV export failed on constituent ' + (p.supplier_name || p.supplier_identifier) + ': ' + res.error.message + '\n\nAborted \u2014 no file produced.');
+                return;
+            }
+            var batch = res.data || [];
+            allInvsForConstituent = allInvsForConstituent.concat(batch);
+            if (batch.length === CHUNK) {
+                var last = batch[batch.length - 1];
+                fetchForConstituent(p, upload, last.invoice_date, last.id);
+                return;
+            }
+            // Constituent finished — append rows to the shared accumulator.
+            var buyerName = ((state.buyers || []).find(function(b) { return b.id === p.buyer_id; }) || {}).name || p.buyer_id;
+            var supplierName = p.legal_name || p.supplier_name || p.supplier_identifier;
+            var branchId = '';
+            if (p.branch_decision === 'branch' && p.converted_branch_id) branchId = p.converted_branch_id;
+            // (branch with NO converted_branch_id falls through to parent —
+            // already confirmed in the up-front warning block.)
+            var supplierId = p.converted_supplier_id || group.converted_supplier_id || '';
+            allInvsForConstituent.forEach(function(r) {
+                allRows.push([
+                    csvSafe(supplierId),
+                    csvSafe(branchId),
+                    csvSafe(supplierName),
+                    csvSafe(p.buyer_id),
+                    csvSafe(buyerName),
+                    csvSafe(r.invoice_reference || ''),
+                    r.amount != null ? r.amount : '',
+                    csvSafe(r.currency || ''),
+                    r.invoice_date || '',
+                    r.due_date || '',
+                    r.paid_date || ''
+                ]);
+            });
+            ci++;
+            startConstituent();
+        });
+    }
+
+    startConstituent();
 }
 
 function csvSafe(v) {
