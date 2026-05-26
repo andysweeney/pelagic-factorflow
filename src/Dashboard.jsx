@@ -906,15 +906,23 @@ function _resolveProgramRateHistory(pr, programId, buyerId) {
 }
 
 // Returns every per-buyer rate key under (supplier.programRates[programId])
-// EXCLUDING "__default". For old-shape (bare array) returns []. For new-shape
-// (dict) returns the buyer keys that exist. Used by the per-buyer rate UI to
-// know which rows to render alongside the default. Order is insertion order
-// (Object.keys), which roughly tracks the order the operator added them.
+// EXCLUDING "__default" and EXCLUDING keys whose latest history entry is a
+// soft-delete sentinel (the override has been removed). For old-shape (bare
+// array) returns []. Order is insertion order (Object.keys), which roughly
+// tracks the order the operator added them.
 function _listPerBuyerRateKeys(pr, programId) {
   if (!pr || !pr[programId]) return [];
   var entry = pr[programId];
   if (Array.isArray(entry)) return [];
-  return Object.keys(entry).filter(function(k) { return k !== "__default"; });
+  return Object.keys(entry).filter(function(k) {
+    if (k === "__default") return false;
+    var hist = entry[k];
+    if (!Array.isArray(hist) || hist.length === 0) return false;
+    // Latest entry (sort by effectiveTimestamp/effectiveDate). If latest is
+    // a removal sentinel, this buyer has no active override.
+    var sorted = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+    return !sorted[0].removed;
+  });
 }
 
 // Push a new rate entry to (supplier.programRates[programId][buyerKey]). When
@@ -962,8 +970,21 @@ function getSupplierRateForProgram(entityId, programId, asOfTimestamp, buyerId) 
     if (rts <= ts) rate = sorted[i];
   }
   // If asOfTimestamp is before any rate's effectiveTimestamp, no rate was in effect → null.
-  // (For invoices funded before any rate was set, we shouldn't be funding them anyway.)
   if (!rate) return null;
+  // Soft-delete sentinel: if the most-recent applicable entry is `removed: true`,
+  // this buyer's override has been (or was, at asOfTimestamp) removed. Fall
+  // through to the default — same semantic as never having an override.
+  // The sentinel itself is just a marker; we don't fund at its 0/0/0 rates.
+  // Note: we only fall through if we were resolving a buyer-specific override.
+  // If the default itself somehow got a removal sentinel as latest, we return
+  // null (no rate) — that's a misconfigured supplier and shouldn't fund.
+  if (rate.removed) {
+    if (buyerId) {
+      // Retry with the default (no buyer-specific lookup)
+      return getSupplierRateForProgram(entityId, programId, asOfTimestamp, null);
+    }
+    return null;
+  }
   return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
 }
 
@@ -4116,8 +4137,16 @@ export default function FactoringDashboard() {
   var map1 = useState(0), mgAudPage = map1[0], setMgAudPage = map1[1];
   var mapp1 = useState(25), mgAudPerPage = mapp1[0], setMgAudPerPage = mapp1[1];
   var madir1 = useState("desc"), mgAudDir = madir1[0], setMgAudDir = madir1[1];
+  // Bulk-action triage: the most recent bulk operation's skipped invoice
+  // IDs, surfaced as a filter pill so the operator can quickly find them
+  // and re-fund per-row via the popup. Cleared on next bulk action or
+  // when the operator dismisses the pill.
+  var lsk1 = useState([]), lastSkippedIds = lsk1[0], setLastSkippedIds = lsk1[1];
+  var lskl1 = useState(""), lastSkippedLabel = lskl1[0], setLastSkippedLabel = lskl1[1];
   // Invoices LIST filters (for top-level Invoices view)
   var ils1 = useState(""), invlSearch = ils1[0], setInvlSearch = ils1[1];
+  // Recently-skipped filter for Invoices view. Mirrors upiShowSkippedOnly.
+  var ilsk1 = useState(false), invlShowSkippedOnly = ilsk1[0], setInvlShowSkippedOnly = ilsk1[1];
   var ilc1 = useState(""), invlCcyFilter = ilc1[0], setInvlCcyFilter = ilc1[1];
   var ilsup1 = useState(""), invlSupFilter = ilsup1[0], setInvlSupFilter = ilsup1[1];
   var ilbuy1 = useState(""), invlBuyFilter = ilbuy1[0], setInvlBuyFilter = ilbuy1[1];
@@ -4148,6 +4177,13 @@ export default function FactoringDashboard() {
   var upidir1 = useState("desc"), upiDir = upidir1[0], setUpiDir = upidir1[1];
   var upisel1 = useState({}), upiSelected = upisel1[0], setUpiSelected = upisel1[1];
   var upibulkp1 = useState(""), upiBulkProg = upibulkp1[0], setUpiBulkProg = upibulkp1[1];
+  // Filter pill: when active, only show invoices recently skipped by a bulk
+  // operation (driven by lastSkippedIds at component scope).
+  var upiskp1 = useState(false), upiShowSkippedOnly = upiskp1[0], setUpiShowSkippedOnly = upiskp1[1];
+  // Rate history: when true, include soft-deleted ("removed") entries in
+  // the rate history table. Off by default since they're noise for the
+  // common case.
+  var srh1 = useState(false), showRemovedHistory = srh1[0], setShowRemovedHistory = srh1[1];
   var pfii1 = useState(null), pendingFocusInvId = pfii1[0], setPendingFocusInvId = pfii1[1];
   var mp1 = useState(null), managePopup = mp1[0], setManagePopup = mp1[1];
   var mdt1 = useState("overview"), manageDetailTab = mdt1[0], setManageDetailTab = mdt1[1];
@@ -9244,11 +9280,6 @@ export default function FactoringDashboard() {
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "var(--sidebar-active-bg)", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
             {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
           </div>
-          <div style={{ padding: "12px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
-            <div style={{ fontSize: 11, color: "var(--sidebar-text)", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
-            <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>{userProfile ? userProfile.role : ""}</div>
-            <button onClick={handleLogout} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #334155", background: "transparent", color: "var(--sidebar-text)", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Sign Out</button>
-          </div>
         </div>
         {/* Main Content */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -9265,6 +9296,21 @@ export default function FactoringDashboard() {
                 <Calendar size={14} />
                 <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", cursor: "pointer" }} />
               </div>
+              {/* User chrome — moved here from sidebar bottom-left in Stage 1.10.
+                  Shows initial avatar, name/email, role, and Sign Out. */}
+              {userProfile && <>
+                <span style={{ width: 1, height: 16, background: "var(--border)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--accent)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flexShrink: 0 }} title={userProfile.full_name || userProfile.email}>
+                    {((userProfile.full_name || userProfile.email || "?")[0] || "?").toUpperCase()}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                    <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{userProfile.full_name || userProfile.email}</span>
+                    <span style={{ fontSize: 9, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{userProfile.role}</span>
+                  </div>
+                  <button onClick={handleLogout} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 11, fontWeight: 600, cursor: "pointer", marginLeft: 4 }} title="Sign out">Sign Out</button>
+                </div>
+              </>}
             </div>
           </div>
       <div style={{ padding: "20px 24px", maxWidth: "none" }}>
@@ -10871,17 +10917,45 @@ export default function FactoringDashboard() {
 
                 function addRate() { saveRateForKey(null, "Default"); }
 
-                // Remove a per-buyer override entirely (delete the dict key).
-                // Confirmation prompt because this loses the history for that
-                // buyer — there's no soft-delete pattern in programRates.
+                // Remove a per-buyer override.
+                //
+                // Soft-delete model: instead of deleting the dict entry, we
+                // append a final "removed" sentinel entry to the buyer's
+                // rate history. The resolution function (_resolveProgramRateHistory)
+                // treats a "removed" latest entry as if the override is gone
+                // (falls through to default), but the prior history entries
+                // remain for audit.
+                //
+                // Why soft-delete: a customer may ask "what rate did we fund
+                // Sainsbury's at last March?" — the audit trail must answer.
+                // Hard-deleting destroys that record. Soft-delete preserves
+                // it without affecting current resolution.
+                //
+                // Re-adding an override for the same buyer later: the new
+                // entry's effectiveDate is more recent than the "removed"
+                // sentinel, so resolution picks it up normally.
                 function removeBuyerOverride(buyerKey, label) {
-                  var ok = window.confirm("Remove " + label + "'s rate override?\n\nThis deletes the override and all its history entries. " + label + " will revert to the default rate for " + selectedProgramName + ". This cannot be undone.");
+                  var ok = window.confirm("Remove " + label + "'s rate override?\n\n" + label + " will revert to the default rate for " + selectedProgramName + ". History entries are preserved for audit (see 'Show removed' on the rate history table).");
                   if (!ok) return;
                   var entry = supplier.programRates[supProgram];
-                  if (entry && !Array.isArray(entry)) {
-                    delete entry[buyerKey];
+                  if (entry && !Array.isArray(entry) && entry[buyerKey]) {
+                    var nowIso = new Date().toISOString();
+                    var nowDate = nowIso.split("T")[0];
+                    var nowDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                    // Append a removal sentinel. advanceRate/annualRate/penaltyRate
+                    // are zero so a bug in resolution can't accidentally fund at
+                    // a stale rate; the `removed: true` flag is the canonical signal.
+                    entry[buyerKey].push({
+                      removed:          true,
+                      advanceRate:      0,
+                      annualRate:       0,
+                      penaltyRate:      0,
+                      effectiveDate:    nowDate,
+                      effectiveDisplay: nowDisplay,
+                      effectiveTimestamp: nowIso
+                    });
                     saveSupplier(selectedSupplier);
-                    auditLog("Rate Override Removed", getEntityDisplayName(selectedSupplier) + " per-buyer rate override for " + label + " removed on " + selectedProgramName + ". Reverts to default.", { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey, buyerLabel: label });
+                    auditLog("Rate Override Removed (Soft)", getEntityDisplayName(selectedSupplier) + " per-buyer rate override for " + label + " removed on " + selectedProgramName + ". Reverts to default. History preserved.", { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey, buyerLabel: label, softDelete: true });
                     setDataVer(function(v) { return v + 1; });
                   }
                 }
@@ -11125,13 +11199,22 @@ export default function FactoringDashboard() {
                   {(function() {
                     // Per-buyer truncation: keep only the most-recent 3 entries
                     // per _buyerKey for display. Older entries remain
+                    // Per-buyer truncation: keep only the most-recent 3 entries
+                    // per _buyerKey for display, EXCLUDING soft-deleted entries
+                    // unless showRemovedHistory is on. Older entries remain
                     // downloadable via CSV. combinedHistory is sorted
                     // newest-first across all keys, so we iterate and accept
                     // up to 3 per key.
                     var perKeyCount = {};
                     var displayRows = [];
                     var hiddenRows = [];
+                    var removedCount = 0;
                     combinedHistory.forEach(function(r) {
+                      if (r.removed) removedCount++;
+                      if (r.removed && !showRemovedHistory) {
+                        hiddenRows.push(r);
+                        return;
+                      }
                       var key = r._buyerKey;
                       perKeyCount[key] = (perKeyCount[key] || 0) + 1;
                       if (perKeyCount[key] <= 3) displayRows.push(r);
@@ -11148,7 +11231,7 @@ export default function FactoringDashboard() {
                         if (/[",\n]/.test(s)) return "\"" + s.replace(/"/g, "\"\"") + "\"";
                         return s;
                       };
-                      var header = ["Effective Date","Effective Display","Effective Timestamp","Buyer Key","Buyer Label","Advance Rate (%)","Interest Rate (%)","Penalty Rate (%)"];
+                      var header = ["Effective Date","Effective Display","Effective Timestamp","Buyer Key","Buyer Label","Status","Advance Rate (%)","Interest Rate (%)","Penalty Rate (%)"];
                       var lines = [header.map(quote).join(",")];
                       // Use the FULL combinedHistory, not just hidden — operator
                       // gets a complete picture in the file.
@@ -11159,6 +11242,7 @@ export default function FactoringDashboard() {
                           r.effectiveTimestamp || "",
                           r._buyerKey === "__default" ? "default" : r._buyerKey,
                           r._buyerLabel,
+                          r.removed ? "Removed" : "Active",
                           r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(2) : "",
                           (r.annualRate * 100).toFixed(2),
                           (r.penaltyRate * 100).toFixed(2)
@@ -11178,34 +11262,48 @@ export default function FactoringDashboard() {
                     }
                     return <>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Rate History &mdash; {selectedProgramName} <span style={{ fontWeight: 500, marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>(latest 3 per buyer)</span></div>
-                        <button onClick={downloadFullHistoryCsv} style={{ padding: "4px 12px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Download full history ({combinedHistory.length} rows) &darr;</button>
+                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Rate History &mdash; {selectedProgramName} <span style={{ fontWeight: 500, marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>(latest 3 per buyer{showRemovedHistory ? ", inc. removed" : ""})</span></div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          {removedCount > 0 && <button onClick={function() { setShowRemovedHistory(!showRemovedHistory); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (showRemovedHistory ? "var(--accent)" : "var(--border)"), background: showRemovedHistory ? "var(--accent)14" : "transparent", color: showRemovedHistory ? "var(--accent)" : "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }} title={"Toggle visibility of soft-deleted (removed) override entries. " + removedCount + " removed in history."}>{showRemovedHistory ? "\u2713 " : ""}Show removed ({removedCount})</button>}
+                          <button onClick={downloadFullHistoryCsv} style={{ padding: "4px 12px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Download full history ({combinedHistory.length} rows) &darr;</button>
+                        </div>
                       </div>
                       <table style={{ width: "100%", borderCollapse: "collapse" }}>
                         <thead><tr>{["Effective From", "Buyer", "Advance", "Interest", "Penalty"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                         <tbody>{displayRows.map(function(r, ri) {
-                          // "Current" markers: the most recent entry per buyerKey.
-                          // Within displayRows the FIRST occurrence of each
-                          // _buyerKey is the latest, since combinedHistory is
-                          // sorted newest-first.
+                          // "Current" markers: the most recent NON-REMOVED entry
+                          // per buyerKey. A removed sentinel is shown when
+                          // showRemovedHistory is on, but never as "Current" —
+                          // a removed override has no current rate.
                           var isCurrent = (function() {
+                            if (r.removed) return false;
                             for (var j = 0; j < ri; j++) {
-                              if (displayRows[j]._buyerKey === r._buyerKey) return false;
+                              if (displayRows[j]._buyerKey === r._buyerKey && !displayRows[j].removed) return false;
                             }
                             return true;
                           })();
                           var isDefault = r._buyerKey === "__default";
-                          return <tr key={ri} style={{ borderBottom: "1px solid var(--border)", background: isCurrent ? "#2B4C7E08" : "transparent" }}>
-                            <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}{isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}</td>
+                          var isRemoved = !!r.removed;
+                          var rowStyle = {
+                            borderBottom: "1px solid var(--border)",
+                            background: isCurrent ? "#2B4C7E08" : (isRemoved ? "#6B728010" : "transparent"),
+                            opacity: isRemoved ? 0.6 : 1
+                          };
+                          var rateStyle = isRemoved ? { textDecoration: "line-through" } : {};
+                          return <tr key={ri} style={rowStyle}>
+                            <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}
+                              {isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}
+                              {isRemoved && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Removed</span>}
+                            </td>
                             <td style={{ padding: "5px 10px", fontSize: 11, color: isDefault ? "var(--muted)" : "var(--text)", fontStyle: isDefault ? "italic" : "normal" }}>{r._buyerLabel}</td>
-                            <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(0) + "%" : (ADVANCE_RATE * 100).toFixed(0) + "%"}</td>
-                            <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(r.annualRate * 100).toFixed(1)}%</td>
-                            <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{(r.penaltyRate * 100).toFixed(1)}%</td>
+                            <td style={Object.assign({}, rateStyle, { padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 })}>{isRemoved ? "\u2014" : (r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(0) + "%" : (ADVANCE_RATE * 100).toFixed(0) + "%")}</td>
+                            <td style={Object.assign({}, rateStyle, { padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 })}>{isRemoved ? "\u2014" : (r.annualRate * 100).toFixed(1) + "%"}</td>
+                            <td style={Object.assign({}, rateStyle, { padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 })}>{isRemoved ? "\u2014" : (r.penaltyRate * 100).toFixed(1) + "%"}</td>
                           </tr>;
                         })}</tbody>
                       </table>
                       {hiddenCount > 0 && <div style={{ marginTop: 8, padding: "8px 12px", background: "var(--bg)", borderRadius: 6, fontSize: 11, color: "var(--muted)", textAlign: "center", fontStyle: "italic" }}>
-                        + {hiddenCount} older entr{hiddenCount === 1 ? "y" : "ies"} hidden &mdash; <button onClick={downloadFullHistoryCsv} style={{ background: "transparent", border: "none", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline" }}>download full history</button>
+                        + {hiddenCount} older {removedCount > 0 && !showRemovedHistory ? "or removed " : ""}entr{hiddenCount === 1 ? "y" : "ies"} hidden &mdash; <button onClick={downloadFullHistoryCsv} style={{ background: "transparent", border: "none", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0, textDecoration: "underline" }}>download full history</button>
                       </div>}
                     </>;
                   })()}
@@ -14350,6 +14448,14 @@ export default function FactoringDashboard() {
                           if (result.totalCapitalQueued > 0) msg += " (" + money(result.totalCapitalQueued, eligibleForFund[0].currency) + " total queued)";
                           if (result.skipped.length > 0) {
                             msg += "\n\nSkipped: " + result.skipped.length + " invoice(s):\n" + result.skipped.map(function(s) { return "  \u2022 " + s.id + " \u2014 " + s.reason; }).join("\n");
+                            // Populate the carry-forward state so the operator
+                            // can filter the invoice list to just these IDs
+                            // and triage one-by-one via the per-row Fund popup.
+                            setLastSkippedIds(result.skipped.map(function(s) { return s.id; }));
+                            setLastSkippedLabel("Fund at Max");
+                          } else {
+                            setLastSkippedIds([]);
+                            setLastSkippedLabel("");
                           }
                           msg += "\n\nGo to Payments \u2192 Outbound Queue to execute the funding payments.";
                           alert(msg);
@@ -18769,9 +18875,16 @@ export default function FactoringDashboard() {
             setDataVer(function(v) { return v + 1; });
           }
           // Build filtered list
-          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlVoidedFilter || invlDateFrom || invlDateTo);
+          var invlHasActive = !!(invlSearch || invlCcyFilter || invlSupFilter || invlBuyFilter || invlProgFilter || invlInvStFilter || invlFundStFilter || invlDnfFilter || invlDnaFilter || invlVoidedFilter || invlDateFrom || invlDateTo || invlShowSkippedOnly);
           function applyInvlFilters(list) {
             var r = list;
+            // Recently-skipped filter — when active, narrows to invoices
+            // skipped during the most recent bulk action.
+            if (invlShowSkippedOnly && lastSkippedIds.length > 0) {
+              var skipSet = {};
+              lastSkippedIds.forEach(function(id) { skipSet[id] = true; });
+              r = r.filter(function(inv) { return skipSet[inv.id]; });
+            }
             // Voided default: hide. "yes" = show only voided. "all" = show both. Voided rows are
             // visible-for-audit only; they're disregarded everywhere else (filtered out at processForDate).
             if (invlVoidedFilter === "yes") r = r.filter(function(inv) { return !!inv.voided; });
@@ -18964,7 +19077,8 @@ export default function FactoringDashboard() {
                 </select>
                 <input type="date" value={invlDateFrom} onChange={function(e) { setInvlDateFrom(e.target.value); setInvlPage(0); }} title="Invoice date from" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateFrom ? "var(--accent)" : "var(--border)"), background: invlDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={invlDateTo} onChange={function(e) { setInvlDateTo(e.target.value); setInvlPage(0); }} title="Invoice date to" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlDateTo ? "var(--accent)" : "var(--border)"), background: invlDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlVoidedFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {lastSkippedIds.length > 0 && <button onClick={function() { setInvlShowSkippedOnly(!invlShowSkippedOnly); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (invlShowSkippedOnly ? "#D97706" : "#D9770680"), background: invlShowSkippedOnly ? "#D9770624" : "#D9770612", color: "#D97706", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title={"Filter to the " + lastSkippedIds.length + " invoice(s) recently skipped by " + (lastSkippedLabel || "a bulk action") + "."}>{invlShowSkippedOnly ? "\u2713 " : ""}Recently skipped ({lastSkippedIds.length})</button>}
+                {invlHasActive && <button onClick={function() { setInvlSearch(""); setInvlCcyFilter(""); setInvlSupFilter(""); setInvlBuyFilter(""); setInvlProgFilter(""); setInvlInvStFilter(""); setInvlFundStFilter(""); setInvlDnfFilter(""); setInvlDnaFilter(""); setInvlVoidedFilter(""); setInvlDateFrom(""); setInvlDateTo(""); setInvlShowSkippedOnly(false); setInvlPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
 
               {INVOICES_DB.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No invoices yet. Expand "Create New Invoice" above to add one.</div>}
@@ -19060,9 +19174,17 @@ export default function FactoringDashboard() {
           var unpurchasedDnf = unpurchasedAll.filter(function(inv) { return inv.doNotFund; });
           var unpurchasedActive = unpurchasedAll.filter(function(inv) { return !inv.doNotFund; });
           // Filters
-          var upiHasActive = !!(upiSearch || upiSupFilter || upiBuyFilter || upiCcyFilter || upiDateFrom || upiDateTo);
+          var upiHasActive = !!(upiSearch || upiSupFilter || upiBuyFilter || upiCcyFilter || upiDateFrom || upiDateTo || upiShowSkippedOnly);
           function applyUpiFilters(list) {
             var r = list;
+            // Recently-skipped filter — when active, narrows to invoices
+            // that were skipped during the most recent bulk action. Lets
+            // the operator triage them via per-row Fund popup.
+            if (upiShowSkippedOnly && lastSkippedIds.length > 0) {
+              var skipSet = {};
+              lastSkippedIds.forEach(function(id) { skipSet[id] = true; });
+              r = r.filter(function(inv) { return skipSet[inv.id]; });
+            }
             if (upiCcyFilter) r = r.filter(function(inv) { return inv.currency === upiCcyFilter; });
             if (upiSupFilter) r = r.filter(function(inv) { return inv.supplierName === upiSupFilter; });
             if (upiBuyFilter) r = r.filter(function(inv) { return inv.buyerName === upiBuyFilter; });
@@ -19317,8 +19439,18 @@ export default function FactoringDashboard() {
               if (creditSkippedBoth.length > 0) alertParts.push("\nBoth credit limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
               if (pauseSkippedSup.length > 0) alertParts.push("\nSupplier paused (" + pauseSkippedSup.length + "): " + pauseSkippedSup.join(", "));
               if (pauseSkippedBuy.length > 0) alertParts.push("\nBuyer paused (" + pauseSkippedBuy.length + "): " + pauseSkippedBuy.join(", "));
-              alertParts.push("\n\nThese invoices remain pending. Resolve the cause (unpause the entity, or increase credit limits), then retry.");
+              alertParts.push("\n\nThese invoices remain pending. The 'Recently skipped' pill on the Invoices and Unpurchased views will filter to them.");
               alert(alertParts.join(""));
+              // Populate the carry-forward state. Deduplicate the union of
+              // all skip buckets, then set.
+              var allSkippedSet = {};
+              creditSkippedSup.forEach(function(id) { allSkippedSet[id] = true; });
+              creditSkippedBuy.forEach(function(id) { allSkippedSet[id] = true; });
+              creditSkippedBoth.forEach(function(id) { allSkippedSet[id] = true; });
+              pauseSkippedSup.forEach(function(id) { allSkippedSet[id] = true; });
+              pauseSkippedBuy.forEach(function(id) { allSkippedSet[id] = true; });
+              setLastSkippedIds(Object.keys(allSkippedSet));
+              setLastSkippedLabel("Allocate & Fund");
             }
             setUpiSelected({});
             setUpiBulkProg("");
@@ -19393,7 +19525,8 @@ export default function FactoringDashboard() {
                 <select value={upiCcyFilter} onChange={function(e) { setUpiCcyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiCcyFilter ? "var(--accent)" : "var(--border)"), background: upiCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                 <input type="date" value={upiDateFrom} onChange={function(e) { setUpiDateFrom(e.target.value); setUpiPage(0); }} title="From" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateFrom ? "var(--accent)" : "var(--border)"), background: upiDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={upiDateTo} onChange={function(e) { setUpiDateTo(e.target.value); setUpiPage(0); }} title="To" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateTo ? "var(--accent)" : "var(--border)"), background: upiDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
-                {upiHasActive && <button onClick={function() { setUpiSearch(""); setUpiSupFilter(""); setUpiBuyFilter(""); setUpiCcyFilter(""); setUpiDateFrom(""); setUpiDateTo(""); setUpiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
+                {lastSkippedIds.length > 0 && <button onClick={function() { setUpiShowSkippedOnly(!upiShowSkippedOnly); setUpiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid " + (upiShowSkippedOnly ? "#D97706" : "#D9770680"), background: upiShowSkippedOnly ? "#D9770624" : "#D9770612", color: "#D97706", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title={"Filter to the " + lastSkippedIds.length + " invoice(s) recently skipped by " + (lastSkippedLabel || "a bulk action") + ". Triage each one via the per-row Fund button."}>{upiShowSkippedOnly ? "\u2713 " : ""}Recently skipped ({lastSkippedIds.length})</button>}
+                {upiHasActive && <button onClick={function() { setUpiSearch(""); setUpiSupFilter(""); setUpiBuyFilter(""); setUpiCcyFilter(""); setUpiDateFrom(""); setUpiDateTo(""); setUpiShowSkippedOnly(false); setUpiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               </div>}
               {unpurchasedAll.length === 0 && <div style={{ padding: "40px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>Queue empty. New invoices awaiting program allocation will appear here.</div>}
               {unpurchasedAll.length > 0 && sortedInvs.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No invoices match your filters.</div>}
