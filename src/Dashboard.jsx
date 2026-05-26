@@ -6423,19 +6423,27 @@ export default function FactoringDashboard() {
               if (isBuyer) {
                 // Buyer flow: no rates, just limits + add to fp.eligibleBuyers.
                 // Branch-aware: entityId may be either "BUY-001" (parent) or
-                // "BUY-001:BR-001" (branch). Limits are stored on the parent
-                // buyer record either way — they cascade to branches the same
-                // way supplier rates/limits do.
+                // "BUY-001:BR-001" (branch). Limits are scoped to the entity
+                // that was added — branch limits go on the branch object so
+                // the cascade can evaluate parent and branch independently.
                 var parentBuyId = getParentEntityId(entityId) || entityId;
                 var buy = BUYERS_DB.find(function(b) { return b.id === parentBuyId; });
                 if (!buy) { alert("Buyer not found."); return; }
+                // Find the limits target: the branch object when isBranch, else the parent.
+                var buyLimitsTarget = buy;
+                if (m.isBranch) {
+                  var buyBranchId = parseEntityId(entityId).branchId;
+                  var buyBr = (buy.branches || []).find(function(b) { return b.branchId === buyBranchId; });
+                  if (!buyBr) { alert("Branch not found on buyer."); return; }
+                  buyLimitsTarget = buyBr;
+                }
                 if (m.creditLimit) {
-                  if (!buy.creditLimits) buy.creditLimits = {};
-                  buy.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                  if (!buyLimitsTarget.creditLimits) buyLimitsTarget.creditLimits = {};
+                  buyLimitsTarget.creditLimits[m.programId] = parseFloat(m.creditLimit);
                 }
                 if (m.singleInvoiceLimit) {
-                  if (!buy.singleInvoiceLimits) buy.singleInvoiceLimits = {};
-                  buy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                  if (!buyLimitsTarget.singleInvoiceLimits) buyLimitsTarget.singleInvoiceLimits = {};
+                  buyLimitsTarget.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
                 }
                 // Stage 1.9: force-pause buyers when they transition from "on zero
                 // programs" to "on at least one program". This is the onboarding
@@ -6453,42 +6461,60 @@ export default function FactoringDashboard() {
                 var fpB = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
                 if (fpB) {
                   var fpArrB = (fpB.eligibleBuyers || []).slice();
-                  if (m.isBranch) {
-                    // Adding a branch: just push the composite ID (parent may or may not be there)
-                    if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
-                  } else {
-                    // Adding the parent: strip any existing branch entries to avoid double-counting
-                    fpArrB = fpArrB.filter(function(n) { return !n.startsWith(entityId + ":"); });
-                    if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
-                  }
+                  // Both branches AND the parent can coexist on the eligibility
+                  // list. The cascade primitives evaluate parent and branch
+                  // buckets independently, so each entry has its own limits
+                  // dict and they don't double-count. We used to strip branch
+                  // entries when adding the parent (and vice versa), which
+                  // silently moved the operator's branch-specific limits onto
+                  // the parent — surprising data loss. Now we just dedupe.
+                  if (fpArrB.indexOf(entityId) === -1) fpArrB.push(entityId);
                   fpB.eligibleBuyers = fpArrB;
                   await saveFundingProgram(fpB.id);
                 }
-                // Mirror into manageFields if currently editing this buyer
+                // Mirror into manageFields if currently editing this buyer.
+                // Branch-aware: limits live on the branch object inside
+                // manageFields.branches[i] when adding a branch.
                 if (manageEdit === parentBuyId) {
                   setManageFields(function(prev) {
                     var next = Object.assign({}, prev);
-                    if (m.creditLimit) {
-                      next.creditLimits = Object.assign({}, prev.creditLimits || {});
-                      next.creditLimits[m.programId] = parseFloat(m.creditLimit);
-                    }
-                    if (m.singleInvoiceLimit) {
-                      next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
-                      next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                    if (m.isBranch) {
+                      var brId = parseEntityId(entityId).branchId;
+                      var brIdx = (prev.branches || []).findIndex(function(b) { return b.branchId === brId; });
+                      if (brIdx > -1) {
+                        var brsCopy = (prev.branches || []).slice();
+                        var brCopy = Object.assign({}, brsCopy[brIdx]);
+                        if (m.creditLimit) {
+                          brCopy.creditLimits = Object.assign({}, brCopy.creditLimits || {});
+                          brCopy.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                        }
+                        if (m.singleInvoiceLimit) {
+                          brCopy.singleInvoiceLimits = Object.assign({}, brCopy.singleInvoiceLimits || {});
+                          brCopy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                        }
+                        brsCopy[brIdx] = brCopy;
+                        next.branches = brsCopy;
+                      }
+                    } else {
+                      if (m.creditLimit) {
+                        next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                        next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                      }
+                      if (m.singleInvoiceLimit) {
+                        next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                        next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                      }
                     }
                     return next;
                   });
                 }
-                // Reflect in program edit form if visible
+                // Reflect in program edit form if visible. Don't strip branch
+                // entries when adding the parent — see the eligibleBuyers
+                // persistence above; parent + branches coexist.
                 setProgFields(function(p) {
                   if (!p) return p;
                   var arr = (p.eligibleBuyers || []).slice();
-                  if (m.isBranch) {
-                    if (arr.indexOf(entityId) === -1) arr.push(entityId);
-                  } else {
-                    arr = arr.filter(function(n) { return !n.startsWith(entityId + ":"); });
-                    if (arr.indexOf(entityId) === -1) arr.push(entityId);
-                  }
+                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
                   return Object.assign({}, p, { eligibleBuyers: arr });
                 });
                 auditLog("Buyer Added to Program", entityName + " added to " + (m.programName || "program") + (buyerForcePaused ? " \u2014 paused pending KYC" : ""), { buyerId: entityId, buyer: entityName, isBranch: !!m.isBranch, programId: m.programId, programName: m.programName, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: buyerForcePaused });
@@ -6498,11 +6524,19 @@ export default function FactoringDashboard() {
               }
               // Supplier flow (unchanged)
               if (!m.advanceRate || !m.annualRate || !m.penaltyRate) { alert("Rates are required."); return; }
-              // Resolve the supplier record. For branch entities, write to the parent supplier (rates/limits are parent-level).
+              // Resolve the supplier record. Rates ALWAYS live on the parent
+              // (today's design — branch-specific rates would require a rate
+              // chain mode of "parent", which the schema supports but no UI
+              // creates yet). Limits, however, are scoped to the entity that
+              // was added: if a branch was added, the limits go on that
+              // branch object; if the parent was added, they go on the
+              // parent's limit dicts. This preserves the cascade design —
+              // parent and branch can each have their own caps and both
+              // bind independently when an invoice is on a branch.
               var parentId = getParentEntityId(entityId) || entityId;
               var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
               if (!sup) { alert("Supplier not found."); return; }
-              // Set rate
+              // Set rate (parent-scoped — see comment above)
               if (!sup.programRates) sup.programRates = {};
               if (!sup.programRates[m.programId]) sup.programRates[m.programId] = [];
               var now = new Date();
@@ -6514,14 +6548,22 @@ export default function FactoringDashboard() {
                 annualRate: parseFloat(m.annualRate) / 100,
                 penaltyRate: parseFloat(m.penaltyRate) / 100
               });
-              // Set limits if provided
+              // Set limits — branch-scoped when adding a branch, parent-scoped when adding the parent.
+              // Find the limits target: the branch object when isBranch, else the parent.
+              var limitsTarget = sup;
+              if (m.isBranch) {
+                var branchId = parseEntityId(entityId).branchId;
+                var br = (sup.branches || []).find(function(b) { return b.branchId === branchId; });
+                if (!br) { alert("Branch not found on supplier."); return; }
+                limitsTarget = br;
+              }
               if (m.creditLimit) {
-                if (!sup.creditLimits) sup.creditLimits = {};
-                sup.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                if (!limitsTarget.creditLimits) limitsTarget.creditLimits = {};
+                limitsTarget.creditLimits[m.programId] = parseFloat(m.creditLimit);
               }
               if (m.singleInvoiceLimit) {
-                if (!sup.singleInvoiceLimits) sup.singleInvoiceLimits = {};
-                sup.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                if (!limitsTarget.singleInvoiceLimits) limitsTarget.singleInvoiceLimits = {};
+                limitsTarget.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
               }
               // Stage 1.9: force-pause suppliers transitioning from "on zero programs"
               // to "on at least one program". Parent-level pause (branches inherit).
@@ -6540,29 +6582,52 @@ export default function FactoringDashboard() {
               var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
               if (fp) {
                 var fpArr = (fp.eligibleSuppliers || []).slice();
-                if (m.isBranch) {
-                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
-                } else {
-                  fpArr = fpArr.filter(function(n) { return !n.startsWith(entityId + ":"); });
-                  if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
-                }
+                // Both branches AND the parent can coexist on the eligibility
+                // list — the cascade evaluates them independently (each
+                // entity has its own limits). Previously we stripped branch
+                // entries when adding the parent (and vice versa), which
+                // silently lost the operator's branch-specific limits.
+                if (fpArr.indexOf(entityId) === -1) fpArr.push(entityId);
                 fp.eligibleSuppliers = fpArr;
                 await saveFundingProgram(fp.id);
               }
               // If we're currently editing this supplier in the manage form, mirror the changes
               // into manageFields so the form's display refreshes without needing a reload.
+              // Branch-aware: when m.isBranch, the limits live on the branch object inside
+              // manageFields.branches[i], not on the top-level creditLimits/singleInvoiceLimits.
               if (manageEdit === parentId) {
                 setManageFields(function(prev) {
                   var nextPR = Object.assign({}, prev.programRates || {});
                   nextPR[m.programId] = (sup.programRates[m.programId] || []).slice();
                   var next = Object.assign({}, prev, { programRates: nextPR });
-                  if (m.creditLimit) {
-                    next.creditLimits = Object.assign({}, prev.creditLimits || {});
-                    next.creditLimits[m.programId] = parseFloat(m.creditLimit);
-                  }
-                  if (m.singleInvoiceLimit) {
-                    next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
-                    next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                  if (m.isBranch) {
+                    // Branch limits — clone the branches array, locate the
+                    // edited branch, mutate its limits dicts.
+                    var brId = parseEntityId(entityId).branchId;
+                    var brIdx = (prev.branches || []).findIndex(function(b) { return b.branchId === brId; });
+                    if (brIdx > -1) {
+                      var brsCopy = (prev.branches || []).slice();
+                      var brCopy = Object.assign({}, brsCopy[brIdx]);
+                      if (m.creditLimit) {
+                        brCopy.creditLimits = Object.assign({}, brCopy.creditLimits || {});
+                        brCopy.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                      }
+                      if (m.singleInvoiceLimit) {
+                        brCopy.singleInvoiceLimits = Object.assign({}, brCopy.singleInvoiceLimits || {});
+                        brCopy.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                      }
+                      brsCopy[brIdx] = brCopy;
+                      next.branches = brsCopy;
+                    }
+                  } else {
+                    if (m.creditLimit) {
+                      next.creditLimits = Object.assign({}, prev.creditLimits || {});
+                      next.creditLimits[m.programId] = parseFloat(m.creditLimit);
+                    }
+                    if (m.singleInvoiceLimit) {
+                      next.singleInvoiceLimits = Object.assign({}, prev.singleInvoiceLimits || {});
+                      next.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                    }
                   }
                   return next;
                 });
@@ -6570,15 +6635,11 @@ export default function FactoringDashboard() {
               // Add to eligible list in program edit form. Updates progFields' eligible_suppliers
               // so the program-edit UI immediately reflects the addition. Has no observable effect
               // when the modal was opened from supplier edit (program form isn't visible).
+              // Branch + parent can coexist — don't strip the other when one is added.
               setProgFields(function(p) {
                 if (!p) return p;
                 var arr = (p.eligibleSuppliers || []).slice();
-                if (m.isBranch) {
-                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
-                } else {
-                  arr = arr.filter(function(n) { return !n.startsWith(entityId + ":"); });
-                  if (arr.indexOf(entityId) === -1) arr.push(entityId);
-                }
+                if (arr.indexOf(entityId) === -1) arr.push(entityId);
                 return Object.assign({}, p, { eligibleSuppliers: arr });
               });
               auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
@@ -21283,28 +21344,32 @@ export default function FactoringDashboard() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyers</label>
                       <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
-                        // Mirror of the supplier-side widget below. Same three-state pattern:
-                        //   (1) parent selected: branches shown as "(auto)" — covered by parent
-                        //   (2) parent not selected: branches shown as individually toggleable
-                        //   (3) branch individually selected: composite ID stored in eligibleBuyers
-                        // Parent-and-branch coexistence is prevented at toggle time: selecting a
-                        // parent strips any branch entries; selecting a branch leaves the parent
-                        // status alone (the parent must already be off, since (1) auto-disables
-                        // branch toggles).
+                        // Eligible buyers list. Cascade model: parent and each
+                        // branch are INDEPENDENT entries with their own limits.
+                        // Both can coexist on the eligibility list; the cascade
+                        // primitives evaluate parent and branch buckets
+                        // separately so they don't double-count.
+                        //
+                        // UI: parent chip + each branch chip are always
+                        // individually toggleable. Toggling one doesn't affect
+                        // the others — important to avoid silently dropping
+                        // branch-level limits the operator configured.
                         var items = [];
                         BUYERS_DB.forEach(function(b) {
                           var parentSel = (pf.eligibleBuyers || []).indexOf(b.id) > -1;
                           items.push(React.createElement("span", { key: b.id, onClick: function() {
                             if (parentSel) {
-                              // Deselect parent: remove parent AND any branches under it
+                              // Deselect parent ONLY — leave any branch entries alone.
+                              // Branches have their own limits and remain independently
+                              // valid eligibility entries.
                               setProgFields(function(p) {
                                 var arr = (p.eligibleBuyers || []).slice();
-                                arr = arr.filter(function(n) { return n !== b.id && !n.startsWith(b.id + ":"); });
+                                arr = arr.filter(function(n) { return n !== b.id; });
                                 return Object.assign({}, p, { eligibleBuyers: arr });
                               });
                               var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                               if (dpEditingProgBuy) {
-                                dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id && !n.startsWith(b.id + ":"); });
+                                dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id; });
                                 saveFundingProgram(dpEditingProgBuy.id);
                               }
                             } else {
@@ -21325,8 +21390,12 @@ export default function FactoringDashboard() {
                               });
                             }
                           }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#2B4C7E20" : "transparent", color: parentSel ? "#0EA5E9" : "var(--muted)", borderColor: parentSel ? "#0EA5E9" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, b.name));
-                          // Branches: individually toggleable when parent is NOT selected
-                          if (b.branches && b.branches.length > 0 && !parentSel) {
+                          // Branches: ALWAYS individually toggleable. Each has
+                          // its own limits in the cascade model. (Previously
+                          // they were rendered as non-interactive "(auto)"
+                          // chips when the parent was selected — which hid
+                          // the branch limit editing path.)
+                          if (b.branches && b.branches.length > 0) {
                             b.branches.forEach(function(br) {
                               var brEntityId = makeEntityId(b.id, br.branchId);
                               var brSel = (pf.eligibleBuyers || []).indexOf(brEntityId) > -1;
@@ -21344,24 +21413,20 @@ export default function FactoringDashboard() {
                                     toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
                                     return;
                                   }
+                                  // Pre-fill the modal with the BRANCH's existing
+                                  // limits (if any), not the parent's — operator
+                                  // can see and adjust the branch-specific cap.
                                   setAddToProgramModal({
                                     entityKind: "buyer",
                                     entityId: brEntityId, entityName: b.name + " \u2014 " + br.branchName,
                                     isBranch: true,
                                     programId: editingProgramObjBB.id, programName: pf.name || "",
                                     programCcy: pf.currency || "GBP",
-                                    // Limits cascade from parent buyer record (same as supplier rates/limits — kept on parent).
-                                    creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBB.id] !== undefined) ? String(b.creditLimits[editingProgramObjBB.id]) : "",
-                                    singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBB.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBB.id]) : ""
+                                    creditLimit: (br.creditLimits && br.creditLimits[editingProgramObjBB.id] !== undefined) ? String(br.creditLimits[editingProgramObjBB.id]) : "",
+                                    singleInvoiceLimit: (br.singleInvoiceLimits && br.singleInvoiceLimits[editingProgramObjBB.id] !== undefined) ? String(br.singleInvoiceLimits[editingProgramObjBB.id]) : ""
                                   });
                                 }
                               }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#2B4C7E20" : "transparent", color: brSel ? "#0EA5E9" : "var(--muted)", borderColor: brSel ? "#0EA5E9" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
-                            });
-                          }
-                          // Branches: shown as "(auto)" when parent IS selected
-                          if (b.branches && b.branches.length > 0 && parentSel) {
-                            b.branches.forEach(function(br) {
-                              items.push(React.createElement("span", { key: b.id + ":" + (br.branchId || br.branchName) + "-auto", style: Object.assign({}, multiSelStyle, { background: "#2B4C7E10", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
                             });
                           }
                         });
@@ -21371,21 +21436,30 @@ export default function FactoringDashboard() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Suppliers</label>
                       <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
+                        // Cascade model: parent and each branch are
+                        // independent entries with their own rates/limits.
+                        // Both can coexist on eligibleSuppliers and don't
+                        // double-count — see cascade primitives. All chips
+                        // are independently toggleable so the operator can
+                        // configure branch-specific terms without first
+                        // deselecting the parent.
                         var items = [];
                         SUPPLIERS_DB.forEach(function(s) {
                           var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
                           items.push(React.createElement("span", { key: s.id, onClick: function() {
                             if (parentSel) {
-                              // Deselect: remove from eligible list (keeps existing rates/limits as historic record)
+                              // Deselect parent ONLY. Branches keep their
+                              // independent eligibility entries — previously
+                              // we stripped them too, which silently dropped
+                              // branch-level limits and rates.
                               setProgFields(function(p) {
                                 var arr = (p.eligibleSuppliers || []).slice();
-                                arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
+                                arr = arr.filter(function(n) { return n !== s.id; });
                                 return Object.assign({}, p, { eligibleSuppliers: arr });
                               });
-                              // Also persist to Supabase immediately so refresh shows correct state
                               var dpEditingProg = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
                               if (dpEditingProg) {
-                                dpEditingProg.eligibleSuppliers = (dpEditingProg.eligibleSuppliers || []).filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
+                                dpEditingProg.eligibleSuppliers = (dpEditingProg.eligibleSuppliers || []).filter(function(n) { return n !== s.id; });
                                 saveFundingProgram(dpEditingProg.id);
                               }
                             } else {
@@ -21409,13 +21483,16 @@ export default function FactoringDashboard() {
                                 advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
                                 annualRate: String((fpMinInt + 1).toFixed(1)),
                                 penaltyRate: "20.0",
-                                creditLimit: "",
-                                singleInvoiceLimit: ""
+                                creditLimit: (s.creditLimits && s.creditLimits[editingProgramObj.id] !== undefined) ? String(s.creditLimits[editingProgramObj.id]) : "",
+                                singleInvoiceLimit: (s.singleInvoiceLimits && s.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(s.singleInvoiceLimits[editingProgramObj.id]) : ""
                               });
                             }
                           }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#0EA5E920" : "transparent", color: parentSel ? "#E2E8F0" : "var(--muted)", borderColor: parentSel ? "#E2E8F0" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
-                          // Show branches indented if parent is NOT selected (individual branch selection)
-                          if (s.branches && s.branches.length > 0 && !parentSel) {
+                          // Branches: ALWAYS individually toggleable.
+                          // Each has its own rate/limit configuration in
+                          // the cascade model. Pre-fill modal with the
+                          // branch's own limits when adding (not the parent's).
+                          if (s.branches && s.branches.length > 0) {
                             s.branches.forEach(function(br) {
                               var brEntityId = makeEntityId(s.id, br.branchId);
                               var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
@@ -21446,17 +21523,11 @@ export default function FactoringDashboard() {
                                     advanceRate: String(Math.max(0, fpMaxAdvB - 5).toFixed(0)),
                                     annualRate: String((fpMinIntB + 1).toFixed(1)),
                                     penaltyRate: "20.0",
-                                    creditLimit: "",
-                                    singleInvoiceLimit: ""
+                                    creditLimit: (br.creditLimits && br.creditLimits[editingProgramObjB.id] !== undefined) ? String(br.creditLimits[editingProgramObjB.id]) : "",
+                                    singleInvoiceLimit: (br.singleInvoiceLimits && br.singleInvoiceLimits[editingProgramObjB.id] !== undefined) ? String(br.singleInvoiceLimits[editingProgramObjB.id]) : ""
                                   });
                                 }
                               }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
-                            });
-                          }
-                          // Show branches as auto-included if parent IS selected
-                          if (s.branches && s.branches.length > 0 && parentSel) {
-                            s.branches.forEach(function(br) {
-                              items.push(React.createElement("span", { key: s.id + ":" + (br.branchId || br.branchName) + "-auto", style: Object.assign({}, multiSelStyle, { background: "#0EA5E910", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
                             });
                           }
                         });
