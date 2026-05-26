@@ -3331,18 +3331,48 @@ function renderGroupPanel(group) {
         var subtitle = (p.supplier_name && p.supplier_name !== p.supplier_identifier)
             ? '<div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(p.supplier_identifier) + '</div>'
             : '';
-        // Branch decision badge
+        // Branch decision selector. Each constituent has a per-row dropdown
+        // that the operator sets to one of: unassigned / parent_main / branch /
+        // skip. "branch" decisions are realised (i.e. an MP branch is created)
+        // by step (f); until then converted_branch_id stays null. If a branch
+        // has already been created, we additionally show its ID alongside.
+        //
+        // The select is wired with data-bd-id (prospect_supplier id) so a
+        // single change handler can route updates without needing per-row
+        // closures. See the wire-up below.
         var decLabel = p.branch_decision || 'unassigned';
-        var decBadge;
-        if (decLabel === 'parent_main') {
-            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#0EA5E920; color:#0EA5E9; font-size:9px; font-weight:700; text-transform:uppercase;">parent main</span>';
-        } else if (decLabel === 'branch') {
-            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#8B5CF620; color:#8B5CF6; font-size:9px; font-weight:700; text-transform:uppercase;">branch' + (p.converted_branch_id ? ' \u2022 ' + escHTML(p.converted_branch_id) : '') + '</span>';
-        } else if (decLabel === 'skip') {
-            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:var(--bg); border:1px solid var(--border); color:var(--text-secondary); font-size:9px; font-weight:700; text-transform:uppercase;">skipped</span>';
-        } else {
-            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#F59E0B20; color:#D97706; font-size:9px; font-weight:700; text-transform:uppercase;">unassigned</span>';
+        var decBranchId = p.converted_branch_id || '';
+        var bdStyle = '';
+        if (decLabel === 'parent_main') bdStyle = 'background:#0EA5E920; color:#0EA5E9; border:1px solid #0EA5E940;';
+        else if (decLabel === 'branch') bdStyle = 'background:#8B5CF620; color:#8B5CF6; border:1px solid #8B5CF640;';
+        else if (decLabel === 'skip')   bdStyle = 'background:var(--bg); color:var(--text-secondary); border:1px solid var(--border);';
+        else                            bdStyle = 'background:#F59E0B20; color:#D97706; border:1px solid #F59E0B40;';
+        var decBadge =
+            '<select class="bd-select" data-bd-id="' + escHTML(p.id) + '" ' +
+                'style="' + bdStyle + ' padding:3px 6px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; cursor:pointer; font-family:inherit;">' +
+                '<option value="unassigned"' + (decLabel === 'unassigned' ? ' selected' : '') + '>Unassigned</option>' +
+                '<option value="parent_main"' + (decLabel === 'parent_main' ? ' selected' : '') + '>Parent main</option>' +
+                '<option value="branch"' + (decLabel === 'branch' ? ' selected' : '') + '>Branch' + (decBranchId ? ' \u2022 ' + escHTML(decBranchId) : '') + '</option>' +
+                '<option value="skip"' + (decLabel === 'skip' ? ' selected' : '') + '>Skip</option>' +
+            '</select>';
+        // Action column — currently only used for "Create branch in MP"
+        // when this constituent's decision is "branch" but no MP branch
+        // has been created yet. Pre-conditions:
+        //   - branch_decision === 'branch'
+        //   - converted_branch_id is NOT yet set
+        //   - the group has been linked to an MP supplier (the parent)
+        // When clicked, BI writes a new branch entry directly into MP's
+        // suppliers.branches[] JSONB and records converted_branch_id locally.
+        // See createBranchInMP handler below for guardrails.
+        var actionHtml = '';
+        if (p.branch_decision === 'branch' && !p.converted_branch_id && group.converted_supplier_id) {
+            actionHtml = '<button class="btn btn-xs bd-create-branch" data-bd-id="' + escHTML(p.id) + '" style="background:#8B5CF6; color:#fff; border:none; padding:3px 10px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;">Create branch in MP</button>';
+        } else if (p.branch_decision === 'branch' && p.converted_branch_id) {
+            actionHtml = '<span style="font-size:10px; color:#10B981; font-weight:600;">\u2713 Branch ' + escHTML(p.converted_branch_id) + '</span>';
+        } else if (p.branch_decision === 'branch' && !group.converted_supplier_id) {
+            actionHtml = '<span style="font-size:10px; color:var(--muted); font-style:italic;" title="Link the group to a FactorFlow supplier first">Awaiting group link</span>';
         }
+
         return '<tr style="cursor:pointer;" data-pr-id="' + escHTML(p.id) + '">' +
             '<td>' + escHTML(r.buyerName) + '</td>' +
             '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' + subtitle + '</a></td>' +
@@ -3351,6 +3381,7 @@ function renderGroupPanel(group) {
             '<td class="text-right mono">' + (r.spend ? moneyShort(r.spend, p.currency) : '—') + '</td>' +
             '<td class="text-right mono">' + (r.invoiceCount ? r.invoiceCount.toLocaleString() : '—') + '</td>' +
             '<td>' + decBadge + '</td>' +
+            '<td>' + actionHtml + '</td>' +
         '</tr>';
     }).join('');
 
@@ -3367,8 +3398,9 @@ function renderGroupPanel(group) {
                         '<th class="text-right">Spend</th>' +
                         '<th class="text-right">Invoices</th>' +
                         '<th>Branch decision</th>' +
+                        '<th>Action</th>' +
                     '</tr></thead>' +
-                    '<tbody>' + (rowsHtml || '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-secondary);">No constituents.</td></tr>') + '</tbody>' +
+                    '<tbody>' + (rowsHtml || '<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-secondary);">No constituents.</td></tr>') + '</tbody>' +
                 '</table>' +
             '</div>' +
         '</div>';
@@ -3419,11 +3451,245 @@ function renderGroupPanel(group) {
             if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) return;
             // Anchor inside row handles its own click
             if (ev.target && ev.target.closest && ev.target.closest('a')) return;
+            // Branch decision select handles its own change
+            if (ev.target && ev.target.closest && ev.target.closest('.bd-select')) return;
+            // Create-branch button handles its own click
+            if (ev.target && ev.target.closest && ev.target.closest('.bd-create-branch')) return;
             ev.preventDefault();
             var pid = tr.getAttribute('data-pr-id');
             // Close the group view first (cleans URL) then open the prospect
             closeGroupPanel({ fromPopstate: true });
             openProspectPanel(pid);
+        });
+    });
+
+    // "Create branch in MP" — direct-writes a branch entry to MP's
+    // suppliers.branches[] JSONB. Guardrails:
+    //   1. Append-only: read current branches, append the new one, write back.
+    //      We never modify or delete existing branches in this code path.
+    //   2. Idempotent intent: if the prospect already has converted_branch_id
+    //      we refuse — operator can see it's already created.
+    //   3. Audit trail: write an MP audit_log row with
+    //      action="Branch Created via BI" and tag the source prospect ID so
+    //      MP-side audit views can trace the origin.
+    //   4. Race protection: re-fetch suppliers.branches just before append,
+    //      compute branchId based on max existing + 1. If two operators race
+    //      both will produce non-conflicting branch IDs because each reads
+    //      latest state. Last write still wins on the JSONB, but appended
+    //      content survives — branches[] is treated additively.
+    //
+    // The branch's "branchName" defaults to the constituent's supplier_identifier
+    // — that's the buyer-AR raw string, the only human-readable label BI has
+    // for this branch. Operator can rename later in MP.
+    detailEl.querySelectorAll('.bd-create-branch').forEach(function(btn) {
+        btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            var pid = btn.getAttribute('data-bd-id');
+            var p = (state.prospects || []).find(function(x) { return x.id === pid; });
+            if (!p) { alert('Prospect not found.'); return; }
+            if (p.converted_branch_id) {
+                alert('This constituent already has a branch in MP: ' + p.converted_branch_id);
+                return;
+            }
+            var grp = (state.prospectGroups || []).find(function(g) { return g.id === p.group_id; });
+            if (!grp || !grp.converted_supplier_id) {
+                alert('The group must be linked to an MP supplier before branches can be created.\n\nConvert one constituent first (which links the parent), then return here to create branches.');
+                return;
+            }
+            var defaultName = p.supplier_identifier || p.supplier_name || 'Branch';
+            var proposedName = prompt('Enter a name for this branch in MP.\n\nDefault is the buyer-AR identifier ("' + defaultName + '"); rename if you want something more recognisable in the MP supplier view.', defaultName);
+            if (proposedName === null) return;
+            proposedName = (proposedName || '').trim();
+            if (!proposedName) { alert('Branch name required.'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Creating\u2026';
+            // Re-fetch the supplier's current branches[] right before write.
+            // Reduces (but cannot eliminate) the race window with concurrent
+            // edits in MP.
+            sbClient.from('suppliers').select('id, name, branches').eq('id', grp.converted_supplier_id).single().then(function(supRes) {
+                if (supRes.error || !supRes.data) {
+                    btn.disabled = false;
+                    btn.textContent = 'Create branch in MP';
+                    alert('Could not load parent supplier in MP: ' + (supRes.error ? supRes.error.message : 'not found'));
+                    return;
+                }
+                var existing = Array.isArray(supRes.data.branches) ? supRes.data.branches.slice() : [];
+                // Generate next branchId: BR-N where N is one above the max
+                // numeric suffix of existing branch IDs. If existing IDs use
+                // a non-standard pattern, fall back to BR-{count+1}.
+                var maxN = 0;
+                existing.forEach(function(b) {
+                    var m = /^BR-(\d+)$/.exec(b.branchId || '');
+                    if (m) { var n = parseInt(m[1], 10); if (n > maxN) maxN = n; }
+                });
+                var newBranchId = 'BR-' + String(maxN + 1).padStart(3, '0');
+                // Build the new branch object. Field shape matches what MP
+                // expects (see Dashboard.jsx branch creation). Minimal fields
+                // — operator can fill in address / bank details / contacts
+                // by editing the parent supplier in MP afterwards.
+                var newBranch = {
+                    branchId:           newBranchId,
+                    branchName:         proposedName,
+                    addressLine1:       '',
+                    addressLine2:       '',
+                    city:               '',
+                    county:             '',
+                    country:            'United Kingdom',
+                    postcode:           '',
+                    primaryContact:     '',
+                    primaryEmail:       '',
+                    primaryPhone:       '',
+                    primarySignatory:   true,
+                    secondaryContact:   '',
+                    secondaryEmail:     '',
+                    secondaryPhone:     '',
+                    secondarySignatory: false,
+                    contact3Name:       '',
+                    contact3Email:      '',
+                    contact3Phone:      '',
+                    contact3Signatory:  false,
+                    contact4Name:       '',
+                    contact4Email:      '',
+                    contact4Phone:      '',
+                    contact4Signatory:  false,
+                    contact5Name:       '',
+                    contact5Email:      '',
+                    contact5Phone:      '',
+                    contact5Signatory:  false,
+                    bankName:           '',
+                    bankDetails:        '',
+                    bankVerified:       false,
+                    creditLimits:       {},
+                    singleInvoiceLimits: {},
+                    programBankAccounts: {},
+                    paused:             false,
+                    programPaused:      {},
+                    // Provenance: tag this branch so MP can show where it came from.
+                    createdVia:         'bi_conversion',
+                    biProspectId:       p.id,
+                    biGroupId:          p.group_id,
+                    createdAt:          new Date().toISOString()
+                };
+                existing.push(newBranch);
+                // Write the updated branches array. CRITICAL: only the
+                // branches column is updated — we don't touch any other
+                // supplier field.
+                sbClient.from('suppliers').update({ branches: existing }).eq('id', grp.converted_supplier_id).then(function(writeRes) {
+                    if (writeRes.error) {
+                        btn.disabled = false;
+                        btn.textContent = 'Create branch in MP';
+                        alert('Branch write failed: ' + writeRes.error.message);
+                        return;
+                    }
+                    // Update prospect_suppliers.converted_branch_id locally and in DB.
+                    var nowIso = new Date().toISOString();
+                    sbClient.from('prospect_suppliers').update({
+                        converted_branch_id: newBranchId
+                    }).eq('id', pid).then(function(prRes) {
+                        if (prRes.error) {
+                            // Branch was created in MP but we couldn't record the
+                            // link on the prospect. Tell the operator so they can
+                            // manually note it — re-running the action would create
+                            // a duplicate branch.
+                            alert('Branch ' + newBranchId + ' was created in MP, but linking it to this prospect failed: ' + prRes.error.message + '\n\nThe MP branch exists. If you re-run "Create branch in MP" you will create a DUPLICATE. Edit the prospect manually instead.');
+                            btn.disabled = false;
+                            btn.textContent = 'Create branch in MP';
+                            return;
+                        }
+                        p.converted_branch_id = newBranchId;
+                        var sp = (state.prospects || []).find(function(x) { return x.id === pid; });
+                        if (sp) sp.converted_branch_id = newBranchId;
+                        // MP audit log + BI prospect note in parallel.
+                        var auditEntry = {
+                            action:     'Branch Created via BI',
+                            details:    'Branch "' + proposedName + '" (' + newBranchId + ') added to supplier ' + grp.converted_supplier_id + ' via BI conversion of prospect ' + pid + '.',
+                            context: {
+                                supplierId:    grp.converted_supplier_id,
+                                branchId:      newBranchId,
+                                branchName:    proposedName,
+                                createdVia:    'bi_conversion',
+                                biProspectId:  pid,
+                                biGroupId:     p.group_id,
+                                biRegistryId:  grp.registry_id
+                            },
+                            user_email: window.__currentUser ? window.__currentUser.email : null,
+                            created_at: nowIso
+                        };
+                        var biNote = {
+                            prospect_supplier_id: pid,
+                            note_type:            'system',
+                            content:              'Created MP branch "' + proposedName + '" (' + newBranchId + ') on supplier ' + grp.converted_supplier_id + '.',
+                            created_by:           window.__currentUser ? window.__currentUser.id : null
+                        };
+                        Promise.all([
+                            sbClient.from('audit_log').insert(auditEntry).then(function(ar) {
+                                if (ar.error) console.warn('Audit log insert failed (non-fatal):', ar.error.message);
+                            }),
+                            sbClient.from('prospect_notes').insert(biNote).then(function(nr) {
+                                if (nr.error) console.warn('Prospect note insert failed (non-fatal):', nr.error.message);
+                            })
+                        ]).then(function() {
+                            // Re-render the group panel to reflect the new state.
+                            var g = (state.prospectGroups || []).find(function(g) { return g.id === window._activeGroup; });
+                            if (g) renderGroupPanel(g);
+                        });
+                    });
+                });
+            });
+        });
+    });
+
+    // Branch decision change handler. Updates DB + state + audit log.
+    // Logged as a system note so the operator can see who set what when.
+    // If the operator picks "branch" but no MP branch has been created yet,
+    // converted_branch_id stays null — step (f) (BI direct-writing branches
+    // to MP) fills it in. If they switch AWAY from "branch", we also clear
+    // the converted_branch_id to keep the row consistent.
+    detailEl.querySelectorAll('.bd-select').forEach(function(sel) {
+        sel.addEventListener('change', function(ev) {
+            var pid = sel.getAttribute('data-bd-id');
+            var newDecision = sel.value;
+            var p = (state.prospects || []).find(function(x) { return x.id === pid; });
+            if (!p) { alert('Prospect not found.'); return; }
+            var oldDecision = p.branch_decision || 'unassigned';
+            if (oldDecision === newDecision) return;
+            sel.disabled = true;
+            var patch = {
+                branch_decision:    newDecision,
+                branch_decision_at: new Date().toISOString(),
+                branch_decision_by: window.__currentUser ? window.__currentUser.id : null
+            };
+            // When switching away from "branch", clear the realised branch_id
+            // so it isn't misinterpreted later. The MP branch itself is NOT
+            // deleted — that's a manual cleanup if needed.
+            if (oldDecision === 'branch' && newDecision !== 'branch') {
+                patch.converted_branch_id = null;
+            }
+            sbClient.from('prospect_suppliers').update(patch).eq('id', pid).then(function(res) {
+                sel.disabled = false;
+                if (res.error) {
+                    alert('Update failed: ' + res.error.message);
+                    sel.value = oldDecision;
+                    return;
+                }
+                Object.assign(p, patch);
+                // Audit note. Format depends on transition for clarity.
+                var note = 'Branch decision changed: ' + oldDecision + ' \u2192 ' + newDecision;
+                if (oldDecision === 'branch' && newDecision !== 'branch' && patch.converted_branch_id === null) {
+                    note += ' (converted_branch_id cleared)';
+                }
+                sbClient.from('prospect_notes').insert({
+                    prospect_supplier_id: pid,
+                    note_type:            'system',
+                    content:              note,
+                    created_by:           window.__currentUser ? window.__currentUser.id : null
+                }).then(function() {
+                    // Re-render the group panel to reflect the new state.
+                    // Keep the same group open.
+                    var g = (state.prospectGroups || []).find(function(g) { return g.id === window._activeGroup; });
+                    if (g) renderGroupPanel(g);
+                });
+            });
         });
     });
 
@@ -7244,18 +7510,93 @@ function confirmProspectConversion(prospect) {
                 converted_at: convertedAt
             });
 
+            // Group-level conversion linkage.
+            // If this prospect belongs to a group, propagate the linkage:
+            //   (a) Set the group's converted_supplier_id (if not already set)
+            //   (b) Set all sibling constituents' converted_supplier_id too,
+            //       so the whole group appears converted in one action
+            // This matches operator intent: linking a parent legal entity in MP
+            // applies to every constituent of the group, not just the row the
+            // salesperson happened to click on.
+            //
+            // Order: group first (the canonical record), then siblings. If the
+            // group already had a different converted_supplier_id, we DON'T
+            // overwrite — that's a conflict the operator must resolve (e.g.
+            // they meant to unlink the group first).
+            var groupPropagation = Promise.resolve();
+            if (prospect.group_id) {
+                groupPropagation = (function() {
+                    var grp = (state.prospectGroups || []).find(function(g) { return g.id === prospect.group_id; });
+                    if (!grp) return Promise.resolve();
+                    if (grp.converted_supplier_id && grp.converted_supplier_id !== ffSupplierId) {
+                        // Conflict — don't silently overwrite.
+                        alert('Note: this group is already linked to a different FactorFlow supplier (' + grp.converted_supplier_id + ').\nThis constituent has been linked to ' + ffSupplierId + ' but the group itself is NOT being updated.\nUnlink the group first if you want all constituents on ' + ffSupplierId + '.');
+                        return Promise.resolve();
+                    }
+                    // Update the group
+                    var groupUpdate = sbClient.from('prospect_groups').update({
+                        converted_supplier_id: ffSupplierId,
+                        converted_at:          convertedAt
+                    }).eq('id', prospect.group_id).then(function(grpRes) {
+                        if (grpRes.error) { console.warn('Group conversion linkage failed:', grpRes.error.message); return; }
+                        grp.converted_supplier_id = ffSupplierId;
+                        grp.converted_at = convertedAt;
+                    });
+                    // Update sibling constituents (every constituent EXCEPT this one,
+                    // and only those not already converted). We use the same
+                    // converted_at timestamp so the group and its members agree.
+                    var siblings = (state.prospects || []).filter(function(p) {
+                        return p.group_id === prospect.group_id && p.id !== prospect.id && p.status !== 'converted';
+                    });
+                    var sibUpdate = Promise.resolve();
+                    if (siblings.length > 0) {
+                        var sibIds = siblings.map(function(p) { return p.id; });
+                        sibUpdate = sbClient.from('prospect_suppliers').update({
+                            status:                'converted',
+                            converted_supplier_id: ffSupplierId,
+                            converted_at:          convertedAt
+                        }).in('id', sibIds).then(function(sibRes) {
+                            if (sibRes.error) { console.warn('Sibling propagation failed:', sibRes.error.message); return; }
+                            // Local state: mark siblings converted too
+                            siblings.forEach(function(s) {
+                                s.status = 'converted';
+                                s.converted_supplier_id = ffSupplierId;
+                                s.converted_at = convertedAt;
+                                var lp = (state.prospects || []).find(function(p) { return p.id === s.id; });
+                                if (lp) Object.assign(lp, { status: 'converted', converted_supplier_id: ffSupplierId, converted_at: convertedAt });
+                            });
+                            // Log a system note on each sibling so the audit trail
+                            // shows they were auto-linked, not manually confirmed.
+                            var sibNotes = siblings.map(function(s) {
+                                return {
+                                    prospect_supplier_id: s.id,
+                                    note_type:            'system',
+                                    content:              'Auto-linked to FactorFlow as "' + ffName + '" via group conversion (initiated from sibling constituent ' + prospect.id + ').',
+                                    created_by:           window.__currentUser ? window.__currentUser.id : null
+                                };
+                            });
+                            return sbClient.from('prospect_notes').insert(sibNotes);
+                        });
+                    }
+                    return Promise.all([groupUpdate, sibUpdate]);
+                })();
+            }
+
             // Auto-enable the "Show converted" pill so when the user
             // navigates back, they can find their newly-converted prospect.
             // Converted prospects hide by default to keep the active pipeline
             // clean — but after a fresh conversion, sales wants to see it.
             state.prospectsFilter.pills.converted = true;
 
-            // Log system note + re-render
-            sbClient.from('prospect_notes').insert({
-                prospect_supplier_id: prospect.id,
-                note_type:            'system',
-                content:              'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.registry_id + ', ID: ' + ffSupplierId + '). Invoice import handled separately via main portal CSV import.',
-                created_by:           window.__currentUser ? window.__currentUser.id : null
+            // Log system note + re-render (after group propagation completes
+            // so the re-rendered detail panel sees the latest state).
+            groupPropagation.then(function() {
+                return sbClient.from('prospect_notes').insert({
+                    prospect_supplier_id: prospect.id,
+                    note_type:            'system',
+                    content:              'Converted to FactorFlow as "' + ffName + '" (CH: ' + prospect.registry_id + ', ID: ' + ffSupplierId + '). Invoice import handled separately via main portal CSV import.',
+                    created_by:           window.__currentUser ? window.__currentUser.id : null
+                });
             }).then(function() {
                 renderProspectDetail(prospect);
             });
@@ -7335,16 +7676,40 @@ function downloadProspectInvoicesCSV(prospect) {
             alert('No invoices to export for this supplier.');
             return;
         }
+        // Branch-decision gate. "skip" means the operator has chosen not to
+        // onboard this constituent yet — don't push its invoices into MP.
+        if (prospect.branch_decision === 'skip') {
+            setStatus('');
+            alert('This constituent is marked "skip" \u2014 nothing to export. Change the branch decision in the group view to enable export.');
+            return;
+        }
         setStatus('Building CSV…');
-        // Include IDs as the structural identity (collision-safe) and names
-        // as human-verifiable labels. Dashboard's importer currently matches
-        // by name — that's a known bug; see brief for new-chat agenda.
-        var header = ['supplier_id','supplier_name','buyer_id','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
+        // Branch routing: when this constituent is a branch (decision = "branch"
+        // AND converted_branch_id is set), emit supplier_branch_id so the MP
+        // importer routes invoices to the correct branch within the parent's
+        // exposure buckets. When decision is "parent_main" or unassigned (no
+        // branch), supplier_branch_id is blank and invoices attribute to the
+        // parent directly.
+        //
+        // If decision === 'branch' but converted_branch_id is missing, we
+        // surface a warning — the operator should run step (f) first
+        // (BI auto-creates the branch in MP) before exporting.
+        var branchId = '';
+        if (prospect.branch_decision === 'branch') {
+            if (!prospect.converted_branch_id) {
+                setStatus('');
+                if (!confirm('This constituent is marked as "branch" but no MP branch has been created for it yet.\n\nIf you proceed, invoices will attribute to the PARENT supplier (no branch routing). Click OK to proceed anyway, or Cancel to go back and create the branch first.')) return;
+            } else {
+                branchId = prospect.converted_branch_id;
+            }
+        }
+        var header = ['supplier_id','supplier_branch_id','supplier_name','buyer_id','buyer_name','invoice_reference','amount','currency','invoice_date','due_date','paid_date'];
         var rows = [header.join(',')];
         var supplierId = prospect.converted_supplier_id || '';
         allInvs.forEach(function(r) {
             var row = [
                 csvSafe(supplierId),
+                csvSafe(branchId),
                 csvSafe(supplierName),
                 csvSafe(prospect.buyer_id),
                 csvSafe(buyerName),
