@@ -21603,200 +21603,341 @@ export default function FactoringDashboard() {
                       </div>
                     </div>
                   </div>
+                  {/* Eligible Buyers — table view.
+                      One row per eligible entry. Both parent and branches
+                      can coexist on the eligibility list (each has its own
+                      limits in the cascade model), and both are shown as
+                      independent rows here. Columns:
+                        Entity              — name with branch indent
+                        Credit Limit        — branch-scoped or parent-scoped
+                        Single Inv Limit    — same
+                        Exposure / Headroom — computed scoped to this entry
+                        Actions             — Edit (opens modal pre-filled), Remove
+                      The chip-cloud below the table shows entities NOT
+                      currently eligible, available to click and add. */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Eligible Buyers <span style={{ fontWeight: 400, marginLeft: 4 }}>({(pf.eligibleBuyers || []).length})</span></label>
+                      <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Parent and branch entries are independent. Each carries its own limits; the cascade evaluates them separately.</span>
+                    </div>
+                    {(function() {
+                      var elig = pf.eligibleBuyers || [];
+                      var progCcy = pf.currency || "GBP";
+                      var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                      var editingProgramId = editingProgramObj ? editingProgramObj.id : null;
+
+                      // Build a row spec per eligible entry, parent or branch.
+                      var rows = elig.map(function(eid) {
+                        var parsed = parseEntityId(eid);
+                        var parentId = parsed.supplierId || eid;
+                        var branchId = parsed.branchId || null;
+                        var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+                        if (!buy) return { eid: eid, missing: true };
+                        var label = buy.name;
+                        var limitsHolder = buy;
+                        if (branchId) {
+                          var br = (buy.branches || []).find(function(b) { return b.branchId === branchId; });
+                          if (!br) return { eid: eid, missing: true };
+                          label = buy.name + " \u2014 " + br.branchName;
+                          limitsHolder = br;
+                        }
+                        var cl = editingProgramId ? ((limitsHolder.creditLimits || {})[editingProgramId]) : null;
+                        var sil = editingProgramId ? ((limitsHolder.singleInvoiceLimits || {})[editingProgramId]) : null;
+                        // Exposure / headroom: only meaningful when there's a saved
+                        // program ID and a credit limit. Scoped to this exact entry
+                        // (branch-only or parent-rollup).
+                        var exposure = null, headroom = null, pct = null;
+                        if (editingProgramId && cl && cl > 0) {
+                          exposure = getBuyerProgramExposureScoped(parentId, branchId, editingProgramId, branchId ? "branch-only" : "parent-rollup", null);
+                          headroom = r2(Math.max(0, cl - exposure));
+                          pct = (exposure / cl) * 100;
+                        }
+                        return {
+                          eid: eid, missing: false, isBranch: !!branchId,
+                          label: label, parentId: parentId, branchId: branchId,
+                          buy: buy, limitsHolder: limitsHolder,
+                          cl: cl, sil: sil, exposure: exposure, headroom: headroom, pct: pct
+                        };
+                      });
+
+                      // Find entities currently NOT in the eligibility list (for the chip-cloud).
+                      var notEligible = [];
+                      BUYERS_DB.forEach(function(b) {
+                        var bSel = elig.indexOf(b.id) > -1;
+                        if (!bSel) notEligible.push({ id: b.id, label: b.name, isBranch: false, parentId: b.id, branchId: null, buy: b });
+                        if (b.branches && b.branches.length > 0) {
+                          b.branches.forEach(function(br) {
+                            var brEid = makeEntityId(b.id, br.branchId);
+                            var brSel = elig.indexOf(brEid) > -1;
+                            if (!brSel) notEligible.push({ id: brEid, label: b.name + " \u2014 " + br.branchName, isBranch: true, parentId: b.id, branchId: br.branchId, buy: b, br: br });
+                          });
+                        }
+                      });
+
+                      function openEditBuyerRow(r) {
+                        if (!editingProgramObj) { toast.error("Create the program first", "Save the program before editing entity limits."); return; }
+                        setAddToProgramModal({
+                          entityKind: "buyer",
+                          entityId: r.eid, entityName: r.label,
+                          isBranch: r.isBranch,
+                          programId: editingProgramObj.id, programName: pf.name || "",
+                          programCcy: progCcy,
+                          creditLimit: r.cl != null ? String(r.cl) : "",
+                          singleInvoiceLimit: r.sil != null ? String(r.sil) : ""
+                        });
+                      }
+                      function removeBuyerRow(r) {
+                        var ok = window.confirm("Remove " + r.label + " from this program's eligible buyers?\n\nThis removes the eligibility entry. The limits configured on this entry remain on the buyer/branch object for reference but won't be enforced for new invoices on this program.");
+                        if (!ok) return;
+                        setProgFields(function(p) {
+                          var arr = (p.eligibleBuyers || []).slice().filter(function(n) { return n !== r.eid; });
+                          return Object.assign({}, p, { eligibleBuyers: arr });
+                        });
+                        if (editingProgramObj) {
+                          editingProgramObj.eligibleBuyers = (editingProgramObj.eligibleBuyers || []).filter(function(n) { return n !== r.eid; });
+                          saveFundingProgram(editingProgramObj.id);
+                        }
+                      }
+                      function openAddBuyer(n) {
+                        if (!editingProgramObj) { toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it."); return; }
+                        setAddToProgramModal({
+                          entityKind: "buyer",
+                          entityId: n.id, entityName: n.label,
+                          isBranch: n.isBranch,
+                          programId: editingProgramObj.id, programName: pf.name || "",
+                          programCcy: progCcy,
+                          creditLimit: n.isBranch
+                            ? ((n.br.creditLimits && n.br.creditLimits[editingProgramObj.id] !== undefined) ? String(n.br.creditLimits[editingProgramObj.id]) : "")
+                            : ((n.buy.creditLimits && n.buy.creditLimits[editingProgramObj.id] !== undefined) ? String(n.buy.creditLimits[editingProgramObj.id]) : ""),
+                          singleInvoiceLimit: n.isBranch
+                            ? ((n.br.singleInvoiceLimits && n.br.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.br.singleInvoiceLimits[editingProgramObj.id]) : "")
+                            : ((n.buy.singleInvoiceLimits && n.buy.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.buy.singleInvoiceLimits[editingProgramObj.id]) : "")
+                        });
+                      }
+
+                      var thS = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)", background: "var(--bg)" };
+                      var tdS = { padding: "8px 10px", fontSize: 11, color: "var(--text)", borderBottom: "1px solid var(--border)" };
+                      var tdSM = Object.assign({}, tdS, { fontFamily: "'JetBrains Mono', monospace" });
+                      var btnEdit = { padding: "3px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer", marginRight: 6 };
+                      var btnRm = { padding: "3px 10px", borderRadius: 5, border: "1px solid #DC262630", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" };
+                      var pctColor = function(p) { return p == null ? "var(--muted)" : p >= 100 ? "#DC2626" : p >= 80 ? "#D97706" : "#059669"; };
+
+                      return <>
+                        {rows.length > 0 ? <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead><tr>
+                              <th style={thS}>Entity</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Credit Limit</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Single Inv Limit</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Exposure</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Headroom</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right", width: 140 })}>Actions</th>
+                            </tr></thead>
+                            <tbody>{rows.map(function(r) {
+                              if (r.missing) {
+                                return <tr key={r.eid}>
+                                  <td colSpan={6} style={Object.assign({}, tdS, { color: "#DC2626", fontStyle: "italic" })}>{"\u26a0 "} Entity not found: {r.eid} (entity may have been deleted; remove this stale entry)
+                                    <button onClick={function() { removeBuyerRow({ eid: r.eid, label: r.eid }); }} style={Object.assign({}, btnRm, { marginLeft: 12 })}>Remove</button>
+                                  </td>
+                                </tr>;
+                              }
+                              return <tr key={r.eid}>
+                                <td style={Object.assign({}, tdS, { fontWeight: r.isBranch ? 400 : 600, paddingLeft: r.isBranch ? 24 : 10 })}>{r.isBranch ? "\u2514 " : ""}{r.label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{r.eid}</span></td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.exposure != null ? "var(--text-secondary)" : "var(--muted)" })}>{r.exposure != null ? money(r.exposure, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", fontWeight: 700, color: pctColor(r.pct) })}>{r.headroom != null ? money(r.headroom, progCcy) : "\u2014"}{r.pct != null && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600 }}>({r.pct.toFixed(0)}%)</span>}</td>
+                                <td style={Object.assign({}, tdS, { textAlign: "right" })}>
+                                  <button onClick={function() { openEditBuyerRow(r); }} style={btnEdit}>Edit</button>
+                                  <button onClick={function() { removeBuyerRow(r); }} style={btnRm}>Remove</button>
+                                </td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
+                        </div> : <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--muted)", fontStyle: "italic", border: "1px dashed var(--border)", borderRadius: 6, marginBottom: 8 }}>No buyers eligible yet. Pick from the list below to add.</div>}
+
+                        {notEligible.length > 0 && <div>
+                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 4 }}>Available to add ({notEligible.length})</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{notEligible.map(function(n) {
+                            return React.createElement("span", { key: n.id, onClick: function() { openAddBuyer(n); }, style: Object.assign({}, multiSelStyle, { background: "transparent", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: n.isBranch ? 10 : 11, paddingLeft: n.isBranch ? 16 : 8 }) }, (n.isBranch ? "\u2514 " : "") + n.label);
+                          })}</div>
+                        </div>}
+                      </>;
+                    })()}
+                  </div>
+
+                  {/* Eligible Suppliers — symmetric table view. Includes a Rate
+                      column (default rate + count of buyer-specific overrides
+                      via _listPerBuyerRateKeys). Exposure / Headroom scoped
+                      to this exact entry. */}
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Eligible Suppliers <span style={{ fontWeight: 400, marginLeft: 4 }}>({(pf.eligibleSuppliers || []).length})</span></label>
+                      <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Rate shown is the default; "+N" = buyer-specific overrides also configured.</span>
+                    </div>
+                    {(function() {
+                      var elig = pf.eligibleSuppliers || [];
+                      var progCcy = pf.currency || "GBP";
+                      var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
+                      var editingProgramId = editingProgramObj ? editingProgramObj.id : null;
+
+                      var rows = elig.map(function(eid) {
+                        var parsed = parseEntityId(eid);
+                        var parentId = parsed.supplierId || eid;
+                        var branchId = parsed.branchId || null;
+                        var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
+                        if (!sup) return { eid: eid, missing: true };
+                        var label = sup.name;
+                        var limitsHolder = sup;
+                        if (branchId) {
+                          var br = (sup.branches || []).find(function(b) { return b.branchId === branchId; });
+                          if (!br) return { eid: eid, missing: true };
+                          label = sup.name + " \u2014 " + br.branchName;
+                          limitsHolder = br;
+                        }
+                        var cl = editingProgramId ? ((limitsHolder.creditLimits || {})[editingProgramId]) : null;
+                        var sil = editingProgramId ? ((limitsHolder.singleInvoiceLimits || {})[editingProgramId]) : null;
+                        // Rate: resolve default (no buyerKey). Per-buyer overrides
+                        // shown as a count badge — too granular for a table row.
+                        var rate = editingProgramId ? getSupplierRateForProgram(eid, editingProgramId, null, null) : null;
+                        var overrideCount = editingProgramId ? _listPerBuyerRateKeys(sup.programRates || {}, editingProgramId).length : 0;
+                        var exposure = null, headroom = null, pct = null;
+                        if (editingProgramId && cl && cl > 0) {
+                          exposure = getSupplierProgramExposureScoped(parentId, branchId, editingProgramId, branchId ? "branch-only" : "parent-rollup", null);
+                          headroom = r2(Math.max(0, cl - exposure));
+                          pct = (exposure / cl) * 100;
+                        }
+                        return {
+                          eid: eid, missing: false, isBranch: !!branchId,
+                          label: label, parentId: parentId, branchId: branchId,
+                          sup: sup, limitsHolder: limitsHolder,
+                          cl: cl, sil: sil, rate: rate, overrideCount: overrideCount,
+                          exposure: exposure, headroom: headroom, pct: pct
+                        };
+                      });
+
+                      var notEligible = [];
+                      SUPPLIERS_DB.forEach(function(s) {
+                        var sSel = elig.indexOf(s.id) > -1;
+                        if (!sSel) notEligible.push({ id: s.id, label: s.name, isBranch: false, parentId: s.id, branchId: null, sup: s });
+                        if (s.branches && s.branches.length > 0) {
+                          s.branches.forEach(function(br) {
+                            var brEid = makeEntityId(s.id, br.branchId);
+                            var brSel = elig.indexOf(brEid) > -1;
+                            if (!brSel) notEligible.push({ id: brEid, label: s.name + " \u2014 " + br.branchName, isBranch: true, parentId: s.id, branchId: br.branchId, sup: s, br: br });
+                          });
+                        }
+                      });
+
+                      function openEditSupRow(r) {
+                        if (!editingProgramObj) { toast.error("Create the program first", "Save the program before editing entity limits."); return; }
+                        // Rates: pre-fill from current rate (if any), else from form defaults
+                        var advPct = r.rate ? (r.rate.advanceRate * 100).toFixed(0) : String(Math.max(0, (parseFloat(pf.maxAdvanceRate) || 90) - 5).toFixed(0));
+                        var intPct = r.rate ? (r.rate.annualRate * 100).toFixed(1) : String(((parseFloat(pf.minInterestRate) || 15) + 1).toFixed(1));
+                        var penPct = r.rate ? (r.rate.penaltyRate * 100).toFixed(1) : "20.0";
+                        setAddToProgramModal({
+                          supplierId: r.eid, supplierName: r.label,
+                          isBranch: r.isBranch,
+                          programId: editingProgramObj.id, programName: pf.name || "",
+                          programCcy: progCcy,
+                          advanceRate: advPct, annualRate: intPct, penaltyRate: penPct,
+                          creditLimit: r.cl != null ? String(r.cl) : "",
+                          singleInvoiceLimit: r.sil != null ? String(r.sil) : ""
+                        });
+                      }
+                      function removeSupRow(r) {
+                        var ok = window.confirm("Remove " + r.label + " from this program's eligible suppliers?\n\nThis removes the eligibility entry. The rates and limits configured on this entry remain on the supplier/branch object for reference but won't be enforced for new invoices on this program.");
+                        if (!ok) return;
+                        setProgFields(function(p) {
+                          var arr = (p.eligibleSuppliers || []).slice().filter(function(n) { return n !== r.eid; });
+                          return Object.assign({}, p, { eligibleSuppliers: arr });
+                        });
+                        if (editingProgramObj) {
+                          editingProgramObj.eligibleSuppliers = (editingProgramObj.eligibleSuppliers || []).filter(function(n) { return n !== r.eid; });
+                          saveFundingProgram(editingProgramObj.id);
+                        }
+                      }
+                      function openAddSup(n) {
+                        if (!editingProgramObj) { toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it."); return; }
+                        var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
+                        var fpMinInt = parseFloat(pf.minInterestRate) || 15;
+                        setAddToProgramModal({
+                          supplierId: n.id, supplierName: n.label,
+                          isBranch: n.isBranch,
+                          programId: editingProgramObj.id, programName: pf.name || "",
+                          programCcy: progCcy,
+                          advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
+                          annualRate: String((fpMinInt + 1).toFixed(1)),
+                          penaltyRate: "20.0",
+                          creditLimit: n.isBranch
+                            ? ((n.br.creditLimits && n.br.creditLimits[editingProgramObj.id] !== undefined) ? String(n.br.creditLimits[editingProgramObj.id]) : "")
+                            : ((n.sup.creditLimits && n.sup.creditLimits[editingProgramObj.id] !== undefined) ? String(n.sup.creditLimits[editingProgramObj.id]) : ""),
+                          singleInvoiceLimit: n.isBranch
+                            ? ((n.br.singleInvoiceLimits && n.br.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.br.singleInvoiceLimits[editingProgramObj.id]) : "")
+                            : ((n.sup.singleInvoiceLimits && n.sup.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.sup.singleInvoiceLimits[editingProgramObj.id]) : "")
+                        });
+                      }
+
+                      var thS = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)", background: "var(--bg)" };
+                      var tdS = { padding: "8px 10px", fontSize: 11, color: "var(--text)", borderBottom: "1px solid var(--border)" };
+                      var tdSM = Object.assign({}, tdS, { fontFamily: "'JetBrains Mono', monospace" });
+                      var btnEdit = { padding: "3px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer", marginRight: 6 };
+                      var btnRm = { padding: "3px 10px", borderRadius: 5, border: "1px solid #DC262630", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" };
+                      var pctColor = function(p) { return p == null ? "var(--muted)" : p >= 100 ? "#DC2626" : p >= 80 ? "#D97706" : "#059669"; };
+
+                      return <>
+                        {rows.length > 0 ? <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 8 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <thead><tr>
+                              <th style={thS}>Entity</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Rate (default)</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Credit Limit</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Single Inv Limit</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Exposure</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right" })}>Headroom</th>
+                              <th style={Object.assign({}, thS, { textAlign: "right", width: 140 })}>Actions</th>
+                            </tr></thead>
+                            <tbody>{rows.map(function(r) {
+                              if (r.missing) {
+                                return <tr key={r.eid}>
+                                  <td colSpan={7} style={Object.assign({}, tdS, { color: "#DC2626", fontStyle: "italic" })}>{"\u26a0 "} Entity not found: {r.eid} (entity may have been deleted; remove this stale entry)
+                                    <button onClick={function() { removeSupRow({ eid: r.eid, label: r.eid }); }} style={Object.assign({}, btnRm, { marginLeft: 12 })}>Remove</button>
+                                  </td>
+                                </tr>;
+                              }
+                              return <tr key={r.eid}>
+                                <td style={Object.assign({}, tdS, { fontWeight: r.isBranch ? 400 : 600, paddingLeft: r.isBranch ? 24 : 10 })}>{r.isBranch ? "\u2514 " : ""}{r.label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{r.eid}</span></td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right" })}>{r.rate ? <>
+                                  <span style={{ color: "#0EA5E9" }}>{(r.rate.advanceRate * 100).toFixed(0)}%</span>{" / "}
+                                  <span style={{ color: "#D97706" }}>{(r.rate.annualRate * 100).toFixed(1)}%</span>{" / "}
+                                  <span style={{ color: "#DC2626" }}>{(r.rate.penaltyRate * 100).toFixed(1)}%</span>
+                                  {r.overrideCount > 0 && <span style={{ marginLeft: 6, padding: "1px 6px", background: "var(--accent)20", color: "var(--accent)", borderRadius: 3, fontSize: 9, fontWeight: 700 }}>+{r.overrideCount}</span>}
+                                </> : <span style={{ color: "var(--muted)" }}>not set</span>}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.exposure != null ? "var(--text-secondary)" : "var(--muted)" })}>{r.exposure != null ? money(r.exposure, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", fontWeight: 700, color: pctColor(r.pct) })}>{r.headroom != null ? money(r.headroom, progCcy) : "\u2014"}{r.pct != null && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600 }}>({r.pct.toFixed(0)}%)</span>}</td>
+                                <td style={Object.assign({}, tdS, { textAlign: "right" })}>
+                                  <button onClick={function() { openEditSupRow(r); }} style={btnEdit}>Edit</button>
+                                  <button onClick={function() { removeSupRow(r); }} style={btnRm}>Remove</button>
+                                </td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
+                        </div> : <div style={{ padding: "12px 14px", fontSize: 11, color: "var(--muted)", fontStyle: "italic", border: "1px dashed var(--border)", borderRadius: 6, marginBottom: 8 }}>No suppliers eligible yet. Pick from the list below to add.</div>}
+
+                        {notEligible.length > 0 && <div>
+                          <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 4 }}>Available to add ({notEligible.length})</div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>{notEligible.map(function(n) {
+                            return React.createElement("span", { key: n.id, onClick: function() { openAddSup(n); }, style: Object.assign({}, multiSelStyle, { background: "transparent", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: n.isBranch ? 10 : 11, paddingLeft: n.isBranch ? 16 : 8 }) }, (n.isBranch ? "\u2514 " : "") + n.label);
+                          })}</div>
+                        </div>}
+                      </>;
+                    })()}
+                  </div>
+
+                  {/* Jurisdictions — kept as the original two-column chip-cloud layout. */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
-                        // Eligible buyers list. Cascade model: parent and each
-                        // branch are INDEPENDENT entries with their own limits.
-                        // Both can coexist on the eligibility list; the cascade
-                        // primitives evaluate parent and branch buckets
-                        // separately so they don't double-count.
-                        //
-                        // UI: parent chip + each branch chip are always
-                        // individually toggleable. Toggling one doesn't affect
-                        // the others — important to avoid silently dropping
-                        // branch-level limits the operator configured.
-                        var items = [];
-                        BUYERS_DB.forEach(function(b) {
-                          var parentSel = (pf.eligibleBuyers || []).indexOf(b.id) > -1;
-                          items.push(React.createElement("span", { key: b.id, onClick: function() {
-                            if (parentSel) {
-                              // Deselect parent ONLY — leave any branch entries alone.
-                              // Branches have their own limits and remain independently
-                              // valid eligibility entries.
-                              setProgFields(function(p) {
-                                var arr = (p.eligibleBuyers || []).slice();
-                                arr = arr.filter(function(n) { return n !== b.id; });
-                                return Object.assign({}, p, { eligibleBuyers: arr });
-                              });
-                              var dpEditingProgBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                              if (dpEditingProgBuy) {
-                                dpEditingProgBuy.eligibleBuyers = (dpEditingProgBuy.eligibleBuyers || []).filter(function(n) { return n !== b.id; });
-                                saveFundingProgram(dpEditingProgBuy.id);
-                              }
-                            } else {
-                              // Select parent: open add-to-program modal in buyer mode
-                              var editingProgramObjBuy = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                              if (!editingProgramObjBuy) {
-                                toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
-                                return;
-                              }
-                              setAddToProgramModal({
-                                entityKind: "buyer",
-                                entityId: b.id, entityName: b.name,
-                                isBranch: false,
-                                programId: editingProgramObjBuy.id, programName: pf.name || "",
-                                programCcy: pf.currency || "GBP",
-                                creditLimit: (b.creditLimits && b.creditLimits[editingProgramObjBuy.id] !== undefined) ? String(b.creditLimits[editingProgramObjBuy.id]) : "",
-                                singleInvoiceLimit: (b.singleInvoiceLimits && b.singleInvoiceLimits[editingProgramObjBuy.id] !== undefined) ? String(b.singleInvoiceLimits[editingProgramObjBuy.id]) : ""
-                              });
-                            }
-                          }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#2B4C7E20" : "transparent", color: parentSel ? "#0EA5E9" : "var(--muted)", borderColor: parentSel ? "#0EA5E9" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, b.name));
-                          // Branches: ALWAYS individually toggleable. Each has
-                          // its own limits in the cascade model. (Previously
-                          // they were rendered as non-interactive "(auto)"
-                          // chips when the parent was selected — which hid
-                          // the branch limit editing path.)
-                          if (b.branches && b.branches.length > 0) {
-                            b.branches.forEach(function(br) {
-                              var brEntityId = makeEntityId(b.id, br.branchId);
-                              var brSel = (pf.eligibleBuyers || []).indexOf(brEntityId) > -1;
-                              items.push(React.createElement("span", { key: brEntityId, onClick: function() {
-                                if (brSel) {
-                                  setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], brEntityId) }); });
-                                  var dpEditingProgBB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                                  if (dpEditingProgBB) {
-                                    dpEditingProgBB.eligibleBuyers = (dpEditingProgBB.eligibleBuyers || []).filter(function(n) { return n !== brEntityId; });
-                                    saveFundingProgram(dpEditingProgBB.id);
-                                  }
-                                } else {
-                                  var editingProgramObjBB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                                  if (!editingProgramObjBB) {
-                                    toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
-                                    return;
-                                  }
-                                  // Pre-fill the modal with the BRANCH's existing
-                                  // limits (if any), not the parent's — operator
-                                  // can see and adjust the branch-specific cap.
-                                  setAddToProgramModal({
-                                    entityKind: "buyer",
-                                    entityId: brEntityId, entityName: b.name + " \u2014 " + br.branchName,
-                                    isBranch: true,
-                                    programId: editingProgramObjBB.id, programName: pf.name || "",
-                                    programCcy: pf.currency || "GBP",
-                                    creditLimit: (br.creditLimits && br.creditLimits[editingProgramObjBB.id] !== undefined) ? String(br.creditLimits[editingProgramObjBB.id]) : "",
-                                    singleInvoiceLimit: (br.singleInvoiceLimits && br.singleInvoiceLimits[editingProgramObjBB.id] !== undefined) ? String(br.singleInvoiceLimits[editingProgramObjBB.id]) : ""
-                                  });
-                                }
-                              }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#2B4C7E20" : "transparent", color: brSel ? "#0EA5E9" : "var(--muted)", borderColor: brSel ? "#0EA5E9" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
-                            });
-                          }
-                        });
-                        return items;
-                      })()}</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Suppliers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
-                        // Cascade model: parent and each branch are
-                        // independent entries with their own rates/limits.
-                        // Both can coexist on eligibleSuppliers and don't
-                        // double-count — see cascade primitives. All chips
-                        // are independently toggleable so the operator can
-                        // configure branch-specific terms without first
-                        // deselecting the parent.
-                        var items = [];
-                        SUPPLIERS_DB.forEach(function(s) {
-                          var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
-                          items.push(React.createElement("span", { key: s.id, onClick: function() {
-                            if (parentSel) {
-                              // Deselect parent ONLY. Branches keep their
-                              // independent eligibility entries — previously
-                              // we stripped them too, which silently dropped
-                              // branch-level limits and rates.
-                              setProgFields(function(p) {
-                                var arr = (p.eligibleSuppliers || []).slice();
-                                arr = arr.filter(function(n) { return n !== s.id; });
-                                return Object.assign({}, p, { eligibleSuppliers: arr });
-                              });
-                              var dpEditingProg = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                              if (dpEditingProg) {
-                                dpEditingProg.eligibleSuppliers = (dpEditingProg.eligibleSuppliers || []).filter(function(n) { return n !== s.id; });
-                                saveFundingProgram(dpEditingProg.id);
-                              }
-                            } else {
-                              // Select: open modal to capture rates + limits before adding to eligible list.
-                              // pf.maxAdvanceRate / pf.minInterestRate are stored in form state as percent strings (e.g. "90", "15.0"), not decimals.
-                              // Guard: a new (unsaved) program has no stable ID yet, so adding a supplier to
-                              // it would silently key their rates and limits against an empty programId. Block
-                              // until saved. Mirrors the buyer-side guard.
-                              var editingProgramObj = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                              if (!editingProgramObj) {
-                                toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
-                                return;
-                              }
-                              var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
-                              var fpMinInt = parseFloat(pf.minInterestRate) || 15;
-                              setAddToProgramModal({
-                                supplierId: s.id, supplierName: s.name,
-                                programId: editingProgramObj.id, programName: pf.name || "",
-                                programCcy: pf.currency || "GBP",
-                                isBranch: false,
-                                advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
-                                annualRate: String((fpMinInt + 1).toFixed(1)),
-                                penaltyRate: "20.0",
-                                creditLimit: (s.creditLimits && s.creditLimits[editingProgramObj.id] !== undefined) ? String(s.creditLimits[editingProgramObj.id]) : "",
-                                singleInvoiceLimit: (s.singleInvoiceLimits && s.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(s.singleInvoiceLimits[editingProgramObj.id]) : ""
-                              });
-                            }
-                          }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#0EA5E920" : "transparent", color: parentSel ? "#E2E8F0" : "var(--muted)", borderColor: parentSel ? "#E2E8F0" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
-                          // Branches: ALWAYS individually toggleable.
-                          // Each has its own rate/limit configuration in
-                          // the cascade model. Pre-fill modal with the
-                          // branch's own limits when adding (not the parent's).
-                          if (s.branches && s.branches.length > 0) {
-                            s.branches.forEach(function(br) {
-                              var brEntityId = makeEntityId(s.id, br.branchId);
-                              var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
-                              items.push(React.createElement("span", { key: brEntityId, onClick: function() {
-                                if (brSel) {
-                                  setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
-                                  var dpEditingProgB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                                  if (dpEditingProgB) {
-                                    dpEditingProgB.eligibleSuppliers = (dpEditingProgB.eligibleSuppliers || []).filter(function(n) { return n !== brEntityId; });
-                                    saveFundingProgram(dpEditingProgB.id);
-                                  }
-                                } else {
-                                  // Same guard as the parent path: a new (unsaved) program has no
-                                  // stable ID yet, so adding a branch to it would silently key its
-                                  // rates and limits against an empty programId.
-                                  var editingProgramObjB = (editProg !== null) ? FUNDING_PROGRAMS_DB[editProg] : null;
-                                  if (!editingProgramObjB) {
-                                    toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it.");
-                                    return;
-                                  }
-                                  var fpMaxAdvB = parseFloat(pf.maxAdvanceRate) || 90;
-                                  var fpMinIntB = parseFloat(pf.minInterestRate) || 15;
-                                  setAddToProgramModal({
-                                    supplierId: brEntityId, supplierName: s.name + " \u2014 " + br.branchName,
-                                    programId: editingProgramObjB.id, programName: pf.name || "",
-                                    programCcy: pf.currency || "GBP",
-                                    isBranch: true,
-                                    advanceRate: String(Math.max(0, fpMaxAdvB - 5).toFixed(0)),
-                                    annualRate: String((fpMinIntB + 1).toFixed(1)),
-                                    penaltyRate: "20.0",
-                                    creditLimit: (br.creditLimits && br.creditLimits[editingProgramObjB.id] !== undefined) ? String(br.creditLimits[editingProgramObjB.id]) : "",
-                                    singleInvoiceLimit: (br.singleInvoiceLimits && br.singleInvoiceLimits[editingProgramObjB.id] !== undefined) ? String(br.singleInvoiceLimits[editingProgramObjB.id]) : ""
-                                  });
-                                }
-                              }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
-                            });
-                          }
-                        });
-                        return items;
-                      })()}</div>
-                    </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Eligible Buyer Jurisdictions</label>
                       <div style={{ display: "flex", flexWrap: "wrap", maxHeight: 80, overflowY: "auto" }}>{COUNTRIES.map(function(c) { var sel = (pf.eligibleBuyerJurisdictions || []).indexOf(c) > -1; return <span key={c} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyerJurisdictions: toggleArr(p.eligibleBuyerJurisdictions || [], c) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#C08B3020" : "transparent", color: sel ? "#D97706" : "var(--muted)", borderColor: sel ? "#D97706" : "var(--border)", fontWeight: sel ? 700 : 400, fontSize: 9 })}>{c}</span>; })}</div>
