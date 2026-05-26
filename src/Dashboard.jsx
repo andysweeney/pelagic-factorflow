@@ -18028,14 +18028,23 @@ export default function FactoringDashboard() {
             var cnId = "CN-" + String(CREDIT_NOTES_DB.length + 1).padStart(5, "0");
             var supDisplay = getEntityDisplayName(cnf.supplier) || cnf.supplier;
             var supParentNameCN = getParentSupplierName(cnf.supplier) || supDisplay;
+            // Buyer ID split: cnf.buyer may be composite (BUY-001:BR-001) or
+            // parent (BUY-001). Store both forms so packCreditNoteRow can write
+            // them correctly to the DB (buyer_id = parent, buyer_entity_id =
+            // composite).
+            var buyParentId = parseEntityId(cnf.buyer).supplierId || cnf.buyer;
+            var buyBranchId = parseEntityId(cnf.buyer).branchId || null;
+            var buyEntityId = cnf.buyer;
             var buyDisplay = buyName(cnf.buyer) || cnf.buyer;
             CREDIT_NOTES_DB.push({
               creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date,
-              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supParentNameCN, buyerId: cnf.buyer, buyerName: buyDisplay, allocations: [],
+              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supParentNameCN,
+              buyerId: buyParentId, buyerEntityId: buyEntityId, buyerBranchId: buyBranchId,
+              buyerName: buyDisplay, allocations: [],
               createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
             });
             saveCreditNote(cnId);
-            auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + supDisplay + " / " + buyDisplay, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierId: cnf.supplier, supplierName: supDisplay, buyerId: cnf.buyer, buyerName: buyDisplay });
+            auditLog("Credit Note Created", cnId + ": " + money(amt, cnf.currency) + " dated " + cnf.date + " for " + supDisplay + " / " + buyDisplay, { creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date, reference: cnf.reference, supplierId: cnf.supplier, supplierName: supDisplay, buyerId: buyParentId, buyerEntityId: buyEntityId, buyerName: buyDisplay });
             setCnf({ amount: "", currency: cnf.currency, date: cnf.date, reference: "", supplier: cnf.supplier, buyer: cnf.buyer });
             setDataVer(function(v) { return v + 1; });
           }
@@ -18092,7 +18101,7 @@ export default function FactoringDashboard() {
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Create Credit Note</div>
               <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Supplier</label><select value={cnf.supplier} onChange={function(e) { setCnf(Object.assign({}, cnf, { supplier: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select supplier...</option>{getAllSupplierEntities().map(function(se) { return <option key={se.value} value={se.value}>{se.label}</option>; })}</select></div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}</select></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Buyer</label><select value={cnf.buyer} onChange={function(e) { setCnf(Object.assign({}, cnf, { buyer: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer", minWidth: 180 }}><option value="">Select buyer...</option>{getAllBuyerEntities().map(function(be) { return <option key={be.value} value={be.value}>{be.label}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Amount</label><input type="number" step="0.01" value={cnf.amount} onChange={function(e) { setCnf(Object.assign({}, cnf, { amount: e.target.value })); }} placeholder="0.00" style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 140 }} /></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Currency</label><select value={cnf.currency} onChange={function(e) { setCnf(Object.assign({}, cnf, { currency: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" }}>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select></div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}><label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Date</label><input type="date" value={cnf.date} onChange={function(e) { setCnf(Object.assign({}, cnf, { date: e.target.value })); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none" }} /></div>
@@ -18570,9 +18579,20 @@ export default function FactoringDashboard() {
             var supRate = getSupplierRate(nf.supplier);
             var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
             var supParentName = getParentSupplierName(nf.supplier) || supDisplayName;
+            // Buyer ID handling: nf.buyer may be a parent ID ("BUY-001") or a
+            // composite ID ("BUY-001:BR-001"). We store the composite as
+            // buyerEntityId (used by branch-aware code paths) and the parent
+            // as buyerId. The display name resolves from the composite via
+            // buyName which handles both shapes. This mirrors how the CSV
+            // importer's resolveBuyerIds handles the shape split.
+            var buyParentId = parseEntityId(nf.buyer).supplierId || nf.buyer;
+            var buyBranchId = parseEntityId(nf.buyer).branchId || null;
+            var buyEntityId = nf.buyer;  // composite or parent
             var buyDisplayName = buyName(nf.buyer) || nf.buyer;
             INVOICES_DB.push({
-              id: newId, supplierId: nf.supplier, supplierName: supParentName, buyerId: nf.buyer, buyerName: buyDisplayName,
+              id: newId, supplierId: nf.supplier, supplierName: supParentName,
+              buyerId: buyParentId, buyerEntityId: buyEntityId, buyerBranchId: buyBranchId,
+              buyerName: buyDisplayName,
               amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
               interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
               advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
@@ -18583,7 +18603,7 @@ export default function FactoringDashboard() {
               approvedDate: null, fundedDate: null, payments: [], notes: [],
               doNotFund: nf.doNotFund || false
             });
-            auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: nf.buyer, dueDate: nf.dueDate });
+            auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: buyParentId, buyerEntityId: buyEntityId, dueDate: nf.dueDate });
             saveInvoice(newId);
             setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
             setInvlShowCreate(false);
@@ -18680,7 +18700,7 @@ export default function FactoringDashboard() {
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Buyer</label>
                     <select value={nf.buyer} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { buyer: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer" })}>
                       <option value="">Select buyer...</option>
-                      {BUYERS_DB.map(function(b) { return <option key={b.id} value={b.id}>{b.name}</option>; })}
+                      {getAllBuyerEntities().map(function(be) { return <option key={be.value} value={be.value}>{be.label}</option>; })}
                     </select>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
