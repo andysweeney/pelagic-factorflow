@@ -9521,6 +9521,101 @@ export default function FactoringDashboard() {
           </div>
         </div>}
 
+        {/* Pause explanation banner. The pills above answer "is this paused";
+            this banner answers "why" and "how do I unpause". Mirrors the
+            three-state logic of the Admin-detail Pause banner (L20262 area)
+            so behaviour is consistent across surfaces, but lives here so
+            the operator doesn't have to dig into Admin to resolve the most
+            common pause — auto-pause on first program addition. */}
+        {isS && selectedSupplier && (function() {
+          var selBrId = parseEntityId(selectedSupplier).branchId;
+          var parentSup = getSupplierById(selectedSupplier);
+          if (!parentSup) return null;
+          var holder = selBrId ? getBranchById(selectedSupplier) : parentSup;
+          if (!holder) return null;
+          var parentPaused = !!parentSup.paused;
+          var branchPaused = selBrId && !!holder.paused;
+          if (!parentPaused && !branchPaused) return null;
+          // What entity is actually paused — relevant for the action target.
+          // If both parent and the selected branch are paused, parent wins
+          // (unpausing parent doesn't auto-unpause branch, but the gating
+          // problem the operator is trying to solve is the parent's).
+          var pausedEntity = parentPaused ? parentSup : holder;
+          var pausedIsParent = parentPaused;
+          var pc = getPauseContext(pausedEntity.id);
+          var kycOk = kycIsPassed(pausedEntity);
+          var isAdmin = userProfile && userProfile.role === "admin";
+          // Three-state: needs_kyc / ready / informational. Suppliers ALWAYS
+          // require KYC, so informational state doesn't apply here.
+          var state = kycOk ? "ready" : "needs_kyc";
+          // Source phrasing.
+          var sourceText =
+            pc && pc.source === "auto_program_add" ? "Auto-paused when added to first funding program" :
+            pc && pc.source === "manual"           ? "Manually paused" :
+                                                     "Paused (audit context unavailable)";
+          var actor = pc ? pc.pausedBy : "unknown";
+          var when  = pc ? (pc.pausedDisplay || "") : "";
+          var scopeLabel = pausedIsParent
+            ? "Supplier " + parentSup.name + (selBrId ? " (parent) is paused \u2014 affects all branches and programs" : " is paused")
+            : holder.branchName + " (branch of " + parentSup.name + ") is paused";
+          var headline = state === "needs_kyc"
+            ? scopeLabel + " \u2014 KYC verification pending"
+            : scopeLabel + " \u2014 KYC verified, ready to unpause";
+          var sub;
+          if (state === "needs_kyc") {
+            sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". " +
+              (isAdmin
+                ? "Tick KYC Passed below to enable unpausing, or open the supplier in Admin for the full file upload UI."
+                : "An admin must mark KYC as Passed before this supplier can be unpaused.");
+          } else {
+            sub = sourceText + (when ? " on " + when : "") + (pc ? " by " + actor : "") + ". Click Unpause to restore funding eligibility.";
+          }
+          var fill   = state === "needs_kyc" ? "#FEF3C7" : "#D1FAE5";
+          var stroke = state === "needs_kyc" ? "#FCD34D" : "#6EE7B7";
+          var headInk= state === "needs_kyc" ? "#92400E" : "#065F46";
+          var subInk = state === "needs_kyc" ? "#78350F" : "#047857";
+          var icon   = state === "needs_kyc" ? "\u26A0"  : "\u2713";
+          function markKycPassedAndUnpause() {
+            if (!isAdmin) return;
+            var nowIso = new Date().toISOString();
+            var nowDisp = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+            var actorEmail = userProfile.email || null;
+            pausedEntity.kyc = Object.assign({}, pausedEntity.kyc || {}, { passed: true, passedAt: nowIso, passedBy: actorEmail });
+            pausedEntity.paused = false;
+            // Always save the PARENT supplier (branches live inside its branches[] JSONB).
+            saveSupplier(parentSup.id);
+            auditLog("KYC Marked Passed", pausedEntity.id + " (" + (pausedEntity.name || pausedEntity.branchName) + ") KYC marked Passed by " + (actorEmail || "admin") + " on " + nowDisp, { entityId: pausedEntity.id, entityName: pausedEntity.name || pausedEntity.branchName, entityType: "supplier", kycPassed: true, passedAt: nowIso, passedBy: actorEmail });
+            auditLog("Entity Unpaused", pausedEntity.id + " (" + (pausedEntity.name || pausedEntity.branchName) + ") unpaused \u2014 funding eligibility restored", { entityId: pausedEntity.id, entityName: pausedEntity.name || pausedEntity.branchName, paused: false });
+            setDataVer(function(v) { return v + 1; });
+          }
+          function unpauseNow() {
+            if (!kycIsPassed(pausedEntity)) return;
+            pausedEntity.paused = false;
+            saveSupplier(parentSup.id);
+            auditLog("Entity Unpaused", pausedEntity.id + " (" + (pausedEntity.name || pausedEntity.branchName) + ") unpaused \u2014 funding eligibility restored", { entityId: pausedEntity.id, entityName: pausedEntity.name || pausedEntity.branchName, paused: false });
+            setDataVer(function(v) { return v + 1; });
+          }
+          function openInAdmin() {
+            setView("manage");
+            setManageTab("suppliers");
+            setManageDetail({ type: "supplier", name: parentSup.name });
+          }
+          return <div style={{ background: fill, border: "1px solid " + stroke, borderRadius: 12, padding: "14px 18px", marginBottom: 18, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: headInk, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 16 }}>{icon}</span>
+                {headline}
+              </div>
+              <div style={{ fontSize: 12, color: subInk, lineHeight: 1.45 }}>{sub}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {state === "needs_kyc" && isAdmin && <button onClick={markKycPassedAndUnpause} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #10B981", background: "#10B981", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Mark KYC as Passed and unpause in one step. The full file-upload UI is in Admin if you need it.">{"\u2713"} Mark KYC passed & unpause</button>}
+              {state === "ready" && <button onClick={unpauseNow} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #10B981", background: "#10B981", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{"\u25B6"} Unpause now</button>}
+              <button onClick={openInAdmin} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid " + stroke, background: "transparent", color: headInk, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }} title="Open the supplier in Admin for the full detail view (files, contacts, KYC documents).">Open in Admin {"\u2192"}</button>
+            </div>
+          </div>;
+        })()}
+
         {/* Buyer Sub-tabs */}
         {isB && <div style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 10, width: "fit-content" }}>
