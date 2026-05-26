@@ -325,6 +325,23 @@ function _invBuyerBranchOf(inv) {
   return br || null;
 }
 
+// Return an invoice's supplier as a composite entity ID, suitable for
+// passing to getSupplierBankDetails / getEntityDisplayName / supplier lookups.
+// Preference order: pre-built composite, then assemble from parent + branch,
+// then bare parent. Returns "" if nothing resolvable.
+function _invSupplierEntityIdOf(inv) {
+  if (!inv) return "";
+  if (inv.supplierEntityId) return inv.supplierEntityId;
+  if (inv.supplierId && inv.supplierBranchId) return makeEntityId(inv.supplierId, inv.supplierBranchId);
+  return inv.supplierId || "";
+}
+function _invBuyerEntityIdOf(inv) {
+  if (!inv) return "";
+  if (inv.buyerEntityId) return inv.buyerEntityId;
+  if (inv.buyerId && inv.buyerBranchId) return makeEntityId(inv.buyerId, inv.buyerBranchId);
+  return inv.buyerId || "";
+}
+
 // Check whether an invoice's amount fits under the cascading single-invoice
 // limit (parent's cap AND, if applicable, branch's cap). Returns null if
 // the invoice clears, or a string reason if it doesn't.
@@ -923,6 +940,43 @@ function _listPerBuyerRateKeys(pr, programId) {
     var sorted = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
     return !sorted[0].removed;
   });
+}
+
+// Companion to _listPerBuyerRateKeys: return per-buyer keys whose LATEST
+// history entry is the soft-delete sentinel — i.e. overrides that were
+// removed and could be restored. Excludes keys with empty history (an
+// override that was added then immediately undone before any "real" rate
+// existed isn't worth restoring; there's nothing to restore TO).
+function _listRemovedBuyerRateKeys(pr, programId) {
+  if (!pr || !pr[programId]) return [];
+  var entry = pr[programId];
+  if (Array.isArray(entry)) return [];
+  return Object.keys(entry).filter(function(k) {
+    if (k === "__default") return false;
+    var hist = entry[k];
+    if (!Array.isArray(hist) || hist.length === 0) return false;
+    var sorted = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+    if (!sorted[0].removed) return false;
+    // Require at least one prior non-removed entry to restore from.
+    return sorted.some(function(h) { return !h.removed; });
+  });
+}
+
+// For a per-buyer key whose latest entry is a removal, return the most
+// recent non-removed entry (i.e. the rate the override held before it was
+// soft-deleted). Used by the restore flow to pre-fill the edit form.
+// Returns null if no prior non-removed entry exists.
+function _lastActiveBuyerRateEntry(pr, programId, buyerKey) {
+  if (!pr || !pr[programId]) return null;
+  var entry = pr[programId];
+  if (Array.isArray(entry)) return null;
+  var hist = entry[buyerKey];
+  if (!Array.isArray(hist) || hist.length === 0) return null;
+  var sorted = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+  for (var i = 0; i < sorted.length; i++) {
+    if (!sorted[i].removed) return sorted[i];
+  }
+  return null;
 }
 
 // Push a new rate entry to (supplier.programRates[programId][buyerKey]). When
@@ -4229,6 +4283,18 @@ export default function FactoringDashboard() {
   var ebr1 = useState(null), editBuyerRateKey = ebr1[0], setEditBuyerRateKey = ebr1[1];
   var abr1 = useState(false), addBuyerRateModal = abr1[0], setAddBuyerRateModal = abr1[1];
   var abrK = useState(""), addBuyerRateBuyerKey = abrK[0], setAddBuyerRateBuyerKey = abrK[1];
+  // restoreBuyerRateKey: when truthy, the form is open for restoring a
+  // previously-removed per-buyer override. Distinct from editBuyerRateKey
+  // so the form can suppress the buyer-picker (the buyer is fixed) and so
+  // saveRateForKey can emit a distinct audit log entry ("Rate Override
+  // Restored" instead of "Rate Changed"). The key is the buyer entity id
+  // whose history will receive the new entry.
+  var rbr1 = useState(null), restoreBuyerRateKey = rbr1[0], setRestoreBuyerRateKey = rbr1[1];
+  // Collapse state for the "Removed overrides" panel in the rates section.
+  // Default closed so the panel doesn't clutter the rates view; operator
+  // expands when they need to restore something. Mirrors showRemovedHistory
+  // (history table toggle) but is scoped to the per-buyer remove list.
+  var srbo1 = useState(false), showRemovedOverrides = srbo1[0], setShowRemovedOverrides = srbo1[1];
   // Modal for adding supplier to program with required commercial terms (Tweak: rate gate at program assignment).
   // null = closed; otherwise { supplierId, supplierName, programId, programName, programCcy, advanceRate, annualRate, penaltyRate, creditLimit, singleInvoiceLimit }
   var atpm1 = useState(null), addToProgramModal = atpm1[0], setAddToProgramModal = atpm1[1];
@@ -4720,6 +4786,84 @@ export default function FactoringDashboard() {
   var paged = filtered.slice(pg * PS, (pg + 1) * PS);
   var tp = Math.ceil(filtered.length / PS) || 1;
   var st = viewData.stats;
+
+  // ─── Shared drill helpers (branch-aware) ──────────────────────────────────
+  // Resolve a supplier ref → composite or parent entity id, or null.
+  // Accepts: "SUP-001", "SUP-001:BR-002", a display name, or an object {id,name}.
+  function resolveSupplierRef(ref) {
+    if (!ref) return null;
+    if (typeof ref === "object") {
+      if (ref.id) return resolveSupplierRef(ref.id);
+      if (ref.name) return resolveSupplierRef(ref.name);
+      return null;
+    }
+    var s = String(ref);
+    // Composite id "SUP-XXX:BR-YYY" — confirm branch exists; else fall back to parent.
+    if (s.indexOf(":") >= 0) {
+      var parts = parseEntityId(s);
+      if (parts && parts.supplierId) {
+        if (parts.branchId && getBranchById(s)) return s;
+        if (getSupplierById(parts.supplierId)) return parts.supplierId;
+      }
+      return null;
+    }
+    // Bare parent id.
+    if (/^SUP-/i.test(s)) return getSupplierById(s) ? s : null;
+    // Display name — first parent match. Branches sharing a parent name resolve to parent.
+    var match = SUPPLIERS_DB.find(function(x) { return x.name === s; });
+    return match ? match.id : null;
+  }
+
+  // Resolve a buyer ref → buyer id, or null.
+  // Buyer-name drilling: collapse branch names to parent (preserves the old L19167 behaviour).
+  function resolveBuyerRef(ref) {
+    if (!ref) return null;
+    if (typeof ref === "object") {
+      if (ref.id) return resolveBuyerRef(ref.id);
+      if (ref.name) return resolveBuyerRef(ref.name);
+      return null;
+    }
+    var s = String(ref);
+    if (s.indexOf(":") >= 0) {
+      var parts = parseEntityId(s);
+      if (parts && parts.supplierId) return getBuyerById(parts.supplierId) ? parts.supplierId : null;
+      return null;
+    }
+    if (/^BUY-/i.test(s)) return getBuyerById(s) ? s : null;
+    // Display name — try direct, then parent-name collapse.
+    var direct = BUYERS_DB.find(function(x) { return x.name === s; });
+    if (direct) return direct.id;
+    var parentName = (typeof getParentSupplierName === "function") ? getParentSupplierName(s) : s;
+    if (parentName && parentName !== s) {
+      var pm = BUYERS_DB.find(function(x) { return x.name === parentName; });
+      if (pm) return pm.id;
+    }
+    return null;
+  }
+
+  // Drill into a supplier. opts: { tab?: "overview"|"invoices"|..., closeAudit?: bool }
+  function drillToSupplier(ref, opts) {
+    var id = resolveSupplierRef(ref);
+    if (!id) return;
+    if (opts && opts.closeAudit) setAuditPopup(null);
+    setView("supplier");
+    setSelectedSupplier(id);
+    setSupTab((opts && opts.tab) || "invoices");
+    setPg(0);
+  }
+
+  // Drill into a buyer. opts: { tab?: "overview"|"invoices"|..., closeAudit?: bool }
+  function drillToBuyer(ref, opts) {
+    var id = resolveBuyerRef(ref);
+    if (!id) return;
+    if (opts && opts.closeAudit) setAuditPopup(null);
+    setView("buyer");
+    setSelectedBuyer(id);
+    setBuyTab((opts && opts.tab) || "invoices");
+    setPg(0);
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   function doSort(f) { if (sf === f) setSd(function(d) { return d === "asc" ? "desc" : "asc"; }); else { setSf(f); setSd("desc"); } setPg(0); }
   function getPayStatus(pay) {
     var al = 0;
@@ -5030,7 +5174,7 @@ export default function FactoringDashboard() {
       var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
       if (isFunded) return;
       // Unfunded invoice — funds should be remitted to the supplier
-      var supplierEntityId = rawInv.supplierId || "";
+      var supplierEntityId = _invSupplierEntityIdOf(rawInv);
       var displayName = getEntityDisplayName(supplierEntityId) || rawInv.supplierName || supplierEntityId;
       var bankInfo = getSupplierBankDetails(supplierEntityId, rawInv.fundingProgram);
       var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
@@ -5671,13 +5815,14 @@ export default function FactoringDashboard() {
       // Note: capitalDue, holdback, interestCharged, advanceRate, annualRate are recomputed from tranches in viewData.
       if (prog) prog.currentFundedBalance = r2((prog.currentFundedBalance || 0) + deltaCap);
       var supplierTU = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
-      var bankInfoTU = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
+      var supEntityIdTU = _invSupplierEntityIdOf(raw) || raw.supplierName;
+      var bankInfoTU = getSupplierBankDetails(supEntityIdTU, raw.fundingProgram);
       var nowTU = new Date();
       var useDispTU = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : nowTU.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
       var cpIdTU = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       SUPPLIER_PAYMENT_QUEUE.push({
         id: cpIdTU, type: "funding", invoiceId: invId, invoiceIds: [invId],
-        supplierName: raw.supplierName, supplierId: raw.supplierId || (supplierTU ? supplierTU.id : ""),
+        supplierName: raw.supplierName, supplierId: supEntityIdTU || (supplierTU ? supplierTU.id : ""),
         bankName: bankInfoTU.bankName, bankDetails: bankInfoTU.bankDetails, bankVerified: bankInfoTU.bankVerified,
         amount: deltaCap, currency: raw.currency, status: "Completed",
         programId: raw.fundingProgram, programName: progName,
@@ -5733,13 +5878,14 @@ export default function FactoringDashboard() {
       return;
     }
     var supplier = getSupplierById(raw.supplierId) || getParentSupplier(raw.supplierName);
-    var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
+    var supEntityId = _invSupplierEntityIdOf(raw) || raw.supplierName;
+    var bankInfo = getSupplierBankDetails(supEntityId, raw.fundingProgram);
     var now = new Date();
     var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     var cpId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
-      supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
+      supplierName: raw.supplierName, supplierId: supEntityId || (supplier ? supplier.id : ""),
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified,
       amount: raw.capitalDue, currency: raw.currency, status: "Completed",
       programId: raw.fundingProgram, programName: progName,
@@ -6380,11 +6526,12 @@ export default function FactoringDashboard() {
     var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
     var supplier = getParentSupplier(hbDisburseInv.supplierName);
-    var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierId || hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
+    var hbSupEntityId = _invSupplierEntityIdOf(hbDisburseInv) || hbDisburseInv.supplierName;
+    var bankInfo = getSupplierBankDetails(hbSupEntityId, hbDisburseInv.fundingProgram);
     var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
-      supplierName: hbDisburseInv.supplierName, supplierId: hbDisburseInv.supplierId || (supplier ? supplier.id : ""),
+      supplierName: hbDisburseInv.supplierName, supplierId: hbSupEntityId || (supplier ? supplier.id : ""),
       bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails,
       amount: supAmt, currency: hbDisburseInv.currency, status: "Pending",
       programId: hbDisburseInv.fundingProgram || null, programName: (function() { var fp = hbDisburseInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(p) { return p.id === hbDisburseInv.fundingProgram; }) : null; return fp ? fp.name : null; })(),
@@ -9330,6 +9477,47 @@ export default function FactoringDashboard() {
                 return progs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name + " (" + fp.currency + ")"}</option>; });
               })()}
             </select>
+            {/* Pause indicators. Reads the same holder (parent vs branch) that
+                the Rates & Balances panel writes to, so the badges here track
+                state changes made there without intermediate re-render glue.
+                Three independent surfaces:
+                  - Global pause (parent or branch paused flag) — supersedes
+                    everything else, so when it's set we show only that pill.
+                  - Current program's per-program pause — shown when not
+                    globally paused and the selected program is in the
+                    holder's programPaused map.
+                  - "+ N other programs paused" — count of OTHER programs the
+                    holder is paused on. Filtered to programs that still exist
+                    in FUNDING_PROGRAMS_DB so stale keys don't inflate it. */}
+            {(function() {
+              if (!selectedSupplier) return null;
+              var selBrId = parseEntityId(selectedSupplier).branchId;
+              var parentSup = getSupplierById(selectedSupplier);
+              if (!parentSup) return null;
+              var holder = selBrId ? getBranchById(selectedSupplier) : parentSup;
+              if (!holder) return null;
+              var globallyPaused = !!parentSup.paused || (selBrId && !!holder.paused);
+              var progPausedMap = holder.programPaused || {};
+              var currentProgPaused = !!supProgram && !!progPausedMap[supProgram];
+              var otherPausedCount = 0;
+              if (!globallyPaused) {
+                Object.keys(progPausedMap).forEach(function(pid) {
+                  if (!progPausedMap[pid]) return;
+                  if (pid === supProgram) return;
+                  if (!FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; })) return;
+                  otherPausedCount++;
+                });
+              }
+              if (!globallyPaused && !currentProgPaused && otherPausedCount === 0) return null;
+              var pillBase = { display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 999, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" };
+              var redPill = Object.assign({}, pillBase, { background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" });
+              var amberPill = Object.assign({}, pillBase, { background: "#F59E0B14", color: "#F59E0B", border: "1px solid #F59E0B30", textTransform: "none", letterSpacing: 0, fontWeight: 600 });
+              return <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {globallyPaused && <span style={redPill} title={selBrId && parentSup.paused ? "Parent supplier is globally paused — all branches and programs affected." : (selBrId ? "This branch is globally paused — all programs affected." : "Supplier is globally paused — all programs affected.")}>{"\u23F8"} Globally Paused</span>}
+                {!globallyPaused && currentProgPaused && <span style={redPill} title={(selBrId ? "This branch is" : "This supplier is") + " paused on the selected program only. Other programs are unaffected."}>{"\u23F8"} Paused on this program</span>}
+                {!globallyPaused && otherPausedCount > 0 && <span style={amberPill} title={"Paused on " + otherPausedCount + " other program" + (otherPausedCount === 1 ? "" : "s") + ". Switch programs to see / toggle each."}>+ {otherPausedCount} other program{otherPausedCount === 1 ? "" : "s"} paused</span>}
+              </div>;
+            })()}
           </div>
         </div>}
 
@@ -10885,12 +11073,33 @@ export default function FactoringDashboard() {
                   else hist = [];
                   return { buyerKey: buyerKey, rate: rate, history: hist };
                 });
+                // Per-buyer overrides that have been REMOVED (soft-deleted) and
+                // are eligible for Restore. Each carries the most recent
+                // non-removed entry so the Restore UI can pre-fill the edit
+                // form with the rates the override last held. Resolution: the
+                // helper guarantees the latest history entry is the removal
+                // sentinel AND at least one earlier non-removed entry exists.
+                var removedBuyerKeys = _listRemovedBuyerRateKeys(pr, supProgram);
+                var removedBuyerData = removedBuyerKeys.map(function(buyerKey) {
+                  var lastActive = _lastActiveBuyerRateEntry(pr, supProgram, buyerKey);
+                  var hist = _resolveProgramRateHistory(pr, supProgram, buyerKey);
+                  if (hist) hist = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+                  else hist = [];
+                  var removedAt = hist.length > 0 && hist[0].removed ? hist[0] : null;
+                  return { buyerKey: buyerKey, lastActive: lastActive, removedAt: removedAt, history: hist };
+                });
                 // Buyer options for the picker — parents AND branches. Exclude
                 // buyerKeys that are already configured to keep the picker
                 // tidy. (Operator can still edit an existing one via its row.)
+                // Also exclude buyerKeys whose latest history is a removal:
+                // those have a dedicated Restore path in the Removed overrides
+                // panel, and offering them in the Add picker would create two
+                // routes to the same outcome (with different audit logs).
                 var allBuyerEntities = getAllBuyerEntities();
                 var availableBuyerOptions = allBuyerEntities.filter(function(b) {
-                  return perBuyerKeys.indexOf(b.value) === -1;
+                  if (perBuyerKeys.indexOf(b.value) !== -1) return false;
+                  if (removedBuyerKeys.indexOf(b.value) !== -1) return false;
+                  return true;
                 });
 
                 // Save the new rate — branches by mode:
@@ -10904,13 +11113,24 @@ export default function FactoringDashboard() {
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                   var entry = { effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 };
+                  // Restore mode: tag the entry so the history table can mark it
+                  // as a restoration, and route the audit log through a distinct
+                  // action label so the operator can distinguish restored
+                  // overrides from fresh edits at a glance.
+                  var isRestore = !!restoreBuyerRateKey && restoreBuyerRateKey === buyerKey;
+                  if (isRestore) entry.restored = true;
                   _pushProgramRateEntry(supplier.programRates, supProgram, buyerKey, entry);
                   saveSupplier(selectedSupplier);
-                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " (" + label + ") changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey || "__default", buyerLabel: label, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
+                  var auditAction = isRestore ? "Rate Override Restored" : "Rate Changed";
+                  var auditMsg = isRestore
+                    ? getEntityDisplayName(selectedSupplier) + " per-buyer rate override for " + label + " restored on " + selectedProgramName + ": Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay
+                    : getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " (" + label + ") changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay;
+                  auditLog(auditAction, auditMsg, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey || "__default", buyerLabel: label, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, restored: isRestore });
                   setShowRateChange(false);
                   setEditBuyerRateKey(null);
                   setAddBuyerRateModal(false);
                   setAddBuyerRateBuyerKey("");
+                  setRestoreBuyerRateKey(null);
                   setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
                 }
@@ -11123,6 +11343,12 @@ export default function FactoringDashboard() {
                   function() { setAddBuyerRateModal(false); setAddBuyerRateBuyerKey(""); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate(""); },
                   true, true
                 )}
+                {restoreBuyerRateKey && changeRateForm(
+                  restoreBuyerRateKey, labelForBuyerKey(restoreBuyerRateKey) + " \u2014 restoring removed override",
+                  function() { saveRateForKey(restoreBuyerRateKey, labelForBuyerKey(restoreBuyerRateKey)); },
+                  function() { setRestoreBuyerRateKey(null); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate(""); },
+                  false, true
+                )}
 
                 {/* DEFAULT rate row */}
                 {defaultRate && <div style={{ marginBottom: 14 }}>
@@ -11179,6 +11405,53 @@ export default function FactoringDashboard() {
                     setNewRatePenalty(String((defaultRate.penaltyRate * 100).toFixed(1)));
                     setNewRateDate(new Date().toISOString().split("T")[0]);
                   }} disabled={availableBuyerOptions.length === 0 || addBuyerRateModal} style={{ padding: "6px 14px", borderRadius: 6, border: "1px dashed var(--accent)", background: "transparent", color: availableBuyerOptions.length === 0 ? "var(--muted)" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: availableBuyerOptions.length === 0 ? "default" : "pointer" }}>{availableBuyerOptions.length === 0 ? "All buyers configured" : "+ Add buyer-specific rate"}</button>
+                </div>}
+
+                {/* Removed overrides — expandable. Lists per-buyer rate
+                    overrides whose latest history entry is the soft-delete
+                    sentinel. Each row offers Restore, which opens the rate
+                    form pre-filled with the last non-removed rate. Effective
+                    date defaults to today. */}
+                {removedBuyerData.length > 0 && <div style={{ marginBottom: 14 }}>
+                  <div onClick={function() { setShowRemovedOverrides(!showRemovedOverrides); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 0", cursor: "pointer", userSelect: "none" }}>
+                    <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, transform: showRemovedOverrides ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.15s ease" }}>{"\u25B6"}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", letterSpacing: "0.06em" }}>Removed overrides</span>
+                    <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>({removedBuyerData.length} {removedBuyerData.length === 1 ? "entry" : "entries"} — restorable)</span>
+                  </div>
+                  {showRemovedOverrides && <div style={{ marginTop: 6 }}>
+                    {removedBuyerData.map(function(rb) {
+                      var label = labelForBuyerKey(rb.buyerKey);
+                      var la = rb.lastActive;
+                      var ra = rb.removedAt;
+                      return <div key={"rem-" + rb.buyerKey} style={{ marginBottom: 8, padding: "10px 12px", borderRadius: 8, border: "1px dashed var(--border)", background: "var(--bg)", opacity: 0.85 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>{label} <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", fontSize: 10, fontWeight: 400, marginLeft: 4 }}>{rb.buyerKey}</span></div>
+                            {ra && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Removed {ra.effectiveDisplay || ra.effectiveDate}</div>}
+                          </div>
+                          <button onClick={function() {
+                            // Pre-fill the rate form with the last-active rate values
+                            // and route through the restore flow so the audit log
+                            // records "Rate Override Restored". Effective date
+                            // defaults to today (the operator can change it in
+                            // the form before saving).
+                            if (!la) return;
+                            setShowRateChange(false);
+                            setEditBuyerRateKey(null);
+                            setAddBuyerRateModal(false);
+                            setAddBuyerRateBuyerKey("");
+                            setRestoreBuyerRateKey(rb.buyerKey);
+                            setNewRateAdvance(String((la.advanceRate * 100).toFixed(0)));
+                            setNewRateAnnual(String((la.annualRate * 100).toFixed(1)));
+                            setNewRatePenalty(String((la.penaltyRate * 100).toFixed(1)));
+                            setNewRateDate(new Date().toISOString().split("T")[0]);
+                          }} disabled={!la || restoreBuyerRateKey === rb.buyerKey} style={{ padding: "3px 12px", borderRadius: 5, border: "1px solid var(--accent)", background: restoreBuyerRateKey === rb.buyerKey ? "var(--accent)" : "transparent", color: restoreBuyerRateKey === rb.buyerKey ? "#fff" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: la ? "pointer" : "not-allowed", opacity: la ? 1 : 0.5 }} title={la ? "Open the rate form pre-filled with the last active rate. Edit if needed, then Save." : "No prior active rate to restore from."}>{restoreBuyerRateKey === rb.buyerKey ? "Restoring\u2026" : "Restore"}</button>
+                        </div>
+                        {la && <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Last active rate (effective {la.effectiveDisplay || la.effectiveDate}):</div>}
+                        {la && rateStatCards(la, "rem-" + rb.buyerKey)}
+                      </div>;
+                    })}
+                  </div>}
                 </div>}
 
                 <div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
@@ -11294,6 +11567,7 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}
                               {isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}
                               {isRemoved && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#6B7280" }}>Removed</span>}
+                              {!isRemoved && r.restored && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#059669" }} title="Restored from a previously-removed override.">Restored</span>}
                             </td>
                             <td style={{ padding: "5px 10px", fontSize: 11, color: isDefault ? "var(--muted)" : "var(--text)", fontStyle: isDefault ? "italic" : "normal" }}>{r._buyerLabel}</td>
                             <td style={Object.assign({}, rateStyle, { padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 })}>{isRemoved ? "\u2014" : (r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(0) + "%" : (ADVANCE_RATE * 100).toFixed(0) + "%")}</td>
@@ -12965,16 +13239,6 @@ export default function FactoringDashboard() {
           function doBiSort(f) { if (biSort === f) setBiDir(biDir === "asc" ? "desc" : "asc"); else { setBiSort(f); setBiDir("desc"); } setBiPage(0); }
 
           // Supplier drill-in — jumps to Suppliers tab → Invoices, filtered by supplier
-          function drillToSupplier(supplierName) {
-            // Find supplier entity by name and set selectedSupplier
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-            if (match) {
-              setView("supplier");
-              setSelectedSupplier(match.id);
-              setSupTab("invoices");
-              setPg(0);
-            }
-          }
 
           // Column definitions with tooltips
           var biCols = [
@@ -13027,7 +13291,7 @@ export default function FactoringDashboard() {
                     return <React.Fragment key={inv.id}>
                     <tr style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
                       <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
+                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
                       <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
@@ -13180,10 +13444,6 @@ export default function FactoringDashboard() {
           function drillToInvoice(invoiceId) {
             setBiSearch(invoiceId); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0);
             setBuyTab("invoices");
-          }
-          function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
           }
 
           var baCols = [
@@ -14250,14 +14510,6 @@ export default function FactoringDashboard() {
               function doPiSort(f) { if (piSort === f) setPiDir(piDir === "asc" ? "desc" : "asc"); else { setPiSort(f); setPiDir("desc"); } setPiPage(0); }
 
               // M: Drill-in helpers
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
-              }
-              function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
-              }
 
               return <div>
                 {/* Filter-aware stat cards (4 cards) */}
@@ -14329,8 +14581,8 @@ export default function FactoringDashboard() {
                                   }} style={{ width: 16, height: 16, borderRadius: 3, border: "2px solid " + (progPurchSelected[inv.id] ? "var(--accent)" : "var(--border)"), background: progPurchSelected[inv.id] ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>{progPurchSelected[inv.id] ? "\u2713" : ""}</div>
                                 </td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                                <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
-                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
+                                <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
+                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
                                 <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -14501,8 +14753,8 @@ export default function FactoringDashboard() {
                           <tbody key={inv.id}>
                             <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                              <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
-                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
+                              <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
+                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
                               <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -14946,14 +15198,6 @@ export default function FactoringDashboard() {
                 setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
                 setProgTab("invoices");
               }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
-              }
-              function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
-              }
 
               var paCols = [
                 { key: "paymentId", label: "Payment ID", sortable: true },
@@ -15122,10 +15366,6 @@ export default function FactoringDashboard() {
               function drillToInvoice(invoiceId) {
                 setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
                 setProgTab("invoices");
-              }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
               }
 
               var phCols = [
@@ -15366,10 +15606,6 @@ export default function FactoringDashboard() {
             function drillToInvoice(invoiceId) {
               setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
               setProgTab("invoices");
-            }
-            function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
             }
 
             var pfCols = [
@@ -15671,14 +15907,6 @@ export default function FactoringDashboard() {
               setPiSearch(invoiceId); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0);
               setProgTab("invoices");
             }
-            function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
-            }
-            function drillToBuyer(buyerName) {
-              var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-              if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
-            }
 
             return <div>
               {/* Volume stats */}
@@ -15952,10 +16180,6 @@ export default function FactoringDashboard() {
                 var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
                 if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-              }
               function drillToProgram(programId) {
                 setView("program"); setSelectedProgram(programId); setProgTab("overview");
               }
@@ -15976,11 +16200,12 @@ export default function FactoringDashboard() {
                   var outboundRows = [];
                   approvedInvs.forEach(function(inv) {
                     var supplier = getSupplierById(inv.supplierId) || getParentSupplier(inv.supplierName);
-                    var bankInfo = getSupplierBankDetails(inv.supplierId || inv.supplierName, inv.fundingProgram);
+                    var invSupEntityId = _invSupplierEntityIdOf(inv) || inv.supplierName;
+                    var bankInfo = getSupplierBankDetails(invSupEntityId, inv.fundingProgram);
                     var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; });
                     var isInvTopup = inv.fundingStatus !== "purchased";  // funded/at_risk/overdue with pending top-up
                     var rowAmount = isInvTopup ? r2(inv.pendingTopUpAmount || 0) : inv.capitalDue;
-                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, isTopup: isInvTopup, supplierId: inv.supplierId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: rowAmount, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: isInvTopup ? (inv.pendingTopUpDate || viewDate) : inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName + (isInvTopup ? " (top-up)" : ""), cancelFn: function() { isInvTopup ? cancelTopUp(inv.id) : cancelApproval(inv.id); } });
+                    outboundRows.push({ rowType: "funding", rowId: "f-" + inv.id, inv: inv, isTopup: isInvTopup, supplierId: invSupEntityId, supplierName: inv.supplierName, programId: inv.fundingProgram, programName: prog ? prog.name : "\u2014", amount: rowAmount, currency: inv.currency, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, date: isInvTopup ? (inv.pendingTopUpDate || viewDate) : inv.approvedDate, detail: inv.id + " \u2192 " + inv.buyerName + (isInvTopup ? " (top-up)" : ""), cancelFn: function() { isInvTopup ? cancelTopUp(inv.id) : cancelApproval(inv.id); } });
                   });
                   pending.forEach(function(item) {
                     var prog = null;
@@ -16713,10 +16938,6 @@ export default function FactoringDashboard() {
                 var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
                 if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-              }
               function drillToProgram(programId) {
                 if (!programId) return;
                 setView("program"); setSelectedProgram(programId); setProgTab("overview");
@@ -16839,7 +17060,7 @@ export default function FactoringDashboard() {
                         <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
                           <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
                           <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{item.supplierName}</span> : "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierId || item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{item.supplierName}</span> : "\u2014"}</td>
                           <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || "\u2014"}</td>
@@ -16914,10 +17135,6 @@ export default function FactoringDashboard() {
               if (!inv) return;
               var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
               if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
-            }
-            function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-              if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
             }
             function drillToProgram(programId) {
               if (!programId) return;
@@ -17075,7 +17292,7 @@ export default function FactoringDashboard() {
                                   return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)", opacity: isTerm ? 0.6 : 1 }}>
                                     <td style={{ padding: "6px 10px" }}><Badge label="Supplier" bg="var(--accent)14" color="var(--accent)" border="var(--accent)30" /></td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{spq.id}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierId || spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                                     <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={statusColor + "14"} color={statusColor} border={statusColor + "30"} /></td>
@@ -17122,14 +17339,6 @@ export default function FactoringDashboard() {
             if (!inv) return;
             var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
-          }
-          function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
-          }
-          function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
           }
           // Filter-aware stat cards
           var allIncoming = PAYMENTS_DB.filter(function(p) { return (p.direction || "inbound") === "inbound"; });
@@ -17357,7 +17566,7 @@ export default function FactoringDashboard() {
                           var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                           return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + a.invoiceId}>{a.invoiceId}</span></td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pay.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{inv ? money(inv.amount, inv.currency) : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? fmt(inv.dueDate) : "\u2014"}</td>
@@ -17367,7 +17576,7 @@ export default function FactoringDashboard() {
                           var spqStatusColor = spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706";
                           return <tr key={"rem-" + ri} style={{ borderBottom: "1px solid var(--border)", background: "#8B5CF608" }}>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted #8B5CF6" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierId || spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted #8B5CF6" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
                             <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={spqStatusColor + "14"} color={spqStatusColor} border={spqStatusColor + "30"} /></td>
@@ -17931,12 +18140,13 @@ export default function FactoringDashboard() {
                     HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
                     var hbId = "HBP-" + String(maxHbpNum + 1).padStart(7, "0");
                     var hbAmt = r2(updatedInv.holdbackAvailable);
-                    var hbBankInfo = getSupplierBankDetails(updatedInv.supplierId || updatedInv.supplierName, updatedInv.fundingProgram);
+                    var autoHbSupEntityId = _invSupplierEntityIdOf(updatedInv) || updatedInv.supplierName;
+                    var hbBankInfo = getSupplierBankDetails(autoHbSupEntityId, updatedInv.fundingProgram);
                     var hbSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                     HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, amount: hbAmt, date: viewDate, currency: updatedInv.currency, allocations: [{ type: "disbursement", targetId: null, amount: hbAmt }] });
                     SUPPLIER_PAYMENT_QUEUE.push({
                       id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
-                      supplierName: updatedInv.supplierName, supplierId: updatedInv.supplierId || "",
+                      supplierName: updatedInv.supplierName, supplierId: autoHbSupEntityId || "",
                       bankName: hbBankInfo.bankName, bankDetails: hbBankInfo.bankDetails, bankVerified: hbBankInfo.bankVerified,
                       amount: hbAmt, currency: updatedInv.currency, status: "Pending",
                       programId: updatedInv.fundingProgram || null, programName: routing.programName,
@@ -18278,14 +18488,6 @@ export default function FactoringDashboard() {
             var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
-          function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-          }
-          function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
-          }
 
           function createCreditNote() {
             var amt = r2(parseFloat(cnf.amount) || 0);
@@ -18492,8 +18694,8 @@ export default function FactoringDashboard() {
                       <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent", opacity: cn.voided ? 0.5 : 1, textDecoration: cn.voided ? "line-through" : "none" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
                       <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}{cn.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (cn.voidedAt ? "on " + new Date(cn.voidedAt).toLocaleString("en-GB") : "") + (cn.voidedBy ? " by " + cn.voidedBy : "") + (cn.voidReason ? "\nReason: " + cn.voidReason : "")}>VOIDED</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierId || cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerId || cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</td>
                       <td style={Object.assign({}, cnmc, { fontWeight: 600 })}>{money(cn.amount, cn.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--muted)" }}>{cn.currency}</td>
@@ -18513,8 +18715,8 @@ export default function FactoringDashboard() {
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Credit Note ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cn.creditNoteId}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Date</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(cn.date)}</div></div>
-                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</div></div>
-                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierId || cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerId || cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Reference</div><div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Amount</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(cn.amount, cn.currency)}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Unallocated Balance</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "#D97706" : "#059669" }}>{money(remaining, cn.currency)}</div></div>
@@ -18726,7 +18928,7 @@ export default function FactoringDashboard() {
                         var fst = FST[inv.fundingStatus] || FST.funded;
                         return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aaAmt > 0 ? "#2B4C7E06" : "transparent" }}>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
-                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                          <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
                           <td style={{ padding: "8px 12px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                           <td style={{ padding: "8px 12px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
@@ -18824,14 +19026,6 @@ export default function FactoringDashboard() {
             if (!inv) return;
             var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
-          }
-          function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-          }
-          function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
           function drillToProgram(programId) {
             if (!programId) return;
@@ -19095,8 +19289,8 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (inv.voidedAt ? "on " + new Date(inv.voidedAt).toLocaleString("en-GB") : "") + (inv.voidedBy ? " by " + inv.voidedBy : "") + (inv.voidReason ? "\nReason: " + inv.voidReason : "")}>VOIDED</span>}{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                       <td style={Object.assign({}, ilmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus || "Received"} bg={ist.bg} color={ist.color} border={ist.border} /></td>
@@ -19157,17 +19351,6 @@ export default function FactoringDashboard() {
             setPg(0);
             setExp(invoiceId);
             startEdit(inv);
-          }
-          function drillToSupplier(supplierName) {
-            // Name may include " \u2014 Branch Name" suffix; match the parent.
-            var parentName = getParentSupplierName(supplierName) || supplierName;
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === parentName; });
-            if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-          }
-          function drillToBuyer(buyerName) {
-            var parentName = getParentSupplierName(buyerName) || buyerName;
-            var match = BUYERS_DB.find(function(b) { return b.name === parentName; });
-            if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
           // Source data: ALL pending invoices (including DNP'd ones — they are visible but dimmed and ineligible for allocation)
           var unpurchasedAll = viewData.invoices.filter(function(inv) { return inv.fundingStatus === "pending"; });
@@ -19564,8 +19747,8 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{isDnp && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11, color: daysPending > 30 ? "#EF4444" : daysPending > 7 ? "#D97706" : "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{daysPending}d</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
                       <td style={Object.assign({}, upimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
@@ -23147,6 +23330,42 @@ export default function FactoringDashboard() {
                   if (buyerName && buyerName !== existing.buyerName) { queueForReview("buyerName", "Buyer", existing.buyerName, buyerName); }
                   if (currency && currency.toUpperCase() !== existing.currency) { queueForReview("currency", "Currency", existing.currency, currency.toUpperCase()); }
 
+                  // Branch routing changes. The CSV may move an invoice from parent → branch,
+                  // branch → parent, or branch → different branch on the same parent.
+                  // Treat like a structural amount change: if funded, queue for review
+                  // (operator must approve routing changes on funded work because exposure,
+                  // FP eligibility, and bank-account resolution all key off the entity ID);
+                  // if not funded, apply directly. Parent ID is invariant here — validateImport
+                  // would have already rejected a row whose parent ID differs from `existing`'s.
+                  var newSupBranchId = resolvedSupBranch ? resolvedSupBranch.branchId : null;
+                  var newBuyBranchId = resolvedBuyBranch ? resolvedBuyBranch.branchId : null;
+                  var oldSupBranchId = existing.supplierBranchId || null;
+                  var oldBuyBranchId = existing.buyerBranchId || null;
+                  if (newSupBranchId !== oldSupBranchId) {
+                    var oldSupLabel = oldSupBranchId ? (resolvedSup.id + ":" + oldSupBranchId) : (resolvedSup.id + " (parent)");
+                    var newSupLabel = newSupBranchId ? (resolvedSup.id + ":" + newSupBranchId) : (resolvedSup.id + " (parent)");
+                    if (isFunded) {
+                      queueForReview("supplierBranchId", "Supplier Branch", oldSupLabel, newSupLabel);
+                    } else {
+                      changes.push("Supplier branch: " + oldSupLabel + " \u2192 " + newSupLabel);
+                      existing.supplierBranchId = newSupBranchId;
+                      existing.supplierEntityId = makeEntityId(resolvedSup.id, newSupBranchId);
+                      existing.supplierName = supplierName;
+                    }
+                  }
+                  if (newBuyBranchId !== oldBuyBranchId) {
+                    var oldBuyLabel = oldBuyBranchId ? (resolvedBuy.id + ":" + oldBuyBranchId) : (resolvedBuy.id + " (parent)");
+                    var newBuyLabel = newBuyBranchId ? (resolvedBuy.id + ":" + newBuyBranchId) : (resolvedBuy.id + " (parent)");
+                    if (isFunded) {
+                      queueForReview("buyerBranchId", "Buyer Branch", oldBuyLabel, newBuyLabel);
+                    } else {
+                      changes.push("Buyer branch: " + oldBuyLabel + " \u2192 " + newBuyLabel);
+                      existing.buyerBranchId = newBuyBranchId;
+                      existing.buyerEntityId = makeEntityId(resolvedBuy.id, newBuyBranchId);
+                      existing.buyerName = buyerName;
+                    }
+                  }
+
                   if (amount !== null && Math.abs(amount - existing.amount) > 0.01) {
                     if (isFunded) { queueForReview("amount", "Invoice Amount", existing.amount, amount); }
                     else { changes.push("Amount: " + money(existing.amount, existing.currency) + " \u2192 " + money(amount, existing.currency)); existing.amount = amount; }
@@ -23559,6 +23778,39 @@ export default function FactoringDashboard() {
                 else if (item.field === "partialApprovedAmount") inv.partialApprovedAmount = item.newValue;
                 else if (item.field === "supplierName") { inv.supplierName = item.newValue; var s = SUPPLIERS_DB.find(function(x) { return x.name === item.newValue; }); if (s) inv.supplierId = s.id; }
                 else if (item.field === "buyerName") { inv.buyerName = item.newValue; var b = BUYERS_DB.find(function(x) { return x.name === item.newValue; }); if (b) inv.buyerId = b.id; }
+                else if (item.field === "supplierBranchId") {
+                  // newValue is a display label: "SUP-001:BR-002" or "SUP-001 (parent)".
+                  // The colon form means "route to branch"; the (parent) form means "route to parent".
+                  var lbl = String(item.newValue || "");
+                  var newBranch = null;
+                  if (lbl.indexOf(":") >= 0) {
+                    var parts = lbl.split(":");
+                    newBranch = parts[1] ? parts[1].split(" ")[0] : null;
+                  }
+                  inv.supplierBranchId = newBranch;
+                  inv.supplierEntityId = makeEntityId(inv.supplierId, newBranch);
+                  // Refresh display name to include / drop the branch suffix.
+                  var supObj = SUPPLIERS_DB.find(function(x) { return x.id === inv.supplierId; });
+                  if (supObj) {
+                    var brObj = newBranch ? (supObj.branches || []).find(function(br) { return br.branchId === newBranch; }) : null;
+                    inv.supplierName = brObj ? supObj.name + " \u2014 " + brObj.branchName : supObj.name;
+                  }
+                }
+                else if (item.field === "buyerBranchId") {
+                  var lblB = String(item.newValue || "");
+                  var newBuyBranch = null;
+                  if (lblB.indexOf(":") >= 0) {
+                    var partsB = lblB.split(":");
+                    newBuyBranch = partsB[1] ? partsB[1].split(" ")[0] : null;
+                  }
+                  inv.buyerBranchId = newBuyBranch;
+                  inv.buyerEntityId = makeEntityId(inv.buyerId, newBuyBranch);
+                  var buyObj = BUYERS_DB.find(function(x) { return x.id === inv.buyerId; });
+                  if (buyObj) {
+                    var brBObj = newBuyBranch ? (buyObj.branches || []).find(function(br) { return br.branchId === newBuyBranch; }) : null;
+                    inv.buyerName = brBObj ? buyObj.name + " \u2014 " + brBObj.branchName : buyObj.name;
+                  }
+                }
                 else if (item.field === "currency") inv.currency = item.newValue;
                 else if (item.field === "invoiceDate") inv.invoiceDate = item.newValue;
                 else if (item.field === "dueDate") inv.dueDate = item.newValue;
@@ -24407,14 +24659,6 @@ export default function FactoringDashboard() {
                 var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
                 if (sup) { setAuditPopup(null); setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
-              function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
-                if (match) { setAuditPopup(null); setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
-              }
-              function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
-                if (match) { setAuditPopup(null); setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
-              }
               function drillToProgram(programIdOrName) {
                 var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === programIdOrName; }) || FUNDING_PROGRAMS_DB.find(function(fp) { return fp.name === programIdOrName; });
                 if (prog) { setAuditPopup(null); setView("program"); setSelectedProgram(prog.id); setProgTab("overview"); }
@@ -24447,10 +24691,10 @@ export default function FactoringDashboard() {
                   if (CREDIT_NOTES_DB.find(function(c) { return c.creditNoteId === v; })) return function() { drillToCN(v); };
                 }
                 if (label === "Supplier") {
-                  if (SUPPLIERS_DB.find(function(s) { return s.name === v; })) return function() { drillToSupplier(v); };
+                  if (SUPPLIERS_DB.find(function(s) { return s.name === v; })) return function() { drillToSupplier(v, { closeAudit: true, tab: "overview" }); };
                 }
                 if (label === "Buyer") {
-                  if (BUYERS_DB.find(function(b) { return b.name === v; })) return function() { drillToBuyer(v); };
+                  if (BUYERS_DB.find(function(b) { return b.name === v; })) return function() { drillToBuyer(v, { closeAudit: true, tab: "overview" }); };
                 }
                 if (label === "Program") {
                   if (FUNDING_PROGRAMS_DB.find(function(fp) { return fp.name === v || fp.id === v; })) return function() { drillToProgram(v); };
