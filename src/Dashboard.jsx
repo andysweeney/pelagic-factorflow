@@ -888,6 +888,48 @@ function _resolveProgramRateHistory(pr, programId, buyerId) {
   return null;
 }
 
+// Returns every per-buyer rate key under (supplier.programRates[programId])
+// EXCLUDING "__default". For old-shape (bare array) returns []. For new-shape
+// (dict) returns the buyer keys that exist. Used by the per-buyer rate UI to
+// know which rows to render alongside the default. Order is insertion order
+// (Object.keys), which roughly tracks the order the operator added them.
+function _listPerBuyerRateKeys(pr, programId) {
+  if (!pr || !pr[programId]) return [];
+  var entry = pr[programId];
+  if (Array.isArray(entry)) return [];
+  return Object.keys(entry).filter(function(k) { return k !== "__default"; });
+}
+
+// Push a new rate entry to (supplier.programRates[programId][buyerKey]). When
+// buyerKey is null/undefined/"__default", writes to the default slot. Handles
+// shape migration: if the current entry is the old bare-array shape, converts
+// to the dict shape (preserving the existing array as "__default") before
+// adding the per-buyer entry.
+//
+// MUTATES the passed programRates object in place. Caller is responsible for
+// invoking saveSupplier after this to persist.
+function _pushProgramRateEntry(programRates, programId, buyerKey, entry) {
+  if (!programRates[programId]) programRates[programId] = [];
+  var current = programRates[programId];
+  var key = buyerKey || "__default";
+  if (Array.isArray(current)) {
+    // Old shape. If writing to default, we can keep the array shape; the
+    // resolver treats bare arrays as "__default" anyway. But if writing
+    // to a non-default key, we must convert.
+    if (key === "__default") {
+      current.push(entry);
+      return;
+    }
+    // Convert old shape → dict, preserving the existing array as the default
+    programRates[programId] = { "__default": current.slice(), };
+    programRates[programId][key] = [entry];
+    return;
+  }
+  // Dict shape — append to (or create) the target key's array
+  if (!Array.isArray(current[key])) current[key] = [];
+  current[key].push(entry);
+}
+
 function getSupplierRateForProgram(entityId, programId, asOfTimestamp, buyerId) {
   if (!programId) return null;
   var supplier = getSupplierById(entityId);
@@ -1023,7 +1065,11 @@ function getEligiblePrograms(inv, supDilRates) {
     }
     // Per-program rate lookup. No rate = supplier hasn't been commercially configured for this
     // program yet → ineligible. Falls through the gate at program-add time.
-    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    // Buyer-scoped: per-buyer rate overrides take precedence over the default
+    // (see _resolveProgramRateHistory). Passing the composite buyerEntityId
+    // lets a branch-specific override beat the parent override beat the default.
+    var elgBuyerKey = inv.buyerEntityId || inv.buyerId || null;
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id, null, elgBuyerKey) || getSupplierRateForProgram(parentId, fp.id, null, elgBuyerKey);
     if (!supRate) return false;
     if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
@@ -1077,7 +1123,8 @@ function getEligibilityReasons(inv, supDilRates) {
       var buyerId = inv.buyerId || "";
       if (fp.eligibleBuyers.indexOf(buyerId) === -1) reasons.push("Buyer not on program's eligible list");
     }
-    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id) || getSupplierRateForProgram(parentId, fp.id);
+    var elgRBuyerKey = inv.buyerEntityId || inv.buyerId || null;
+    var supRate = getSupplierRateForProgram(entityIdForRate, fp.id, null, elgRBuyerKey) || getSupplierRateForProgram(parentId, fp.id, null, elgRBuyerKey);
     if (!supRate) {
       reasons.push("No commercial rate configured for this supplier on this program");
     } else {
@@ -4098,6 +4145,16 @@ export default function FactoringDashboard() {
   var fpe1 = useState(null), fundPayExp = fpe1[0], setFundPayExp = fpe1[1];
   var bnd1 = useState(null), bundleDialog = bnd1[0], setBundleDialog = bnd1[1];
   var rc1 = useState(false), showRateChange = rc1[0], setShowRateChange = rc1[1];
+  // Per-buyer supplier rate UI state.
+  //   editBuyerRateKey: when truthy, identifies which per-buyer rate row is
+  //     currently being edited (its buyerKey, e.g. "BUY-001" or
+  //     "BUY-001:BR-002"). The "Change Rate" form opens scoped to that key.
+  //   addBuyerRateModal: when true, the "Add buyer-specific rate" picker is
+  //     open. The operator selects a buyer (or buyer branch), enters rates,
+  //     and saves — a new entry is appended under that buyerKey.
+  var ebr1 = useState(null), editBuyerRateKey = ebr1[0], setEditBuyerRateKey = ebr1[1];
+  var abr1 = useState(false), addBuyerRateModal = abr1[0], setAddBuyerRateModal = abr1[1];
+  var abrK = useState(""), addBuyerRateBuyerKey = abrK[0], setAddBuyerRateBuyerKey = abrK[1];
   // Modal for adding supplier to program with required commercial terms (Tweak: rate gate at program assignment).
   // null = closed; otherwise { supplierId, supplierName, programId, programName, programCcy, advanceRate, annualRate, penaltyRate, creditLimit, singleInvoiceLimit }
   var atpm1 = useState(null), addToProgramModal = atpm1[0], setAddToProgramModal = atpm1[1];
@@ -5732,7 +5789,19 @@ export default function FactoringDashboard() {
       prog = eligible[0];
       eligibleProgIds = eligible.map(function(p) { return p.id; });
     }
-    var supRate = getSupplierRate(raw.supplierId || raw.supplierName);
+    // Resolve the rate at the precision the cascade supports:
+    //   1. Program-specific  (supplier might be on multiple programs)
+    //   2. Buyer-specific    (per-buyer overrides take precedence over default)
+    //   3. Buyer falls back to default ("__default") when no override exists
+    // raw.buyerEntityId is the composite when the invoice is on a buyer
+    // branch; raw.buyerId is always the parent. _resolveProgramRateHistory
+    // looks up the buyerKey verbatim, so passing the composite lets a
+    // branch-specific override win over the parent's override which wins
+    // over the default.
+    var supRateBuyerKey = raw.buyerEntityId || raw.buyerId || null;
+    var supRate = getSupplierRateForProgram(raw.supplierId || raw.supplierName, prog.id, null, supRateBuyerKey)
+                || getSupplierRateForProgram(raw.supplierId || raw.supplierName, prog.id)
+                || getSupplierRate(raw.supplierId || raw.supplierName);
     var partial = (raw.invoiceStatus === "Approved in Part" && raw.partialApprovedAmount > 0) ? raw.partialApprovedAmount : raw.amount;
     var postDil = raw.amount - (invProc.dilutionTotal || 0);
     var buyerPaid = (invProc.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
@@ -5942,8 +6011,11 @@ export default function FactoringDashboard() {
         skipped.push({ id: e.raw.id, reason: "buyer credit limit reached (need " + money(e.maxCap, e.raw.currency) + ", " + (buyHeadroom <= 0.01 ? "no headroom" : "only " + money(buyHeadroom, e.raw.currency) + " available") + ")" });
         return;
       }
-      // Fund at max
-      var supRate = getSupplierRate(e.raw.supplierId || e.raw.supplierName);
+      // Fund at max — resolve rate at program + buyer precision (same as fund popup)
+      var bulkBuyerKey = e.raw.buyerEntityId || e.raw.buyerId || null;
+      var supRate = getSupplierRateForProgram(e.raw.supplierId || e.raw.supplierName, e.prog.id, null, bulkBuyerKey)
+                  || getSupplierRateForProgram(e.raw.supplierId || e.raw.supplierName, e.prog.id)
+                  || getSupplierRate(e.raw.supplierId || e.raw.supplierName);
       var rate = supRate.annualRate;
       if (rate < e.prog.minInterestRate) rate = e.prog.minInterestRate;
       var fundingDate = viewDate;
@@ -6709,7 +6781,12 @@ export default function FactoringDashboard() {
                   ? buyBd.branch.limit
                   : (buyBd.parent ? buyBd.parent.limit : 0);
                 if (newBuyerCreditLimitApplied > 0 && newBuyerCreditHeadroom < newHeadroom) newHeadroom = newBuyerCreditHeadroom;
-                var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
+                // Resolve rate at program + buyer precision for the newly-
+                // selected program. Same cascade as fund popup open.
+                var pcBuyerKey = fundPopup.inv.buyerEntityId || fundPopup.inv.buyerId || null;
+                var supRate = getSupplierRateForProgram(fundPopup.inv.supplierId || fundPopup.inv.supplierName, newProgId, null, pcBuyerKey)
+                            || getSupplierRateForProgram(fundPopup.inv.supplierId || fundPopup.inv.supplierName, newProgId)
+                            || getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
@@ -10689,77 +10766,255 @@ export default function FactoringDashboard() {
                 </div>
               </div>
 
-              {/* Rates & Balances — scoped to the currently-selected program (supProgram) */}
+              {/* Rates & Balances — scoped to the currently-selected program (supProgram).
+                  Now supports per-buyer rate overrides. The default rate
+                  ("__default") applies when an invoice's buyer has no
+                  override; per-buyer entries take precedence. Storage shape:
+                    supplier.programRates[programId] =
+                      [history entries]              <- legacy "default-only"
+                      OR
+                      { "__default": [history], "BUY-001": [history], ... }
+                  _resolveProgramRateHistory handles both transparently. */}
               {(function() {
-                var curRate = getSupplierRateForProgram(selectedSupplier, supProgram);
                 var pr = (supplier && supplier.programRates) || {};
-                var rateHistory = pr[supProgram] ? pr[supProgram].slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); }) : [];
+                var prEntry = pr[supProgram] || null;
                 var selectedProgramObj = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; });
                 var selectedProgramName = selectedProgramObj ? selectedProgramObj.name : "this program";
 
-                function addRate() {
+                // Resolve the default (all-buyers) rate.
+                var defaultRate = getSupplierRateForProgram(selectedSupplier, supProgram);
+                // Default history — for the history table at the bottom and
+                // for the "Current" sub-rate breakdown cards.
+                var defaultHistory = _resolveProgramRateHistory(pr, supProgram, null);
+                if (defaultHistory) defaultHistory = defaultHistory.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+                else defaultHistory = [];
+
+                // Per-buyer overrides
+                var perBuyerKeys = _listPerBuyerRateKeys(pr, supProgram);
+                var perBuyerData = perBuyerKeys.map(function(buyerKey) {
+                  var rate = getSupplierRateForProgram(selectedSupplier, supProgram, null, buyerKey);
+                  var hist = _resolveProgramRateHistory(pr, supProgram, buyerKey);
+                  if (hist) hist = hist.slice().sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
+                  else hist = [];
+                  return { buyerKey: buyerKey, rate: rate, history: hist };
+                });
+                // Buyer options for the picker — parents AND branches. Exclude
+                // buyerKeys that are already configured to keep the picker
+                // tidy. (Operator can still edit an existing one via its row.)
+                var allBuyerEntities = getAllBuyerEntities();
+                var availableBuyerOptions = allBuyerEntities.filter(function(b) {
+                  return perBuyerKeys.indexOf(b.value) === -1;
+                });
+
+                // Save the new rate — branches by mode:
+                //   showRateChange === true        → default rate change
+                //   editBuyerRateKey is a string  → that buyer's rate change
+                //   addBuyerRateModal === true    → new per-buyer rate add
+                function saveRateForKey(buyerKey, label) {
                   if (!newRateAdvance || !newRateAnnual || !newRatePenalty || !supProgram) return;
                   if (!supplier.programRates) supplier.programRates = {};
-                  if (!supplier.programRates[supProgram]) supplier.programRates[supProgram] = [];
                   var now = new Date();
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                  supplier.programRates[supProgram].push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
+                  var entry = { effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 };
+                  _pushProgramRateEntry(supplier.programRates, supProgram, buyerKey, entry);
                   saveSupplier(selectedSupplier);
-                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
-                  setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
+                  auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate for " + selectedProgramName + " (" + label + ") changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey || "__default", buyerLabel: label, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
+                  setShowRateChange(false);
+                  setEditBuyerRateKey(null);
+                  setAddBuyerRateModal(false);
+                  setAddBuyerRateBuyerKey("");
+                  setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
                 }
+
+                function addRate() { saveRateForKey(null, "Default"); }
+
+                // Remove a per-buyer override entirely (delete the dict key).
+                // Confirmation prompt because this loses the history for that
+                // buyer — there's no soft-delete pattern in programRates.
+                function removeBuyerOverride(buyerKey, label) {
+                  var ok = window.confirm("Remove " + label + "'s rate override?\n\nThis deletes the override and all its history entries. " + label + " will revert to the default rate for " + selectedProgramName + ". This cannot be undone.");
+                  if (!ok) return;
+                  var entry = supplier.programRates[supProgram];
+                  if (entry && !Array.isArray(entry)) {
+                    delete entry[buyerKey];
+                    saveSupplier(selectedSupplier);
+                    auditLog("Rate Override Removed", getEntityDisplayName(selectedSupplier) + " per-buyer rate override for " + label + " removed on " + selectedProgramName + ". Reverts to default.", { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), programId: supProgram, programName: selectedProgramName, buyerKey: buyerKey, buyerLabel: label });
+                    setDataVer(function(v) { return v + 1; });
+                  }
+                }
+
+                function labelForBuyerKey(buyerKey) {
+                  if (!buyerKey || buyerKey === "__default") return "All buyers (default)";
+                  var be = allBuyerEntities.find(function(b) { return b.value === buyerKey; });
+                  return be ? be.label : buyerKey;
+                }
+
+                // Helper to build the small rate-stat cards block for any rate
+                function rateStatCards(rate, keyPrefix) {
+                  if (!rate) return null;
+                  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                    <div key={keyPrefix + "-adv"} style={{ background: "var(--bg)", borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Advance</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{(rate.advanceRate * 100).toFixed(0)}%</div>
+                    </div>
+                    <div key={keyPrefix + "-int"} style={{ background: "var(--bg)", borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Interest p.a.</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{(rate.annualRate * 100).toFixed(1)}%</div>
+                    </div>
+                    <div key={keyPrefix + "-pen"} style={{ background: "var(--bg)", borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Penalty p.a.</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{(rate.penaltyRate * 100).toFixed(1)}%</div>
+                    </div>
+                    <div key={keyPrefix + "-hb"} style={{ background: "var(--bg)", borderRadius: 8, padding: "10px 12px" }}>
+                      <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 3 }}>Holdback</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{((1 - rate.advanceRate) * 100).toFixed(0)}%</div>
+                    </div>
+                  </div>;
+                }
+
+                // Helper: render the change-rate form. Shared across default,
+                // per-buyer edit, and add-buyer-rate flows.
+                function changeRateForm(buyerKey, label, onSave, onCancel, showBuyerPicker, showDefaultRef) {
+                  return <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>
+                      {showBuyerPicker ? "New per-buyer rate" : "New rate for " + label + " on " + selectedProgramName}
+                    </div>
+                    {showBuyerPicker && <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 3 }}>Buyer (or buyer branch)</label>
+                      <select value={addBuyerRateBuyerKey} onChange={function(e) { setAddBuyerRateBuyerKey(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, outline: "none", width: 320, boxSizing: "border-box" }}>
+                        <option value="">{"\u2014 Select buyer \u2014"}</option>
+                        {availableBuyerOptions.map(function(b) { return <option key={b.value} value={b.value}>{b.label} ({b.value})</option>; })}
+                      </select>
+                      {availableBuyerOptions.length === 0 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3, fontStyle: "italic" }}>All buyers already have overrides. Edit existing rows instead.</div>}
+                    </div>}
+                    {showDefaultRef && defaultRate && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 6, background: "var(--card)", border: "1px dashed var(--border)", fontSize: 10, color: "var(--muted)" }}>
+                      <span style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>For reference \u2014 default rate</span>{" "}
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", marginLeft: 8 }}>
+                        Advance <strong style={{ color: "#0EA5E9" }}>{(defaultRate.advanceRate * 100).toFixed(0)}%</strong>{"  \u00b7  "}
+                        Interest <strong style={{ color: "#D97706" }}>{(defaultRate.annualRate * 100).toFixed(1)}%</strong>{"  \u00b7  "}
+                        Penalty <strong style={{ color: "#DC2626" }}>{(defaultRate.penaltyRate * 100).toFixed(1)}%</strong>
+                      </span>
+                    </div>}
+                    <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
+                        <input type="number" step="1" value={newRateAdvance} onChange={function(e) { setNewRateAdvance(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 80 }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
+                        <input type="number" step="0.1" value={newRateAnnual} onChange={function(e) { setNewRateAnnual(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 100 }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
+                        <input type="number" step="0.1" value={newRatePenalty} onChange={function(e) { setNewRatePenalty(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 100 }} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Effective</label>
+                        <span style={{ fontSize: 12, color: "var(--text-secondary)", padding: "6px 0" }}>Immediately on save</span>
+                      </div>
+                      <button onClick={onSave} disabled={!newRateAdvance || !newRateAnnual || !newRatePenalty || (showBuyerPicker && !addBuyerRateBuyerKey)} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: (newRateAdvance && newRateAnnual && newRatePenalty && (!showBuyerPicker || addBuyerRateBuyerKey)) ? "var(--accent)" : "var(--border)", color: (newRateAdvance && newRateAnnual && newRatePenalty && (!showBuyerPicker || addBuyerRateBuyerKey)) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: (newRateAdvance && newRateAnnual && newRatePenalty && (!showBuyerPicker || addBuyerRateBuyerKey)) ? "pointer" : "default" }}>Save Rate</button>
+                      <button onClick={onCancel} style={{ padding: "6px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                    </div>
+                  </div>;
+                }
+
+                // Build the combined rate history rows with a Buyer column.
+                // Sorted newest-first across all keys.
+                var combinedHistory = [];
+                defaultHistory.forEach(function(h) { combinedHistory.push(Object.assign({}, h, { _buyerKey: "__default", _buyerLabel: "All buyers (default)" })); });
+                perBuyerData.forEach(function(pb) {
+                  pb.history.forEach(function(h) { combinedHistory.push(Object.assign({}, h, { _buyerKey: pb.buyerKey, _buyerLabel: labelForBuyerKey(pb.buyerKey) })); });
+                });
+                combinedHistory.sort(function(a, b) { return (b.effectiveTimestamp || b.effectiveDate).localeCompare(a.effectiveTimestamp || a.effectiveDate); });
 
                 return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 8, borderBottom: "2px solid #C08B30" }}>
                   <div style={{ fontSize: 14, fontWeight: 700,  color: "var(--text)" }}>Rates & Current Balances <span style={{ fontSize: 11, fontWeight: 500, color: "var(--muted)", marginLeft: 6 }}>({selectedProgramName})</span></div>
-                  {curRate && <button onClick={function() { setShowRateChange(!showRateChange); if (!showRateChange) { setNewRateAdvance(String((curRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((curRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((curRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); } }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>}
                 </div>
-                {!curRate && <div style={{ padding: "16px 18px", borderRadius: 10, background: "#C0392B14", border: "1px solid #DC262630", marginBottom: 14, fontSize: 12, color: "#EF4444" }}>
+                {!defaultRate && perBuyerKeys.length === 0 && <div style={{ padding: "16px 18px", borderRadius: 10, background: "#C0392B14", border: "1px solid #DC262630", marginBottom: 14, fontSize: 12, color: "#EF4444" }}>
                   No rates set for {selectedProgramName}. Add this supplier to the program (or use Manage to configure) to set rates.
                 </div>}
-                {showRateChange && curRate && <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg)", border: "1px solid var(--accent)", marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>New Rate for {getEntityDisplayName(selectedSupplier)} on {selectedProgramName}</div>
-                  <div style={{ display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
-                      <input type="number" step="1" value={newRateAdvance} onChange={function(e) { setNewRateAdvance(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 80 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
-                      <input type="number" step="0.1" value={newRateAnnual} onChange={function(e) { setNewRateAnnual(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 100 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
-                      <input type="number" step="0.1" value={newRatePenalty} onChange={function(e) { setNewRatePenalty(e.target.value); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 100 }} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Effective</label>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)", padding: "6px 0" }}>Immediately on save</span>
-                    </div>
-                    <button onClick={addRate} disabled={!newRateAdvance || !newRateAnnual || !newRatePenalty} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: newRateAdvance && newRateAnnual && newRatePenalty ? "var(--accent)" : "var(--border)", color: newRateAdvance && newRateAnnual && newRatePenalty ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700,  cursor: newRateAdvance && newRateAnnual && newRatePenalty ? "pointer" : "default" }}>Save Rate</button>
+
+                {/* Inline forms — opened by Change Rate / Edit / Add buttons */}
+                {showRateChange && defaultRate && changeRateForm(
+                  null, "All buyers (default)",
+                  function() { saveRateForKey(null, "Default"); },
+                  function() { setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate(""); },
+                  false, false
+                )}
+                {editBuyerRateKey && changeRateForm(
+                  editBuyerRateKey, labelForBuyerKey(editBuyerRateKey),
+                  function() { saveRateForKey(editBuyerRateKey, labelForBuyerKey(editBuyerRateKey)); },
+                  function() { setEditBuyerRateKey(null); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate(""); },
+                  false, true
+                )}
+                {addBuyerRateModal && changeRateForm(
+                  null, "",
+                  function() { saveRateForKey(addBuyerRateBuyerKey, labelForBuyerKey(addBuyerRateBuyerKey)); },
+                  function() { setAddBuyerRateModal(false); setAddBuyerRateBuyerKey(""); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate(""); },
+                  true, true
+                )}
+
+                {/* DEFAULT rate row */}
+                {defaultRate && <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", letterSpacing: "0.06em" }}>Default <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 4, textTransform: "none", letterSpacing: 0 }}>(applies to all buyers without an override)</span></div>
+                    <button onClick={function() {
+                      if (showRateChange) { setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); }
+                      else { setEditBuyerRateKey(null); setAddBuyerRateModal(false); setShowRateChange(true); setNewRateAdvance(String((defaultRate.advanceRate * 100).toFixed(0))); setNewRateAnnual(String((defaultRate.annualRate * 100).toFixed(1))); setNewRatePenalty(String((defaultRate.penaltyRate * 100).toFixed(1))); setNewRateDate(new Date().toISOString().split("T")[0]); }
+                    }} style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid " + (showRateChange ? "#DC262630" : "var(--accent)"), background: "transparent", color: showRateChange ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{showRateChange ? "Cancel" : "Change Rate"}</button>
                   </div>
+                  {rateStatCards(defaultRate, "def")}
                 </div>}
-                {curRate && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
-                  <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Advance Rate</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9" }}>{(curRate.advanceRate * 100).toFixed(0)}%</div>
-                  </div>
-                  <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Interest Rate (p.a.)</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{(curRate.annualRate * 100).toFixed(1)}%</div>
-                  </div>
-                  <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Penalty Rate (p.a.)</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{(curRate.penaltyRate * 100).toFixed(1)}%</div>
-                  </div>
-                  <div style={{ background: "var(--bg)", borderRadius: 10, padding: "14px 16px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Holdback Rate</div>
-                    <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{((1 - curRate.advanceRate) * 100).toFixed(0)}%</div>
-                  </div>
+
+                {/* Per-buyer overrides */}
+                {perBuyerData.length > 0 && <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", letterSpacing: "0.06em", marginBottom: 8 }}>Per-buyer overrides <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 4, textTransform: "none", letterSpacing: 0 }}>(specific to one buyer or buyer branch)</span></div>
+                  {perBuyerData.map(function(pb) {
+                    var label = labelForBuyerKey(pb.buyerKey);
+                    var isEditing = editBuyerRateKey === pb.buyerKey;
+                    return <div key={pb.buyerKey} style={{ marginBottom: 10, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>{label} <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", fontSize: 10, fontWeight: 400, marginLeft: 4 }}>{pb.buyerKey}</span></div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button onClick={function() {
+                            if (isEditing) { setEditBuyerRateKey(null); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); }
+                            else if (pb.rate) {
+                              setShowRateChange(false); setAddBuyerRateModal(false);
+                              setEditBuyerRateKey(pb.buyerKey);
+                              setNewRateAdvance(String((pb.rate.advanceRate * 100).toFixed(0)));
+                              setNewRateAnnual(String((pb.rate.annualRate * 100).toFixed(1)));
+                              setNewRatePenalty(String((pb.rate.penaltyRate * 100).toFixed(1)));
+                              setNewRateDate(new Date().toISOString().split("T")[0]);
+                            }
+                          }} style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid " + (isEditing ? "#DC262630" : "var(--accent)"), background: "transparent", color: isEditing ? "#EF4444" : "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{isEditing ? "Cancel" : "Change Rate"}</button>
+                          <button onClick={function() { removeBuyerOverride(pb.buyerKey, label); }} style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid #DC262630", background: "transparent", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Remove</button>
+                        </div>
+                      </div>
+                      {pb.rate && rateStatCards(pb.rate, "pb-" + pb.buyerKey)}
+                    </div>;
+                  })}
                 </div>}
-                <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+
+                {/* Add per-buyer rate button. Disabled when all buyers already
+                    have overrides (every getAllBuyerEntities() option is
+                    already configured). */}
+                {defaultRate && <div style={{ marginBottom: 14 }}>
+                  <button onClick={function() {
+                    setShowRateChange(false); setEditBuyerRateKey(null);
+                    setAddBuyerRateModal(true);
+                    setAddBuyerRateBuyerKey("");
+                    // Pre-fill with the default rate as a starting point
+                    setNewRateAdvance(String((defaultRate.advanceRate * 100).toFixed(0)));
+                    setNewRateAnnual(String((defaultRate.annualRate * 100).toFixed(1)));
+                    setNewRatePenalty(String((defaultRate.penaltyRate * 100).toFixed(1)));
+                    setNewRateDate(new Date().toISOString().split("T")[0]);
+                  }} disabled={availableBuyerOptions.length === 0 || addBuyerRateModal} style={{ padding: "6px 14px", borderRadius: 6, border: "1px dashed var(--accent)", background: "transparent", color: availableBuyerOptions.length === 0 ? "var(--muted)" : "var(--accent)", fontSize: 11, fontWeight: 700, cursor: availableBuyerOptions.length === 0 ? "default" : "pointer" }}>{availableBuyerOptions.length === 0 ? "All buyers configured" : "+ Add buyer-specific rate"}</button>
+                </div>}
+
+                <div style={{ marginTop: 4, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                   <div style={{ textAlign: "center", padding: "12px 8px", borderRadius: 10, border: "1px solid var(--border)" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Capital O/S</div>
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(totalCapOS), displayCcy)}</div>
@@ -10773,14 +11028,22 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{money(r2(totalPenOS), displayCcy)}</div>
                   </div>
                 </div>
-                {rateHistory.length > 0 && <div style={{ marginTop: 16 }}>
+                {combinedHistory.length > 0 && <div style={{ marginTop: 16 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Rate History &mdash; {selectedProgramName}</div>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Effective From", "Advance Rate", "Interest Rate", "Penalty Rate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                    <tbody>{rateHistory.map(function(r, ri) {
-                      var isCurrent = ri === 0;
+                    <thead><tr>{["Effective From", "Buyer", "Advance", "Interest", "Penalty"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
+                    <tbody>{combinedHistory.map(function(r, ri) {
+                      // "Current" markers: the most recent entry per buyerKey
+                      var isCurrent = (function() {
+                        for (var j = 0; j < ri; j++) {
+                          if (combinedHistory[j]._buyerKey === r._buyerKey) return false;
+                        }
+                        return true;
+                      })();
+                      var isDefault = r._buyerKey === "__default";
                       return <tr key={ri} style={{ borderBottom: "1px solid var(--border)", background: isCurrent ? "#2B4C7E08" : "transparent" }}>
                         <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}{isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}</td>
+                        <td style={{ padding: "5px 10px", fontSize: 11, color: isDefault ? "var(--muted)" : "var(--text)", fontStyle: isDefault ? "italic" : "normal" }}>{r._buyerLabel}</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(0) + "%" : (ADVANCE_RATE * 100).toFixed(0) + "%"}</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(r.annualRate * 100).toFixed(1)}%</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{(r.penaltyRate * 100).toFixed(1)}%</td>
