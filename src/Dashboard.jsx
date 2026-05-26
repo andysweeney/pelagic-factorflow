@@ -1033,7 +1033,13 @@ function invInProgramScope(inv, programId) {
     var supParent = getParentEntityId(supId) || supId;
     var supEligible = (fp.eligibleSuppliers || []).indexOf(supId) > -1 || (fp.eligibleSuppliers || []).indexOf(supParent) > -1;
     if (!supEligible) return false;
-    var buyEligible = (fp.eligibleBuyers || []).indexOf(inv.buyerId || "") > -1;
+    // Buyer-side: check composite (inv.buyerEntityId or inv.buyerId — could be
+    // either shape depending on creation path) AND parent. Match if EITHER is
+    // in eligibleBuyers — operator may have added just the parent, just the
+    // branch, or both.
+    var buyEntityId = inv.buyerEntityId || inv.buyerId || "";
+    var buyParent = parseEntityId(buyEntityId).supplierId || buyEntityId;
+    var buyEligible = (fp.eligibleBuyers || []).indexOf(buyEntityId) > -1 || (fp.eligibleBuyers || []).indexOf(buyParent) > -1;
     if (!buyEligible) return false;
     return true;
   }
@@ -1058,10 +1064,15 @@ function getEligiblePrograms(inv, supDilRates) {
       var idMatch = fp.eligibleSuppliers.indexOf(entityId) > -1 || fp.eligibleSuppliers.indexOf(parentId) > -1;
       if (!idMatch) return false;
     }
-    // Eligible buyers check — by ID
+    // Eligible buyers check — by ID. Check both the composite (entity or
+    // parent) so a program that lists only the branch matches an invoice
+    // raised under that branch, and a program that lists only the parent
+    // matches all of its branches' invoices.
     if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
-      var buyerId = inv.buyerId || "";
-      if (fp.eligibleBuyers.indexOf(buyerId) === -1) return false;
+      var buyEntityId = inv.buyerEntityId || inv.buyerId || "";
+      var buyParent = parseEntityId(buyEntityId).supplierId || buyEntityId;
+      var buyMatch = fp.eligibleBuyers.indexOf(buyEntityId) > -1 || fp.eligibleBuyers.indexOf(buyParent) > -1;
+      if (!buyMatch) return false;
     }
     // Per-program rate lookup. No rate = supplier hasn't been commercially configured for this
     // program yet → ineligible. Falls through the gate at program-add time.
@@ -18038,7 +18049,7 @@ export default function FactoringDashboard() {
             var buyDisplay = buyName(cnf.buyer) || cnf.buyer;
             CREDIT_NOTES_DB.push({
               creditNoteId: cnId, amount: amt, currency: cnf.currency, date: cnf.date,
-              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supParentNameCN,
+              reference: cnf.reference || "", supplierId: cnf.supplier, supplierName: supDisplay,
               buyerId: buyParentId, buyerEntityId: buyEntityId, buyerBranchId: buyBranchId,
               buyerName: buyDisplay, allocations: [],
               createdDisplay: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
@@ -18590,7 +18601,7 @@ export default function FactoringDashboard() {
             var buyEntityId = nf.buyer;  // composite or parent
             var buyDisplayName = buyName(nf.buyer) || nf.buyer;
             INVOICES_DB.push({
-              id: newId, supplierId: nf.supplier, supplierName: supParentName,
+              id: newId, supplierId: nf.supplier, supplierName: supDisplayName,
               buyerId: buyParentId, buyerEntityId: buyEntityId, buyerBranchId: buyBranchId,
               buyerName: buyDisplayName,
               amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
