@@ -1400,6 +1400,8 @@
                         <button class="pr-pill" data-pill="conversation" >💬 In conversation</button>
                         <button class="pr-pill" data-pill="untouched"    >🎯 Untouched</button>
                         <button class="pr-pill" data-pill="verified"     >✅ CH-verified</button>
+                        <button class="pr-pill" data-pill="grouped"      >🔗 In a group</button>
+                        <button class="pr-pill" data-pill="crossBuyer"   >⚡ Cross-buyer</button>
                         <button class="pr-pill" data-pill="quality"      >⚠️ Quality concerns</button>
                         <button class="pr-pill" data-pill="late"         >🐌 Consistently late</button>
                         <button class="pr-pill" data-pill="converted"    >Show converted</button>
@@ -1421,6 +1423,7 @@
                                 <th style="cursor:pointer;" data-pr-sort="last_seen_at">Last seen</th>
                                 <th style="cursor:pointer;" data-pr-sort="next_action_at">Next action</th>
                                 <th>Verified</th>
+                                <th title="Group / cross-buyer signal">Group</th>
                             </tr>
                         </thead>
                         <tbody id="prospectsBody"></tbody>
@@ -1571,6 +1574,12 @@ var state = {
     uploads: [],         // populated by loadAllData()
     buyers: [],          // all buyers (operator-only)
     prospects: [],       // all prospect_suppliers rows (operator-only)
+    prospectGroups: [],  // all prospect_groups rows (operator-only). Indexed
+                         // globally — one row per (verified) parent legal
+                         // entity. Each row has constituents from one or
+                         // more buyers (see prospect_suppliers.group_id).
+                         // Cross-buyer signal = group with constituents
+                         // from 2+ distinct buyer_id values.
     prospectsFilter: {
         buyer: '',
         currency: '',
@@ -1654,11 +1663,12 @@ function initApp() {
 // popstate listener.
 
 function setupUrlRouting() {
-    // On initial load, capture any ?prospect= request
+    // On initial load, capture any ?prospect= or ?group= request
     var initialUrl = new URLSearchParams(window.location.search);
     var initialProspectId = initialUrl.get('prospect');
+    var initialGroupId = initialUrl.get('group');
 
-    if (initialProspectId) {
+    if (initialProspectId || initialGroupId) {
         // Hide tab bar + all content until routing completes, to avoid the
         // default Upload tab flashing first.
         var tabBar = document.querySelector('.tab-bar');
@@ -1668,7 +1678,21 @@ function setupUrlRouting() {
         var openOnce = function() {
             document.removeEventListener('bi:prospectsLoaded', openOnce);
             if (tabBar) tabBar.style.visibility = '';
-            openProspectPanel(initialProspectId, { fromPopstate: true });
+            if (initialProspectId) {
+                openProspectPanel(initialProspectId, { fromPopstate: true });
+            } else if (initialGroupId) {
+                // Groups load asynchronously after prospects. Defer until
+                // they're available. loadProspectGroups sets a flag
+                // (state._groupsLoaded) when it completes (success or fail).
+                var tryOpen = function() {
+                    if (state._groupsLoaded) {
+                        openGroupPanel(initialGroupId, { fromPopstate: true });
+                    } else {
+                        setTimeout(tryOpen, 100);
+                    }
+                };
+                tryOpen();
+            }
         };
         document.addEventListener('bi:prospectsLoaded', openOnce);
     }
@@ -1677,11 +1701,16 @@ function setupUrlRouting() {
     window.addEventListener('popstate', function() {
         var url = new URLSearchParams(window.location.search);
         var pid = url.get('prospect');
+        var gid = url.get('group');
         if (pid) {
             openProspectPanel(pid, { fromPopstate: true });
+        } else if (gid) {
+            openGroupPanel(gid, { fromPopstate: true });
         } else {
             if (window._activeProspect) {
                 closeProspectDetail({ fromPopstate: true });
+            } else if (window._activeGroup) {
+                closeGroupPanel({ fromPopstate: true });
             }
         }
     });
@@ -2413,6 +2442,9 @@ function fetchProspectsChunk(offset) {
                     renderProspects();
                 }
                 document.dispatchEvent(new CustomEvent('bi:prospectsLoaded'));
+                // Load groups even on prospect-load error — groups are a separate
+                // table, no dependency on prospects.
+                loadProspectGroups();
                 return;
             }
             var batch = res.data || [];
@@ -2427,8 +2459,68 @@ function fetchProspectsChunk(offset) {
                 // Final chunk: signal that prospects are fully loaded so URL
                 // routing can open a deep-linked prospect now.
                 document.dispatchEvent(new CustomEvent('bi:prospectsLoaded'));
+                // Groups load in parallel with prospects (no dependency
+                // either way). Triggered here so it doesn't fight for the
+                // initial render cycle.
+                loadProspectGroups();
             }
         });
+}
+
+// Load all prospect_groups for the operator. One row per (verified) parent
+// legal entity. The full set is small (one per distinct CH number across
+// the customer base), so a single non-paginated query is fine.
+function loadProspectGroups() {
+    sbClient.from('prospect_groups').select('*').then(function(res) {
+        if (res.error) { console.warn('loadProspectGroups:', res.error.message); state.prospectGroups = []; }
+        else { state.prospectGroups = res.data || []; }
+        // Signal completion for deferred openers (URL routing waits on this)
+        state._groupsLoaded = true;
+        // Re-render any open prospect detail workspace — the group section
+        // depends on this data and may have shown "loading…" while we
+        // fetched. Pick up the open prospect from the URL.
+        var openId = new URLSearchParams(window.location.search).get('prospect');
+        if (openId) {
+            var p = (state.prospects || []).find(function(x) { return x.id === openId; });
+            var workspace = document.querySelector('.pd-workspace');
+            if (p && workspace) {
+                // Preserve the card-title header; replace only the dynamic
+                // workspace content beneath it.
+                workspace.innerHTML = '<div class="card-title">Sales workspace</div>' + renderProspectWorkspace(p);
+                wireProspectWorkspaceHandlers(p);
+                wireGroupSectionHandlers(p);
+            }
+        }
+    });
+}
+
+// Find a group by registry_id (the unique key in prospect_groups). Returns
+// null if no group exists yet for that registry. Used to decide whether
+// a verified prospect should join an existing group or seed a new one.
+function findGroupByRegistryId(rid) {
+    if (!rid) return null;
+    return (state.prospectGroups || []).find(function(g) { return g.registry_id === rid; }) || null;
+}
+
+// Return the group object for a given prospect, or null if ungrouped.
+function getGroupForProspect(prospect) {
+    if (!prospect || !prospect.group_id) return null;
+    return (state.prospectGroups || []).find(function(g) { return g.id === prospect.group_id; }) || null;
+}
+
+// Return all prospect_suppliers rows belonging to a group.
+function getConstituentsOfGroup(groupId) {
+    if (!groupId) return [];
+    return (state.prospects || []).filter(function(p) { return p.group_id === groupId; });
+}
+
+// Counts a group's constituents grouped by distinct buyer_id, used to
+// surface the cross-buyer signal (2+ distinct buyers = strong signal).
+function getGroupBuyerCount(groupId) {
+    var rows = getConstituentsOfGroup(groupId);
+    var ids = {};
+    rows.forEach(function(p) { if (p.buyer_id) ids[p.buyer_id] = true; });
+    return Object.keys(ids).length;
 }
 
 function renderUploadsHistory() {
@@ -2828,6 +2920,12 @@ function applyAndRenderProspects(enriched) {
     if (f.pills.conversation) filtered = filtered.filter(function(e) { return ['contacted','interested','negotiating'].indexOf(e.row.status) !== -1; });
     if (f.pills.untouched)    filtered = filtered.filter(function(e) { return e.row.status === 'lead'; });
     if (f.pills.verified)     filtered = filtered.filter(function(e) { return e.row.verified_at; });
+    if (f.pills.grouped)      filtered = filtered.filter(function(e) { return !!e.row.group_id; });
+    if (f.pills.crossBuyer)   filtered = filtered.filter(function(e) {
+        // Cross-buyer = prospect is in a group with constituents from 2+ buyers.
+        if (!e.row.group_id) return false;
+        return getGroupBuyerCount(e.row.group_id) >= 2;
+    });
     if (f.pills.quality)      filtered = filtered.filter(function(e) { return e.stats && e.stats.dilutionRate >= 0.08; });
     if (f.pills.late)         filtered = filtered.filter(function(e) {
         return e.stats && e.stats.avgDaysPastDue != null && e.stats.avgDaysPastDue > 30 && e.stats.paidCount >= 3;
@@ -2867,6 +2965,17 @@ function applyAndRenderProspects(enriched) {
         ((statusCounts.contacted || 0) + (statusCounts.interested || 0) + (statusCounts.negotiating || 0)).toString(),
         'contacted/interested/negotiating');
     statsHtml += statCard('Verified', filtered.filter(function(e) { return e.row.verified_at; }).length.toString(), 'CH-verified');
+    // Cross-buyer stat: count distinct GROUPS (not constituents) that have
+    // 2+ buyers — that's the real signal count. A group with 3 buyers is
+    // ONE signal, not three.
+    var crossBuyerGroupIds = {};
+    filtered.forEach(function(e) {
+        if (!e.row.group_id) return;
+        if (getGroupBuyerCount(e.row.group_id) >= 2) crossBuyerGroupIds[e.row.group_id] = true;
+    });
+    var crossBuyerCount = Object.keys(crossBuyerGroupIds).length;
+    statsHtml += statCard('Cross-buyer signals', crossBuyerCount.toString(),
+        crossBuyerCount === 1 ? 'group spanning 2+ buyers' : 'groups spanning 2+ buyers');
     statsHtml += statCard('Converted (lifetime)',
         (state.prospects || []).filter(function(p) { return p.status === 'converted'; }).length.toString(),
         'across all buyers');
@@ -2918,6 +3027,26 @@ function applyAndRenderProspects(enriched) {
                     '</span>';
             }
             var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(p.id);
+
+            // Group cell: empty if ungrouped; otherwise show a small badge
+            // with constituent count + buyer count. Cross-buyer (buyers ≥ 2)
+            // gets the amber treatment to surface it. Linked-to-FF gets a
+            // green tick on top.
+            var groupCell = '<span style="font-size:10px; color:var(--muted);">—</span>';
+            if (p.group_id) {
+                var g = (state.prospectGroups || []).find(function(x) { return x.id === p.group_id; });
+                if (g) {
+                    var gBuyerCount = getGroupBuyerCount(g.id);
+                    var gIsCross = gBuyerCount >= 2;
+                    var linkedTick = g.converted_supplier_id ? ' <span style="color:#10B981;" title="Linked to FactorFlow supplier ' + escHTML(g.converted_supplier_id) + '">✓</span>' : '';
+                    if (gIsCross) {
+                        groupCell = '<span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#F59E0B20; color:#D97706; font-size:10px; font-weight:700; white-space:nowrap;" title="' + escHTML(g.legal_name) + ' — ' + gBuyerCount + ' buyers">⚡ ' + gBuyerCount + ' buyers</span>' + linkedTick;
+                    } else {
+                        groupCell = '<span style="display:inline-block; padding:2px 6px; border-radius:4px; background:var(--bg); border:1px solid var(--border); color:var(--text-secondary); font-size:10px; white-space:nowrap;" title="' + escHTML(g.legal_name) + '">🔗 grouped</span>' + linkedTick;
+                    }
+                }
+            }
+
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
                 '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' +
@@ -2931,7 +3060,8 @@ function applyAndRenderProspects(enriched) {
                 '<td class="text-right mono">' + (s ? pct(s.dilutionRate) : '—') + '</td>' +
                 '<td>' + escHTML(lastSeen) + '</td>' +
                 '<td>' + nextActionCell + '</td>' +
-                '<td>' + verifiedCell + '</td>';
+                '<td>' + verifiedCell + '</td>' +
+                '<td>' + groupCell + '</td>';
             // Row-wide click → open prospect, BUT respect modifier keys + middle-click
             // so native "open in new tab" / "open in new window" still works.
             tr.addEventListener('click', function(ev) {
@@ -3039,6 +3169,281 @@ function closeProspectDetail(opts) {
     if (!opts.fromPopstate) {
         history.pushState({}, '', window.location.pathname);
     }
+}
+
+// ================================================================
+// GROUP DETAIL VIEW
+// ================================================================
+// Click "Open group view" on a prospect's group section to land here.
+// Shows the aggregated picture of a prospect_groups row:
+//   - Header: legal name, registry, verification, conversion status
+//   - Cross-buyer banner if 2+ buyer constituents
+//   - Aggregate metrics: constituent count, buyer count, combined spend
+//   - Constituent table: one row per prospect_supplier, with drill-back
+//   - Group-level actions: convert (when ready), unlink (when linked)
+// URL-routed via ?group=<id>.
+
+function openGroupPanel(groupId, opts) {
+    opts = opts || {};
+    var group = (state.prospectGroups || []).find(function(g) { return g.id === groupId; });
+    if (!group) { alert('Group not found in state — try refreshing.'); return; }
+
+    // Push URL state (skip if from popstate to avoid history loop)
+    if (!opts.fromPopstate) {
+        var url = window.location.pathname + '?group=' + encodeURIComponent(groupId);
+        history.pushState({ group: groupId }, '', url);
+    }
+
+    // Make sure we're on the Prospects tab (deep-link case)
+    var prospectsTab = document.getElementById('tab-prospects');
+    if (prospectsTab && prospectsTab.classList.contains('hidden')) {
+        var btn = document.querySelector('.tab-btn[data-tab="prospects"]');
+        if (btn) {
+            document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            prospectsTab.classList.remove('hidden');
+            btn.classList.add('active');
+        }
+    }
+
+    window._activeGroup = groupId;
+    document.getElementById('prospectsListView').classList.add('hidden');
+    var detailEl = document.getElementById('prospectsDetailView');
+    detailEl.classList.remove('hidden');
+    renderGroupPanel(group);
+}
+
+function closeGroupPanel(opts) {
+    opts = opts || {};
+    document.getElementById('prospectsDetailView').classList.add('hidden');
+    document.getElementById('prospectsDetailView').innerHTML = '';
+    document.getElementById('prospectsListView').classList.remove('hidden');
+    window._activeGroup = null;
+    renderProspects();
+    if (!opts.fromPopstate) {
+        history.pushState({}, '', window.location.pathname);
+    }
+}
+
+function renderGroupPanel(group) {
+    var detailEl = document.getElementById('prospectsDetailView');
+    var constituents = getConstituentsOfGroup(group.id);
+    var buyerCount = getGroupBuyerCount(group.id);
+    var crossBuyer = buyerCount >= 2;
+    var converted = !!group.converted_supplier_id;
+
+    // Aggregate metrics across constituents — we use the snapshot data
+    // already loaded for the prospects list (via ensureProspectSnapshotsLoaded).
+    // For each constituent, find its supplier block in its buyer's snapshot
+    // and sum: totalSpend, invoiceCount. Currencies might differ across
+    // buyers — most groups will be single-currency in practice but we
+    // accumulate per-currency to be safe.
+    var spendByCcy = {};
+    var invoiceCountTotal = 0;
+    var constituentRowsData = constituents.map(function(p) {
+        var snapData = state._prospectSnapData || {};
+        var snap = snapData[p.buyer_id];
+        var supObj = null;
+        if (snap) {
+            var ccyBlock = snap.stats && snap.stats.perPeriod && snap.stats.perPeriod.all
+                && snap.stats.perPeriod.all.perCurrency && snap.stats.perPeriod.all.perCurrency[p.currency];
+            if (ccyBlock && ccyBlock.suppliers) {
+                supObj = ccyBlock.suppliers.find(function(s) { return s.identifier === p.supplier_identifier; });
+            }
+        }
+        var spend = (supObj && supObj.totalSpend) || 0;
+        var invs = (supObj && supObj.invoiceCount) || 0;
+        spendByCcy[p.currency] = (spendByCcy[p.currency] || 0) + spend;
+        invoiceCountTotal += invs;
+        var buyerObj = (state.buyers || []).find(function(b) { return b.id === p.buyer_id; });
+        return {
+            prospect: p,
+            buyerName: buyerObj ? buyerObj.name : p.buyer_id,
+            stats: supObj,
+            spend: spend,
+            invoiceCount: invs
+        };
+    });
+
+    // Header
+    var verifySuffix = '';
+    if (group.verification_source) {
+        var srcLabel =
+            group.verification_source === 'companies_house' ? 'Companies House' :
+            group.verification_source === 'manual'          ? 'Manual verification' :
+            group.verification_source === 'other'           ? 'Other registry' :
+            group.verification_source;
+        verifySuffix = ' · ' + escHTML(srcLabel) +
+            (group.verification_jurisdiction ? ' (' + escHTML(group.verification_jurisdiction) + ')' : '');
+    }
+    var conversionPill = converted
+        ? '<span style="display:inline-block; padding:3px 10px; border-radius:4px; background:#10B98180; color:#fff; font-size:11px; font-weight:600;">Linked to FactorFlow ' + escHTML(group.converted_supplier_id) + '</span>'
+        : '<span style="display:inline-block; padding:3px 10px; border-radius:4px; background:var(--bg); border:1px solid var(--border); color:var(--text-secondary); font-size:11px;">Not yet linked to FactorFlow</span>';
+
+    var headerHtml =
+        '<div class="pd-header" style="display:flex; align-items:flex-start; justify-content:space-between; padding:14px 0 18px 0; border-bottom:1px solid var(--border); margin-bottom:18px;">' +
+            '<div>' +
+                '<button class="btn btn-xs" id="pdGroupBackBtn" style="background:var(--card); border:1px solid var(--border); margin-bottom:8px;">\u2190 Back to prospects</button>' +
+                '<div style="font-size:11px; color:var(--text-secondary); font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Prospect group</div>' +
+                '<div style="font-size:22px; font-weight:700; color:var(--text);">' + escHTML(group.legal_name) + '</div>' +
+                '<div style="font-size:12px; color:var(--text-secondary); margin-top:3px;">' +
+                    '<span class="mono">' + escHTML(group.registry_id) + '</span>' +
+                    verifySuffix +
+                '</div>' +
+            '</div>' +
+            '<div style="text-align:right;">' +
+                conversionPill +
+            '</div>' +
+        '</div>';
+
+    // Cross-buyer banner
+    var crossBannerHtml = '';
+    if (crossBuyer) {
+        crossBannerHtml =
+            '<div style="padding:12px 16px; background:#F59E0B15; border:1px solid #F59E0B40; border-radius:8px; margin-bottom:18px; display:flex; align-items:center; gap:12px;">' +
+                '<div style="font-size:22px;">\u26A1</div>' +
+                '<div>' +
+                    '<div style="font-size:13px; font-weight:700; color:#D97706;">Cross-buyer signal</div>' +
+                    '<div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">This supplier appears as a prospect for ' + buyerCount + ' different buyers \u2014 stronger commercial signal than a single-buyer prospect.</div>' +
+                '</div>' +
+            '</div>';
+    }
+
+    // Aggregate metrics cards
+    var spendLines = Object.keys(spendByCcy).map(function(ccy) {
+        return '<div style="font-size:16px; font-weight:700; font-family:var(--mono); color:var(--text);">' + moneyShort(spendByCcy[ccy], ccy) + '</div>';
+    }).join('');
+    if (!spendLines) spendLines = '<div style="font-size:16px; color:var(--muted);">—</div>';
+
+    var statsHtml =
+        '<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:18px;">' +
+            '<div class="pr-stat-card"><div class="label">Constituents</div><div class="value">' + constituents.length + '</div><div class="sub">supplier_identifier rows</div></div>' +
+            '<div class="pr-stat-card"><div class="label">Buyers</div><div class="value">' + buyerCount + '</div><div class="sub">' + (crossBuyer ? 'cross-buyer' : 'single buyer') + '</div></div>' +
+            '<div class="pr-stat-card"><div class="label">Combined invoices</div><div class="value">' + invoiceCountTotal.toLocaleString() + '</div><div class="sub">summed across constituents</div></div>' +
+            '<div class="pr-stat-card"><div class="label">Combined spend</div><div class="value" style="line-height:1.3;">' + spendLines + '</div><div class="sub">' + (Object.keys(spendByCcy).length > 1 ? 'multi-currency' : '') + '</div></div>' +
+        '</div>';
+
+    // Constituent table
+    var rowsHtml = constituentRowsData.map(function(r) {
+        var p = r.prospect;
+        var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(p.id);
+        var displayName = p.supplier_name || p.supplier_identifier;
+        var subtitle = (p.supplier_name && p.supplier_name !== p.supplier_identifier)
+            ? '<div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(p.supplier_identifier) + '</div>'
+            : '';
+        // Branch decision badge
+        var decLabel = p.branch_decision || 'unassigned';
+        var decBadge;
+        if (decLabel === 'parent_main') {
+            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#0EA5E920; color:#0EA5E9; font-size:9px; font-weight:700; text-transform:uppercase;">parent main</span>';
+        } else if (decLabel === 'branch') {
+            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#8B5CF620; color:#8B5CF6; font-size:9px; font-weight:700; text-transform:uppercase;">branch' + (p.converted_branch_id ? ' \u2022 ' + escHTML(p.converted_branch_id) : '') + '</span>';
+        } else if (decLabel === 'skip') {
+            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:var(--bg); border:1px solid var(--border); color:var(--text-secondary); font-size:9px; font-weight:700; text-transform:uppercase;">skipped</span>';
+        } else {
+            decBadge = '<span style="display:inline-block; padding:2px 6px; border-radius:3px; background:#F59E0B20; color:#D97706; font-size:9px; font-weight:700; text-transform:uppercase;">unassigned</span>';
+        }
+        return '<tr style="cursor:pointer;" data-pr-id="' + escHTML(p.id) + '">' +
+            '<td>' + escHTML(r.buyerName) + '</td>' +
+            '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' + subtitle + '</a></td>' +
+            '<td>' + escHTML(p.currency || '—') + '</td>' +
+            '<td><span class="pr-status-pill pr-status-' + p.status + '">' + p.status + '</span></td>' +
+            '<td class="text-right mono">' + (r.spend ? moneyShort(r.spend, p.currency) : '—') + '</td>' +
+            '<td class="text-right mono">' + (r.invoiceCount ? r.invoiceCount.toLocaleString() : '—') + '</td>' +
+            '<td>' + decBadge + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var constituentTableHtml =
+        '<div class="card" style="margin-bottom:18px;">' +
+            '<div class="card-title">Constituents <span style="font-size:11px; color:var(--text-secondary); font-weight:400; margin-left:6px;">click a row to open that prospect</span></div>' +
+            '<div class="table-wrap">' +
+                '<table class="report-table">' +
+                    '<thead><tr>' +
+                        '<th>Buyer</th>' +
+                        '<th>Supplier (as seen)</th>' +
+                        '<th>Currency</th>' +
+                        '<th>Status</th>' +
+                        '<th class="text-right">Spend</th>' +
+                        '<th class="text-right">Invoices</th>' +
+                        '<th>Branch decision</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + (rowsHtml || '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-secondary);">No constituents.</td></tr>') + '</tbody>' +
+                '</table>' +
+            '</div>' +
+        '</div>';
+
+    // Conversion / management panel
+    var managementHtml;
+    if (converted) {
+        managementHtml =
+            '<div class="card">' +
+                '<div class="card-title">Conversion</div>' +
+                '<div style="font-size:13px; color:var(--text); margin-bottom:8px;">' +
+                    'This group is linked to FactorFlow supplier <strong class="mono">' + escHTML(group.converted_supplier_id) + '</strong>.' +
+                '</div>' +
+                '<div style="font-size:11px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">' +
+                    'Per-constituent branch decisions appear in the table above. Once each is set to ' +
+                    '<strong>parent_main</strong>, <strong>branch</strong>, or <strong>skip</strong>, the CSV export will route invoices correctly.' +
+                '</div>' +
+                '<div style="display:flex; gap:8px;">' +
+                    '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); color:var(--text); border:1px solid var(--border); text-decoration:none;">Open FactorFlow \u2197</a>' +
+                    '<button class="btn btn-sm" id="pdGroupUnlinkBtn" style="background:var(--card); border:1px solid #DC262630; color:#EF4444;">Unlink from FactorFlow</button>' +
+                '</div>' +
+            '</div>';
+    } else {
+        managementHtml =
+            '<div class="card">' +
+                '<div class="card-title">Conversion</div>' +
+                '<div style="font-size:13px; color:var(--text); margin-bottom:8px;">' +
+                    'This group is not yet linked to a FactorFlow supplier.' +
+                '</div>' +
+                '<div style="font-size:11px; color:var(--text-secondary); line-height:1.5; margin-bottom:14px;">' +
+                    'Conversion is initiated from any constituent\'s Convert section (in the prospect detail view). ' +
+                    'Once linked there, the group inherits the FactorFlow ID and per-constituent branch decisions become available.' +
+                '</div>' +
+                '<div style="font-size:11px; color:var(--text-secondary); font-style:italic;">' +
+                    'Open any constituent in the table above to initiate conversion.' +
+                '</div>' +
+            '</div>';
+    }
+
+    detailEl.innerHTML = headerHtml + crossBannerHtml + statsHtml + constituentTableHtml + managementHtml;
+
+    // Wire handlers
+    document.getElementById('pdGroupBackBtn').addEventListener('click', function() { closeGroupPanel(); });
+
+    // Row clicks → drill into the prospect detail
+    detailEl.querySelectorAll('tr[data-pr-id]').forEach(function(tr) {
+        tr.addEventListener('click', function(ev) {
+            if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button === 1) return;
+            // Anchor inside row handles its own click
+            if (ev.target && ev.target.closest && ev.target.closest('a')) return;
+            ev.preventDefault();
+            var pid = tr.getAttribute('data-pr-id');
+            // Close the group view first (cleans URL) then open the prospect
+            closeGroupPanel({ fromPopstate: true });
+            openProspectPanel(pid);
+        });
+    });
+
+    var unlinkBtn = document.getElementById('pdGroupUnlinkBtn');
+    if (unlinkBtn) unlinkBtn.addEventListener('click', function() {
+        if (!confirm('Unlink this group from FactorFlow?\n\nThis clears converted_supplier_id on the group and reverts member prospects to "not converted". The FactorFlow supplier itself is NOT deleted. Use this if the wrong supplier was linked by mistake.')) return;
+        unlinkBtn.disabled = true; unlinkBtn.textContent = 'Unlinking\u2026';
+        sbClient.from('prospect_groups')
+            .update({ converted_supplier_id: null, converted_at: null })
+            .eq('id', group.id)
+            .then(function(res) {
+                if (res.error) { alert('Unlink failed: ' + res.error.message); unlinkBtn.disabled = false; unlinkBtn.textContent = 'Unlink from FactorFlow'; return; }
+                group.converted_supplier_id = null;
+                group.converted_at = null;
+                var sg = (state.prospectGroups || []).find(function(g) { return g.id === group.id; });
+                if (sg) { sg.converted_supplier_id = null; sg.converted_at = null; }
+                // Re-render the group panel to reflect the new state
+                renderGroupPanel(group);
+            });
+    });
 }
 
 function renderProspectDetail(prospect) {
@@ -3190,6 +3595,7 @@ function renderProspectDetail(prospect) {
     // Wire handlers
     document.getElementById('pdBackBtn').addEventListener('click', closeProspectDetail);
     wireProspectWorkspaceHandlers(prospect);
+    wireGroupSectionHandlers(prospect);
     wireSupSearchHandlers(ccy);
 
     // Draw charts after DOM ready (the canvases inside renderSupVolume/Payment
@@ -3387,7 +3793,101 @@ function renderProspectWorkspace(prospect) {
             convertHtml +
         '</div>';
 
-    return statusFormHtml + chSection + followupSection + timelineSection + convertSection;
+    // Group section — sits between Verification and Follow-up.
+    // Renders one of three states (see renderGroupSectionHtml).
+    var groupSection =
+        '<div class="card-section">' +
+            '<div class="pd-section-title">Group</div>' +
+            renderGroupSectionHtml(prospect) +
+        '</div>';
+
+    return statusFormHtml + chSection + groupSection + followupSection + timelineSection + convertSection;
+}
+
+// Render the Group section HTML. Three states:
+//   1. Prospect not verified yet           → instruction to verify first
+//   2. Prospect verified but no group_id   → "Create group" OR (if a
+//                                              group already exists for
+//                                              this registry_id globally)
+//                                              "Join existing group"
+//   3. Prospect has group_id               → show the group with
+//                                              constituent summary +
+//                                              cross-buyer badge + open
+//                                              button
+function renderGroupSectionHtml(prospect) {
+    if (!prospect.verified_at || !prospect.registry_id) {
+        return '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary);">' +
+            'Verify this prospect first \u2014 a group is identified by registry number.' +
+        '</div>';
+    }
+
+    // Verified. Are we in a group?
+    var group = getGroupForProspect(prospect);
+
+    if (group) {
+        // State 3: rendered group summary
+        var constituents = getConstituentsOfGroup(group.id);
+        var buyerCount = getGroupBuyerCount(group.id);
+        var crossBuyer = buyerCount >= 2;
+        // Distinct buyer names for the summary line
+        var buyerNames = {};
+        constituents.forEach(function(c) {
+            var b = (state.buyers || []).find(function(b) { return b.id === c.buyer_id; });
+            if (b) buyerNames[b.name] = true;
+        });
+        var buyerNamesStr = Object.keys(buyerNames).sort().join(', ');
+        var conversionState = group.converted_supplier_id
+            ? '<span style="color:#10B981; font-weight:600;">Linked to FactorFlow supplier <span class="mono">' + escHTML(group.converted_supplier_id) + '</span></span>'
+            : '<span style="color:var(--text-secondary);">Not yet linked to FactorFlow</span>';
+
+        return (crossBuyer
+                ? '<div style="padding:8px 12px; background:#F59E0B15; border:1px solid #F59E0B40; border-radius:6px; font-size:11px; color:#D97706; font-weight:600; margin-bottom:8px;">' +
+                    '\u26A1 Cross-buyer signal \u2014 this supplier is a prospect for ' + buyerCount + ' buyers' +
+                  '</div>'
+                : '') +
+            '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px;">' +
+                '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:4px;">Group</div>' +
+                '<strong>' + escHTML(group.legal_name) + '</strong>' +
+                ' \u00B7 <span class="mono">' + escHTML(group.registry_id) + '</span>' +
+                '<div style="font-size:11px; color:var(--text-secondary); margin-top:6px; line-height:1.5;">' +
+                    constituents.length + ' constituent' + (constituents.length === 1 ? '' : 's') +
+                    ' across ' + buyerCount + ' buyer' + (buyerCount === 1 ? '' : 's') +
+                    (buyerNamesStr ? ' (' + escHTML(buyerNamesStr) + ')' : '') +
+                '</div>' +
+                '<div style="font-size:11px; margin-top:6px;">' + conversionState + '</div>' +
+                '<div style="margin-top:10px; display:flex; gap:6px;">' +
+                    '<button class="btn btn-xs" id="pdGroupOpenBtn" style="background:var(--card); border:1px solid var(--border);">Open group view</button>' +
+                    '<button class="btn btn-xs" id="pdGroupLeaveBtn" style="background:var(--card); border:1px solid #DC262630; color:#EF4444;">Remove from group</button>' +
+                '</div>' +
+            '</div>';
+    }
+
+    // State 2: verified, no group. Is there an existing group globally for this registry?
+    var existing = findGroupByRegistryId(prospect.registry_id);
+    if (existing) {
+        var existingConstituents = getConstituentsOfGroup(existing.id);
+        var existingBuyerCount = getGroupBuyerCount(existing.id);
+        return '<div style="padding:10px 12px; background:#0EA5E910; border:1px solid #0EA5E940; border-radius:6px; font-size:12px;">' +
+                '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#0EA5E9; margin-bottom:4px;">Existing group found</div>' +
+                '<strong>' + escHTML(existing.legal_name) + '</strong>' +
+                ' \u00B7 <span class="mono">' + escHTML(existing.registry_id) + '</span>' +
+                '<div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">' +
+                    existingConstituents.length + ' existing constituent' + (existingConstituents.length === 1 ? '' : 's') +
+                    ' across ' + existingBuyerCount + ' buyer' + (existingBuyerCount === 1 ? '' : 's') +
+                '</div>' +
+                '<button class="btn btn-sm btn-primary" id="pdGroupJoinBtn" style="margin-top:10px; width:100%;">Join this group</button>' +
+            '</div>';
+    }
+
+    // No existing group: offer to create one
+    return '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px;">' +
+            '<div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.5;">' +
+                'Create a group to track this supplier across buyers. The group is keyed by registry number ' +
+                '(<span class="mono">' + escHTML(prospect.registry_id) + '</span>) and survives even if this prospect row is later deleted. ' +
+                'Other buyers\' prospects with the same registry will auto-suggest joining.' +
+            '</div>' +
+            '<button class="btn btn-sm btn-primary" id="pdGroupCreateBtn" style="width:100%;">Create group</button>' +
+        '</div>';
 }
 
 // ── Wire workspace handlers ─────────────────────────────────────────────
@@ -3729,6 +4229,122 @@ function saveVerification(prospect, fields) {
             created_by: window.__currentUser ? window.__currentUser.id : null
         }).then(function() { renderProspectDetail(prospect); });
     });
+}
+
+// Group section handlers — only one of (create / join / open / leave) is
+// present at any time depending on the prospect's group state.
+function wireGroupSectionHandlers(prospect) {
+    var createBtn = document.getElementById('pdGroupCreateBtn');
+    if (createBtn) createBtn.addEventListener('click', function() {
+        if (!prospect.registry_id || !prospect.verified_at) {
+            alert('Prospect must be verified before creating a group.');
+            return;
+        }
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating\u2026';
+        var groupPayload = {
+            legal_name:                prospect.legal_name || prospect.supplier_name || prospect.supplier_identifier,
+            registry_id:               prospect.registry_id,
+            verification_source:       prospect.verification_source || null,
+            verification_jurisdiction: prospect.verification_jurisdiction || null,
+            verification_data:         null,
+            created_by:                window.__currentUser ? window.__currentUser.id : null
+        };
+        sbClient.from('prospect_groups').insert(groupPayload).select().single().then(function(res) {
+            if (res.error) {
+                // Likely cause: race with another operator creating the same
+                // group (UNIQUE on registry_id). Re-fetch groups to surface
+                // the existing row, then offer "Join" instead.
+                console.warn('createProspectGroup:', res.error.message);
+                loadProspectGroups();
+                alert('Could not create group: ' + res.error.message + '\n\nThe registry may already exist as a group \u2014 try again.');
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create group';
+                return;
+            }
+            var newGroup = res.data;
+            state.prospectGroups = (state.prospectGroups || []).concat([newGroup]);
+            // Link this prospect to the new group
+            joinProspectToGroup(prospect, newGroup.id, 'Created group');
+        });
+    });
+
+    var joinBtn = document.getElementById('pdGroupJoinBtn');
+    if (joinBtn) joinBtn.addEventListener('click', function() {
+        var existing = findGroupByRegistryId(prospect.registry_id);
+        if (!existing) {
+            alert('Group not found in local state. Refreshing\u2026');
+            loadProspectGroups();
+            return;
+        }
+        joinBtn.disabled = true;
+        joinBtn.textContent = 'Joining\u2026';
+        joinProspectToGroup(prospect, existing.id, 'Joined existing group');
+    });
+
+    var leaveBtn = document.getElementById('pdGroupLeaveBtn');
+    if (leaveBtn) leaveBtn.addEventListener('click', function() {
+        if (!confirm('Remove this prospect from the group?\n\nThe group itself stays. This prospect just becomes ungrouped \u2014 useful if it was added by mistake.')) return;
+        leaveBtn.disabled = true;
+        leaveBtn.textContent = 'Removing\u2026';
+        sbClient.from('prospect_suppliers')
+            .update({ group_id: null })
+            .eq('id', prospect.id)
+            .then(function(res) {
+                if (res.error) { alert('Remove failed: ' + res.error.message); leaveBtn.disabled = false; leaveBtn.textContent = 'Remove from group'; return; }
+                prospect.group_id = null;
+                var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+                if (sp) sp.group_id = null;
+                // Log a note for audit
+                sbClient.from('prospect_notes').insert({
+                    prospect_supplier_id: prospect.id,
+                    note_type: 'system',
+                    content: 'Removed from group',
+                    created_by: window.__currentUser ? window.__currentUser.id : null
+                }).then(function() {
+                    renderProspectDetail(prospect);
+                });
+            });
+    });
+
+    var openBtn = document.getElementById('pdGroupOpenBtn');
+    if (openBtn) openBtn.addEventListener('click', function() {
+        var g = getGroupForProspect(prospect);
+        if (!g) { alert('Group not found.'); return; }
+        // Close the prospect detail first so the URL transitions cleanly
+        // from ?prospect=X to ?group=Y without leaving stale state.
+        closeProspectDetail({ fromPopstate: true });
+        openGroupPanel(g.id);
+    });
+}
+
+// Shared helper: attach a prospect to a group. Writes group_id on the
+// prospect row, logs a note, and re-renders. Called by both Create and
+// Join paths.
+function joinProspectToGroup(prospect, groupId, noteLabel) {
+    sbClient.from('prospect_suppliers')
+        .update({ group_id: groupId })
+        .eq('id', prospect.id)
+        .then(function(res) {
+            if (res.error) {
+                alert('Failed to link prospect to group: ' + res.error.message);
+                renderProspectDetail(prospect);
+                return;
+            }
+            prospect.group_id = groupId;
+            var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
+            if (sp) sp.group_id = groupId;
+            var g = (state.prospectGroups || []).find(function(g) { return g.id === groupId; });
+            var noteText = noteLabel + (g ? ': ' + g.legal_name + ' (' + g.registry_id + ')' : '');
+            sbClient.from('prospect_notes').insert({
+                prospect_supplier_id: prospect.id,
+                note_type: 'system',
+                content: noteText,
+                created_by: window.__currentUser ? window.__currentUser.id : null
+            }).then(function() {
+                renderProspectDetail(prospect);
+            });
+        });
 }
 
 function reloadProspectTimeline(prospectId) {
