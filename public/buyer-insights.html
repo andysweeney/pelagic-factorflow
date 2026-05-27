@@ -3982,8 +3982,13 @@ function renderGroupPanel(group) {
                     'Conversion is initiated from any constituent\'s Convert section (in the prospect detail view). ' +
                     'Once linked there, the group inherits the FactorFlow ID and per-constituent branch decisions become available.' +
                 '</div>' +
-                '<div style="font-size:11px; color:var(--text-secondary); font-style:italic;">' +
-                    'Open any constituent in the table above to initiate conversion.' +
+                '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">' +
+                    '<button class="btn btn-sm" id="pdGroupExportCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border);">\u2913 Download group CSV (pre-conversion)</button>' +
+                    '<span id="pdGroupCsvStatus" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-left:6px;"></span>' +
+                '</div>' +
+                '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; line-height:1.4;">' +
+                    'Pre-conversion download \u2014 the <span class="mono">supplier_id</span> column will be blank. ' +
+                    'The main portal will reject the import until the group is linked and re-downloaded.' +
                 '</div>' +
             '</div>';
     }
@@ -4579,8 +4584,25 @@ function renderProspectWorkspace(prospect) {
 
     // Convert section
     var convertReady = prospect.verified_at && prospect.status !== 'converted';
+    var isConverted = (prospect.status === 'converted');
+
+    // Download CSV is ALWAYS available — sales may want the data pre-conversion
+    // (sharing with the prospect, internal review, sanity checking). MP's CSV
+    // validator catches malformed rows on import; BI doesn't need to gate.
+    // A small banner labels the pre-conversion case so the operator knows
+    // what they're getting.
+    var downloadCsvBlock =
+        '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; margin-bottom:6px;">\u2913 Download invoices CSV (for main portal import)</button>' +
+        (isConverted
+            ? ''
+            : '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:-2px; margin-bottom:6px; line-height:1.4;">' +
+                  'Pre-conversion download \u2014 the <span class="mono">supplier_id</span> column will be blank. ' +
+                  'The main portal will reject the import until this prospect is converted and re-downloaded.' +
+              '</div>') +
+        '<div id="pdCsvStatus" style="font-size:10px; color:var(--text-secondary); margin-top:6px;"></div>';
+
     var convertHtml;
-    if (prospect.status === 'converted') {
+    if (isConverted) {
         convertHtml =
             '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px; margin-bottom:8px;">' +
                 '<strong>Converted ' + formatDateTime(prospect.converted_at) + '</strong>' +
@@ -4588,27 +4610,28 @@ function renderProspectWorkspace(prospect) {
                     ? '<div style="font-size:10px; margin-top:3px;">FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span></div>'
                     : '') +
             '</div>' +
-            '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; margin-bottom:6px;">⤓ Download invoices CSV (for main portal import)</button>' +
-            '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; display:block; text-align:center; text-decoration:none;">Open in main portal ↗</a>' +
-            '<div id="pdCsvStatus" style="font-size:10px; color:var(--text-secondary); margin-top:6px;"></div>';
+            downloadCsvBlock +
+            '<a href="' + FACTORFLOW_URL + '" target="_blank" class="btn btn-sm" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; display:block; text-align:center; text-decoration:none;">Open in main portal \u2197</a>';
     } else if (!convertReady) {
         convertHtml =
-            '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary);">' +
+            '<div style="padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text-secondary); margin-bottom:8px;">' +
                 'Verify the supplier first to enable conversion.' +
-            '</div>';
+            '</div>' +
+            downloadCsvBlock;
     } else {
         convertHtml =
             '<button class="btn btn-primary" id="pdConvertBtn" style="width:100%; margin-bottom:6px;">' +
-                '<span style="opacity:0.6;">1.</span>&nbsp; Open FactorFlow &amp; Convert →' +
+                '<span style="opacity:0.6;">1.</span>&nbsp; Open FactorFlow &amp; Convert \u2192' +
             '</button>' +
-            '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%;">' +
+            '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%; margin-bottom:8px;">' +
                 '<span style="opacity:0.7;">2.</span>&nbsp; Confirm Conversion Complete' +
             '</button>' +
-            '<div style="font-size:10px; color:var(--text-secondary); margin-top:8px; line-height:1.4;">' +
+            '<div style="font-size:10px; color:var(--text-secondary); margin-top:8px; margin-bottom:10px; line-height:1.4;">' +
                 'Step 1 opens the main portal pre-filled with the supplier\'s registry data. ' +
                 'Step 2 links the prospect once you\'ve finished creating the entity there. ' +
                 'Invoice import happens separately via the main portal\'s CSV import.' +
-            '</div>';
+            '</div>' +
+            downloadCsvBlock;
     }
 
     var convertSection =
@@ -8361,9 +8384,17 @@ function downloadGroupInvoicesCSV(group) {
     if (!group) return;
     var constituents = getConstituentsOfGroup(group.id);
     if (constituents.length === 0) { alert('This group has no constituents to export.'); return; }
-    if (!group.converted_supplier_id) {
-        alert('This group is not yet linked to a FactorFlow supplier. Link from any constituent\u2019s Convert section before exporting \u2014 otherwise the supplier_id column would be blank and MP cannot ingest the rows.');
-        return;
+    // Pre-conversion downloads are allowed: sales may want the data before
+    // committing to convert. The CSV will have a blank supplier_id column
+    // (the UI labels this clearly under the button). MP\u2019s CSV validator
+    // rejects rows with blank supplier_id at import time, so there\u2019s no
+    // silent-data path \u2014 the file is sharable / inspectable, not importable.
+    var isPreConversion = !group.converted_supplier_id;
+    if (isPreConversion) {
+        if (!confirm('This group is not yet linked to FactorFlow.\n\n' +
+                'You can still download the CSV, but the supplier_id column will be blank \u2014 ' +
+                'the main portal will reject the import until you link this group and re-download.\n\n' +
+                'Proceed with the pre-conversion download?')) return;
     }
 
     var statusEl = document.getElementById('pdGroupCsvStatus');
