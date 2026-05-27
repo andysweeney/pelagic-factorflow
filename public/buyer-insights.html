@@ -444,6 +444,35 @@
         }
         .pr-row-link:hover { color: var(--accent); }
 
+        /* Previous Appearance badge + tooltip popover. Tooltip is hidden by
+           default; shows on hover/focus of the badge. Positioned above-and-
+           right of the badge so it doesn't clip in the verified column. */
+        .bi-prev-badge .bi-prev-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 0;
+            min-width: 240px;
+            max-width: 360px;
+            background: var(--card);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+            z-index: 1000;
+            pointer-events: none;
+            transition: opacity 120ms ease;
+            white-space: normal;
+            text-align: left;
+        }
+        .bi-prev-badge:hover .bi-prev-tooltip,
+        .bi-prev-badge:focus .bi-prev-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
         .pd-due-now { color: var(--danger); font-weight: 600; }
 
         .outreach-switch {
@@ -1367,9 +1396,18 @@
     <div id="tab-prospects" class="tab-content hidden operator-only">
         <!-- LIST VIEW -->
         <div id="prospectsListView">
-            <div class="card">
-                <div class="card-title">Active Prospects</div>
-                <div class="card-subtitle">Suppliers from outreach-permitted buyers. Click a row to verify, take notes, and convert.</div>
+            <!-- Sub-tab strip. One sub-tab per visible upload (operator's
+                 view selection in the Uploads tab) plus a Groups tab.
+                 Empty state shows when nothing is toggled visible. -->
+            <div id="prospectsSubtabStrip" style="display:flex; gap:4px; flex-wrap:wrap; align-items:center; margin-bottom:14px; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);"></div>
+            <div id="prospectsNoUploadsEmpty" class="empty-state hidden" style="margin-bottom:14px;">
+                <div class="empty-state-title">No uploads selected</div>
+                <div class="empty-state-sub">Go to the Uploads tab and tick the "View" checkbox on one or more uploads to see their prospects here.</div>
+            </div>
+
+            <div class="card" id="prospectsListCard">
+                <div class="card-title" id="prospectsListTitle">Active Prospects</div>
+                <div class="card-subtitle" id="prospectsListSubtitle">Suppliers from outreach-permitted buyers. Click a row to verify, take notes, and convert.</div>
 
                 <div id="prospectsStats" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px;"></div>
 
@@ -1471,6 +1509,7 @@
                 <table>
                     <thead>
                         <tr>
+                            <th class="text-center" title="Toggle this upload's prospects into the Prospects tab. Per-operator, persists in this browser.">View</th>
                             <th>Buyer</th>
                             <th class="text-right">Invoices</th>
                             <th class="text-right">Credit Notes</th>
@@ -1757,6 +1796,67 @@ function buyerName(u) {
     if (!u) return '';
     return (u.buyer && u.buyer.name) ? u.buyer.name : '';
 }
+
+// ================================================================
+// UPLOAD VISIBILITY (per-operator, localStorage-backed)
+// ================================================================
+// The Prospects tab is now scoped to a set of toggled-on uploads. The
+// operator picks which uploads are "in view" via checkboxes in the
+// Uploads tab. Selection is operator-scoped (keyed by user id) so
+// shared workstations don't bleed selections between users. Default
+// is OFF — new uploads do NOT auto-toggle on, the operator explicitly
+// opts in to see them.
+//
+// Storage shape: { "upload_id_1": true, "upload_id_2": true, ... }.
+// Absence of a key is equivalent to "not visible". Defensive: we also
+// prune keys whose upload no longer exists, otherwise deleted uploads
+// leave orphan entries.
+function _uploadVisStorageKey() {
+    var uid = (window.__currentUser && window.__currentUser.id) || 'anon';
+    return 'bi.uploadVis.' + uid;
+}
+function getUploadVisibility() {
+    try {
+        var raw = localStorage.getItem(_uploadVisStorageKey());
+        return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+}
+function setUploadVisible(uploadId, visible) {
+    var map = getUploadVisibility();
+    if (visible) map[uploadId] = true;
+    else delete map[uploadId];
+    try { localStorage.setItem(_uploadVisStorageKey(), JSON.stringify(map)); } catch (e) {}
+}
+function isUploadVisible(uploadId) {
+    return !!getUploadVisibility()[uploadId];
+}
+// Prune visibility entries for uploads that no longer exist. Called on
+// renderProspects so orphan entries don't accumulate after deletions.
+function pruneUploadVisibility() {
+    var map = getUploadVisibility();
+    var existing = {};
+    (state.uploads || []).forEach(function(u) { existing[u.id] = true; });
+    var changed = false;
+    Object.keys(map).forEach(function(k) {
+        if (!existing[k]) { delete map[k]; changed = true; }
+    });
+    if (changed) {
+        try { localStorage.setItem(_uploadVisStorageKey(), JSON.stringify(map)); } catch (e) {}
+    }
+}
+function getVisibleUploads() {
+    // Return state.uploads filtered to those whose id is in the visibility
+    // map, sorted by created_at descending (most recent first).
+    var map = getUploadVisibility();
+    return (state.uploads || [])
+        .filter(function(u) { return !!map[u.id]; })
+        .sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+}
+
+// Active sub-tab state — which upload's prospects are currently
+// visible inside the Prospects tab. Special value '__groups__' for
+// the Groups sub-tab.
+state.activeUploadSubtab = null;
 
 // ================================================================
 // BUYER UI MODE (Phase 5c)
@@ -2536,8 +2636,12 @@ function renderUploadsHistory() {
         var tr = document.createElement('tr');
         var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
         var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
+        var isVisible = isUploadVisible(u.id);
 
         tr.innerHTML =
+            '<td class="text-center" style="white-space:nowrap;">' +
+                '<input type="checkbox" data-vis="' + escHTML(u.id) + '"' + (isVisible ? ' checked' : '') + ' style="width:18px; height:18px; cursor:pointer;" title="' + (isVisible ? 'Visible in Prospects' : 'Hidden from Prospects') + '">' +
+            '</td>' +
             '<td><strong>' + escHTML(buyerName(u) || '(no buyer)') + '</strong>' +
                 (u.buyer_label ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">' + escHTML(u.buyer_label) + '</div>' : '') +
                 (u.notes ? '<div style="font-size:10px; color:var(--muted); margin-top:2px;">' + escHTML(u.notes) + '</div>' : '') +
@@ -2553,6 +2657,16 @@ function renderUploadsHistory() {
                 '<button class="btn btn-xs" style="background:var(--danger); color:#fff;" data-del="' + u.id + '">Delete</button>' +
             '</td>';
 
+        tr.querySelector('[data-vis]').addEventListener('change', function(e) {
+            setUploadVisible(u.id, e.target.checked);
+            e.target.title = e.target.checked ? 'Visible in Prospects' : 'Hidden from Prospects';
+            // If the Prospects tab is currently rendered, re-render so the
+            // sub-tab strip updates immediately. (Cheap; renderProspects is
+            // idempotent.)
+            if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
+                renderProspects();
+            }
+        });
         tr.querySelector('[data-open]').addEventListener('click', function() {
             // Load the upload, then navigate to Reports (the default landing
             // view). loadUpload populates __upload, refreshes the strip,
@@ -2700,7 +2814,39 @@ function toggleBuyerOutreach(buyerId, newValue, checkbox) {
 function renderProspects() {
     if (!state.prospects) state.prospects = [];
 
-    // Populate the buyer dropdown (permitted buyers only — only they have prospects)
+    // Prune orphan visibility entries (uploads that have since been deleted)
+    // before reading the set.
+    pruneUploadVisibility();
+    var visibleUploads = getVisibleUploads();
+
+    // Render the sub-tab strip first. It always renders, regardless of state.
+    renderProspectsSubtabStrip(visibleUploads);
+
+    // Empty state: nothing toggled on. Hide the list card, show the prompt.
+    var noUploadsEmpty = document.getElementById('prospectsNoUploadsEmpty');
+    var listCard = document.getElementById('prospectsListCard');
+    if (visibleUploads.length === 0) {
+        if (noUploadsEmpty) noUploadsEmpty.classList.remove('hidden');
+        if (listCard) listCard.style.display = 'none';
+        return;
+    }
+    if (noUploadsEmpty) noUploadsEmpty.classList.add('hidden');
+    if (listCard) listCard.style.display = '';
+
+    // Determine the active sub-tab. Default to the most-recent visible upload
+    // if nothing valid is selected.
+    var activeKey = state.activeUploadSubtab;
+    var activeIsGroups = (activeKey === '__groups__');
+    if (!activeIsGroups) {
+        var found = visibleUploads.find(function(u) { return u.id === activeKey; });
+        if (!found) {
+            activeKey = visibleUploads[0].id;
+            state.activeUploadSubtab = activeKey;
+        }
+    }
+
+    // Populate the buyer dropdown (permitted buyers only — only they have
+    // prospects). Same shape as before — unaffected by the sub-tab choice.
     var buyerSel = document.getElementById('prFilterBuyer');
     if (buyerSel && state.buyers) {
         var current = buyerSel.value;
@@ -2714,67 +2860,406 @@ function renderProspects() {
 
     wireProspectsFilters();
 
-    // Sync pill visual state from state (so programmatic state changes,
-    // e.g. auto-enabling 'converted' after a conversion, reflect in the UI).
+    // Sync pill / select / search inputs (unchanged from prior behaviour)
     var f = state.prospectsFilter;
     document.querySelectorAll('.pr-pill').forEach(function(pill) {
         var key = pill.getAttribute('data-pill');
         if (f.pills && f.pills[key]) pill.classList.add('active');
         else pill.classList.remove('active');
     });
-    // Sync select / search inputs too, in case state was set programmatically
     var bSel = document.getElementById('prFilterBuyer');    if (bSel) bSel.value = f.buyer || '';
     var cSel = document.getElementById('prFilterCurrency'); if (cSel) cSel.value = f.currency || '';
     var sSel = document.getElementById('prFilterStatus');   if (sSel) sSel.value = f.status || '';
     var srch = document.getElementById('prFilterSearch');   if (srch && srch.value !== (f.search || '')) srch.value = f.search || '';
 
-    // Build the enriched prospect list by joining each row to its buyer's
-    // latest snapshot. Snapshots are loaded lazily per-buyer because they're
-    // large (15MB+) — we only need the per-supplier stats from the 'all'
-    // period block.
-    var permittedBuyerIds = (state.buyers || [])
-        .filter(function(b) { return b.supplier_outreach_permitted; })
-        .map(function(b) { return b.id; });
-
-    if (permittedBuyerIds.length === 0) {
-        applyAndRenderProspects([]);
+    // ── Groups sub-tab ────────────────────────────────────────────────────
+    if (activeIsGroups) {
+        renderProspectsGroupsSubtab(visibleUploads);
         return;
     }
 
-    ensureProspectSnapshotsLoaded(permittedBuyerIds, function() {
-        var enriched = (state.prospects || []).map(function(p) {
-            var snapData = state._prospectSnapData || {};
-            var snap = snapData[p.buyer_id];
-            var supObj = null;
-            var lastUploadDate = null;
-            if (snap) {
-                var ccyBlock = snap.stats && snap.stats.perPeriod && snap.stats.perPeriod.all
-                    && snap.stats.perPeriod.all.perCurrency && snap.stats.perPeriod.all.perCurrency[p.currency];
-                if (ccyBlock && ccyBlock.suppliers) {
-                    supObj = ccyBlock.suppliers.find(function(s) { return s.identifier === p.supplier_identifier; });
+    // ── Upload sub-tab ────────────────────────────────────────────────────
+    // The active sub-tab is one specific upload. Derive prospect list from
+    // buyer_invoices: distinct supplier_identifier rows where upload_id =
+    // the active upload. Then join to state.prospects for sales-pipeline
+    // state (verification, group membership, notes, etc.) and to the
+    // buyer's snapshot for stats (spend, invoice count, avg DPD).
+    var activeUpload = visibleUploads.find(function(u) { return u.id === activeKey; });
+    if (!activeUpload) return;
+    renderProspectsForUpload(activeUpload, visibleUploads);
+}
+
+// Render the sub-tab strip: one button per visible upload + Groups tab.
+// Active tab styled distinctly. Click handler updates state and re-renders.
+function renderProspectsSubtabStrip(visibleUploads) {
+    var strip = document.getElementById('prospectsSubtabStrip');
+    if (!strip) return;
+    if (visibleUploads.length === 0) {
+        strip.innerHTML = '<span style="font-size:11px; color:var(--muted); font-style:italic;">No uploads selected. Tick "View" on uploads in the Uploads tab.</span>';
+        return;
+    }
+    var active = state.activeUploadSubtab;
+    var html = '';
+    visibleUploads.forEach(function(u) {
+        var isActive = (active === u.id);
+        var bName = buyerName(u) || '(no buyer)';
+        var dt = (u.created_at || '').split('T')[0];
+        var label = escHTML(bName) + ' \u00B7 ' + escHTML(dt);
+        html += '<button class="bi-subtab" data-subtab="' + escHTML(u.id) + '" style="' +
+            'padding:6px 12px; border-radius:6px; ' +
+            'border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + '; ' +
+            'background:' + (isActive ? 'var(--accent)' : 'var(--card)') + '; ' +
+            'color:' + (isActive ? '#fff' : 'var(--text)') + '; ' +
+            'font-size:12px; font-weight:' + (isActive ? '700' : '500') + '; ' +
+            'cursor:pointer; white-space:nowrap;">' + label + '</button>';
+    });
+    // Groups tab — distinct visual to read as a different kind of tab.
+    var groupsActive = (active === '__groups__');
+    html += '<span style="display:inline-block; width:1px; height:20px; background:var(--border); margin:0 4px;"></span>';
+    html += '<button class="bi-subtab" data-subtab="__groups__" style="' +
+        'padding:6px 12px; border-radius:6px; ' +
+        'border:1px solid ' + (groupsActive ? '#7C3AED' : 'var(--border)') + '; ' +
+        'background:' + (groupsActive ? '#7C3AED' : 'var(--card)') + '; ' +
+        'color:' + (groupsActive ? '#fff' : 'var(--text)') + '; ' +
+        'font-size:12px; font-weight:' + (groupsActive ? '700' : '500') + '; ' +
+        'cursor:pointer; white-space:nowrap;">\uD83D\uDD17 Groups</button>';
+    strip.innerHTML = html;
+    strip.querySelectorAll('[data-subtab]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            state.activeUploadSubtab = btn.getAttribute('data-subtab');
+            renderProspects();
+        });
+    });
+}
+
+// Render prospects for one specific upload. Queries buyer_invoices for the
+// distinct supplier_identifiers in this upload, joins to state.prospects
+// for sales-pipeline state, and builds the "Previous Appearance" tooltip
+// data by querying buyer_invoices across ALL uploads (regardless of
+// visibility — badge is provenance, not filtered visibility).
+function renderProspectsForUpload(upload, visibleUploads) {
+    if (!sbClient) return;
+
+    // Update the card title / subtitle to reflect which upload's data
+    var ttl = document.getElementById('prospectsListTitle');
+    var sub = document.getElementById('prospectsListSubtitle');
+    if (ttl) ttl.textContent = 'Prospects in upload: ' + (buyerName(upload) || '(no buyer)') + ' \u00B7 ' + ((upload.created_at || '').split('T')[0]);
+    if (sub) sub.textContent = 'Suppliers that appeared in this specific upload. Stats below scope to this sub-tab.';
+
+    // Show a brief loading state in the tbody
+    var tbody = document.getElementById('prospectsBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">Loading\u2026</td></tr>';
+
+    // Step 1: pull distinct (supplier_identifier, currency) pairs from
+    // buyer_invoices for this upload. We page through in chunks because
+    // PostgREST caps responses at 1000 rows.
+    var distinctMap = {}; // key: supplier_identifier|currency → true
+    var distinct = [];    // list of { supplier_identifier, currency }
+    var CHUNK = 1000;
+    function pullDistinctChunk(offset) {
+        sbClient.from('buyer_invoices')
+            .select('supplier_identifier, currency')
+            .eq('upload_id', upload.id)
+            .eq('excluded', false)
+            .range(offset, offset + CHUNK - 1)
+            .then(function(res) {
+                if (res.error) {
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--danger);">Failed to load this upload\u2019s prospects: ' + escHTML(res.error.message) + '</td></tr>';
+                    return;
                 }
-                lastUploadDate = snap.uploadCreatedAt;
+                var batch = res.data || [];
+                batch.forEach(function(r) {
+                    var k = (r.supplier_identifier || '') + '|' + (r.currency || '');
+                    if (!distinctMap[k]) {
+                        distinctMap[k] = true;
+                        distinct.push({ supplier_identifier: r.supplier_identifier, currency: r.currency });
+                    }
+                });
+                if (batch.length === CHUNK) { pullDistinctChunk(offset + CHUNK); return; }
+                // All chunks read. Build the previous-appearance map across
+                // all uploads in one go, then render.
+                buildPreviousAppearanceMap(distinct, upload, function(prevApp) {
+                    enrichAndRender(upload, distinct, prevApp);
+                });
+            });
+    }
+    pullDistinctChunk(0);
+}
+
+// Cross-reference all distinct (supplier_identifier) in this upload against
+// EVERY upload in state.uploads, to populate the "Previous Appearance"
+// tooltip. One query per OTHER upload is too many; instead do one bulk
+// query: pull (upload_id, supplier_identifier) for any upload != current
+// whose buyer is one of state.buyers, then bucket by supplier_identifier.
+//
+// Two badges per the spec:
+//   - same-buyer prior appearance (matched on supplier_identifier within
+//     the same buyer)
+//   - cross-buyer verified appearance (matched on registry_id across
+//     buyers, requires the prospect to be verified)
+function buildPreviousAppearanceMap(distinct, currentUpload, done) {
+    if (distinct.length === 0) { done({}); return; }
+    var idents = distinct.map(function(d) { return d.supplier_identifier; });
+    // De-dup
+    var uniqIdents = Array.from(new Set(idents));
+    var prevApp = {}; // supplier_identifier → { sameBuyer: [{upload, count}], crossBuyer: [{upload, buyer, count, registry_id}] }
+    uniqIdents.forEach(function(id) { prevApp[id] = { sameBuyer: [], crossBuyer: [] }; });
+
+    // Same-buyer appearances: query buyer_invoices for this buyer, other
+    // uploads, matching identifiers.
+    var sameDone = false;
+    var crossDone = false;
+    function maybeFinish() { if (sameDone && crossDone) done(prevApp); }
+
+    sbClient.from('buyer_invoices')
+        .select('upload_id, supplier_identifier')
+        .eq('buyer_id', currentUpload.buyer_id)
+        .neq('upload_id', currentUpload.id)
+        .in('supplier_identifier', uniqIdents)
+        .eq('excluded', false)
+        .limit(10000)
+        .then(function(res) {
+            if (!res.error && res.data) {
+                var byUpId = {};
+                res.data.forEach(function(r) {
+                    var k = r.upload_id + '|' + r.supplier_identifier;
+                    byUpId[k] = (byUpId[k] || 0) + 1;
+                });
+                Object.keys(byUpId).forEach(function(k) {
+                    var parts = k.split('|');
+                    var upId = parts[0];
+                    var ident = parts[1];
+                    var u = state.uploads.find(function(x) { return x.id === upId; });
+                    if (!u || !prevApp[ident]) return;
+                    prevApp[ident].sameBuyer.push({ uploadId: upId, uploadDate: (u.created_at || '').split('T')[0], count: byUpId[k] });
+                });
             }
-            var buyerName = (state.buyers.find(function(b) { return b.id === p.buyer_id; }) || {}).name || p.buyer_id;
-            // Compute "new this upload" — first_seen_at within ~24h of latest upload
+            sameDone = true; maybeFinish();
+        });
+
+    // Cross-buyer verified: requires prospects in this upload to have
+    // registry_ids, then we look up other prospects with the SAME
+    // registry_id (different buyers). state.prospects already loaded.
+    var registryIds = [];
+    var registryToIdent = {};
+    uniqIdents.forEach(function(ident) {
+        var p = (state.prospects || []).find(function(pp) { return pp.buyer_id === currentUpload.buyer_id && pp.supplier_identifier === ident; });
+        if (p && p.registry_id) { registryIds.push(p.registry_id); registryToIdent[p.registry_id] = ident; }
+    });
+    if (registryIds.length === 0) { crossDone = true; maybeFinish(); return; }
+    // For each cross-buyer prospect with the same registry, find which
+    // uploads it appeared in.
+    var crossProspects = (state.prospects || []).filter(function(p) {
+        return p.buyer_id !== currentUpload.buyer_id && registryIds.indexOf(p.registry_id) !== -1;
+    });
+    if (crossProspects.length === 0) { crossDone = true; maybeFinish(); return; }
+    // Query buyer_invoices for each cross-prospect's (buyer_id, supplier_identifier)
+    // tuple to find which uploads it appeared in. Bulk via OR conditions
+    // is awkward in PostgREST — just paginate by buyer.
+    var crossPending = crossProspects.length;
+    crossProspects.forEach(function(cp) {
+        sbClient.from('buyer_invoices')
+            .select('upload_id')
+            .eq('buyer_id', cp.buyer_id)
+            .eq('supplier_identifier', cp.supplier_identifier)
+            .eq('excluded', false)
+            .limit(5000)
+            .then(function(res) {
+                if (!res.error && res.data) {
+                    var counts = {};
+                    res.data.forEach(function(r) { counts[r.upload_id] = (counts[r.upload_id] || 0) + 1; });
+                    var ident = registryToIdent[cp.registry_id];
+                    var buyerObj = (state.buyers || []).find(function(b) { return b.id === cp.buyer_id; });
+                    var bName = (buyerObj && buyerObj.name) || cp.buyer_id;
+                    Object.keys(counts).forEach(function(upId) {
+                        var u = state.uploads.find(function(x) { return x.id === upId; });
+                        if (!u || !prevApp[ident]) return;
+                        prevApp[ident].crossBuyer.push({
+                            uploadId: upId,
+                            uploadDate: (u.created_at || '').split('T')[0],
+                            buyer: bName,
+                            count: counts[upId],
+                            registry_id: cp.registry_id
+                        });
+                    });
+                }
+                crossPending--;
+                if (crossPending === 0) { crossDone = true; maybeFinish(); }
+            });
+    });
+}
+
+// Enrich the distinct supplier_identifiers in this upload with stats /
+// pipeline state, then call applyAndRenderProspects.
+function enrichAndRender(upload, distinct, prevApp) {
+    // Ensure the buyer's snapshot is loaded so we have spend / invoice
+    // stats. Snapshot is keyed per buyer (not per upload) but the stats
+    // inside aggregate "all" period — close enough for the per-upload
+    // view since most operators only have one or two uploads per buyer.
+    ensureProspectSnapshotsLoaded([upload.buyer_id], function() {
+        var snapData = state._prospectSnapData || {};
+        var snap = snapData[upload.buyer_id];
+        var ccyBlocks = {};
+        if (snap && snap.stats && snap.stats.perPeriod && snap.stats.perPeriod.all) {
+            ccyBlocks = snap.stats.perPeriod.all.perCurrency || {};
+        }
+        var buyerObj = (state.buyers || []).find(function(b) { return b.id === upload.buyer_id; });
+        var bName = (buyerObj && buyerObj.name) || upload.buyer_id;
+        var enriched = distinct.map(function(d) {
+            var prospectRow = (state.prospects || []).find(function(p) {
+                return p.buyer_id === upload.buyer_id && p.supplier_identifier === d.supplier_identifier && p.currency === d.currency;
+            }) || {
+                // Synthesise a stub if prospect_suppliers hasn't caught up
+                // (race between upload completion and populate trigger).
+                id: null, buyer_id: upload.buyer_id, supplier_identifier: d.supplier_identifier,
+                currency: d.currency, supplier_name: d.supplier_identifier, status: 'lead',
+                verified_at: null, group_id: null
+            };
+            var ccyBlock = ccyBlocks[d.currency];
+            var supObj = null;
+            if (ccyBlock && ccyBlock.suppliers) {
+                supObj = ccyBlock.suppliers.find(function(s) { return s.identifier === d.supplier_identifier; });
+            }
+            var lastUploadDate = snap && snap.uploadCreatedAt;
             var isNewThisUpload = false;
-            if (lastUploadDate && p.first_seen_at) {
-                var diff = new Date(lastUploadDate) - new Date(p.first_seen_at);
+            if (lastUploadDate && prospectRow.first_seen_at) {
+                var diff = new Date(lastUploadDate) - new Date(prospectRow.first_seen_at);
                 isNewThisUpload = Math.abs(diff) < 24 * 3600 * 1000;
             }
             var silentDays = null;
-            if (lastUploadDate && p.last_seen_at) {
-                silentDays = Math.floor((new Date(lastUploadDate) - new Date(p.last_seen_at)) / 86400000);
+            if (lastUploadDate && prospectRow.last_seen_at) {
+                silentDays = Math.floor((new Date(lastUploadDate) - new Date(prospectRow.last_seen_at)) / 86400000);
             }
             return {
-                row: p,
-                buyer_name: buyerName,
+                row: prospectRow,
+                buyer_name: bName,
                 stats: supObj || null,
                 isNewThisUpload: isNewThisUpload,
-                silentDays: silentDays
+                silentDays: silentDays,
+                prevAppearance: prevApp[d.supplier_identifier] || { sameBuyer: [], crossBuyer: [] }
             };
         });
         applyAndRenderProspects(enriched);
+    });
+}
+
+// Render the Groups sub-tab. Lists prospect_groups whose constituents
+// include at least one prospect that appears in a visible upload, with
+// constituent count, buyer count, and a click-through to the group view.
+function renderProspectsGroupsSubtab(visibleUploads) {
+    var ttl = document.getElementById('prospectsListTitle');
+    var sub = document.getElementById('prospectsListSubtitle');
+    if (ttl) ttl.textContent = 'Prospect Groups';
+    if (sub) sub.textContent = 'Groups with at least one constituent appearing in the visible uploads. Groups span buyers \u2014 click a row to open the group detail.';
+
+    // Show a loading flash while we resolve which groups to show
+    var tbody = document.getElementById('prospectsBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">Loading\u2026</td></tr>';
+
+    // Step 1: figure out which prospects appear in the visible uploads by
+    // querying buyer_invoices.upload_id ∈ visibleUploads → distinct
+    // (buyer_id, supplier_identifier). Then bucket by group_id via
+    // state.prospects.
+    var uploadIds = visibleUploads.map(function(u) { return u.id; });
+    if (uploadIds.length === 0) { if (tbody) tbody.innerHTML = ''; return; }
+
+    sbClient.from('buyer_invoices')
+        .select('buyer_id, supplier_identifier')
+        .in('upload_id', uploadIds)
+        .eq('excluded', false)
+        .limit(20000)
+        .then(function(res) {
+            if (res.error) {
+                if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--danger);">Failed to load groups: ' + escHTML(res.error.message) + '</td></tr>';
+                return;
+            }
+            var keySet = {};
+            (res.data || []).forEach(function(r) {
+                keySet[r.buyer_id + '|' + r.supplier_identifier] = true;
+            });
+            // Find prospects from state.prospects that match
+            var matchingProspects = (state.prospects || []).filter(function(p) {
+                return !!keySet[p.buyer_id + '|' + p.supplier_identifier];
+            });
+            // Bucket by group_id
+            var groupIdSet = {};
+            matchingProspects.forEach(function(p) {
+                if (p.group_id) groupIdSet[p.group_id] = true;
+            });
+            var visibleGroupIds = Object.keys(groupIdSet);
+            renderGroupsSubtabTable(visibleGroupIds);
+        });
+}
+
+function renderGroupsSubtabTable(visibleGroupIds) {
+    var tbody = document.getElementById('prospectsBody');
+    if (!tbody) return;
+
+    // Replace the table headers to reflect group columns. The header is in
+    // the static HTML; we manipulate via thead replacement.
+    var thead = tbody.parentElement.querySelector('thead');
+    if (thead) {
+        thead.innerHTML = '<tr>' +
+            '<th>Legal name</th>' +
+            '<th>Registry</th>' +
+            '<th class="text-right">Constituents</th>' +
+            '<th class="text-right">Buyers</th>' +
+            '<th>Linked to FactorFlow</th>' +
+            '<th>Created</th>' +
+            '<th>Cross-buyer signal</th>' +
+            '</tr>';
+    }
+
+    // Hide the stat cards and filter row for the Groups view (they were
+    // designed for prospect rows). Easier than tailoring filters per sub-tab.
+    var stats = document.getElementById('prospectsStats');
+    if (stats) stats.innerHTML = '';
+    var filtersWrap = document.getElementById('prospectsFilters');
+    if (filtersWrap) filtersWrap.style.display = 'none';
+
+    if (visibleGroupIds.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">No groups have constituents in the visible uploads.</td></tr>';
+        return;
+    }
+
+    var groups = (state.prospectGroups || []).filter(function(g) { return visibleGroupIds.indexOf(g.id) !== -1; });
+    // Sort: most recent first
+    groups.sort(function(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+
+    var html = '';
+    groups.forEach(function(g) {
+        var constituents = (state.prospects || []).filter(function(p) { return p.group_id === g.id; });
+        var buyerCount = (new Set(constituents.map(function(c) { return c.buyer_id; }))).size;
+        var isCross = buyerCount >= 2;
+        var linked = g.converted_supplier_id
+            ? '<span style="color:#10B981; font-weight:600;">\u2713 Linked</span>'
+            : '<span style="color:var(--muted);">Not linked</span>';
+        var crossPill = isCross
+            ? '<span style="display:inline-block; padding:2px 8px; border-radius:999px; background:#F59E0B14; color:#B45309; border:1px solid #F59E0B40; font-size:10px; font-weight:700;">\u26A1 ' + buyerCount + ' buyers</span>'
+            : '<span style="color:var(--muted); font-size:11px;">Single buyer</span>';
+        html += '<tr data-gid="' + escHTML(g.id) + '" style="cursor:pointer;">' +
+            '<td><strong>' + escHTML(g.legal_name || '(unnamed)') + '</strong></td>' +
+            '<td class="mono">' + escHTML(g.registry_id || '\u2014') + '</td>' +
+            '<td class="text-right mono">' + constituents.length + '</td>' +
+            '<td class="text-right mono">' + buyerCount + '</td>' +
+            '<td>' + linked + '</td>' +
+            '<td>' + ((g.created_at || '').split('T')[0]) + '</td>' +
+            '<td>' + crossPill + '</td>' +
+            '</tr>';
+    });
+    tbody.innerHTML = html;
+
+    // Wire row clicks to open the group view
+    tbody.querySelectorAll('[data-gid]').forEach(function(tr) {
+        tr.addEventListener('click', function() {
+            var gid = tr.getAttribute('data-gid');
+            var group = (state.prospectGroups || []).find(function(g) { return g.id === gid; });
+            if (group) {
+                // Navigate to group detail. URL push so back-button works.
+                window.history.pushState({}, '', '?group=' + encodeURIComponent(gid));
+                renderGroupPanel(group);
+            }
+        });
     });
 }
 
@@ -2888,6 +3373,31 @@ function wireProspectsFilters() {
 }
 
 function applyAndRenderProspects(enriched) {
+    // Restore the prospect-row table chrome (headers + filters + stats card
+    // visibility) — the Groups sub-tab swaps these out, so we must put
+    // them back when rendering a prospect-row view.
+    var pbody = document.getElementById('prospectsBody');
+    var thead = pbody && pbody.parentElement.querySelector('thead');
+    if (thead && thead.getAttribute('data-shape') !== 'prospects') {
+        thead.innerHTML = '<tr>' +
+            '<th style="cursor:pointer;" data-pr-sort="buyer_name">Buyer</th>' +
+            '<th style="cursor:pointer;" data-pr-sort="supplier">Supplier</th>' +
+            '<th>Currency</th>' +
+            '<th style="cursor:pointer;" data-pr-sort="status">Status</th>' +
+            '<th class="text-right" style="cursor:pointer;" data-pr-sort="spend">Spend</th>' +
+            '<th class="text-right" style="cursor:pointer;" data-pr-sort="invoices">Invoices</th>' +
+            '<th class="text-right" style="cursor:pointer;" data-pr-sort="avgDpd">Avg DPD</th>' +
+            '<th class="text-right" style="cursor:pointer;" data-pr-sort="dilution">Dilution</th>' +
+            '<th style="cursor:pointer;" data-pr-sort="last_seen_at">Last seen</th>' +
+            '<th style="cursor:pointer;" data-pr-sort="next_action_at">Next action</th>' +
+            '<th>Verified</th>' +
+            '<th title="Group / cross-buyer signal">Group</th>' +
+            '</tr>';
+        thead.setAttribute('data-shape', 'prospects');
+    }
+    var pfilters = document.getElementById('prospectsFilters');
+    if (pfilters) pfilters.style.display = '';
+
     var f = state.prospectsFilter;
 
     // Default: hide converted unless the 'converted' pill is on
@@ -3047,6 +3557,44 @@ function applyAndRenderProspects(enriched) {
                 }
             }
 
+            // "Previous Appearance" badge — shows when this prospect's
+            // supplier_identifier has been seen in OTHER uploads. Two tiers:
+            //   - sameBuyer: matched on (buyer_id, supplier_identifier)
+            //     across the buyer's prior uploads (works regardless of
+            //     verification).
+            //   - crossBuyer: matched on registry_id across buyers
+            //     (requires the prospect to be verified).
+            // Tooltip is a custom HTML popover (.bi-prev-tooltip) — styled
+            // via CSS in the head — that hovers above the badge.
+            var prevApp = e.prevAppearance || { sameBuyer: [], crossBuyer: [] };
+            var prevBadge = '';
+            if (prevApp.sameBuyer.length > 0 || prevApp.crossBuyer.length > 0) {
+                var tooltipHtml = '';
+                if (prevApp.sameBuyer.length > 0) {
+                    tooltipHtml += '<div style="font-weight:700; color:#0EA5E9; margin-bottom:4px; font-size:10px; text-transform:uppercase; letter-spacing:0.05em;">Same buyer, prior uploads</div>';
+                    prevApp.sameBuyer.sort(function(a, b) { return b.uploadDate.localeCompare(a.uploadDate); });
+                    prevApp.sameBuyer.forEach(function(sb) {
+                        tooltipHtml += '<div style="font-size:11px; margin-bottom:2px;">\u2022 ' + escHTML(sb.uploadDate) + ' \u00B7 ' + sb.count + ' invoice' + (sb.count === 1 ? '' : 's') + '</div>';
+                    });
+                }
+                if (prevApp.crossBuyer.length > 0) {
+                    if (tooltipHtml) tooltipHtml += '<div style="height:6px;"></div>';
+                    tooltipHtml += '<div style="font-weight:700; color:#B45309; margin-bottom:4px; font-size:10px; text-transform:uppercase; letter-spacing:0.05em;">Cross-buyer (verified)</div>';
+                    prevApp.crossBuyer.sort(function(a, b) { return b.uploadDate.localeCompare(a.uploadDate); });
+                    prevApp.crossBuyer.forEach(function(cb) {
+                        tooltipHtml += '<div style="font-size:11px; margin-bottom:2px;">\u2022 ' + escHTML(cb.buyer) + ' \u00B7 ' + escHTML(cb.uploadDate) + ' \u00B7 ' + cb.count + ' invoice' + (cb.count === 1 ? '' : 's') + '</div>';
+                    });
+                }
+                var badgeColor  = prevApp.crossBuyer.length > 0 ? '#B45309'   : '#0369A1';
+                var badgeBg     = prevApp.crossBuyer.length > 0 ? '#F59E0B14' : '#0EA5E914';
+                var badgeBorder = prevApp.crossBuyer.length > 0 ? '#F59E0B40' : '#0EA5E940';
+                var totalCount  = prevApp.sameBuyer.length + prevApp.crossBuyer.length;
+                prevBadge = '<span class="bi-prev-badge" style="display:inline-block; padding:1px 6px; border-radius:4px; background:' + badgeBg + '; color:' + badgeColor + '; border:1px solid ' + badgeBorder + '; font-size:9px; font-weight:700; margin-top:3px; cursor:help; position:relative;">' +
+                    '\uD83D\uDCC4 Previous Appearance (' + totalCount + ')' +
+                    '<span class="bi-prev-tooltip">' + tooltipHtml + '</span>' +
+                    '</span>';
+            }
+
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
                 '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' +
@@ -3060,7 +3608,7 @@ function applyAndRenderProspects(enriched) {
                 '<td class="text-right mono">' + (s ? pct(s.dilutionRate) : '—') + '</td>' +
                 '<td>' + escHTML(lastSeen) + '</td>' +
                 '<td>' + nextActionCell + '</td>' +
-                '<td>' + verifiedCell + '</td>' +
+                '<td><div>' + verifiedCell + (prevBadge ? '<br>' + prevBadge : '') + '</div></td>' +
                 '<td>' + groupCell + '</td>';
             // Row-wide click → open prospect, BUT respect modifier keys + middle-click
             // so native "open in new tab" / "open in new window" still works.
@@ -4530,12 +5078,32 @@ function wireGroupSectionHandlers(prospect) {
         };
         sbClient.from('prospect_groups').insert(groupPayload).select().single().then(function(res) {
             if (res.error) {
-                // Likely cause: race with another operator creating the same
-                // group (UNIQUE on registry_id). Re-fetch groups to surface
-                // the existing row, then offer "Join" instead.
-                console.warn('createProspectGroup:', res.error.message);
-                loadProspectGroups();
-                alert('Could not create group: ' + res.error.message + '\n\nThe registry may already exist as a group \u2014 try again.');
+                // Distinguish the three plausible causes so the operator gets
+                // an accurate diagnostic instead of the old catch-all:
+                //   1. RLS rejection \u2014 user lacks INSERT permission, or the
+                //      policy's WITH CHECK predicate failed (often because
+                //      created_by doesn't match auth.uid()). Postgres surfaces
+                //      this as code 42501 / message "row-level security policy".
+                //   2. UNIQUE violation on registry_id \u2014 another operator
+                //      created the same group between us loading and clicking.
+                //      Code 23505.
+                //   3. Anything else \u2014 surface verbatim, log to console.
+                var errMsg = res.error.message || '';
+                var errCode = res.error.code || '';
+                console.warn('createProspectGroup:', res.error);
+                var userMessage;
+                if (errCode === '42501' || /row-level security/i.test(errMsg)) {
+                    userMessage = 'Could not create group: your user does not have permission to create prospect groups (RLS).\n\n' +
+                        'This is a backend configuration issue, not a duplicate. Check the prospect_groups table\u2019s RLS policies in Supabase \u2014 an INSERT policy for authenticated users may be missing.\n\n' +
+                        'Raw error: ' + errMsg;
+                } else if (errCode === '23505' || /duplicate key|unique constraint/i.test(errMsg)) {
+                    userMessage = 'Could not create group: a group for this registry ID already exists.\n\n' +
+                        'Refreshing groups now \u2014 the "Join existing group" option should appear shortly.';
+                    loadProspectGroups();
+                } else {
+                    userMessage = 'Could not create group: ' + errMsg + '\n\n(Unexpected error \u2014 check the browser console for details.)';
+                }
+                alert(userMessage);
                 createBtn.disabled = false;
                 createBtn.textContent = 'Create group';
                 return;
