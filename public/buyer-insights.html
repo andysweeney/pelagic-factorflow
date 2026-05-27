@@ -1574,19 +1574,140 @@ var sbClient = null;
 // Required fields are the analytical floor; without them we can't compute anything useful.
 // Hints are the column-name candidates we auto-match against (whitespace and punctuation stripped).
 var INVOICE_FIELDS = [
+    // ── Identifiers ─────────────────────────────────────────────────────
+    // Four IDs by design (see schema migration):
+    //   our_invoice_id      — Pelagic UUID, generated at insert (not mapped)
+    //   buyer_invoice_id    — buyer's own AR system reference
+    //   supplier_invoice_id — supplier's own invoice number (often absent)
+    //   partner_invoice_id  — third-party data provider's ID (rare)
+    // Exactly one of (buyer/supplier/partner) is the "Primary ID" for this
+    // upload — set via the radio in the mapping UI, drives re-import dedup.
+    { key: 'buyer_invoice_id',    label: 'Buyer Invoice ID', required: false, hints: ['buyer_invoice_id', 'buyer_id', 'document_number', 'document_no', 'doc_number', 'doc_no', 'ap_invoice_id', 'ar_doc_id', 'invoice_number', 'invoicenumber', 'invoice_ref', 'invoiceref'] },
+    { key: 'supplier_invoice_id', label: 'Supplier Invoice ID', required: false, hints: ['supplier_invoice_id', 'vendor_invoice_id', 'vendor_invoice_number', 'supplier_invoice_number', 'invoice_id'] },
+    { key: 'partner_invoice_id',  label: 'Partner Invoice ID', required: false, hints: ['partner_invoice_id', 'provider_invoice_id', 'partner_id', 'data_provider_id', 'source_id'] },
+    // ── Supplier identity ───────────────────────────────────────────────
     { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number', 'supplier_code', 'vendor_code'] },
     { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname', 'payee', 'trading_name'] },
-    { key: 'invoice_reference',   label: 'Invoice Ref', required: false, hints: ['invoice_number', 'invoicenumber', 'invoice_ref', 'invoiceref', 'invoice_id', 'document_number', 'document_no', 'doc_number'] },
+    // ── Core invoice fields ─────────────────────────────────────────────
     { key: 'invoice_date',        label: 'Invoice Date', required: true,  hints: ['invoice_date', 'invoicedate', 'date', 'document_date', 'doc_date', 'issue_date'] },
     { key: 'due_date',            label: 'Due Date', required: true,  hints: ['due_date', 'duedate', 'payment_due', 'payment_due_date', 'maturity_date'] },
     { key: 'paid_date',           label: 'Paid Date', required: false, hints: ['paid_date', 'paiddate', 'payment_date', 'paymentdate', 'cleared_date', 'settled_date', 'date_paid'] },
-    { key: 'amount',              label: 'Amount', required: true,  hints: ['amount', 'invoice_amount', 'invoiceamount', 'value', 'gross_amount', 'gross', 'total', 'invoice_total', 'amount_gross'] },
+    { key: 'amount',              label: 'Invoice Amount', required: true,  hints: ['amount', 'invoice_amount', 'invoiceamount', 'value', 'gross_amount', 'gross', 'total', 'invoice_total', 'amount_gross'] },
+    // Paid amount unlocks implicit-dilution analytics. Required column
+    // optional; when present, (amount - paid_amount) for settled invoices
+    // counts toward dilution alongside explicit credit notes.
+    { key: 'paid_amount',         label: 'Paid Amount', required: false, hints: ['paid_amount', 'paidamount', 'amount_paid', 'settled_amount', 'settlement_amount', 'cleared_amount', 'payment_amount'] },
     { key: 'currency',            label: 'Currency', required: true,  hints: ['currency', 'ccy', 'currency_code', 'curr'] },
-    { key: 'invoice_status',      label: 'Status', required: false, hints: ['status', 'invoice_status', 'payment_status', 'state'] },
+    // ── Status + terminal-state dates ──────────────────────────────────
+    // invoice_status is a free-text string; canonicaliser maps to one of
+    // (paid / cancelled / rejected / approved / processing). Multi-state
+    // values that don't match the hardcoded affirmatives go through the
+    // per-buyer alias reconciliation UI (built in commit 2).
+    { key: 'invoice_status',      label: 'Status', required: false, hints: ['status', 'invoice_status', 'payment_status', 'state', 'doc_status'] },
+    // Three terminal-state dates. If a flag column says "cancelled" but
+    // no date is given, the synthesised date is invoice_date + 7d
+    // (clamped to paid_date if present). Same pattern for rejected /
+    // approved. Approved is non-terminal but useful for stale-approval
+    // surfacing.
+    { key: 'cancelled_date',      label: 'Cancelled Date', required: false, hints: ['cancelled_date', 'cancellation_date', 'void_date', 'voided_date', 'date_cancelled'] },
+    { key: 'cancelled_flag',      label: 'Cancelled Flag', required: false, hints: ['cancelled', 'is_cancelled', 'void', 'is_void', 'voided'] },
+    { key: 'rejected_date',       label: 'Rejected Date', required: false, hints: ['rejected_date', 'rejection_date', 'date_rejected'] },
+    { key: 'rejected_flag',       label: 'Rejected Flag', required: false, hints: ['rejected', 'is_rejected', 'disputed', 'is_disputed'] },
+    { key: 'approved_date',       label: 'Approved Date', required: false, hints: ['approved_date', 'approval_date', 'reconciled_date', 'date_approved'] },
+    { key: 'approved_flag',       label: 'Approved Flag', required: false, hints: ['approved', 'is_approved', 'reconciled', 'is_reconciled'] },
+    // ── Secondary signals ──────────────────────────────────────────────
+    // Cost centre → buyer-branch suggestion (commit 3).
+    // GL code → category concentration metric (commit 3).
     { key: 'cost_centre',         label: 'Cost Centre', required: false, hints: ['cost_centre', 'cost_center', 'costcentre', 'costcenter', 'cc'] },
     { key: 'po_number',           label: 'PO Number', required: false, hints: ['po_number', 'ponumber', 'po', 'purchase_order', 'purchaseorder'] },
     { key: 'gl_code',             label: 'GL Code', required: false, hints: ['gl_code', 'glcode', 'gl', 'account_code', 'accountcode', 'nominal'] }
 ];
+
+// Hardcoded affirmative recogniser — matches whatever a buyer's AR system
+// emits for "yes this thing happened". Case-insensitive. Anything not in
+// this list is treated as falsey, which is the conservative default
+// (we'd rather under-count cancellations than over-count).
+var AFFIRMATIVE_VALUES = ['Y', 'YES', 'TRUE', 'T', '1', 'X'];
+function isAffirmative(v) {
+    if (v == null) return false;
+    var s = String(v).trim().toUpperCase();
+    if (s === '') return false;
+    return AFFIRMATIVE_VALUES.indexOf(s) !== -1;
+}
+
+// Canonical invoice statuses. Five states. The string in buyer_invoices.
+// invoice_status is always one of these (or null for "no status mapped").
+var CANONICAL_STATUSES = ['paid', 'cancelled', 'rejected', 'approved', 'processing'];
+
+// Canonicalise a raw invoice_status string. Hard-coded mappings cover the
+// obvious cases. Unrecognised values return null; commit 2 will surface
+// these in the per-buyer alias reconciliation UI before persisting.
+function canonicaliseInvoiceStatus(raw) {
+    if (raw == null) return null;
+    var s = String(raw).trim().toLowerCase();
+    if (s === '') return null;
+    // Direct canonical hits
+    if (CANONICAL_STATUSES.indexOf(s) !== -1) return s;
+    // Common variants
+    if (['paid in full', 'fully paid', 'settled', 'cleared', 'paying'].indexOf(s) !== -1) return 'paid';
+    if (['cancelled', 'canceled', 'void', 'voided', 'reversed'].indexOf(s) !== -1) return 'cancelled';
+    if (['rejected', 'disputed', 'declined'].indexOf(s) !== -1) return 'rejected';
+    if (['approved', 'reconciled', 'matched', 'ok to pay'].indexOf(s) !== -1) return 'approved';
+    if (['processing', 'pending', 'open', 'outstanding', 'received', 'in process', 'in progress'].indexOf(s) !== -1) return 'processing';
+    return null;  // unrecognised — falls through to alias UI in commit 2
+}
+
+// Infer the canonical status for a single invoice row, given the raw
+// fields the operator mapped. Precedence (paid wins, then rejection,
+// then cancellation, then approved, default processing). Terminal-state
+// dates are synthesised when only a flag is present (invoice_date + 7d,
+// clamped to paid_date when paid_date is set).
+//
+// Returns { status, statusChangeDate } where statusChangeDate is the
+// terminal date if applicable (cancelled / rejected), else the approved
+// date if applicable, else null.
+function inferInvoiceStatus(fields) {
+    var invDate     = fields.invoice_date;
+    var paidDate    = fields.paid_date;
+    var paidAmount  = fields.paid_amount;
+    var rawStatus   = canonicaliseInvoiceStatus(fields.invoice_status);
+    var cancFlag    = isAffirmative(fields.cancelled_flag);
+    var cancDate    = fields.cancelled_date;
+    var rejFlag     = isAffirmative(fields.rejected_flag);
+    var rejDate     = fields.rejected_date;
+    var apprFlag    = isAffirmative(fields.approved_flag);
+    var apprDate    = fields.approved_date;
+
+    function plus7Clamped(base) {
+        if (!base) return null;
+        var synth = new Date(base);
+        synth.setDate(synth.getDate() + 7);
+        var synthIso = synth.toISOString().split('T')[0];
+        // Clamp to paid_date if paid_date present and earlier than synthesised.
+        if (paidDate && paidDate < synthIso) return paidDate;
+        return synthIso;
+    }
+
+    // 1. Paid wins. paid_date OR a paid status string.
+    if (paidDate || rawStatus === 'paid') {
+        return { status: 'paid', statusChangeDate: paidDate || null };
+    }
+    // 2. Rejected (terminal). Date wins, else flag → synthesise, else
+    //    canonical status string → synthesise.
+    if (rejDate)                       return { status: 'rejected',  statusChangeDate: rejDate };
+    if (rejFlag)                       return { status: 'rejected',  statusChangeDate: plus7Clamped(invDate) };
+    if (rawStatus === 'rejected')      return { status: 'rejected',  statusChangeDate: plus7Clamped(invDate) };
+    // 3. Cancelled (terminal). Same pattern.
+    if (cancDate)                      return { status: 'cancelled', statusChangeDate: cancDate };
+    if (cancFlag)                      return { status: 'cancelled', statusChangeDate: plus7Clamped(invDate) };
+    if (rawStatus === 'cancelled')     return { status: 'cancelled', statusChangeDate: plus7Clamped(invDate) };
+    // 4. Approved (non-terminal — still outstanding until paid).
+    if (apprDate)                      return { status: 'approved',  statusChangeDate: apprDate };
+    if (apprFlag)                      return { status: 'approved',  statusChangeDate: plus7Clamped(invDate) };
+    if (rawStatus === 'approved')      return { status: 'approved',  statusChangeDate: plus7Clamped(invDate) };
+    // 5. Default.
+    return { status: 'processing', statusChangeDate: null };
+}
 
 // Credit note fields — same supplier/amount/currency/date primitives, no due_date.
 var CN_FIELDS = [
@@ -1610,6 +1731,14 @@ var state = {
     cnColumns: [],
     invoiceMapping: {},  // canonical_field -> csv_column_name (or null)
     cnMapping: {},
+    // Which of the three external IDs is canonical for the upload being
+    // staged. Drives re-import dedup. Defaults to buyer_invoice_id because
+    // buyer AR feeds reliably contain the buyer's own ref; operator
+    // overrides for partner-delivered or supplier-keyed feeds.
+    primaryIdField: 'buyer_invoice_id',
+    // Unrecognised invoice_status values from the staged CSV. Populated
+    // during normaliseRows; consumed by the alias UI in commit 2.
+    unrecognisedStatuses: {},
     uploads: [],         // populated by loadAllData()
     buyers: [],          // all buyers (operator-only)
     prospects: [],       // all prospect_suppliers rows (operator-only)
@@ -2063,6 +2192,27 @@ function buildColumnMapper(which) {
         INVOICE_FIELDS.forEach(function(field) {
             grid.appendChild(buildMappingRow(field, state.invoiceColumns, state.invoiceMapping, 'inv'));
         });
+
+        // Primary ID picker. Exactly one of (buyer / supplier / partner)
+        // serves as the matching key for re-import dedup. Default: buyer,
+        // because the buyer's AR ref is the most reliably present field
+        // in real-world CSVs. Operator overrides for partner-delivered
+        // data or unusual supplier-keyed feeds.
+        var primaryWrap = document.createElement('div');
+        primaryWrap.style.cssText = 'margin-top:14px; padding:10px 12px; background:var(--bg); border:1px solid var(--border); border-radius:6px;';
+        primaryWrap.innerHTML =
+            '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:6px;">Primary invoice ID for this upload</div>' +
+            '<div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">Which ID is the canonical identifier in this CSV? Re-imports use this field to detect existing invoices. The other two IDs are still stored if mapped, but don\u2019t drive matching.</div>' +
+            '<label style="display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:12px; cursor:pointer;"><input type="radio" name="primaryIdField" value="buyer_invoice_id"' + (state.primaryIdField === 'buyer_invoice_id' || !state.primaryIdField ? ' checked' : '') + '> Buyer Invoice ID</label>' +
+            '<label style="display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:12px; cursor:pointer;"><input type="radio" name="primaryIdField" value="supplier_invoice_id"' + (state.primaryIdField === 'supplier_invoice_id' ? ' checked' : '') + '> Supplier Invoice ID</label>' +
+            '<label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;"><input type="radio" name="primaryIdField" value="partner_invoice_id"' + (state.primaryIdField === 'partner_invoice_id' ? ' checked' : '') + '> Partner Invoice ID</label>';
+        grid.appendChild(primaryWrap);
+        primaryWrap.querySelectorAll('input[name="primaryIdField"]').forEach(function(input) {
+            input.addEventListener('change', function() {
+                if (input.checked) state.primaryIdField = input.value;
+            });
+        });
+        if (!state.primaryIdField) state.primaryIdField = 'buyer_invoice_id';
     }
 
     // CN mappings (only if CN file is present)
@@ -2267,6 +2417,7 @@ function processAndSave() {
     var invRows = [];
     var currencies = {};
     var allDates = [];
+    var unrecognisedStatuses = {};  // collected for the alias UI in commit 2
     state.invoiceData.forEach(function(raw) {
         var sid = getMappedValue(raw, 'supplier_identifier', state.invoiceMapping);
         if (!sid || String(sid).trim() === '') return; // skip rows with no supplier
@@ -2282,22 +2433,69 @@ function processAndSave() {
         allDates.push(invDate);
         if (dueDate) allDates.push(dueDate);
 
+        // Paid amount — optional. If mapped column gave a non-numeric or
+        // empty value, store null. Negative values (some systems use neg
+        // for credits) → flip to absolute. paid_amount > amount is left
+        // as-is (could be overpayment + future credit; analytics handles
+        // by clamping in the dilution calc, not here).
+        var rawPaidAmt = getMappedValue(raw, 'paid_amount', state.invoiceMapping);
+        var paidAmt = null;
+        if (rawPaidAmt !== null && rawPaidAmt !== undefined && String(rawPaidAmt).trim() !== '') {
+            var parsedPaid = parseFloat(rawPaidAmt);
+            if (!isNaN(parsedPaid)) paidAmt = Math.abs(parsedPaid);
+        }
+
+        // Status inference — five-state canonical with precedence rules.
+        // Raw status strings that didn't canonicalise are collected for
+        // operator reconciliation (alias UI lands in commit 2).
+        var rawStatusVal = getMappedValue(raw, 'invoice_status', state.invoiceMapping);
+        if (rawStatusVal != null && String(rawStatusVal).trim() !== '') {
+            if (!canonicaliseInvoiceStatus(rawStatusVal)) {
+                unrecognisedStatuses[String(rawStatusVal).trim()] = (unrecognisedStatuses[String(rawStatusVal).trim()] || 0) + 1;
+            }
+        }
+        var statusInfo = inferInvoiceStatus({
+            invoice_date:    invDate,
+            paid_date:       parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+            paid_amount:     paidAmt,
+            invoice_status:  rawStatusVal,
+            cancelled_flag:  getMappedValue(raw, 'cancelled_flag', state.invoiceMapping),
+            cancelled_date:  parseDate(getMappedValue(raw, 'cancelled_date', state.invoiceMapping)),
+            rejected_flag:   getMappedValue(raw, 'rejected_flag', state.invoiceMapping),
+            rejected_date:   parseDate(getMappedValue(raw, 'rejected_date', state.invoiceMapping)),
+            approved_flag:   getMappedValue(raw, 'approved_flag', state.invoiceMapping),
+            approved_date:   parseDate(getMappedValue(raw, 'approved_date', state.invoiceMapping))
+        });
+
         invRows.push({
-            supplier_identifier: String(sid).trim(),
-            supplier_name: nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
-            invoice_reference: nullableStr(getMappedValue(raw, 'invoice_reference', state.invoiceMapping)),
-            invoice_date: invDate,
-            due_date: dueDate,
-            paid_date: parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
-            amount: amt,
-            currency: ccy,
-            invoice_status: nullableStr(getMappedValue(raw, 'invoice_status', state.invoiceMapping)),
-            cost_centre: nullableStr(getMappedValue(raw, 'cost_centre', state.invoiceMapping)),
-            po_number: nullableStr(getMappedValue(raw, 'po_number', state.invoiceMapping)),
-            gl_code: nullableStr(getMappedValue(raw, 'gl_code', state.invoiceMapping)),
-            excluded: false
+            supplier_identifier:  String(sid).trim(),
+            supplier_name:        nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
+            // Four-ID model. Our internal PK is generated by Postgres on insert.
+            buyer_invoice_id:     nullableStr(getMappedValue(raw, 'buyer_invoice_id', state.invoiceMapping)),
+            supplier_invoice_id:  nullableStr(getMappedValue(raw, 'supplier_invoice_id', state.invoiceMapping)),
+            partner_invoice_id:   nullableStr(getMappedValue(raw, 'partner_invoice_id', state.invoiceMapping)),
+            // Captures which of the three is the upload's canonical
+            // identifier so dedup logic doesn't need to re-derive it.
+            primary_id_field:     state.primaryIdField || 'buyer_invoice_id',
+            invoice_date:         invDate,
+            due_date:             dueDate,
+            paid_date:            parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+            amount:               amt,
+            paid_amount:          paidAmt,
+            currency:             ccy,
+            invoice_status:       statusInfo.status,
+            status_change_date:   statusInfo.statusChangeDate,
+            cost_centre:          nullableStr(getMappedValue(raw, 'cost_centre', state.invoiceMapping)),
+            po_number:            nullableStr(getMappedValue(raw, 'po_number', state.invoiceMapping)),
+            gl_code:              nullableStr(getMappedValue(raw, 'gl_code', state.invoiceMapping)),
+            excluded:             false
         });
     });
+
+    // Stash unrecognised statuses on state so commit 2's alias UI can pick
+    // them up before persisting. For now they're inferred as 'processing'
+    // (the default fallback in inferInvoiceStatus).
+    state.unrecognisedStatuses = unrecognisedStatuses;
 
     // Normalise CN rows
     var cnRows = [];
@@ -2461,6 +2659,8 @@ function resetUploadForm() {
     state.invoiceData = []; state.cnData = [];
     state.invoiceColumns = []; state.cnColumns = [];
     state.invoiceMapping = {}; state.cnMapping = {};
+    state.primaryIdField = 'buyer_invoice_id';
+    state.unrecognisedStatuses = {};
     document.getElementById('invoiceZone').classList.remove('has-file');
     document.getElementById('cnZone').classList.remove('has-file');
     document.getElementById('invoiceFilename').classList.add('hidden');
