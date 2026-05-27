@@ -3253,12 +3253,10 @@ function renderGroupsSubtabTable(visibleGroupIds) {
     tbody.querySelectorAll('[data-gid]').forEach(function(tr) {
         tr.addEventListener('click', function() {
             var gid = tr.getAttribute('data-gid');
-            var group = (state.prospectGroups || []).find(function(g) { return g.id === gid; });
-            if (group) {
-                // Navigate to group detail. URL push so back-button works.
-                window.history.pushState({}, '', '?group=' + encodeURIComponent(gid));
-                renderGroupPanel(group);
-            }
+            // openGroupPanel handles visibility swap (list ↔ detail),
+            // URL push state, and the actual render call. Calling
+            // renderGroupPanel alone leaves the detail view hidden.
+            openGroupPanel(gid);
         });
     });
 }
