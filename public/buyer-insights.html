@@ -8060,13 +8060,38 @@ function confirmProspectConversion(prospect) {
     }
     if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This links the prospect; invoices are imported separately via the main portal\'s CSV import.')) return;
 
-    sbClient.from('suppliers').select('id,name').eq('company_number', prospect.registry_id).maybeSingle().then(function(supRes) {
-        if (supRes.error || !supRes.data) {
+    // Lookup uses select-array (not maybeSingle) so we can distinguish three
+    // outcomes cleanly: no match, exactly one match, multiple matches.
+    // maybeSingle would conflate the multi-match case into an error path
+    // that surfaces as the same "couldn't find supplier" message — which
+    // sent us down a wrong diagnostic path the first time we hit it.
+    //
+    // With the suppliers.company_number UNIQUE constraint added, the
+    // multi-match branch should be unreachable. Keeping it anyway because
+    // (a) defence-in-depth, (b) registry_id is the truth across systems
+    // and lookup hygiene matters more than schema trust, (c) if the
+    // constraint is ever dropped or NULL-handled differently, this code
+    // still degrades gracefully.
+    sbClient.from('suppliers').select('id,name').eq('company_number', prospect.registry_id).then(function(supRes) {
+        if (supRes.error) {
+            alert('Supplier lookup failed: ' + supRes.error.message + '\n\nCheck the main portal connection and try again.');
+            return;
+        }
+        var rows = supRes.data || [];
+        if (rows.length === 0) {
             alert('Could not find supplier with CH ' + prospect.registry_id + ' in the main portal. Create it there first, then return here.');
             return;
         }
-        var ffSupplierId = supRes.data.id;
-        var ffName       = supRes.data.name;
+        if (rows.length > 1) {
+            alert(
+                rows.length + ' suppliers in the main portal share CH ' + prospect.registry_id + ':\n\n  \u2022 ' +
+                rows.map(function(s) { return s.id + ' \u2014 ' + s.name; }).join('\n  \u2022 ') +
+                '\n\nResolve the duplicate in the main portal before converting \u2014 only one supplier should have this Companies House number.'
+            );
+            return;
+        }
+        var ffSupplierId = rows[0].id;
+        var ffName       = rows[0].name;
 
         // Mark prospect as converted
         var convertedAt = new Date().toISOString();
