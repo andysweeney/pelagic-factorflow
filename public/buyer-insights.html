@@ -3798,40 +3798,43 @@ function renderProspectsForUpload(upload, visibleUploads) {
     var tbody = document.getElementById('prospectsBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">Loading\u2026</td></tr>';
 
-    // Step 1: pull distinct (supplier_identifier, currency) pairs from
-    // buyer_invoices for this upload. We page through in chunks because
-    // PostgREST caps responses at 1000 rows.
-    var distinctMap = {}; // key: supplier_identifier|currency → true
-    var distinct = [];    // list of { supplier_identifier, currency }
-    var CHUNK = 1000;
-    function pullDistinctChunk(offset) {
-        sbClient.from('buyer_invoices')
-            .select('supplier_identifier, currency')
-            .eq('upload_id', upload.id)
-            .eq('excluded', false)
-            .range(offset, offset + CHUNK - 1)
-            .then(function(res) {
-                if (res.error) {
-                    if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--danger);">Failed to load this upload\u2019s prospects: ' + escHTML(res.error.message) + '</td></tr>';
-                    return;
-                }
-                var batch = res.data || [];
-                batch.forEach(function(r) {
-                    var k = (r.supplier_identifier || '') + '|' + (r.currency || '');
-                    if (!distinctMap[k]) {
-                        distinctMap[k] = true;
-                        distinct.push({ supplier_identifier: r.supplier_identifier, currency: r.currency });
-                    }
-                });
-                if (batch.length === CHUNK) { pullDistinctChunk(offset + CHUNK); return; }
-                // All chunks read. Build the previous-appearance map across
-                // all uploads in one go, then render.
-                buildPreviousAppearanceMap(distinct, upload, function(prevApp) {
-                    enrichAndRender(upload, distinct, prevApp);
+    // Distinct (supplier_identifier, currency) pairs for this upload.
+    //
+    // We used to page through buyer_invoices 1,000 rows at a time to derive
+    // these — but on a 100k-row upload that's ~100 serial round-trips, and a
+    // deep OFFSET (e.g. offset=50000) makes Postgres scan-and-discard tens of
+    // thousands of rows per page, which times out → 500 Internal Server Error
+    // and the whole load stalls. The buyer's snapshot already contains the
+    // distinct supplier list per currency (computed server-side), so read it
+    // from there instead of re-deriving it from raw invoices.
+    ensureProspectSnapshotsLoaded([upload.buyer_id], function() {
+        var snapData = state._prospectSnapData || {};
+        var snap = snapData[upload.buyer_id];
+        var distinct = [];
+        var seen = {};
+        if (snap && snap.stats && snap.stats.perPeriod) {
+            var allBlock = snap.stats.perPeriod.all;
+            var perCcy = (allBlock && allBlock.perCurrency) || {};
+            Object.keys(perCcy).forEach(function(ccy) {
+                var sups = (perCcy[ccy] && perCcy[ccy].suppliers) || [];
+                sups.forEach(function(s) {
+                    var k = s.identifier + '|' + ccy;
+                    if (seen[k]) return;
+                    seen[k] = true;
+                    distinct.push({ supplier_identifier: s.identifier, currency: ccy });
                 });
             });
-    }
-    pullDistinctChunk(0);
+        }
+        if (distinct.length === 0) {
+            // No snapshot yet (still computing) — show a gentle message rather
+            // than an empty table, and let the periodic refresh pick it up.
+            if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">Analytics still computing for this buyer — refresh in a moment.</td></tr>';
+            return;
+        }
+        buildPreviousAppearanceMap(distinct, upload, function(prevApp) {
+            enrichAndRender(upload, distinct, prevApp);
+        });
+    });
 }
 
 // Cross-reference all distinct (supplier_identifier) in this upload against
@@ -3867,31 +3870,45 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
     var crossDone = false;
     function maybeFinish() { if (sameDone && crossDone) done(prevApp); }
 
-    sbClient.from('buyer_invoices')
-        .select('upload_id, supplier_identifier')
-        .eq('buyer_id', currentUpload.buyer_id)
-        .neq('upload_id', currentUpload.id)
-        .in('supplier_identifier', uniqIdents)
-        .eq('excluded', false)
-        .limit(10000)
-        .then(function(res) {
-            if (!res.error && res.data) {
-                var byUpId = {};
+    // Same-buyer prior appearances. We must NOT pass uniqIdents via .in()
+    // here: at ~1,000 suppliers the identifier list lands in the request URL
+    // (PostgREST encodes .in() as a query-string filter) and blows past the
+    // ~8KB URL limit → 414/400, the promise rejects, and the whole prospects
+    // load stalls at "Loading…". Instead pull this buyer's prior-upload rows
+    // unfiltered by identifier and bucket client-side against prevApp (which
+    // already has a key for every identifier in the current upload). Paged to
+    // cope with high-volume buyers.
+    var sameByUpId = {};
+    var SAME_CHUNK = 1000;
+    function pullSameChunk(soffset) {
+        sbClient.from('buyer_invoices')
+            .select('upload_id, supplier_identifier')
+            .eq('buyer_id', currentUpload.buyer_id)
+            .neq('upload_id', currentUpload.id)
+            .eq('excluded', false)
+            .range(soffset, soffset + SAME_CHUNK - 1)
+            .then(function(res) {
+                if (res.error || !res.data) { sameDone = true; maybeFinish(); return; }
                 res.data.forEach(function(r) {
+                    // Only count identifiers that appear in THIS upload.
+                    if (!prevApp[r.supplier_identifier]) return;
                     var k = r.upload_id + '|' + r.supplier_identifier;
-                    byUpId[k] = (byUpId[k] || 0) + 1;
+                    sameByUpId[k] = (sameByUpId[k] || 0) + 1;
                 });
-                Object.keys(byUpId).forEach(function(k) {
+                if (res.data.length === SAME_CHUNK) { pullSameChunk(soffset + SAME_CHUNK); return; }
+                // Done paging — fold into prevApp.
+                Object.keys(sameByUpId).forEach(function(k) {
                     var parts = k.split('|');
                     var upId = parts[0];
                     var ident = parts[1];
                     var u = uploadById[upId];
                     if (!u || !prevApp[ident]) return;
-                    prevApp[ident].sameBuyer.push({ uploadId: upId, uploadDate: (u.created_at || '').split('T')[0], count: byUpId[k] });
+                    prevApp[ident].sameBuyer.push({ uploadId: upId, uploadDate: (u.created_at || '').split('T')[0], count: sameByUpId[k] });
                 });
-            }
-            sameDone = true; maybeFinish();
-        });
+                sameDone = true; maybeFinish();
+            });
+    }
+    pullSameChunk(0);
 
     // Cross-buyer verified: requires prospects in this upload to have
     // registry_ids, then we look up other prospects with the SAME
