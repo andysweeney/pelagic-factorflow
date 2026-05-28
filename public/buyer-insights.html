@@ -1238,6 +1238,18 @@
             <div id="mappingDiagnostic" class="diag" style="margin-top:14px;">Awaiting file…</div>
         </div>
 
+        <!-- Status alias reconciliation. Appears between Mapping and Preview
+             when an invoice_status column is mapped and contains values that
+             aren't in the hardcoded canonicaliser. Operator picks the
+             canonical equivalent for each; saved per-buyer for future
+             uploads. Blocks the Save button until all are resolved. -->
+        <div id="statusAliasSection" class="card hidden" style="border-left:4px solid var(--accent);">
+            <div class="card-title">Step 2b — Reconcile Status Values</div>
+            <div class="card-subtitle">Your CSV uses status values BI doesn\u2019t recognise. Map each to a canonical status. These mappings are saved against this buyer and reused on future uploads.</div>
+            <div id="statusAliasGrid" style="display:flex; flex-direction:column; gap:10px; margin-top:8px;"></div>
+            <div id="statusAliasNote" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-top:10px;"></div>
+        </div>
+
         <!-- Preview -->
         <div id="previewSection" class="card hidden">
             <div class="card-title">Step 3 — Preview</div>
@@ -1639,14 +1651,38 @@ function isAffirmative(v) {
 // invoice_status is always one of these (or null for "no status mapped").
 var CANONICAL_STATUSES = ['paid', 'cancelled', 'rejected', 'approved', 'processing'];
 
-// Canonicalise a raw invoice_status string. Hard-coded mappings cover the
-// obvious cases. Unrecognised values return null; commit 2 will surface
-// these in the per-buyer alias reconciliation UI before persisting.
-function canonicaliseInvoiceStatus(raw) {
+// Canonicalise a raw invoice_status string. Three-stage lookup:
+//   1. Per-buyer alias map (operator-saved mappings via the reconciliation
+//      UI) — takes precedence so buyer-specific vocab always wins.
+//   2. Direct canonical or common-variant hits — hardcoded recognisers.
+//   3. Unrecognised → null. The caller decides whether to surface it
+//      in the reconciliation UI or default to 'processing'.
+//
+// buyerId is optional; when omitted, stage 1 is skipped. Used during
+// ingestion (per-buyer aliases known) and analytics (whatever).
+function canonicaliseInvoiceStatus(raw, buyerId) {
     if (raw == null) return null;
     var s = String(raw).trim().toLowerCase();
     if (s === '') return null;
-    // Direct canonical hits
+    // Stage 1: per-buyer alias map. Aliases are stored case-preserved
+    // because some buyer systems are case-sensitive ("Paid" vs "PAID"),
+    // but matching is case-insensitive — the user shouldn't care.
+    if (buyerId && state.statusAliases && state.statusAliases[buyerId]) {
+        var bm = state.statusAliases[buyerId];
+        // Direct case-insensitive match against stored aliases.
+        var keys = Object.keys(bm);
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i].toLowerCase() === s) return bm[keys[i]];
+        }
+        // Pending (unsaved) aliases the operator just chose in the UI.
+        if (state.pendingStatusAliases) {
+            var pkeys = Object.keys(state.pendingStatusAliases);
+            for (var j = 0; j < pkeys.length; j++) {
+                if (pkeys[j].toLowerCase() === s) return state.pendingStatusAliases[pkeys[j]];
+            }
+        }
+    }
+    // Stage 2: direct canonical hits
     if (CANONICAL_STATUSES.indexOf(s) !== -1) return s;
     // Common variants
     if (['paid in full', 'fully paid', 'settled', 'cleared', 'paying'].indexOf(s) !== -1) return 'paid';
@@ -1654,7 +1690,8 @@ function canonicaliseInvoiceStatus(raw) {
     if (['rejected', 'disputed', 'declined'].indexOf(s) !== -1) return 'rejected';
     if (['approved', 'reconciled', 'matched', 'ok to pay'].indexOf(s) !== -1) return 'approved';
     if (['processing', 'pending', 'open', 'outstanding', 'received', 'in process', 'in progress'].indexOf(s) !== -1) return 'processing';
-    return null;  // unrecognised — falls through to alias UI in commit 2
+    // Stage 3: unrecognised
+    return null;
 }
 
 // Infer the canonical status for a single invoice row, given the raw
@@ -1666,11 +1703,11 @@ function canonicaliseInvoiceStatus(raw) {
 // Returns { status, statusChangeDate } where statusChangeDate is the
 // terminal date if applicable (cancelled / rejected), else the approved
 // date if applicable, else null.
-function inferInvoiceStatus(fields) {
+function inferInvoiceStatus(fields, buyerId) {
     var invDate     = fields.invoice_date;
     var paidDate    = fields.paid_date;
     var paidAmount  = fields.paid_amount;
-    var rawStatus   = canonicaliseInvoiceStatus(fields.invoice_status);
+    var rawStatus   = canonicaliseInvoiceStatus(fields.invoice_status, buyerId);
     var cancFlag    = isAffirmative(fields.cancelled_flag);
     var cancDate    = fields.cancelled_date;
     var rejFlag     = isAffirmative(fields.rejected_flag);
@@ -1742,6 +1779,14 @@ var state = {
     // overrides for partner-delivered or supplier-keyed feeds.
     primaryIdField: 'buyer_invoice_id',
     primaryCnIdField: 'buyer_cn_id',
+    // Status alias map — keyed by buyer_id, then raw status string → canonical.
+    // Populated by loadBuyerStatusAliases when a buyer is selected; consulted
+    // by canonicaliseInvoiceStatus before the hardcoded rules.
+    statusAliases: {},  // { buyer_id: { 'AWAITING_APPROVAL': 'approved', ... } }
+    // Pending resolutions in the current upload UI. Keyed by raw value;
+    // value is the operator's chosen canonical status. Saved to
+    // buyer_status_aliases on processAndSave (before invoices are written).
+    pendingStatusAliases: {},  // { 'AWAITING_APPROVAL': 'approved', ... }
     // Unrecognised invoice_status values from the staged CSV. Populated
     // during normaliseRows; consumed by the alias UI in commit 2.
     unrecognisedStatuses: {},
@@ -2353,10 +2398,153 @@ function updatePreview() {
 // SAVE SECTION VISIBILITY + PROCESS BUTTON
 // ================================================================
 function refreshSaveSection() {
+    refreshStatusAliasSection();
     var ready = isReadyToSave();
     document.getElementById('saveSection').classList.toggle('hidden', state.invoiceData.length === 0);
     document.getElementById('processBtn').disabled = !ready;
 }
+
+// ─── STATUS ALIAS RECONCILIATION ─────────────────────────────────────────
+// Scans the staged invoice data for distinct invoice_status values, runs
+// each through the canonicaliser (which consults per-buyer aliases first),
+// and surfaces unrecognised values for operator mapping. The reconciliation
+// panel sits between Step 2 (mapping) and Step 3 (preview); the Save button
+// is blocked until every unrecognised value is mapped.
+function scanUnrecognisedStatuses() {
+    var col = state.invoiceMapping && state.invoiceMapping.invoice_status;
+    if (!col || state.invoiceData.length === 0) return [];
+    var buyerId = (document.getElementById('buyerSelect') || {}).value || null;
+    var seen = {};
+    state.invoiceData.forEach(function(raw) {
+        var v = raw[col];
+        if (v == null) return;
+        var s = String(v).trim();
+        if (s === '') return;
+        if (seen[s]) { seen[s].count++; return; }
+        // Skip if already canonicalisable (via stored aliases OR hardcoded
+        // recogniser OR pending in-UI choice).
+        if (canonicaliseInvoiceStatus(s, buyerId)) return;
+        seen[s] = { raw: s, count: 1 };
+    });
+    return Object.keys(seen).map(function(k) { return seen[k]; });
+}
+
+function refreshStatusAliasSection() {
+    var section = document.getElementById('statusAliasSection');
+    var grid    = document.getElementById('statusAliasGrid');
+    var note    = document.getElementById('statusAliasNote');
+    if (!section || !grid) return;
+    var unrecognised = scanUnrecognisedStatuses();
+    if (unrecognised.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+
+    // Sort by descending row count so high-impact mappings sit at the top.
+    unrecognised.sort(function(a, b) { return b.count - a.count; });
+
+    grid.innerHTML = '';
+    unrecognised.forEach(function(item) {
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex; align-items:center; gap:12px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px;';
+        var raw = document.createElement('div');
+        raw.style.cssText = 'flex:1; min-width:0;';
+        raw.innerHTML =
+            '<div style="font-family:var(--mono); font-size:13px; font-weight:600; color:var(--text);">' + escHTML(item.raw) + '</div>' +
+            '<div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">' + item.count.toLocaleString() + ' row' + (item.count === 1 ? '' : 's') + '</div>';
+        var arrow = document.createElement('div');
+        arrow.style.cssText = 'color:var(--muted); font-size:14px;';
+        arrow.textContent = '\u2192';
+        var sel = document.createElement('select');
+        sel.style.cssText = 'min-width:180px; padding:6px 8px; background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px;';
+        sel.innerHTML =
+            '<option value="">\u2014 Pick canonical status \u2014</option>' +
+            '<option value="paid">Paid</option>' +
+            '<option value="approved">Approved (still outstanding)</option>' +
+            '<option value="processing">Processing (still outstanding)</option>' +
+            '<option value="cancelled">Cancelled</option>' +
+            '<option value="rejected">Rejected</option>';
+        // Reflect any existing pending choice
+        if (state.pendingStatusAliases && state.pendingStatusAliases[item.raw]) {
+            sel.value = state.pendingStatusAliases[item.raw];
+        }
+        sel.addEventListener('change', function() {
+            if (!state.pendingStatusAliases) state.pendingStatusAliases = {};
+            if (sel.value) state.pendingStatusAliases[item.raw] = sel.value;
+            else delete state.pendingStatusAliases[item.raw];
+            // Re-scan + re-render so resolved entries disappear and the
+            // Save button updates.
+            refreshSaveSection();
+        });
+        row.appendChild(raw);
+        row.appendChild(arrow);
+        row.appendChild(sel);
+        grid.appendChild(row);
+    });
+
+    var resolved = unrecognised.filter(function(it) {
+        return state.pendingStatusAliases && state.pendingStatusAliases[it.raw];
+    }).length;
+    note.textContent = resolved + ' of ' + unrecognised.length + ' resolved. The Save button unlocks when all are mapped.';
+}
+
+// Load saved status aliases for a buyer from buyer_status_aliases.
+// Called on buyer-select-change so the canonicaliser has the buyer's
+// vocab loaded before scanUnrecognisedStatuses runs. Cached in
+// state.statusAliases[buyer_id] until the buyer is changed.
+function loadBuyerStatusAliases(buyerId, done) {
+    if (!sbClient || !buyerId) { if (done) done(); return; }
+    if (state.statusAliases[buyerId]) { if (done) done(); return; }
+    sbClient.from('buyer_status_aliases')
+        .select('raw_value, canonical_value')
+        .eq('buyer_id', buyerId)
+        .then(function(res) {
+            if (res.error) {
+                console.warn('loadBuyerStatusAliases:', res.error.message);
+                state.statusAliases[buyerId] = {};  // cache the failure to avoid retry storms
+                if (done) done();
+                return;
+            }
+            var map = {};
+            (res.data || []).forEach(function(r) { map[r.raw_value] = r.canonical_value; });
+            state.statusAliases[buyerId] = map;
+            if (done) done();
+        });
+}
+
+// Persist any pending aliases for the selected buyer. Called from
+// processAndSave BEFORE invoice rows are written so the canonicaliser
+// sees the new mappings during ingestion. Returns a promise-like done(err).
+function persistPendingStatusAliases(buyerId, done) {
+    if (!sbClient || !buyerId || !state.pendingStatusAliases) { done(); return; }
+    var keys = Object.keys(state.pendingStatusAliases);
+    if (keys.length === 0) { done(); return; }
+    var actorId = (window.__currentUser && window.__currentUser.id) || null;
+    var rows = keys.map(function(k) {
+        return {
+            buyer_id:        buyerId,
+            raw_value:       k,
+            canonical_value: state.pendingStatusAliases[k],
+            created_by:      actorId
+        };
+    });
+    // Upsert in case the operator re-resolved a previously-mapped value.
+    sbClient.from('buyer_status_aliases')
+        .upsert(rows, { onConflict: 'buyer_id,raw_value' })
+        .then(function(res) {
+            if (res.error) { done(res.error.message); return; }
+            // Merge into the in-memory cache so any further ingestion in
+            // this session sees the new aliases without a refetch.
+            if (!state.statusAliases[buyerId]) state.statusAliases[buyerId] = {};
+            keys.forEach(function(k) {
+                state.statusAliases[buyerId][k] = state.pendingStatusAliases[k];
+            });
+            state.pendingStatusAliases = {};
+            done();
+        });
+}
+// ─────────────────────────────────────────────────────────────────────────
 
 function isReadyToSave() {
     if (state.invoiceData.length === 0) return false;
@@ -2371,13 +2559,32 @@ function isReadyToSave() {
     // PHASE: Buyer must be selected (FK to buyers table).
     var buyerSel = document.getElementById('buyerSelect');
     if (!buyerSel || !buyerSel.value) return false;
+    // Block save when there are unrecognised status values waiting on
+    // operator reconciliation. The alias panel surfaces them; saving
+    // before they're mapped would silently default them to 'processing'.
+    var unrecognised = scanUnrecognisedStatuses();
+    if (unrecognised.length > 0) return false;
     return true;
 }
 
 function setupProcessHandler() {
     document.getElementById('buyerLabel').addEventListener('input', refreshSaveSection);
     var buyerSel = document.getElementById('buyerSelect');
-    if (buyerSel) buyerSel.addEventListener('change', refreshSaveSection);
+    if (buyerSel) buyerSel.addEventListener('change', function() {
+        // Selected buyer changed — load that buyer's saved status aliases
+        // so the canonicaliser can apply them when scanning unrecognised
+        // values. Refresh the panel once load completes (or immediately
+        // if cached).
+        var bid = buyerSel.value;
+        if (bid) {
+            loadBuyerStatusAliases(bid, function() { refreshSaveSection(); });
+        } else {
+            refreshSaveSection();
+        }
+        // Clear pending aliases when buyer changes — they're scoped to a
+        // specific buyer and meaningless against a different one.
+        state.pendingStatusAliases = {};
+    });
     document.getElementById('processBtn').addEventListener('click', processAndSave);
 }
 
@@ -2417,13 +2624,35 @@ function processAndSave() {
     if (!isReadyToSave()) return;
     if (!sbClient) { alert('Supabase not connected. Cannot save.'); return; }
 
-    showProcessing(0, 'Normalising invoice rows…');
+    // Capture buyer_id early — needed by the status canonicaliser so
+    // per-buyer aliases (loaded into state.statusAliases by
+    // loadBuyerStatusAliases) are applied during ingestion.
+    var selectedBuyerId = document.getElementById('buyerSelect').value;
+
+    // Persist any pending status aliases first — they'll be in the DB
+    // before invoice rows are written, but more importantly the in-memory
+    // pendingStatusAliases is consulted by canonicaliseInvoiceStatus
+    // during the normalisation loop below, so the canonical status fields
+    // are computed correctly without waiting on the round-trip.
+    persistPendingStatusAliases(selectedBuyerId, function(persistErr) {
+        if (persistErr) {
+            hideProcessing();
+            alert('Failed to save status aliases: ' + persistErr + '\n\nUpload aborted.');
+            return;
+        }
+        // Continue with the rest of the save flow.
+        finishProcessAndSave(selectedBuyerId);
+    });
+}
+
+function finishProcessAndSave(selectedBuyerId) {
+    showProcessing(5, 'Normalising invoice rows…');
 
     // Normalise invoice rows
     var invRows = [];
     var currencies = {};
     var allDates = [];
-    var unrecognisedStatuses = {};  // collected for the alias UI in commit 2
+    var unrecognisedStatuses = {};
     state.invoiceData.forEach(function(raw) {
         var sid = getMappedValue(raw, 'supplier_identifier', state.invoiceMapping);
         if (!sid || String(sid).trim() === '') return; // skip rows with no supplier
@@ -2452,11 +2681,11 @@ function processAndSave() {
         }
 
         // Status inference — five-state canonical with precedence rules.
-        // Raw status strings that didn't canonicalise are collected for
-        // operator reconciliation (alias UI lands in commit 2).
+        // Raw status strings that didn't canonicalise (after consulting
+        // per-buyer aliases) are collected for the reconciliation panel.
         var rawStatusVal = getMappedValue(raw, 'invoice_status', state.invoiceMapping);
         if (rawStatusVal != null && String(rawStatusVal).trim() !== '') {
-            if (!canonicaliseInvoiceStatus(rawStatusVal)) {
+            if (!canonicaliseInvoiceStatus(rawStatusVal, selectedBuyerId)) {
                 unrecognisedStatuses[String(rawStatusVal).trim()] = (unrecognisedStatuses[String(rawStatusVal).trim()] || 0) + 1;
             }
         }
@@ -2471,7 +2700,7 @@ function processAndSave() {
             rejected_date:   parseDate(getMappedValue(raw, 'rejected_date', state.invoiceMapping)),
             approved_flag:   getMappedValue(raw, 'approved_flag', state.invoiceMapping),
             approved_date:   parseDate(getMappedValue(raw, 'approved_date', state.invoiceMapping))
-        });
+        }, selectedBuyerId);
 
         invRows.push({
             supplier_identifier:  String(sid).trim(),
