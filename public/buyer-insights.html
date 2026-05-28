@@ -1478,6 +1478,8 @@
                         <button class="pr-pill" data-pill="grouped"      >🔗 In a group</button>
                         <button class="pr-pill" data-pill="crossBuyer"   >⚡ Cross-buyer</button>
                         <button class="pr-pill" data-pill="quality"      >⚠️ Quality concerns</button>
+                        <button class="pr-pill" data-pill="shortpay"     >🩸 Short-pay pattern</button>
+                        <button class="pr-pill" data-pill="stale"        >🐢 Stale approvals</button>
                         <button class="pr-pill" data-pill="late"         >🐌 Consistently late</button>
                         <button class="pr-pill" data-pill="converted"    >Show converted</button>
                     </div>
@@ -4258,7 +4260,22 @@ function applyAndRenderProspects(enriched) {
         if (!e.row.group_id) return false;
         return getGroupBuyerCount(e.row.group_id) >= 2;
     });
-    if (f.pills.quality)      filtered = filtered.filter(function(e) { return e.stats && e.stats.dilutionRate >= 0.08; });
+    if (f.pills.quality)      filtered = filtered.filter(function(e) {
+        // Combined dilution = credit notes + short-pays. Falls back to the
+        // plain CN rate when the snapshot pre-dates commit 3.
+        if (!e.stats) return false;
+        var combined = e.stats.combinedDilutionRate != null ? e.stats.combinedDilutionRate : e.stats.dilutionRate;
+        return combined >= 0.08;
+    });
+    if (f.pills.shortpay)     filtered = filtered.filter(function(e) {
+        // Short-pay pattern: implicit dilution >3% even allowing for CNs.
+        // Surfaces buyers who deduct without raising formal credit notes.
+        return e.stats && e.stats.implicitDilutionRate != null && e.stats.implicitDilutionRate >= 0.03;
+    });
+    if (f.pills.stale)        filtered = filtered.filter(function(e) {
+        // Stale approvals: >5% of value stuck in approved/processing past 60d.
+        return e.stats && e.stats.stalePct != null && e.stats.stalePct >= 0.05;
+    });
     if (f.pills.late)         filtered = filtered.filter(function(e) {
         return e.stats && e.stats.avgDaysPastDue != null && e.stats.avgDaysPastDue > 30 && e.stats.paidCount >= 3;
     });
@@ -4275,7 +4292,7 @@ function applyAndRenderProspects(enriched) {
             case 'spend':      av = (a.stats && a.stats.totalSpend) || 0; bv = (b.stats && b.stats.totalSpend) || 0; break;
             case 'invoices':   av = (a.stats && a.stats.invoiceCount) || 0; bv = (b.stats && b.stats.invoiceCount) || 0; break;
             case 'avgDpd':     av = (a.stats && a.stats.avgDaysPastDue) || 0; bv = (b.stats && b.stats.avgDaysPastDue) || 0; break;
-            case 'dilution':   av = (a.stats && a.stats.dilutionRate) || 0; bv = (b.stats && b.stats.dilutionRate) || 0; break;
+            case 'dilution':   av = (a.stats && (a.stats.combinedDilutionRate != null ? a.stats.combinedDilutionRate : a.stats.dilutionRate)) || 0; bv = (b.stats && (b.stats.combinedDilutionRate != null ? b.stats.combinedDilutionRate : b.stats.dilutionRate)) || 0; break;
             case 'last_seen_at':   av = a.row.last_seen_at; bv = b.row.last_seen_at; break;
             case 'next_action_at': av = a.row.next_action_at || '9999'; bv = b.row.next_action_at || '9999'; break;
             default: av = 0; bv = 0;
@@ -4437,7 +4454,13 @@ function applyAndRenderProspects(enriched) {
                 '<td class="text-right mono">' + (s ? moneyShort(s.totalSpend, p.currency) : '—') + '</td>' +
                 '<td class="text-right mono">' + (s ? (s.invoiceCount || 0).toLocaleString() : '—') + '</td>' +
                 '<td class="text-right mono">' + (s && s.avgDaysPastDue != null ? (s.avgDaysPastDue >= 0 ? '+' : '') + s.avgDaysPastDue + 'd' : '—') + '</td>' +
-                '<td class="text-right mono">' + (s ? pct(s.dilutionRate) : '—') + '</td>' +
+                '<td class="text-right mono">' + (s ? (function() {
+                    var combined = s.combinedDilutionRate != null ? s.combinedDilutionRate : s.dilutionRate;
+                    var marks = '';
+                    if (s.implicitDilutionRate != null && s.implicitDilutionRate >= 0.03) marks += '🩸';
+                    if (s.stalePct != null && s.stalePct >= 0.05) marks += '🐢';
+                    return pct(combined) + (marks ? ' <span title="🩸 short-pay  🐢 stale approvals" style="font-size:10px;">' + marks + '</span>' : '');
+                })() : '—') + '</td>' +
                 '<td>' + escHTML(lastSeen) + '</td>' +
                 '<td>' + nextActionCell + '</td>' +
                 '<td><div>' + verifiedCell + (prevBadge ? '<br>' + prevBadge : '') + '</div></td>' +
@@ -4854,12 +4877,11 @@ function renderGroupPanel(group) {
                     'Once linked there, the group inherits the FactorFlow ID and per-constituent branch decisions become available.' +
                 '</div>' +
                 '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">' +
-                    '<button class="btn btn-sm" id="pdGroupExportCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border);">\u2913 Download group CSV (pre-conversion)</button>' +
+                    '<button class="btn btn-sm" id="pdGroupExportCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border);">\u2913 Download group CSV</button>' +
                     '<span id="pdGroupCsvStatus" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-left:6px;"></span>' +
                 '</div>' +
                 '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; line-height:1.4;">' +
-                    'Pre-conversion download \u2014 the <span class="mono">supplier_id</span> column will be blank. ' +
-                    'The main portal will reject the import until the group is linked and re-downloaded.' +
+                    'Data export for review or modelling outside the system. Not used for main-portal import.' +
                 '</div>' +
             '</div>';
     }
@@ -5252,6 +5274,14 @@ function renderProspectDetail(prospect) {
         cnCount:           (supplier && supplier.cnCount) || 0,
         cnTotal:           (supplier && supplier.cnTotal) || 0,
         dilutionRate:      (supplier && supplier.dilutionRate) || 0,
+        shortPayCount:        (supplier && supplier.shortPayCount) || 0,
+        shortPayAmount:       (supplier && supplier.shortPayAmount) || 0,
+        settledCount:         (supplier && supplier.settledCount) || 0,
+        implicitDilutionRate: (supplier && supplier.implicitDilutionRate) || 0,
+        combinedDilutionRate: (supplier && supplier.combinedDilutionRate) || 0,
+        staleCount:           (supplier && supplier.staleCount) || 0,
+        staleAmount:          (supplier && supplier.staleAmount) || 0,
+        stalePct:             (supplier && supplier.stalePct) || 0,
         monthlySeries:     monthlySeries,
         creditNotes:       [],
         recentInvoices:    [],
@@ -5282,7 +5312,8 @@ function renderProspectDetail(prospect) {
             renderSupVolume(panelStats, ccy) +
             renderSupPayment(panelStats) +
             renderSupRecentInvoices(panelStats, ccy, false, null, null) +
-            (panelStats.cnCount > 0 ? renderSupDilution(panelStats, ccy) : '') +
+            (panelStats.cnCount > 0 || panelStats.shortPayAmount > 0 || panelStats.staleCount > 0 ? renderSupDilution(panelStats, ccy) : '') +
+            '<div id="sup-concentration-slot"></div>' +
         '</div>';
 
     detailEl.innerHTML =
@@ -5302,6 +5333,11 @@ function renderProspectDetail(prospect) {
     wireProspectWorkspaceHandlers(prospect);
     wireGroupSectionHandlers(prospect);
     wireSupSearchHandlers(ccy);
+
+    // Fetch + render GL-code concentration and cost-centre → branch suggestion.
+    // Done client-side from buyer_invoices (like the Previous Appearance badge)
+    // rather than from the snapshot, since these are detail-only signals.
+    loadSupplierConcentration(prospect.buyer_id, prospect.supplier_identifier, ccy);
 
     // Draw charts after DOM ready (the canvases inside renderSupVolume/Payment
     // need to be in the document)
@@ -5462,19 +5498,16 @@ function renderProspectWorkspace(prospect) {
     var convertReady = prospect.verified_at && prospect.status !== 'converted';
     var isConverted = (prospect.status === 'converted');
 
-    // Download CSV is ALWAYS available — sales may want the data pre-conversion
-    // (sharing with the prospect, internal review, sanity checking). MP's CSV
-    // validator catches malformed rows on import; BI doesn't need to gate.
-    // A small banner labels the pre-conversion case so the operator knows
-    // what they're getting.
+    // Download CSV is ALWAYS available — a convenience for sales to pull the
+    // supplier's invoice data out of the system (sharing with the prospect,
+    // internal review, modelling in Excel). It is NOT a main-portal import
+    // mechanism: once a supplier is converted, the main portal ingests their
+    // invoices directly from the buyer's AR feed, not from this file.
     var downloadCsvBlock =
-        '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; margin-bottom:6px;">\u2913 Download invoices CSV (for main portal import)</button>' +
-        (isConverted
-            ? ''
-            : '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:-2px; margin-bottom:6px; line-height:1.4;">' +
-                  'Pre-conversion download \u2014 the <span class="mono">supplier_id</span> column will be blank. ' +
-                  'The main portal will reject the import until this prospect is converted and re-downloaded.' +
-              '</div>') +
+        '<button class="btn btn-sm" id="pdDownloadCsvBtn" style="background:var(--card); color:var(--text); border:1px solid var(--border); width:100%; margin-bottom:6px;">\u2913 Download invoices CSV</button>' +
+        '<div style="font-size:10px; color:var(--text-secondary); font-style:italic; margin-top:-2px; margin-bottom:6px; line-height:1.4;">' +
+            'Data export for review or modelling outside the system. Not used for main-portal import \u2014 the portal ingests invoices from the buyer\u2019s AR feed once a supplier is live.' +
+        '</div>' +
         '<div id="pdCsvStatus" style="font-size:10px; color:var(--text-secondary); margin-top:6px;"></div>';
 
     var convertHtml;
@@ -8474,6 +8507,14 @@ function openSupplierPanel(supId, ccy) {
         cnCount:           supplier.cnCount,
         cnTotal:           supplier.cnTotal,
         dilutionRate:      supplier.dilutionRate,
+        shortPayCount:        supplier.shortPayCount || 0,
+        shortPayAmount:       supplier.shortPayAmount || 0,
+        settledCount:         supplier.settledCount || 0,
+        implicitDilutionRate: supplier.implicitDilutionRate || 0,
+        combinedDilutionRate: supplier.combinedDilutionRate || 0,
+        staleCount:           supplier.staleCount || 0,
+        staleAmount:          supplier.staleAmount || 0,
+        stalePct:             supplier.stalePct || 0,
         monthlySeries:     monthlySeries,
         // Filled by the lazy fetch below
         creditNotes:       [],
@@ -8715,7 +8756,7 @@ function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier,
         renderSupVolume(st, ccy) +
         renderSupPayment(st) +
         renderSupRecentInvoices(st, ccy, false, periodFrom, periodTo) +
-        (st.cnCount > 0 ? renderSupDilution(st, ccy) : '');
+        (st.cnCount > 0 || st.shortPayAmount > 0 || st.staleCount > 0 ? renderSupDilution(st, ccy) : '');
 
     wireSupSearchHandlers(ccy);
     if (window._prospectContext && window._prospectContext.prospect) {
@@ -8973,7 +9014,7 @@ function confirmProspectConversion(prospect) {
         );
         return;
     }
-    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This links the prospect; invoices are imported separately via the main portal\'s CSV import.')) return;
+    if (!confirm('Confirm that "' + (prospect.legal_name || prospect.registry_id) + '" has been created in the main portal? This links the prospect to the main-portal supplier. Invoice data is ingested into the main portal directly from the buyer\u2019s AR feed \u2014 nothing is copied from Buyer Insights.')) return;
 
     // Lookup uses select-array (not maybeSingle) so we can distinguish three
     // outcomes cleanly: no match, exactly one match, multiple matches.
@@ -9257,9 +9298,10 @@ function downloadProspectInvoicesCSV(prospect) {
 }
 
 // Group-wide export: aggregate invoices across all constituents in a prospect
-// group into a single MP-importable CSV. Mirrors the single-prospect export
-// (downloadProspectInvoicesCSV) but loops over the group's constituents and
-// emits one row per (constituent, invoice).
+// group into a single CSV for review/modelling outside the system. NOT an
+// MP import file (the portal ingests from the buyer's AR feed). Mirrors the
+// single-prospect export (downloadProspectInvoicesCSV) but loops over the
+// group's constituents and emits one row per (constituent, invoice).
 //
 // Key behaviours:
 //   - Skips constituents with branch_decision === 'skip'. Same gate as the
@@ -9281,13 +9323,9 @@ function downloadGroupInvoicesCSV(group) {
     // (the UI labels this clearly under the button). MP\u2019s CSV validator
     // rejects rows with blank supplier_id at import time, so there\u2019s no
     // silent-data path \u2014 the file is sharable / inspectable, not importable.
-    var isPreConversion = !group.converted_supplier_id;
-    if (isPreConversion) {
-        if (!confirm('This group is not yet linked to FactorFlow.\n\n' +
-                'You can still download the CSV, but the supplier_id column will be blank \u2014 ' +
-                'the main portal will reject the import until you link this group and re-download.\n\n' +
-                'Proceed with the pre-conversion download?')) return;
-    }
+    // The group CSV is a data-export convenience, not an MP import file, so
+    // there's no pre-conversion gate any more — sales can pull the data at
+    // any pipeline stage.
 
     var statusEl = document.getElementById('pdGroupCsvStatus');
     function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
@@ -9666,6 +9704,89 @@ function renderSupPayment(st) {
         '</div>';
 }
 
+// Fetch GL codes + cost centres for one supplier from buyer_invoices and
+// render two detail-only signals into #sup-concentration-slot:
+//   - GL-code concentration: how many distinct categories, top share
+//   - Cost-centre → buyer-branch suggestion: dominant cost centre, if any
+function loadSupplierConcentration(buyerId, supId, ccy) {
+    var slot = document.getElementById('sup-concentration-slot');
+    if (!slot || !sbClient || !window.__upload) return;
+    sbClient.from('buyer_invoices')
+        .select('gl_code, cost_centre, amount')
+        .eq('upload_id', window.__upload.uploadId)
+        .eq('supplier_identifier', supId)
+        .eq('currency', ccy)
+        .eq('excluded', false)
+        .limit(5000)
+        .then(function(res) {
+            if (res.error || !res.data || res.data.length === 0) { slot.innerHTML = ''; return; }
+            var rows = res.data;
+            // Aggregate spend by GL code and by cost centre.
+            var glSpend = {}, ccSpend = {}, total = 0;
+            rows.forEach(function(r) {
+                var amt = parseFloat(r.amount) || 0;
+                total += amt;
+                if (r.gl_code)     glSpend[r.gl_code]     = (glSpend[r.gl_code] || 0) + amt;
+                if (r.cost_centre) ccSpend[r.cost_centre] = (ccSpend[r.cost_centre] || 0) + amt;
+            });
+            var glKeys = Object.keys(glSpend);
+            var ccKeys = Object.keys(ccSpend);
+            var html = '';
+
+            // GL-code concentration
+            if (glKeys.length > 0) {
+                var glSorted = glKeys.map(function(k) { return { code: k, spend: glSpend[k] }; })
+                    .sort(function(a, b) { return b.spend - a.spend; });
+                var topShare = total > 0 ? glSorted[0].spend / total : 0;
+                var concLabel = glKeys.length === 1 ? 'Single category'
+                    : (topShare >= 0.8 ? 'Highly concentrated'
+                    : topShare >= 0.5 ? 'Moderately concentrated' : 'Diversified');
+                html += '<div class="sup-panel-section">' +
+                    '<div class="sup-panel-section-title">GL-code concentration — ' + concLabel + '</div>' +
+                    '<div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px;">' +
+                        glKeys.length + ' distinct GL code' + (glKeys.length === 1 ? '' : 's') +
+                        '; top code is ' + pct(topShare) + ' of spend.</div>' +
+                    '<table class="sup-table"><thead><tr><th>GL Code</th><th class="text-right">Spend</th><th class="text-right">Share</th></tr></thead><tbody>' +
+                    glSorted.slice(0, 8).map(function(g) {
+                        return '<tr><td class="mono" style="font-size:11px;">' + escHTML(g.code) + '</td>' +
+                            '<td class="text-right mono">' + moneyShort(g.spend, ccy) + '</td>' +
+                            '<td class="text-right mono">' + pct(total > 0 ? g.spend / total : 0) + '</td></tr>';
+                    }).join('') +
+                    '</tbody></table></div>';
+            }
+
+            // Cost-centre → branch suggestion
+            if (ccKeys.length > 0) {
+                var ccSorted = ccKeys.map(function(k) { return { cc: k, spend: ccSpend[k] }; })
+                    .sort(function(a, b) { return b.spend - a.spend; });
+                var ccTopShare = total > 0 ? ccSorted[0].spend / total : 0;
+                var suggestion = '';
+                if (ccKeys.length === 1) {
+                    suggestion = 'All invoices sit in cost centre <strong>' + escHTML(ccSorted[0].cc) + '</strong>. ' +
+                        'This likely maps to a single buyer branch — consider routing this supplier there when converting.';
+                } else if (ccTopShare >= 0.7) {
+                    suggestion = '<strong>' + pct(ccTopShare) + '</strong> of spend is in cost centre <strong>' + escHTML(ccSorted[0].cc) + '</strong>. ' +
+                        'Dominant centre — likely the right buyer branch for this relationship.';
+                } else {
+                    suggestion = 'Spend spans <strong>' + ccKeys.length + ' cost centres</strong> with no clear dominant one. ' +
+                        'May indicate a group-level supplier serving multiple branches.';
+                }
+                html += '<div class="sup-panel-section">' +
+                    '<div class="sup-panel-section-title">Cost centre → buyer branch</div>' +
+                    '<div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px; line-height:1.5;">' + suggestion + '</div>' +
+                    '<table class="sup-table"><thead><tr><th>Cost Centre</th><th class="text-right">Spend</th><th class="text-right">Share</th></tr></thead><tbody>' +
+                    ccSorted.slice(0, 8).map(function(c) {
+                        return '<tr><td class="mono" style="font-size:11px;">' + escHTML(c.cc) + '</td>' +
+                            '<td class="text-right mono">' + moneyShort(c.spend, ccy) + '</td>' +
+                            '<td class="text-right mono">' + pct(total > 0 ? c.spend / total : 0) + '</td></tr>';
+                    }).join('') +
+                    '</tbody></table></div>';
+            }
+
+            slot.innerHTML = html;
+        });
+}
+
 function renderSupDilution(st, ccy) {
     var rowsHtml = renderSupCnRows(st.creditNotes.slice(0, 15), ccy);
     var moreRow = st.creditNotes.length > 15
@@ -9682,9 +9803,41 @@ function renderSupDilution(st, ccy) {
         '</div>' +
         '<div class="sup-search-status" id="sup-cn-search-status"></div>';
 
+    // Combined dilution breakdown. Credit notes are explicit; short-pays are
+    // implicit (settled invoices paid below face value). When the snapshot
+    // pre-dates commit 3, the short-pay fields are absent → fall back to the
+    // CN-only view.
+    var hasShortPay = st.shortPayAmount != null && st.shortPayAmount > 0;
+    var combinedRate = st.combinedDilutionRate != null ? st.combinedDilutionRate : st.dilutionRate;
+    var breakdownHtml = '';
+    if (hasShortPay) {
+        breakdownHtml =
+            '<div style="font-size:11px; color:var(--text-secondary); margin:4px 0 10px; line-height:1.5;">' +
+                'Combined dilution <strong>' + pct(combinedRate) + '</strong> — ' +
+                moneyShort(st.cnTotal, ccy) + ' credit notes + ' +
+                moneyShort(st.shortPayAmount, ccy) + ' short-pays' +
+                (st.shortPayCount ? ' (' + st.shortPayCount + ' invoice' + (st.shortPayCount === 1 ? '' : 's') + ' paid below face value)' : '') +
+            '</div>';
+    }
+
+    // Stale-approval surfacing — separate signal, not folded into dilution.
+    var staleHtml = '';
+    if (st.staleCount != null && st.staleCount > 0) {
+        staleHtml =
+            '<div style="font-size:11px; margin:4px 0 10px; padding:8px 10px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.3); border-radius:6px; line-height:1.5;">' +
+                '🐢 <strong>' + st.staleCount + ' invoice' + (st.staleCount === 1 ? '' : 's') + '</strong> totalling ' +
+                moneyShort(st.staleAmount, ccy) + ' have been in approved/processing for over 60 days' +
+                (st.stalePct != null ? ' (' + pct(st.stalePct) + ' of spend)' : '') +
+                '. Could indicate an unregistered dispute or a slow approval cycle — worth investigating before relying on payment-behaviour stats.' +
+            '</div>';
+    }
+
+    var titleRate = hasShortPay ? combinedRate : st.dilutionRate;
     return '' +
         '<div class="sup-panel-section sup-section-dilution">' +
-            '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(st.dilutionRate) + ')</div>' +
+            '<div class="sup-panel-section-title">Dilution — ' + st.cnCount + ' credit notes totalling ' + moneyShort(st.cnTotal, ccy) + ' (' + pct(titleRate) + (hasShortPay ? ' combined' : '') + ')</div>' +
+            breakdownHtml +
+            staleHtml +
             searchBar +
             '<table class="sup-table">' +
                 '<thead><tr><th>Date</th><th>Reference</th><th class="text-right">Amount</th><th>Settled</th></tr></thead>' +
