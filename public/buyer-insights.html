@@ -5440,6 +5440,16 @@ function renderProspectDetail(prospect) {
         drawSupplierVolumeChart(panelStats, ccy);
         drawSupplierPaymentChart(panelStats);
     }); });
+    setTimeout(function() {
+        var cv = document.getElementById('sup-chart-volume');
+        var ch = cv && typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(cv) : null;
+        console.log('[DIAG3 @1s] canvas exists=', !!cv,
+            'chart bound=', !!ch,
+            'canvas client w/h=', cv && cv.clientWidth, cv && cv.clientHeight,
+            'wrap h=', cv && cv.parentElement && cv.parentElement.clientHeight,
+            'tracked charts=', _supplierPanelCharts.length,
+            'canvas in document=', cv ? document.body.contains(cv) : 'n/a');
+    }, 1000);
 
     // Lazy-load row-level invoice/CN data for the recent-invoices/CN tables.
     var DRILL_LIMIT = 250;
