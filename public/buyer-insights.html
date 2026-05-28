@@ -5434,11 +5434,13 @@ function renderProspectDetail(prospect) {
     loadSupplierConcentration(prospect.buyer_id, prospect.supplier_identifier, ccy);
 
     // Draw charts after layout settles. Double rAF avoids the 0×0-canvas race
-    // during the panel's open animation (see All Suppliers path for detail).
+    // during the panel's open animation. Scope to prospectsDetailView so the
+    // duplicate sup-chart-volume id in the All Suppliers slideout can't be hit.
     requestAnimationFrame(function() { requestAnimationFrame(function() {
         destroySupplierPanelCharts();
-        drawSupplierVolumeChart(panelStats, ccy);
-        drawSupplierPaymentChart(panelStats);
+        var root = document.getElementById('prospectsDetailView');
+        drawSupplierVolumeChart(panelStats, ccy, root);
+        drawSupplierPaymentChart(panelStats, root);
     }); });
 
     // Lazy-load row-level invoice/CN data for the recent-invoices/CN tables.
@@ -8628,22 +8630,10 @@ function openSupplierPanel(supId, ccy) {
     populateSupplierPanel(supName, supId, ccy, panelStats, ccyStats, lifetimeSupplier, periodFromDate, periodToDate);
     requestAnimationFrame(function() { requestAnimationFrame(function() {
         destroySupplierPanelCharts();
-        drawSupplierVolumeChart(panelStats, ccy);
-        drawSupplierPaymentChart(panelStats);
+        var root = document.getElementById('supPanelBody');
+        drawSupplierVolumeChart(panelStats, ccy, root);
+        drawSupplierPaymentChart(panelStats, root);
     }); });
-    setTimeout(function() {
-        var cv = document.getElementById('sup-chart-volume');
-        var ch = cv && typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(cv) : null;
-        var allVol = document.querySelectorAll('#sup-chart-volume');
-        var bodyCv = (document.getElementById('supPanelBody')||document.createElement('div')).querySelector('#sup-chart-volume');
-        console.log('[DIAG3-ALLSUP @1s]',
-            'COUNT of #sup-chart-volume in DOM=', allVol.length,
-            '| getElementById chart bound=', !!ch,
-            '| getElementById w/h=', cv && cv.clientWidth, cv && cv.clientHeight,
-            '| supPanelBody-scoped canvas exists=', !!bodyCv,
-            '| supPanelBody-scoped w/h=', bodyCv && bodyCv.clientWidth, bodyCv && bodyCv.clientHeight,
-            '| supPanelBody-scoped chart bound=', bodyCv && Chart.getChart ? !!Chart.getChart(bodyCv) : 'n/a');
-    }, 1000);
 
     // Lazy-load row-level data for the recent-invoices and credit-notes
     // tables. Filtered by period date range so the panel honours the
@@ -10060,8 +10050,13 @@ function destroySupplierPanelCharts() {
     _supplierPanelCharts = [];
 }
 
-function drawSupplierVolumeChart(st, ccy) {
-    var canvas = document.getElementById('sup-chart-volume');
+function drawSupplierVolumeChart(st, ccy, root) {
+    // Scope the lookup to the panel being drawn. The Prospects detail view and
+    // the All Suppliers slideout BOTH render a canvas with id sup-chart-volume,
+    // so a global getElementById returns whichever appears first in the DOM —
+    // often the wrong (hidden, zero-size) one, leaving the visible canvas blank.
+    var scope = root || document;
+    var canvas = scope.querySelector('#sup-chart-volume');
     if (!canvas) return;
     // If the canvas has no rendered size yet (panel mid-animation, or a
     // duplicate draw firing while the panel is in a transitional state), bail
@@ -10113,8 +10108,9 @@ function drawSupplierVolumeChart(st, ccy) {
     requestAnimationFrame(function() { try { inst.resize(); } catch (e) {} });
 }
 
-function drawSupplierPaymentChart(st) {
-    var canvas = document.getElementById('sup-chart-payment');
+function drawSupplierPaymentChart(st, root) {
+    var scope = root || document;
+    var canvas = scope.querySelector('#sup-chart-payment');
     if (!canvas) return;
     var wrap = canvas.parentElement;
     if (!wrap || wrap.clientHeight === 0 || wrap.clientWidth === 0) return;
