@@ -888,7 +888,7 @@
         .sup-stat-card .stat-sub { font-size: 9px; color: var(--muted); margin-top: 2px; }
 
         .sup-chart-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; height: 200px; position: relative; }
-        .sup-chart-wrap canvas { position: absolute; top: 12px; left: 12px; right: 12px; bottom: 12px; width: calc(100% - 24px) !important; height: calc(100% - 24px) !important; }
+        .sup-chart-wrap canvas { display: block; }
 
         .sup-table { width: 100%; border-collapse: collapse; font-size: 11px; }
         .sup-table th { background: var(--bg); padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 1px solid var(--border); }
@@ -10089,6 +10089,17 @@ function drawSupplierVolumeChart(st, ccy) {
         }
     });
     _supplierPanelCharts.push(inst);
+    // Force a resize on next frame — Chart.js caches its measured size at
+    // construction; if the parent wasn't fully laid out yet, resize() makes
+    // it re-measure now that it is.
+    requestAnimationFrame(function() {
+        try {
+            inst.resize();
+            console.log('[DIAG2] after resize chart w/h=', inst.width, inst.height,
+                'canvas client w/h=', canvas.clientWidth, canvas.clientHeight,
+                'wrap client h=', canvas.parentElement && canvas.parentElement.clientHeight);
+        } catch (e) { console.log('[DIAG2] resize err', e); }
+    });
 }
 
 function drawSupplierPaymentChart(st) {
