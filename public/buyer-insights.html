@@ -1261,6 +1261,20 @@
             <div id="doctypeAliasNote" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-top:10px;"></div>
         </div>
 
+        <!-- Saved mappings for the selected buyer. Read-only visibility of
+             previously-reconciled status + document-type aliases, with a
+             delete affordance so the operator can change a mapping (delete
+             → next upload re-prompts for that value). Appears once a buyer
+             with saved aliases is selected. -->
+        <div id="savedAliasesSection" class="card hidden">
+            <div class="card-title" style="display:flex; align-items:center; justify-content:space-between; cursor:pointer;" id="savedAliasesHeader">
+                <span>Saved mappings for this buyer</span>
+                <span id="savedAliasesToggle" style="font-size:12px; color:var(--text-secondary);">\u25BC</span>
+            </div>
+            <div class="card-subtitle">Previously-reconciled values for this buyer, applied automatically on upload. Delete a mapping to be re-prompted next time.</div>
+            <div id="savedAliasesBody" style="margin-top:8px;"></div>
+        </div>
+
         <!-- Preview -->
         <div id="previewSection" class="card hidden">
             <div class="card-title">Step 3 — Preview</div>
@@ -2646,6 +2660,94 @@ function persistPendingDoctypeAliases(buyerId, done) {
             done();
         });
 }
+
+// Render the read-only "Saved mappings for this buyer" panel. Shows both
+// status and document-type aliases already persisted for the selected
+// buyer, each with a delete button. Deleting removes the row from
+// buyer_status_aliases / buyer_doctype_aliases and the in-memory cache,
+// so the next upload re-prompts for that value.
+function refreshSavedAliasesSection() {
+    var section = document.getElementById('savedAliasesSection');
+    var body    = document.getElementById('savedAliasesBody');
+    if (!section || !body) return;
+    var bid = (document.getElementById('buyerSelect') || {}).value || null;
+    if (!bid) { section.classList.add('hidden'); return; }
+
+    var statusMap  = (state.statusAliases && state.statusAliases[bid]) || {};
+    var doctypeMap = (state.doctypeAliases && state.doctypeAliases[bid]) || {};
+    var statusKeys  = Object.keys(statusMap);
+    var doctypeKeys = Object.keys(doctypeMap);
+
+    if (statusKeys.length === 0 && doctypeKeys.length === 0) {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+
+    var STATUS_LABEL = { paid: 'Paid', cancelled: 'Cancelled', rejected: 'Rejected', approved: 'Approved', processing: 'Processing' };
+    var DOCTYPE_LABEL = { invoice: 'Invoice', credit_note: 'Credit Note', disregard: 'Disregard' };
+
+    function pill(text, color, bg, border) {
+        return '<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:' + bg + '; color:' + color + '; border:1px solid ' + border + '; font-size:11px; font-weight:600;">' + escHTML(text) + '</span>';
+    }
+    function aliasRow(rawVal, canonLabel, kind) {
+        return '<div style="display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid var(--border);">' +
+            '<span style="font-family:var(--mono); font-size:12px; flex:1; min-width:0;">' + escHTML(rawVal) + '</span>' +
+            '<span style="color:var(--muted); font-size:12px;">\u2192</span>' +
+            '<span style="min-width:120px;">' + canonLabel + '</span>' +
+            '<button class="btn btn-xs" data-alias-kind="' + kind + '" data-alias-raw="' + escHTML(rawVal) + '" style="background:transparent; color:var(--danger); border:1px solid var(--border); padding:2px 8px;">Delete</button>' +
+            '</div>';
+    }
+
+    var html = '';
+    if (doctypeKeys.length > 0) {
+        html += '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin:6px 0 4px;">Document types</div>';
+        doctypeKeys.sort().forEach(function(k) {
+            var cv = doctypeMap[k];
+            var col = cv === 'disregard' ? 'var(--muted)' : (cv === 'credit_note' ? '#7C3AED' : '#0369A1');
+            html += aliasRow(k, pill(DOCTYPE_LABEL[cv] || cv, col, 'transparent', 'var(--border)'), 'doctype');
+        });
+    }
+    if (statusKeys.length > 0) {
+        html += '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin:10px 0 4px;">Statuses</div>';
+        statusKeys.sort().forEach(function(k) {
+            html += aliasRow(k, pill(STATUS_LABEL[statusMap[k]] || statusMap[k], 'var(--text)', 'var(--bg)', 'var(--border)'), 'status');
+        });
+    }
+    body.innerHTML = html;
+
+    body.querySelectorAll('[data-alias-raw]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var kind = btn.getAttribute('data-alias-kind');
+            var rawVal = btn.getAttribute('data-alias-raw');
+            deleteAlias(bid, kind, rawVal);
+        });
+    });
+}
+
+function deleteAlias(buyerId, kind, rawValue) {
+    if (!sbClient || !buyerId) return;
+    var table = (kind === 'doctype') ? 'buyer_doctype_aliases' : 'buyer_status_aliases';
+    sbClient.from(table)
+        .delete()
+        .eq('buyer_id', buyerId)
+        .eq('raw_value', rawValue)
+        .then(function(res) {
+            if (res.error) { alert('Failed to delete mapping: ' + res.error.message); return; }
+            // Drop from the in-memory cache and re-render.
+            var cache = (kind === 'doctype') ? state.doctypeAliases : state.statusAliases;
+            if (cache && cache[buyerId]) {
+                // raw_value stored case-preserved; delete the matching key
+                Object.keys(cache[buyerId]).forEach(function(k) {
+                    if (k === rawValue) delete cache[buyerId][k];
+                });
+            }
+            refreshSavedAliasesSection();
+            // Re-scan in case the deleted alias means a value now needs
+            // reconciliation again (if that value is present in the staged file).
+            refreshSaveSection();
+        });
+}
 // ─────────────────────────────────────────────────────────────────────────
 
 // Load saved status aliases for a buyer from buyer_status_aliases.
@@ -2733,23 +2835,42 @@ function setupProcessHandler() {
     document.getElementById('buyerLabel').addEventListener('input', refreshSaveSection);
     var buyerSel = document.getElementById('buyerSelect');
     if (buyerSel) buyerSel.addEventListener('change', function() {
-        // Selected buyer changed — load that buyer's saved status aliases
-        // so the canonicaliser can apply them when scanning unrecognised
-        // values. Refresh the panel once load completes (or immediately
-        // if cached).
         var bid = buyerSel.value;
+        // Only discard pending alias choices when switching to a DIFFERENT
+        // buyer — pending mappings are buyer-scoped, so they're meaningless
+        // against another buyer. But operators commonly map columns +
+        // reconcile FIRST, then pick the buyer; clearing on that first
+        // selection (or on re-selecting the same buyer) would throw away
+        // their Step 2b/2c work. Track the last buyer and compare.
+        if (state._lastSelectedBuyerId && state._lastSelectedBuyerId !== bid) {
+            state.pendingStatusAliases = {};
+            state.pendingDoctypeAliases = {};
+        }
+        state._lastSelectedBuyerId = bid;
         if (bid) {
             loadBuyerStatusAliases(bid, function() {
-                loadBuyerDoctypeAliases(bid, function() { refreshSaveSection(); });
+                loadBuyerDoctypeAliases(bid, function() {
+                    refreshSaveSection();
+                    refreshSavedAliasesSection();
+                });
             });
         } else {
             refreshSaveSection();
+            refreshSavedAliasesSection();
         }
-        // Clear pending aliases when buyer changes — scoped to a buyer.
-        state.pendingStatusAliases = {};
-        state.pendingDoctypeAliases = {};
     });
     document.getElementById('processBtn').addEventListener('click', processAndSave);
+
+    // Collapse / expand the saved-mappings panel.
+    var savedHeader = document.getElementById('savedAliasesHeader');
+    if (savedHeader) savedHeader.addEventListener('click', function() {
+        var body = document.getElementById('savedAliasesBody');
+        var toggle = document.getElementById('savedAliasesToggle');
+        if (!body) return;
+        var collapsed = body.style.display === 'none';
+        body.style.display = collapsed ? '' : 'none';
+        if (toggle) toggle.textContent = collapsed ? '\u25BC' : '\u25B6';
+    });
 }
 
 // Populate the buyer dropdown by reading from the buyers table.
@@ -3154,6 +3275,8 @@ function resetUploadForm() {
     state.primaryCnIdField = 'buyer_cn_id';
     state.unrecognisedStatuses = {};
     state.pendingDoctypeAliases = {};
+    state.pendingStatusAliases = {};
+    state._lastSelectedBuyerId = null;
     document.getElementById('invoiceZone').classList.remove('has-file');
     document.getElementById('cnZone').classList.remove('has-file');
     document.getElementById('invoiceFilename').classList.add('hidden');
