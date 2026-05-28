@@ -1710,10 +1710,15 @@ function inferInvoiceStatus(fields) {
 }
 
 // Credit note fields — same supplier/amount/currency/date primitives, no due_date.
+// Mirrors the four-ID model used by invoices (see INVOICE_FIELDS above).
+// Primary ID for CNs is set independently of invoices because some buyers
+// emit invoices keyed on buyer_id but CNs keyed on supplier reference.
 var CN_FIELDS = [
+    { key: 'buyer_cn_id',         label: 'Buyer Credit Note ID', required: false, hints: ['buyer_cn_id', 'buyer_credit_note_id', 'document_number', 'document_no', 'doc_number', 'credit_note_number', 'cn_number', 'cn_ref', 'reference'] },
+    { key: 'supplier_cn_id',      label: 'Supplier Credit Note ID', required: false, hints: ['supplier_cn_id', 'supplier_credit_note_id', 'vendor_credit_note_id', 'vendor_cn_id'] },
+    { key: 'partner_cn_id',       label: 'Partner Credit Note ID', required: false, hints: ['partner_cn_id', 'provider_cn_id', 'partner_credit_note_id'] },
     { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number'] },
     { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname'] },
-    { key: 'cn_reference',        label: 'Credit Note Ref', required: false, hints: ['credit_note_number', 'cn_number', 'cn_ref', 'document_number', 'reference'] },
     { key: 'cn_date',             label: 'Credit Note Date', required: true,  hints: ['credit_note_date', 'cn_date', 'date', 'document_date', 'issue_date'] },
     { key: 'paid_date',           label: 'Settled Date', required: false, hints: ['settled_date', 'cleared_date', 'paid_date', 'applied_date'] },
     { key: 'amount',              label: 'Amount', required: true,  hints: ['amount', 'value', 'gross_amount', 'credit_note_amount', 'cn_amount', 'total'] },
@@ -1736,6 +1741,7 @@ var state = {
     // buyer AR feeds reliably contain the buyer's own ref; operator
     // overrides for partner-delivered or supplier-keyed feeds.
     primaryIdField: 'buyer_invoice_id',
+    primaryCnIdField: 'buyer_cn_id',
     // Unrecognised invoice_status values from the staged CSV. Populated
     // during normaliseRows; consumed by the alias UI in commit 2.
     unrecognisedStatuses: {},
@@ -2514,13 +2520,16 @@ function processAndSave() {
 
         cnRows.push({
             supplier_identifier: String(sid).trim(),
-            supplier_name: nullableStr(getMappedValue(raw, 'supplier_name', state.cnMapping)),
-            cn_reference: nullableStr(getMappedValue(raw, 'cn_reference', state.cnMapping)),
-            cn_date: cnDate,
-            paid_date: parseDate(getMappedValue(raw, 'paid_date', state.cnMapping)),
-            amount: amt,
-            currency: ccy,
-            excluded: false
+            supplier_name:       nullableStr(getMappedValue(raw, 'supplier_name', state.cnMapping)),
+            buyer_cn_id:         nullableStr(getMappedValue(raw, 'buyer_cn_id', state.cnMapping)),
+            supplier_cn_id:      nullableStr(getMappedValue(raw, 'supplier_cn_id', state.cnMapping)),
+            partner_cn_id:       nullableStr(getMappedValue(raw, 'partner_cn_id', state.cnMapping)),
+            primary_id_field:    state.primaryCnIdField || 'buyer_cn_id',
+            cn_date:             cnDate,
+            paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.cnMapping)),
+            amount:              amt,
+            currency:            ccy,
+            excluded:            false
         });
     });
 
@@ -2660,6 +2669,7 @@ function resetUploadForm() {
     state.invoiceColumns = []; state.cnColumns = [];
     state.invoiceMapping = {}; state.cnMapping = {};
     state.primaryIdField = 'buyer_invoice_id';
+    state.primaryCnIdField = 'buyer_cn_id';
     state.unrecognisedStatuses = {};
     document.getElementById('invoiceZone').classList.remove('has-file');
     document.getElementById('cnZone').classList.remove('has-file');
@@ -4637,7 +4647,7 @@ function renderProspectDetail(prospect) {
     // Lazy-load row-level invoice/CN data for the recent-invoices/CN tables.
     var DRILL_LIMIT = 250;
     var invQ = sbClient.from('buyer_invoices')
-        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
+        .select('invoice_date, due_date, paid_date, buyer_invoice_id, supplier_invoice_id, partner_invoice_id, primary_id_field, amount, paid_amount, invoice_status, status_change_date, currency')
         .eq('upload_id', window.__upload.uploadId)
         .eq('supplier_identifier', prospect.supplier_identifier)
         .eq('currency', ccy)
@@ -4645,7 +4655,7 @@ function renderProspectDetail(prospect) {
         .order('invoice_date', { ascending: false })
         .limit(DRILL_LIMIT);
     var cnQ = sbClient.from('buyer_credit_notes')
-        .select('cn_date, cn_reference, amount, paid_date, currency')
+        .select('cn_date, buyer_cn_id, supplier_cn_id, partner_cn_id, primary_id_field, amount, paid_date, currency')
         .eq('upload_id', window.__upload.uploadId)
         .eq('supplier_identifier', prospect.supplier_identifier)
         .eq('currency', ccy)
@@ -7804,7 +7814,7 @@ function openSupplierPanel(supId, ccy) {
     var DRILL_LIMIT = 250;
 
     var invQ = sbClient.from('buyer_invoices')
-        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
+        .select('invoice_date, due_date, paid_date, buyer_invoice_id, supplier_invoice_id, partner_invoice_id, primary_id_field, amount, paid_amount, invoice_status, status_change_date, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
         .eq('currency', ccy)
@@ -7815,7 +7825,7 @@ function openSupplierPanel(supId, ccy) {
     if (periodToDate)   invQ = invQ.lte('invoice_date', periodToDate);
 
     var cnQ = sbClient.from('buyer_credit_notes')
-        .select('cn_date, cn_reference, amount, paid_date, currency')
+        .select('cn_date, buyer_cn_id, supplier_cn_id, partner_cn_id, primary_id_field, amount, paid_date, currency')
         .eq('upload_id', u.uploadId)
         .eq('supplier_identifier', supId)
         .eq('currency', ccy)
@@ -8459,7 +8469,7 @@ function downloadProspectInvoicesCSV(prospect) {
     // (upload_id, supplier_identifier, invoice_date DESC) index to seek.
     function fetchInvKeyset(cursorDate, cursorId) {
         var q = sbClient.from('buyer_invoices')
-            .select('id, invoice_reference, amount, currency, invoice_date, due_date, paid_date')
+            .select('id, buyer_invoice_id, supplier_invoice_id, partner_invoice_id, primary_id_field, amount, paid_amount, currency, invoice_date, due_date, paid_date, invoice_status, status_change_date')
             .eq('upload_id',           latestUpload.id)
             .eq('supplier_identifier', prospect.supplier_identifier)
             .eq('currency',            prospect.currency)
@@ -8539,7 +8549,7 @@ function downloadProspectInvoicesCSV(prospect) {
                 csvSafe(supplierName),
                 csvSafe(prospect.buyer_id),
                 csvSafe(buyerName),
-                csvSafe(r.invoice_reference || ''),
+                csvSafe(r.buyer_invoice_id || ''),
                 r.amount != null ? r.amount : '',
                 csvSafe(r.currency || ''),
                 r.invoice_date || '',
@@ -8683,7 +8693,7 @@ function downloadGroupInvoicesCSV(group) {
 
     function fetchForConstituent(p, upload, cursorDate, cursorId) {
         var q = sbClient.from('buyer_invoices')
-            .select('id, invoice_reference, amount, currency, invoice_date, due_date, paid_date')
+            .select('id, buyer_invoice_id, supplier_invoice_id, partner_invoice_id, primary_id_field, amount, paid_amount, currency, invoice_date, due_date, paid_date, invoice_status, status_change_date')
             .eq('upload_id',           upload.id)
             .eq('supplier_identifier', p.supplier_identifier)
             .eq('currency',            p.currency)
@@ -8725,7 +8735,7 @@ function downloadGroupInvoicesCSV(group) {
                     csvSafe(supplierName),
                     csvSafe(p.buyer_id),
                     csvSafe(buyerName),
-                    csvSafe(r.invoice_reference || ''),
+                    csvSafe(r.buyer_invoice_id || ''),
                     r.amount != null ? r.amount : '',
                     csvSafe(r.currency || ''),
                     r.invoice_date || '',
@@ -8815,7 +8825,7 @@ function runSupInvoiceSearch(ccy) {
     if (status) status.textContent = 'Searching…';
 
     var q = sbClient.from('buyer_invoices')
-        .select('invoice_date, due_date, paid_date, invoice_reference, amount, currency')
+        .select('invoice_date, due_date, paid_date, buyer_invoice_id, supplier_invoice_id, partner_invoice_id, primary_id_field, amount, paid_amount, invoice_status, status_change_date, currency')
         .eq('upload_id', ctx.uploadId)
         .eq('supplier_identifier', ctx.supId)
         .eq('currency', ctx.ccy)
@@ -8825,7 +8835,12 @@ function runSupInvoiceSearch(ccy) {
 
     if (ctx.periodFrom) q = q.gte('invoice_date', ctx.periodFrom);
     if (ctx.periodTo)   q = q.lte('invoice_date', ctx.periodTo);
-    if (ref.trim() !== '') q = q.ilike('invoice_reference', '%' + ref.trim() + '%');
+    if (ref.trim() !== '') {
+        // Search all three external IDs — operator doesn't always remember
+        // which ID was primary at upload time.
+        var pattern = '%' + ref.trim() + '%';
+        q = q.or('buyer_invoice_id.ilike.' + pattern + ',supplier_invoice_id.ilike.' + pattern + ',partner_invoice_id.ilike.' + pattern);
+    }
     if (min !== '')        q = q.gte('amount', parseFloat(min));
     if (max !== '')        q = q.lte('amount', parseFloat(max));
 
@@ -8861,7 +8876,7 @@ function runSupCnSearch(ccy) {
     if (status) status.textContent = 'Searching…';
 
     var q = sbClient.from('buyer_credit_notes')
-        .select('cn_date, cn_reference, amount, paid_date, currency')
+        .select('cn_date, buyer_cn_id, supplier_cn_id, partner_cn_id, primary_id_field, amount, paid_date, currency')
         .eq('upload_id', ctx.uploadId)
         .eq('supplier_identifier', ctx.supId)
         .eq('currency', ctx.ccy)
@@ -8871,7 +8886,10 @@ function runSupCnSearch(ccy) {
 
     if (ctx.periodFrom) q = q.gte('cn_date', ctx.periodFrom);
     if (ctx.periodTo)   q = q.lte('cn_date', ctx.periodTo);
-    if (ref.trim() !== '') q = q.ilike('cn_reference', '%' + ref.trim() + '%');
+    if (ref.trim() !== '') {
+        var pattern = '%' + ref.trim() + '%';
+        q = q.or('buyer_cn_id.ilike.' + pattern + ',supplier_cn_id.ilike.' + pattern + ',partner_cn_id.ilike.' + pattern);
+    }
     if (min !== '')        q = q.gte('amount', parseFloat(min));
     if (max !== '')        q = q.lte('amount', parseFloat(max));
 
@@ -9000,7 +9018,7 @@ function renderSupCnRows(rows, ccy) {
     return rows.map(function(cn) {
         return '<tr>' +
             '<td class="mono" style="font-size:10px;">' + escHTML(cn.cn_date || '—') + '</td>' +
-            '<td>' + escHTML(cn.cn_reference || '—') + '</td>' +
+            '<td>' + escHTML(cn.buyer_cn_id || '—') + '</td>' +
             '<td class="text-right mono">' + moneyShort(parseFloat(cn.amount) || 0, ccy) + '</td>' +
             '<td class="mono" style="font-size:10px; color:var(--text-secondary);">' + escHTML(cn.paid_date || 'open') + '</td>' +
         '</tr>';
@@ -9073,7 +9091,7 @@ function renderSupInvoiceRows(rows, ccy) {
         }
         return '<tr>' +
             '<td class="mono" style="font-size:10px;">' + escHTML(inv.invoice_date || '—') + '</td>' +
-            '<td>' + escHTML(inv.invoice_reference || '—') + '</td>' +
+            '<td>' + escHTML(inv.buyer_invoice_id || '—') + '</td>' +
             '<td class="text-right mono">' + moneyShort(parseFloat(inv.amount) || 0, ccy) + '</td>' +
             '<td class="mono" style="font-size:10px;">' + escHTML(inv.due_date || '—') + '</td>' +
             '<td class="mono text-right">' + dpdCell + '</td>' +
