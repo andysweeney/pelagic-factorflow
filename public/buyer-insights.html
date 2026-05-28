@@ -10056,6 +10056,10 @@ function drawSupplierVolumeChart(st, ccy) {
     var labels = st.monthlySeries.map(function(m) { return m.month; });
     var counts = st.monthlySeries.map(function(m) { return m.count; });
     var spends = st.monthlySeries.map(function(m) { return m.spend; });
+    console.log('[DIAG volume] monthlySeries len=', st.monthlySeries.length,
+        'labels=', labels.slice(0,5), 'counts=', counts.slice(0,5),
+        'canvas w/h=', canvas.offsetWidth, canvas.offsetHeight,
+        'Chart type=', typeof Chart);
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'bar',
         data: {
