@@ -3343,6 +3343,7 @@ function loadAllData() {
     // size at db-max-rows (default 1000) regardless of limit/range. Paginate
     // until we get a partial page back, meaning we've hit the end.
     state.prospects = [];
+    invalidateProspectIndexes();
     fetchProspectsChunk(0);
 }
 
@@ -3367,6 +3368,7 @@ function fetchProspectsChunk(offset) {
             }
             var batch = res.data || [];
             state.prospects = state.prospects.concat(batch);
+            invalidateProspectIndexes();
             // Continue if we got a full page
             if (batch.length === CHUNK) {
                 fetchProspectsChunk(offset + CHUNK);
@@ -3427,18 +3429,46 @@ function getGroupForProspect(prospect) {
 }
 
 // Return all prospect_suppliers rows belonging to a group.
+// Group → constituents index. Building this once and reading O(1) avoids a
+// quadratic blow-up: getGroupBuyerCount was called per-row during render and
+// each call re-filtered all of state.prospects, so 1,000 prospects meant
+// ~1,000,000 scans (≈6s on the main thread). The index is cached and
+// invalidated via _groupIndexStamp whenever the prospect set changes.
+var _groupIndex = null;
+var _groupIndexStamp = -1;
+var _prospectsStamp = 0;  // bump whenever state.prospects is replaced/mutated
+
+function invalidateProspectIndexes() { _prospectsStamp++; }
+
+function buildGroupIndex() {
+    var idx = {};
+    (state.prospects || []).forEach(function(p) {
+        if (!p.group_id) return;
+        var g = idx[p.group_id] || (idx[p.group_id] = { constituents: [], buyerIds: {} });
+        g.constituents.push(p);
+        if (p.buyer_id) g.buyerIds[p.buyer_id] = true;
+    });
+    _groupIndex = idx;
+    _groupIndexStamp = _prospectsStamp;
+}
+
+function ensureGroupIndex() {
+    if (_groupIndex === null || _groupIndexStamp !== _prospectsStamp) buildGroupIndex();
+    return _groupIndex;
+}
+
 function getConstituentsOfGroup(groupId) {
     if (!groupId) return [];
-    return (state.prospects || []).filter(function(p) { return p.group_id === groupId; });
+    var g = ensureGroupIndex()[groupId];
+    return g ? g.constituents : [];
 }
 
 // Counts a group's constituents grouped by distinct buyer_id, used to
 // surface the cross-buyer signal (2+ distinct buyers = strong signal).
 function getGroupBuyerCount(groupId) {
-    var rows = getConstituentsOfGroup(groupId);
-    var ids = {};
-    rows.forEach(function(p) { if (p.buyer_id) ids[p.buyer_id] = true; });
-    return Object.keys(ids).length;
+    if (!groupId) return 0;
+    var g = ensureGroupIndex()[groupId];
+    return g ? Object.keys(g.buyerIds).length : 0;
 }
 
 function renderUploadsHistory() {
@@ -3931,21 +3961,33 @@ function enrichAndRender(upload, distinct, prevApp) {
         }
         var buyerObj = (state.buyers || []).find(function(b) { return b.id === upload.buyer_id; });
         var bName = (buyerObj && buyerObj.name) || upload.buyer_id;
+
+        // Pre-index to avoid O(n²): without these, each of up to ~1,000
+        // distinct suppliers would .find() over all prospects AND over the
+        // snapshot's suppliers array — ~1M scans, multi-second main-thread
+        // block. Build keyed maps once, then look up O(1) inside the map.
+        var prospectByKey = {};
+        (state.prospects || []).forEach(function(p) {
+            if (p.buyer_id !== upload.buyer_id) return;
+            prospectByKey[p.supplier_identifier + '\u0000' + p.currency] = p;
+        });
+        var supByCcyIdent = {};  // ccy -> { identifier -> supplierStatObj }
+        Object.keys(ccyBlocks).forEach(function(ccy) {
+            var arr = (ccyBlocks[ccy] && ccyBlocks[ccy].suppliers) || [];
+            var m = {};
+            arr.forEach(function(s) { m[s.identifier] = s; });
+            supByCcyIdent[ccy] = m;
+        });
+
         var enriched = distinct.map(function(d) {
-            var prospectRow = (state.prospects || []).find(function(p) {
-                return p.buyer_id === upload.buyer_id && p.supplier_identifier === d.supplier_identifier && p.currency === d.currency;
-            }) || {
+            var prospectRow = prospectByKey[d.supplier_identifier + '\u0000' + d.currency] || {
                 // Synthesise a stub if prospect_suppliers hasn't caught up
                 // (race between upload completion and populate trigger).
                 id: null, buyer_id: upload.buyer_id, supplier_identifier: d.supplier_identifier,
                 currency: d.currency, supplier_name: d.supplier_identifier, status: 'lead',
                 verified_at: null, group_id: null
             };
-            var ccyBlock = ccyBlocks[d.currency];
-            var supObj = null;
-            if (ccyBlock && ccyBlock.suppliers) {
-                supObj = ccyBlock.suppliers.find(function(s) { return s.identifier === d.supplier_identifier; });
-            }
+            var supObj = (supByCcyIdent[d.currency] && supByCcyIdent[d.currency][d.supplier_identifier]) || null;
             var lastUploadDate = snap && snap.uploadCreatedAt;
             var isNewThisUpload = false;
             if (lastUploadDate && prospectRow.first_seen_at) {
@@ -6071,6 +6113,7 @@ function wireGroupSectionHandlers(prospect) {
                 prospect.group_id = null;
                 var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
                 if (sp) sp.group_id = null;
+                invalidateProspectIndexes();
                 // Log a note for audit
                 sbClient.from('prospect_notes').insert({
                     prospect_supplier_id: prospect.id,
@@ -6110,6 +6153,7 @@ function joinProspectToGroup(prospect, groupId, noteLabel) {
             prospect.group_id = groupId;
             var sp = (state.prospects || []).find(function(p) { return p.id === prospect.id; });
             if (sp) sp.group_id = groupId;
+            invalidateProspectIndexes();
             var g = (state.prospectGroups || []).find(function(g) { return g.id === groupId; });
             var noteText = noteLabel + (g ? ': ' + g.legal_name + ' (' + g.registry_id + ')' : '');
             sbClient.from('prospect_notes').insert({
