@@ -2856,14 +2856,38 @@ function finishProcessAndSave(selectedBuyerId) {
                             return;
                         }
                         updateProcessing(100, 'Done.');
-                        setTimeout(function() {
-                            hideProcessing();
-                            resetUploadForm();
-                            loadAllData();
-                            alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes.\n\nAnalytics are now computing in the background. This typically takes 30 seconds for 100k rows, 1-2 minutes for 500k rows. Refresh Upload History to see status.');
-                            var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
-                            if (histBtn) histBtn.click();
-                        }, 500);
+                        // Populate prospect_suppliers rows for this buyer
+                        // BEFORE the post-upload data reload. Without this,
+                        // the operator can click into the Prospects tab in
+                        // the gap between invoice rows landing and the
+                        // populate trigger firing — the sub-tab list
+                        // synthesises stubs for missing prospects, which
+                        // have id: null and can't be opened ("Prospect
+                        // not found in state"). Call the RPC explicitly
+                        // and only reload AFTER it returns.
+                        var uploadBuyerId = (uploadRecord && uploadRecord.buyer_id) || document.getElementById('buyerSelect').value;
+                        var finishUploadFlow = function() {
+                            setTimeout(function() {
+                                hideProcessing();
+                                resetUploadForm();
+                                loadAllData();
+                                alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes.\n\nAnalytics are now computing in the background. This typically takes 30 seconds for 100k rows, 1-2 minutes for 500k rows. Refresh Upload History to see status.');
+                                var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
+                                if (histBtn) histBtn.click();
+                            }, 500);
+                        };
+                        if (uploadBuyerId) {
+                            sbClient.rpc('populate_prospect_suppliers_now', { p_buyer_id: uploadBuyerId }).then(function(rpcRes) {
+                                if (rpcRes.error) {
+                                    // Non-fatal — the snapshot worker / trigger
+                                    // will eventually catch up. Log and proceed.
+                                    console.warn('populate_prospect_suppliers_now after upload:', rpcRes.error.message);
+                                }
+                                finishUploadFlow();
+                            });
+                        } else {
+                            finishUploadFlow();
+                        }
                     });
             });
         });
@@ -3949,7 +3973,14 @@ function applyAndRenderProspects(enriched) {
                 : formatDateTime(p.last_seen_at);
             var tr = document.createElement('tr');
             tr.style.cursor = 'pointer';
-            tr.setAttribute('data-pr-id', p.id);
+            // When prospect_suppliers has the row, use its UUID. When the
+            // row is a stub (populate trigger hasn't caught up), emit a
+            // composite "stub::<buyer>::<ident>::<currency>" key that
+            // openProspectPanel knows how to resolve — either by a
+            // re-lookup after state.prospects refreshes, or by triggering
+            // populate_prospect_suppliers_now and retrying.
+            var prId = p.id || ('stub::' + p.buyer_id + '::' + p.supplier_identifier + '::' + p.currency);
+            tr.setAttribute('data-pr-id', prId);
             // Display name primary, vendor ID secondary. Even when anonymised
             // the upload often has VEND-01000 as both name and ID, which renders
             // identically — but when it's "Acme Widgets Ltd" we want that prominent.
@@ -3973,7 +4004,10 @@ function applyAndRenderProspects(enriched) {
                     (isDue ? 'DUE · ' : '') + formatDateTime(p.next_action_at) +
                     '</span>';
             }
-            var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(p.id);
+            // Use the same composite/UUID we set on data-pr-id so deep links
+            // and middle-click work for both real and stub prospect rows.
+            var hrefId = p.id || ('stub::' + p.buyer_id + '::' + p.supplier_identifier + '::' + p.currency);
+            var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(hrefId);
 
             // Group cell: empty if ungrouped; otherwise show a small badge
             // with constituent count + buyer count. Cross-buyer (buyers ≥ 2)
@@ -4057,7 +4091,10 @@ function applyAndRenderProspects(enriched) {
                 // but only when the user clicks the anchor area. The tr click for
                 // other cells should still open the detail in-app.
                 ev.preventDefault();
-                openProspectPanel(p.id);
+                // Read the composite/UUID from data-pr-id (set above) rather
+                // than from p.id, so stub rows resolve via openProspectPanel's
+                // composite-key fallback.
+                openProspectPanel(tr.getAttribute('data-pr-id'));
             });
             tbody.appendChild(tr);
         });
@@ -4089,7 +4126,34 @@ function applyAndRenderProspects(enriched) {
 
 function openProspectPanel(prospectId, opts) {
     opts = opts || {};
+    // Primary lookup: by UUID.
     var prospect = (state.prospects || []).find(function(p) { return p.id === prospectId; });
+
+    // Fallback: the upload sub-tab can render rows for suppliers that
+    // exist in buyer_invoices but don't yet have prospect_suppliers rows
+    // (race with the populate trigger). Those rows carry a composite
+    // key in data-pr-id of the form "stub::<buyer_id>::<supplier_identifier>::<currency>".
+    // Re-resolve via the composite + a fresh load attempt before giving up.
+    if (!prospect && typeof prospectId === 'string' && prospectId.indexOf('stub::') === 0) {
+        var parts = prospectId.split('::');
+        var bId = parts[1], sIdent = parts[2], ccy = parts[3];
+        prospect = (state.prospects || []).find(function(p) {
+            return p.buyer_id === bId && p.supplier_identifier === sIdent && p.currency === ccy;
+        });
+        if (!prospect) {
+            // Last resort: trigger a populate + reload, then retry the open.
+            alert('This prospect hasn\u2019t been indexed yet — refreshing now.');
+            if (sbClient && bId) {
+                sbClient.rpc('populate_prospect_suppliers_now', { p_buyer_id: bId }).then(function() {
+                    loadAllData();
+                });
+            } else {
+                loadAllData();
+            }
+            return;
+        }
+    }
+
     if (!prospect) { alert('Prospect not found in state — try refreshing.'); return; }
 
     // Latest upload for this buyer feeds the analytics view
