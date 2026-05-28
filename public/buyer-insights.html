@@ -10050,9 +10050,15 @@ function destroySupplierPanelCharts() {
 function drawSupplierVolumeChart(st, ccy) {
     var canvas = document.getElementById('sup-chart-volume');
     if (!canvas) return;
-    // Defensive: if a chart from a prior open is still bound to this canvas
-    // id, Chart.js throws "Canvas is already in use" and the new chart never
-    // draws (blank box). Tear down any existing instance on this canvas first.
+    // If the canvas has no rendered size yet (panel mid-animation, or a
+    // duplicate draw firing while the panel is in a transitional state), bail
+    // WITHOUT destroying any existing good chart. A zero-size chart would be
+    // invisible and would clobber a previously-good render. The valid draw
+    // (or the post-construction resize) handles the real paint.
+    var wrap = canvas.parentElement;
+    if (!wrap || wrap.clientHeight === 0 || wrap.clientWidth === 0) return;
+    // Defensive: tear down any prior instance bound to this canvas id so
+    // Chart.js doesn't throw "Canvas is already in use".
     if (typeof Chart !== 'undefined' && Chart.getChart) {
         var existing = Chart.getChart(canvas);
         if (existing) { try { existing.destroy(); } catch (e) {} }
@@ -10090,21 +10096,15 @@ function drawSupplierVolumeChart(st, ccy) {
     });
     _supplierPanelCharts.push(inst);
     // Force a resize on next frame — Chart.js caches its measured size at
-    // construction; if the parent wasn't fully laid out yet, resize() makes
-    // it re-measure now that it is.
-    requestAnimationFrame(function() {
-        try {
-            inst.resize();
-            console.log('[DIAG2] after resize chart w/h=', inst.width, inst.height,
-                'canvas client w/h=', canvas.clientWidth, canvas.clientHeight,
-                'wrap client h=', canvas.parentElement && canvas.parentElement.clientHeight);
-        } catch (e) { console.log('[DIAG2] resize err', e); }
-    });
+    // construction; this makes it re-measure once layout is settled.
+    requestAnimationFrame(function() { try { inst.resize(); } catch (e) {} });
 }
 
 function drawSupplierPaymentChart(st) {
     var canvas = document.getElementById('sup-chart-payment');
     if (!canvas) return;
+    var wrap = canvas.parentElement;
+    if (!wrap || wrap.clientHeight === 0 || wrap.clientWidth === 0) return;
     // Same defensive teardown as the volume chart — a stale instance bound to
     // this canvas id makes Chart.js throw and the new chart never renders.
     if (typeof Chart !== 'undefined' && Chart.getChart) {
