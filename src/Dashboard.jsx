@@ -125,6 +125,43 @@ function parseEntityId(entityId) {
 function makeEntityId(supplierId, branchId) {
   return branchId ? supplierId + ":" + branchId : supplierId;
 }
+
+// --- Registry-ID dedup helpers (stage 1.7) ---------------------------------
+// Normalise a CH number for comparison: trim, uppercase, left-pad to 8.
+function normCoNum(n) {
+  if (!n) return "";
+  return String(n).trim().toUpperCase().replace(/\s+/g, "").padStart(8, "0");
+}
+// Normalise a legal name for mismatch comparison. Operators type "Tesco" where
+// CH holds "TESCO STORES LIMITED"; a raw !== would warn on nearly every manual
+// entry and train people to click through. Strip common suffixes/punctuation
+// and collapse whitespace so only a MATERIAL difference trips the warning.
+function normLegalName(s) {
+  if (!s) return "";
+  return String(s)
+    .toUpperCase()
+    .replace(/[.,()]/g, " ")
+    .replace(/\b(LIMITED|LTD|PLC|LLP|L\.L\.P|CO|COMPANY|THE|AND|&)\b/g, " ")
+    .replace(/[^A-Z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+// Find an existing parent entity in the given DB sharing the same
+// (verification_source, company_number). Returns the entity or null.
+// Branches never have their own rows, so this only ever matches a parent.
+function findRegistryClash(db, source, coNum, excludeId) {
+  var n = normCoNum(coNum);
+  if (!n) return null;
+  var src = source || "companies_house";
+  return db.find(function(e) {
+    if (excludeId && e.id === excludeId) return false;
+    if (!e.companyNumber) return false;
+    return normCoNum(e.companyNumber) === n &&
+      (e.verificationSource || "companies_house") === src;
+  }) || null;
+}
+// ---------------------------------------------------------------------------
+
 function getSupplierById(entityId) {
   if (!entityId) return null;
   var parsed = parseEntityId(entityId);
@@ -1702,6 +1739,8 @@ async function saveSupplier(supId) {
       program_paused: s.programPaused || {},
       // Companies House persistence fields (added in stage 1.6)
       entity_source: s.entitySource || "manual",
+      verification_source: s.verificationSource || (s.companyNumber ? "companies_house" : null),
+      ch_verification: s.chVerification || null,
       directors: s.directors || [],
       company_status: s.companyStatus || null,
       incorporation_date: s.incorporationDate || null,
@@ -1739,6 +1778,8 @@ async function saveBuyer(buyId) {
       branches: b.branches || [],
       // Companies House persistence fields (added in stage 1.6)
       entity_source: b.entitySource || "manual",
+      verification_source: b.verificationSource || (b.companyNumber ? "companies_house" : null),
+      ch_verification: b.chVerification || null,
       directors: b.directors || [],
       company_status: b.companyStatus || null,
       incorporation_date: b.incorporationDate || null,
@@ -1774,6 +1815,8 @@ async function saveServiceProvider(spId) {
       paused: sp.paused || false,
       // Companies House persistence fields (added in stage 1.6)
       entity_source: sp.entitySource || "manual",
+      verification_source: sp.verificationSource || (sp.companyNumber ? "companies_house" : null),
+      ch_verification: sp.chVerification || null,
       directors: sp.directors || [],
       company_status: sp.companyStatus || null,
       incorporation_date: sp.incorporationDate || null,
@@ -2103,7 +2146,7 @@ async function loadPersistedData() {
       SUPPLIERS_DB.length = 0;
       supRes.data.forEach(function(row) {
         SUPPLIERS_DB.push({
-          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number, verificationSource: row.verification_source || null, chVerification: row.ch_verification || null,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
           country: row.country || "United Kingdom", postcode: row.postcode || "",
@@ -2140,7 +2183,7 @@ async function loadPersistedData() {
       BUYERS_DB.length = 0;
       buyRes.data.forEach(function(row) {
         BUYERS_DB.push({
-          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number, verificationSource: row.verification_source || null, chVerification: row.ch_verification || null,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
           country: row.country || "United Kingdom", postcode: row.postcode || "",
@@ -2172,7 +2215,7 @@ async function loadPersistedData() {
       SERVICE_PROVIDERS_DB.length = 0;
       spRes.data.forEach(function(row) {
         SERVICE_PROVIDERS_DB.push({
-          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number, verificationSource: row.verification_source || null, chVerification: row.ch_verification || null,
           jurisdiction: row.jurisdiction, status: row.status, role: row.role,
           onboardingDate: row.onboarding_date, notes: row.notes || [],
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
@@ -2672,7 +2715,7 @@ async function reloadSuppliers() {
       SUPPLIERS_DB.length = 0;
       supRes.data.forEach(function(row) {
         SUPPLIERS_DB.push({
-          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number, verificationSource: row.verification_source || null, chVerification: row.ch_verification || null,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
           country: row.country || "United Kingdom", postcode: row.postcode || "",
@@ -2707,7 +2750,7 @@ async function reloadBuyers() {
       BUYERS_DB.length = 0;
       buyRes.data.forEach(function(row) {
         BUYERS_DB.push({
-          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
+          id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number, verificationSource: row.verification_source || null, chVerification: row.ch_verification || null,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           addressLine1: row.address_line1 || "", addressLine2: row.address_line2 || "", city: row.city || "", county: row.county || "",
           country: row.country || "United Kingdom", postcode: row.postcode || "",
@@ -2803,6 +2846,8 @@ async function savePersistedData() {
         paused: s.paused || false,
         // Companies House persistence fields (added in stage 1.6)
         entity_source: s.entitySource || "manual",
+      verification_source: s.verificationSource || (s.companyNumber ? "companies_house" : null),
+      ch_verification: s.chVerification || null,
         directors: s.directors || [],
         company_status: s.companyStatus || null,
         incorporation_date: s.incorporationDate || null,
@@ -2833,6 +2878,8 @@ async function savePersistedData() {
         branches: b.branches || [],
         // Companies House persistence fields (added in stage 1.6)
         entity_source: b.entitySource || "manual",
+      verification_source: b.verificationSource || (b.companyNumber ? "companies_house" : null),
+      ch_verification: b.chVerification || null,
         directors: b.directors || [],
         company_status: b.companyStatus || null,
         incorporation_date: b.incorporationDate || null,
@@ -2862,6 +2909,8 @@ async function savePersistedData() {
         paused: sp.paused || false,
         // Companies House persistence fields (added in stage 1.6)
         entity_source: sp.entitySource || "manual",
+      verification_source: sp.verificationSource || (sp.companyNumber ? "companies_house" : null),
+      ch_verification: sp.chVerification || null,
         directors: sp.directors || [],
         company_status: sp.companyStatus || null,
         incorporation_date: sp.incorporationDate || null,
@@ -3726,146 +3775,27 @@ export default function FactoringDashboard() {
         else notesMigrated = pnRes.data.length;
       }
 
-      // 5. Migrate invoices (Step F)
-      var invoicesMigrated = 0;
-      if (ps.mapped_buyer_id) {
-        var invRes = await supabase.from("prospect_invoices").select("*").eq("prospect_supplier_id", deepLink.prospectId).eq("excluded", false);
-        if (!invRes.error && invRes.data && invRes.data.length > 0) {
-          var buyer = BUYERS_DB.find(function(b) { return b.id === ps.mapped_buyer_id; });
-          var buyerName = buyer ? buyer.name : "";
-          var ffInvoices = invRes.data.map(function(p) {
-            var preservedNotes = [];
-            if (p.payments_to_invoice) preservedNotes.push("Payments to invoice (from prospect): " + p.payments_to_invoice);
-            if (p.amount_paid_to_date) preservedNotes.push("Amount paid to date (from prospect): " + p.amount_paid_to_date);
-            var notesArr = [];
-            if (preservedNotes.length > 0) {
-              notesArr.push({
-                id: "note-mig-" + p.id,
-                text: preservedNotes.join(". "),
-                author: "system",
-                timestamp: new Date().toISOString(),
-                source: "prospect"
-              });
-            }
-
-            // Derive invoice_status from prospect dates. Priority: terminal states first.
-            var amt = p.invoice_amount || 0;
-            var apprAmt = p.approved_amount || 0;
-            var amountPaid = p.amount_paid_to_date != null ? parseFloat(p.amount_paid_to_date) : null;
-            var invStatus;
-            if (p.settled_date) invStatus = "Settled";
-            else if (p.cancelled_date) invStatus = "Cancelled";
-            else if (p.declined_date) invStatus = "Declined";
-            else if (p.disputed_date) invStatus = "Disputed";
-            else if (p.approval_date && apprAmt > 0 && apprAmt < amt - 0.01) invStatus = "Approved in Part";
-            else if (p.approval_date) invStatus = "Approved in Full";
-            else invStatus = "Received";
-
-            // Determine if invoice should be marked historic. Mirrors the CSV import rules
-            // (line ~17504): any terminal status, past due date, or fully paid by buyer.
-            // historic short-circuits processForDate's derivation (line ~1975) so the
-            // saved status sticks rather than being re-derived to fully_repaid etc.
-            var nowStr = new Date().toISOString().split("T")[0];
-            var isHistoric = false;
-            if (p.cancelled_date || p.declined_date || p.disputed_date || p.settled_date) isHistoric = true;
-            if (p.due_date && p.due_date < nowStr) isHistoric = true;
-            if (amountPaid !== null && amt > 0 && amountPaid >= amt - 0.01) isHistoric = true;
-
-            // Reconstruct invoice_status_history from populated dates, sorted chronologically.
-            var historyEvents = [];
-            if (p.invoice_date) historyEvents.push({ status: "Received", date: p.invoice_date });
-            if (p.approval_date) {
-              var apprStatus = (apprAmt > 0 && apprAmt < amt - 0.01) ? "Approved in Part" : "Approved in Full";
-              historyEvents.push({ status: apprStatus, date: p.approval_date });
-            }
-            if (p.declined_date) historyEvents.push({ status: "Declined", date: p.declined_date });
-            if (p.disputed_date) historyEvents.push({ status: "Disputed", date: p.disputed_date });
-            if (p.cancelled_date) historyEvents.push({ status: "Cancelled", date: p.cancelled_date });
-            if (p.settled_date) historyEvents.push({ status: "Settled", date: p.settled_date });
-            historyEvents.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-
-            return {
-              id: "INV-" + p.id.substring(0, 8).toUpperCase() + "-" + p.reference_number,
-              supplier_id: newSupplierId,
-              supplier_entity_id: newSupplierId,
-              buyer_id: ps.mapped_buyer_id,
-              buyer_entity_id: ps.mapped_buyer_id,
-              amount: amt,
-              currency: p.currency || "GBP",
-              advance_rate: 0, annual_rate: 0, penalty_rate: 0,
-              invoice_date: p.invoice_date,
-              due_date: p.due_date,
-              funded_date: null,
-              created_date: p.invoice_date,
-              approved_date: p.approval_date,
-              fully_repaid_date: p.settled_date || null,
-              settled_date: p.settled_date || null,
-              invoice_status: invStatus,
-              funding_status: isHistoric ? "historic" : "pending",
-              funding_program: null,
-              partial_approved_amount: apprAmt,
-              invoice_reference: p.reference_number,
-              purchase_order: p.purchase_order,
-              buyer_ref: p.buyer_invoice_ref,
-              supplier_ref: p.supplier_invoice_ref,
-              buyer_received_date: p.buyer_received_date,
-              invoice_status_history: historyEvents,
-              adjustments: [],
-              do_not_fund: false, do_not_advance: false,
-              pending_top_up_amount: 0, pending_top_up_rate: null, pending_top_up_date: null,
-              tranches: [],
-              notes: notesArr
-            };
-          });
-          var insRes = await supabase.from("invoices").upsert(ffInvoices, { onConflict: "id" });
-          if (insRes.error) {
-            console.error("[Conversion] Invoice migration failed:", insRes.error);
-            toast.error("Invoice migration failed", insRes.error.message);
-          } else {
-            invoicesMigrated = ffInvoices.length;
-          }
-        }
-
-        // 6. Migrate credit notes
-        var cnRes = await supabase.from("prospect_credit_notes").select("*").eq("prospect_supplier_id", deepLink.prospectId);
-        if (!cnRes.error && cnRes.data && cnRes.data.length > 0) {
-          var buyer2 = BUYERS_DB.find(function(b) { return b.id === ps.mapped_buyer_id; });
-          var buyerName2 = buyer2 ? buyer2.name : "";
-          var ffCns = cnRes.data.map(function(p) {
-            return {
-              credit_note_id: "CN-" + p.id.substring(0, 8).toUpperCase() + "-" + (p.reference_number || ""),
-              amount: p.credit_note_amount || 0,
-              date: p.cn_date || p.invoice_date,
-              currency: p.currency || "GBP",
-              reference: p.reference_number || "",
-              supplier_id: newSupplierId,
-              supplier_entity_id: newSupplierId,
-              buyer_id: ps.mapped_buyer_id,
-              buyer_entity_id: ps.mapped_buyer_id,
-              allocations: [],
-              notes: []
-            };
-          });
-          var cnIns = await supabase.from("credit_notes").upsert(ffCns, { onConflict: "credit_note_id" });
-          if (cnIns.error) console.error("[Conversion] CN migration failed:", cnIns.error);
-        }
-      } else {
-        console.warn("[Conversion] No mapped_buyer_id on prospect; invoice migration skipped.");
-      }
+      // Steps 5 & 6 (invoice + credit-note migration) REMOVED — stage 1.7.
+      // Locked architecture: NO invoice data crosses BI -> MP on conversion.
+      // MP's invoice store is the funding system of record and is fed directly
+      // from the buyer's AR feed (and the ops CSV import path), not from Buyer
+      // Insights' analytical prospect_invoices. Conversion hands MP identity
+      // only — the supplier entity + its buyer link — which is exactly what
+      // steps 1–4 above accomplish. The old prospect_invoices/credit_notes ->
+      // invoices/credit_notes upsert was the wrong bridge and is gone.
 
       // 7. Audit log entry on FF side (Step I)
-      auditLog("Prospect Converted", "Supplier " + newSupplierId + " (" + newSupplierName + ") created from prospect " + deepLink.prospectId + ". Migrated " + invoicesMigrated + " invoice(s) and " + notesMigrated + " note(s).", {
+      auditLog("Prospect Converted", "Supplier " + newSupplierId + " (" + newSupplierName + ") created from prospect " + deepLink.prospectId + ". Identity linked; " + notesMigrated + " note(s) transferred. No invoice data migrated (AR-feed sourced).", {
         entityId: newSupplierId,
         entityName: newSupplierName,
         prospectId: deepLink.prospectId,
         uploadId: deepLink.uploadId,
         companyNumber: ps.company_number,
-        invoicesMigrated: invoicesMigrated,
         notesMigrated: notesMigrated,
         source: "prospect_conversion"
       });
 
-      toast.success("Prospect converted", newSupplierName + " \u2014 " + invoicesMigrated + " invoice(s), " + notesMigrated + " note(s) migrated");
+      toast.success("Prospect converted", newSupplierName + " \u2014 identity linked, " + notesMigrated + " note(s) transferred");
       setProspectDeepLink(null);
     } catch (e) {
       console.error("[Conversion] Unexpected error:", e);
@@ -4159,6 +4089,13 @@ export default function FactoringDashboard() {
   var mf1 = useState({}), manageFields = mf1[0], setManageFields = mf1[1];
   var mn1 = useState(false), showNewEntity = mn1[0], setShowNewEntity = mn1[1];
   var md1 = useState(null), manageDetail = md1[0], setManageDetail = md1[1];
+  // Registry-ID dedup + CH name-mismatch confirmation modals (stage 1.7).
+  // entityClash: { existing, entityType, fields, source } when a registry ID
+  //   already exists -> Open existing / Add as branch / Cancel.
+  // chMismatch: { chName, enteredName, number, entityType, fields, source,
+  //   proceed } when CH lookup name differs from the typed name.
+  var ec1 = useState(null), entityClash = ec1[0], setEntityClash = ec1[1];
+  var cm1 = useState(null), chMismatch = cm1[0], setChMismatch = cm1[1];
   // Admin entity list filters (shared across suppliers / buyers / service_providers)
   var mes1 = useState(""), mgEntSearch = mes1[0], setMgEntSearch = mes1[1];
   var mec1 = useState(""), mgEntCountryFilter = mec1[0], setMgEntCountryFilter = mec1[1];
@@ -19953,7 +19890,7 @@ export default function FactoringDashboard() {
               var manualDirs = (entObj.directors || []).filter(function(d) { return d.source === "manual"; });
               var merged = directors.concat(manualDirs);
               Object.assign(entObj, {
-                name: data.company_name || entObj.name,
+                name: entObj.name || data.company_name,
                 companyNumber: data.company_number || num,
                 incorporationDate: data.date_of_creation || entObj.incorporationDate || "",
                 companyStatus: data.company_status ? data.company_status.replace(/-/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }) : entObj.companyStatus || "",
@@ -19978,6 +19915,79 @@ export default function FactoringDashboard() {
 
           function saveEntity() {
             var f = manageFields;
+            if (!f.name) return;
+            // --- Stage 1.7 gate: registry-ID dedup + CH name-mismatch ---------
+            // Only suppliers and buyers are registry-verified; SPs skip the gate.
+            var gated = (manageTab === "suppliers" || manageTab === "buyers");
+            var coNum = (f.companyNumber || "").trim();
+            var src = f.verificationSource || (coNum ? "companies_house" : null);
+
+            // (a) Registry clash — create path only. On edit, the row already
+            //     holds this number; re-saving it must not flag itself.
+            if (gated && !manageEdit && coNum) {
+              var clash = findRegistryClash(db, src, coNum, null);
+              if (clash) {
+                setEntityClash({ existing: clash, entityType: entityLabel, fields: Object.assign({}, f), source: src });
+                return; // modal drives the next step
+              }
+            }
+
+            // (b) CH name-mismatch — fire only when the CH number or name has
+            //     actually changed. Routine edits (e.g. credit limits) on an
+            //     entity with a stable, already-verified number must NOT incur a
+            //     proxy round-trip, and must not risk being re-flagged
+            //     unverified if CH is briefly unreachable. The modal's resolve
+            //     buttons call saveEntityCore directly (no re-entry loop).
+            var chCheckNeeded = false;
+            if (gated && coNum) {
+              if (!manageEdit) {
+                chCheckNeeded = true; // new entity with a number
+              } else {
+                var entNow = db.find(function(x) { return x.id === manageEdit; });
+                var prevNum = entNow ? normCoNum(entNow.companyNumber) : "";
+                var prevName = entNow ? normLegalName(entNow.name) : "";
+                if (normCoNum(coNum) !== prevNum || normLegalName(f.name) !== prevName) {
+                  chCheckNeeded = true;
+                }
+              }
+            }
+            if (chCheckNeeded) {
+              var num = normCoNum(coNum);
+              fetch(CH_WORKER_URL + "/company/" + encodeURIComponent(num))
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(data) {
+                  if (!data || !data.company_name) {
+                    // Lookup failed -> allow but flag as unverified.
+                    var ff = Object.assign({}, f, { verificationSource: src, chVerification: "unverified_lookup_failed" });
+                    toast.info("CH lookup failed", "Saved " + (f.name || "entity") + " but flagged unverified \u2014 number " + num + " not found.");
+                    saveEntityCore(ff);
+                    return;
+                  }
+                  var chName = data.company_name;
+                  if (normLegalName(chName) !== normLegalName(f.name)) {
+                    // Material mismatch -> confirm modal.
+                    setChMismatch({
+                      chName: chName, enteredName: f.name, number: num,
+                      entityType: entityLabel, source: src,
+                      fields: Object.assign({}, f, { verificationSource: src })
+                    });
+                    return;
+                  }
+                  // Match -> proceed, stamp verified.
+                  saveEntityCore(Object.assign({}, f, { verificationSource: src, chVerification: "verified" }));
+                })
+                .catch(function() {
+                  var ff = Object.assign({}, f, { verificationSource: src, chVerification: "unverified_lookup_failed" });
+                  toast.info("CH unreachable", "Saved " + (f.name || "entity") + " but flagged unverified \u2014 could not reach Companies House.");
+                  saveEntityCore(ff);
+                });
+              return; // async path owns the save
+            }
+            // No CH number (or SP) -> straight through.
+            saveEntityCore(f);
+          }
+
+          function saveEntityCore(f) {
             if (!f.name) return;
             if (manageEdit) {
               var ent = db.find(function(x) { return x.id === manageEdit; });
@@ -20070,6 +20080,16 @@ export default function FactoringDashboard() {
                 }
               }
             } else {
+              commitNewEntity(f);
+            }
+            setManageEdit(null); setManageFields({}); setShowNewEntity(false);
+            setDataVer(function(v) { return v + 1; });
+          }
+
+          // Actually create the new parent entity row. Split out of saveEntity so
+          // the dedup modal's "proceed anyway" path can call it after the operator
+          // has acknowledged a CH name mismatch.
+          function commitNewEntity(f) {
               var newId = prefix + "-" + String(db.length + 1).padStart(3, "0");
               var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, f);
               db.push(newEnt);
@@ -20088,9 +20108,48 @@ export default function FactoringDashboard() {
               if (prospectDeepLink && manageTab === "suppliers" && prospectDeepLink.prospectId) {
                 completeProspectConversion(prospectDeepLink, newId, f.name);
               }
+              setManageEdit(null); setManageFields({}); setShowNewEntity(false);
+              setDataVer(function(v) { return v + 1; });
+          }
+
+          // Add a new branch to an existing parent's JSONB branches array, then
+          // persist. Used by the dedup modal's "Add as new branch" action.
+          function addBranchToExisting(existing, f) {
+            var brs = (existing.branches || []).slice();
+            var brId = "BR-" + String(brs.length + 1).padStart(3, "0");
+            brs.push({
+              branchId: brId,
+              branchName: f.name || (existing.name + " branch"),
+              addressLine1: f.addressLine1 || "", addressLine2: f.addressLine2 || "",
+              city: f.city || "", county: f.county || "", postcode: f.postcode || "",
+              country: f.country || "United Kingdom",
+              primaryContact: f.primaryContact || "", primaryEmail: f.primaryEmail || "", primaryPhone: f.primaryPhone || ""
+            });
+            existing.branches = brs;
+            var eid = makeEntityId(existing.id, brId);
+            if (manageTab === "suppliers") saveSupplier(existing.id);
+            else if (manageTab === "service_providers") saveServiceProvider(existing.id);
+            else if (manageTab === "buyers") saveBuyer(existing.id);
+            auditLog("Branch Created", entityLabel + " branch " + eid + " (" + (f.name || existing.name) + ") added to " + existing.id, { entityType: entityLabel, entityId: eid, parentId: existing.id });
+            toast.success("Branch added", eid + " \u2014 under " + existing.name);
+            // If we arrived via prospect deep link, link the prospect to the parent.
+            if (prospectDeepLink && manageTab === "suppliers" && prospectDeepLink.prospectId) {
+              completeProspectConversion(prospectDeepLink, existing.id, existing.name);
             }
             setManageEdit(null); setManageFields({}); setShowNewEntity(false);
+            setEntityClash(null);
             setDataVer(function(v) { return v + 1; });
+          }
+
+          // Route the operator to the existing record (the "Open existing" action).
+          // Discards the half-typed new entry; links the prospect if deep-linked.
+          function openExistingFromClash(existing) {
+            if (prospectDeepLink && manageTab === "suppliers" && prospectDeepLink.prospectId) {
+              completeProspectConversion(prospectDeepLink, existing.id, existing.name);
+            }
+            setEntityClash(null);
+            setShowNewEntity(false);
+            startEntityEdit(existing);
           }
 
           function startEntityEdit(ent) { setManageEdit(ent.id); setManageFields(Object.assign({}, ent)); setShowNewEntity(false); setChImportStep(null); }
@@ -20171,6 +20230,49 @@ export default function FactoringDashboard() {
           }
 
           return <div>
+            {/* Stage 1.7: registry-ID clash modal (Open existing / Add branch) */}
+            {entityClash && (function() {
+              var canAct = userProfile && (userProfile.role === "admin" || userProfile.role === "operations");
+              var ex = entityClash.existing;
+              return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setEntityClash(null); }}>
+                <div onClick={function(e) { e.stopPropagation(); }} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, maxWidth: 480, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>This entity already exists</div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 16 }}>
+                    A {entityClash.entityType.toLowerCase()} with registry ID <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{normCoNum(entityClash.fields.companyNumber)}</span> already exists:
+                    <div style={{ marginTop: 8, padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, fontWeight: 600, color: "var(--text)" }}>{ex.id} {"\u2014"} {ex.name}</div>
+                  </div>
+                  {!canAct && <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 12 }}>Your role can view this warning but not resolve it. Ask an admin or operations user.</div>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button disabled={!canAct} onClick={function() { openExistingFromClash(ex); }} style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: canAct ? "var(--accent)" : "var(--border)", color: canAct ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canAct ? "pointer" : "not-allowed" }}>Open existing record</button>
+                    <button disabled={!canAct} onClick={function() { addBranchToExisting(ex, entityClash.fields); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: canAct ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: canAct ? "pointer" : "not-allowed" }}>Add as new branch of {ex.id}</button>
+                    <button onClick={function() { setEntityClash(null); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              </div>;
+            })()}
+
+            {/* Stage 1.7: CH name-mismatch confirmation modal */}
+            {chMismatch && (function() {
+              var canAct = userProfile && (userProfile.role === "admin" || userProfile.role === "operations");
+              return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setChMismatch(null); }}>
+                <div onClick={function(e) { e.stopPropagation(); }} style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, maxWidth: 500, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Companies House name mismatch</div>
+                  <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 16 }}>
+                    CH <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{chMismatch.number}</span> corresponds to:
+                    <div style={{ margin: "8px 0", padding: "10px 12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, fontWeight: 600, color: "var(--text)" }}>{chMismatch.chName}</div>
+                    not the name you entered:
+                    <div style={{ margin: "8px 0", padding: "10px 12px", background: "var(--bg)", border: "1px solid #D97706", borderRadius: 8, fontWeight: 600, color: "var(--text)" }}>{chMismatch.enteredName}</div>
+                  </div>
+                  {!canAct && <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 12 }}>Your role can view this warning but not resolve it.</div>}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { name: m.chName, chVerification: "verified" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: canAct ? "var(--accent)" : "var(--border)", color: canAct ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canAct ? "pointer" : "not-allowed" }}>Use CH name</button>
+                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { chVerification: "mismatch_confirmed" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: canAct ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: canAct ? "pointer" : "not-allowed" }}>Keep my name anyway</button>
+                    <button onClick={function() { setChMismatch(null); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </div>
+              </div>;
+            })()}
+
             <div style={{ padding: "8px 16px", background: "#0EA5E920", border: "1px solid #0EA5E9", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#0EA5E9", fontWeight: 600 }}>v14 — CSV Import + Review Queue enabled</div>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 16, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
               {["suppliers", "buyers", "service_providers", "programs", "benchmarks", "csv_import", "csv_review", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t === "benchmarks" ? "Benchmarks" : t}</button>; })}
