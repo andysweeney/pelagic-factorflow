@@ -3853,6 +3853,14 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
     var prevApp = {}; // supplier_identifier → { sameBuyer: [{upload, count}], crossBuyer: [{upload, buyer, count, registry_id}] }
     uniqIdents.forEach(function(id) { prevApp[id] = { sameBuyer: [], crossBuyer: [] }; });
 
+    // O(1) lookup indexes — both branches below need to resolve upload and
+    // buyer objects by id, and doing state.uploads.find / state.buyers.find
+    // per row is another quadratic at scale.
+    var uploadById = {};
+    (state.uploads || []).forEach(function(u) { uploadById[u.id] = u; });
+    var buyerById = {};
+    (state.buyers || []).forEach(function(b) { buyerById[b.id] = b; });
+
     // Same-buyer appearances: query buyer_invoices for this buyer, other
     // uploads, matching identifiers.
     var sameDone = false;
@@ -3877,7 +3885,7 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
                     var parts = k.split('|');
                     var upId = parts[0];
                     var ident = parts[1];
-                    var u = state.uploads.find(function(x) { return x.id === upId; });
+                    var u = uploadById[upId];
                     if (!u || !prevApp[ident]) return;
                     prevApp[ident].sameBuyer.push({ uploadId: upId, uploadDate: (u.created_at || '').split('T')[0], count: byUpId[k] });
                 });
@@ -3888,53 +3896,79 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
     // Cross-buyer verified: requires prospects in this upload to have
     // registry_ids, then we look up other prospects with the SAME
     // registry_id (different buyers). state.prospects already loaded.
+    //
+    // Pre-index this-buyer prospects by identifier (O(1) lookup) — the old
+    // per-identifier .find over all prospects was O(idents × prospects),
+    // ~1M scans at 1,000 suppliers.
+    var thisBuyerByIdent = {};
+    (state.prospects || []).forEach(function(pp) {
+        if (pp.buyer_id === currentUpload.buyer_id) thisBuyerByIdent[pp.supplier_identifier] = pp;
+    });
     var registryIds = [];
     var registryToIdent = {};
     uniqIdents.forEach(function(ident) {
-        var p = (state.prospects || []).find(function(pp) { return pp.buyer_id === currentUpload.buyer_id && pp.supplier_identifier === ident; });
+        var p = thisBuyerByIdent[ident];
         if (p && p.registry_id) { registryIds.push(p.registry_id); registryToIdent[p.registry_id] = ident; }
     });
     if (registryIds.length === 0) { crossDone = true; maybeFinish(); return; }
-    // For each cross-buyer prospect with the same registry, find which
-    // uploads it appeared in.
+    var registryIdSet = {};
+    registryIds.forEach(function(r) { registryIdSet[r] = true; });
+
+    // Find cross-buyer prospects sharing those registry_ids.
     var crossProspects = (state.prospects || []).filter(function(p) {
-        return p.buyer_id !== currentUpload.buyer_id && registryIds.indexOf(p.registry_id) !== -1;
+        return p.buyer_id !== currentUpload.buyer_id && p.registry_id && registryIdSet[p.registry_id];
     });
     if (crossProspects.length === 0) { crossDone = true; maybeFinish(); return; }
-    // Query buyer_invoices for each cross-prospect's (buyer_id, supplier_identifier)
-    // tuple to find which uploads it appeared in. Bulk via OR conditions
-    // is awkward in PostgREST — just paginate by buyer.
-    var crossPending = crossProspects.length;
-    crossProspects.forEach(function(cp) {
-        sbClient.from('buyer_invoices')
-            .select('upload_id')
-            .eq('buyer_id', cp.buyer_id)
-            .eq('supplier_identifier', cp.supplier_identifier)
-            .eq('excluded', false)
-            .limit(5000)
-            .then(function(res) {
-                if (!res.error && res.data) {
-                    var counts = {};
-                    res.data.forEach(function(r) { counts[r.upload_id] = (counts[r.upload_id] || 0) + 1; });
+
+    // OLD: one buyer_invoices query PER cross-buyer prospect — a storm of
+    // sequential round-trips that dominated load time on large datasets.
+    // NEW: a single query over all involved (buyer_id, supplier_identifier)
+    // pairs, filtered client-side. PostgREST can't express tuple-IN, so we
+    // query by the union of buyer_ids and identifiers (a superset) and
+    // discard rows that aren't an exact pair match.
+    var crossBuyerIds = Array.from(new Set(crossProspects.map(function(p) { return p.buyer_id; })));
+    var crossIdents   = Array.from(new Set(crossProspects.map(function(p) { return p.supplier_identifier; })));
+    // Exact-pair set for client-side filtering.
+    var pairSet = {};
+    crossProspects.forEach(function(p) { pairSet[p.buyer_id + '\u0000' + p.supplier_identifier] = p; });
+
+    sbClient.from('buyer_invoices')
+        .select('upload_id, buyer_id, supplier_identifier')
+        .in('buyer_id', crossBuyerIds)
+        .in('supplier_identifier', crossIdents)
+        .eq('excluded', false)
+        .limit(50000)
+        .then(function(res) {
+            if (!res.error && res.data) {
+                // counts[buyer|ident|upload] = n
+                var counts = {};
+                res.data.forEach(function(r) {
+                    var pairKey = r.buyer_id + '\u0000' + r.supplier_identifier;
+                    if (!pairSet[pairKey]) return;  // not an exact pair we care about
+                    var k = pairKey + '\u0000' + r.upload_id;
+                    counts[k] = (counts[k] || 0) + 1;
+                });
+                Object.keys(counts).forEach(function(k) {
+                    var parts = k.split('\u0000');
+                    var bId = parts[0], ident0 = parts[1], upId = parts[2];
+                    var cp = pairSet[bId + '\u0000' + ident0];
+                    if (!cp) return;
                     var ident = registryToIdent[cp.registry_id];
-                    var buyerObj = (state.buyers || []).find(function(b) { return b.id === cp.buyer_id; });
+                    var u = uploadById[upId];
+                    if (!u || !prevApp[ident]) return;
+                    var buyerObj = buyerById[cp.buyer_id];
                     var bName = (buyerObj && buyerObj.name) || cp.buyer_id;
-                    Object.keys(counts).forEach(function(upId) {
-                        var u = state.uploads.find(function(x) { return x.id === upId; });
-                        if (!u || !prevApp[ident]) return;
-                        prevApp[ident].crossBuyer.push({
-                            uploadId: upId,
-                            uploadDate: (u.created_at || '').split('T')[0],
-                            buyer: bName,
-                            count: counts[upId],
-                            registry_id: cp.registry_id
-                        });
+                    prevApp[ident].crossBuyer.push({
+                        uploadId: upId,
+                        uploadDate: (u.created_at || '').split('T')[0],
+                        buyer: bName,
+                        count: counts[k],
+                        registry_id: cp.registry_id
                     });
-                }
-                crossPending--;
-                if (crossPending === 0) { crossDone = true; maybeFinish(); }
-            });
-    });
+                });
+            }
+            crossDone = true; maybeFinish();
+        });
 }
 
 // Enrich the distinct supplier_identifiers in this upload with stats /
