@@ -4366,7 +4366,7 @@ function applyAndRenderProspects(enriched) {
         return e.stats && e.stats.implicitDilutionRate != null && e.stats.implicitDilutionRate >= 0.03;
     });
     if (f.pills.stale)        filtered = filtered.filter(function(e) {
-        // Stale approvals: >5% of value stuck in approved/processing past 60d.
+        // Stale approvals: >5% of value accepted but >30 days past due.
         return e.stats && e.stats.stalePct != null && e.stats.stalePct >= 0.05;
     });
     if (f.pills.late)         filtered = filtered.filter(function(e) {
@@ -5435,6 +5435,7 @@ function renderProspectDetail(prospect) {
     // Draw charts after DOM ready (the canvases inside renderSupVolume/Payment
     // need to be in the document)
     requestAnimationFrame(function() {
+        destroySupplierPanelCharts();
         drawSupplierVolumeChart(panelStats, ccy);
         drawSupplierPaymentChart(panelStats);
     });
@@ -8622,6 +8623,7 @@ function openSupplierPanel(supId, ccy) {
     // Render the panel now from snapshot data. Charts get drawn after rAF.
     populateSupplierPanel(supName, supId, ccy, panelStats, ccyStats, lifetimeSupplier, periodFromDate, periodToDate);
     requestAnimationFrame(function() {
+        destroySupplierPanelCharts();
         drawSupplierVolumeChart(panelStats, ccy);
         drawSupplierPaymentChart(panelStats);
     });
@@ -9915,15 +9917,16 @@ function renderSupDilution(st, ccy) {
             '</div>';
     }
 
-    // Stale-approval surfacing — separate signal, not folded into dilution.
+    // Stale-approval surfacing — a buyer-behaviour risk signal: invoices the
+    // buyer has accepted but left unpaid past their due date.
     var staleHtml = '';
     if (st.staleCount != null && st.staleCount > 0) {
         staleHtml =
             '<div style="font-size:11px; margin:4px 0 10px; padding:8px 10px; background:rgba(234,179,8,0.08); border:1px solid rgba(234,179,8,0.3); border-radius:6px; line-height:1.5;">' +
                 '🐢 <strong>' + st.staleCount + ' invoice' + (st.staleCount === 1 ? '' : 's') + '</strong> totalling ' +
-                moneyShort(st.staleAmount, ccy) + ' have been in approved/processing for over 60 days' +
+                moneyShort(st.staleAmount, ccy) + ' are approved/processing but more than 30 days past due' +
                 (st.stalePct != null ? ' (' + pct(st.stalePct) + ' of spend)' : '') +
-                '. Could indicate an unregistered dispute or a slow approval cycle — worth investigating before relying on payment-behaviour stats.' +
+                '. The buyer has accepted these invoices but is sitting on them well past their payment terms — a sign of slow payment behaviour or an unregistered dispute.' +
             '</div>';
     }
 
@@ -10031,9 +10034,25 @@ function renderSupInvoiceRows(rows, ccy) {
 
 // ── Charts for the supplier panel ───────────────────────────────
 
+// Destroy any live supplier-panel chart instances. Called before drawing a
+// fresh set so re-opening / switching suppliers without a full panel close
+// can't leave a stale Chart bound to the reused canvas id (which throws
+// "Canvas is already in use" and leaves the new chart blank).
+function destroySupplierPanelCharts() {
+    _supplierPanelCharts.forEach(function(c) { try { c.destroy(); } catch (e) {} });
+    _supplierPanelCharts = [];
+}
+
 function drawSupplierVolumeChart(st, ccy) {
     var canvas = document.getElementById('sup-chart-volume');
     if (!canvas) return;
+    // Defensive: if a chart from a prior open is still bound to this canvas
+    // id, Chart.js throws "Canvas is already in use" and the new chart never
+    // draws (blank box). Tear down any existing instance on this canvas first.
+    if (typeof Chart !== 'undefined' && Chart.getChart) {
+        var existing = Chart.getChart(canvas);
+        if (existing) { try { existing.destroy(); } catch (e) {} }
+    }
     var labels = st.monthlySeries.map(function(m) { return m.month; });
     var counts = st.monthlySeries.map(function(m) { return m.count; });
     var spends = st.monthlySeries.map(function(m) { return m.spend; });
@@ -10071,6 +10090,12 @@ function drawSupplierVolumeChart(st, ccy) {
 function drawSupplierPaymentChart(st) {
     var canvas = document.getElementById('sup-chart-payment');
     if (!canvas) return;
+    // Same defensive teardown as the volume chart — a stale instance bound to
+    // this canvas id makes Chart.js throw and the new chart never renders.
+    if (typeof Chart !== 'undefined' && Chart.getChart) {
+        var existing = Chart.getChart(canvas);
+        if (existing) { try { existing.destroy(); } catch (e) {} }
+    }
     var d = st.dpdDistribution;
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'bar',
