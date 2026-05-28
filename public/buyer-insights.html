@@ -5440,16 +5440,6 @@ function renderProspectDetail(prospect) {
         drawSupplierVolumeChart(panelStats, ccy);
         drawSupplierPaymentChart(panelStats);
     }); });
-    setTimeout(function() {
-        var cv = document.getElementById('sup-chart-volume');
-        var ch = cv && typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(cv) : null;
-        console.log('[DIAG3 @1s] canvas exists=', !!cv,
-            'chart bound=', !!ch,
-            'canvas client w/h=', cv && cv.clientWidth, cv && cv.clientHeight,
-            'wrap h=', cv && cv.parentElement && cv.parentElement.clientHeight,
-            'tracked charts=', _supplierPanelCharts.length,
-            'canvas in document=', cv ? document.body.contains(cv) : 'n/a');
-    }, 1000);
 
     // Lazy-load row-level invoice/CN data for the recent-invoices/CN tables.
     var DRILL_LIMIT = 250;
@@ -8641,6 +8631,19 @@ function openSupplierPanel(supId, ccy) {
         drawSupplierVolumeChart(panelStats, ccy);
         drawSupplierPaymentChart(panelStats);
     }); });
+    setTimeout(function() {
+        var cv = document.getElementById('sup-chart-volume');
+        var ch = cv && typeof Chart !== 'undefined' && Chart.getChart ? Chart.getChart(cv) : null;
+        var allVol = document.querySelectorAll('#sup-chart-volume');
+        var bodyCv = (document.getElementById('supPanelBody')||document.createElement('div')).querySelector('#sup-chart-volume');
+        console.log('[DIAG3-ALLSUP @1s]',
+            'COUNT of #sup-chart-volume in DOM=', allVol.length,
+            '| getElementById chart bound=', !!ch,
+            '| getElementById w/h=', cv && cv.clientWidth, cv && cv.clientHeight,
+            '| supPanelBody-scoped canvas exists=', !!bodyCv,
+            '| supPanelBody-scoped w/h=', bodyCv && bodyCv.clientWidth, bodyCv && bodyCv.clientHeight,
+            '| supPanelBody-scoped chart bound=', bodyCv && Chart.getChart ? !!Chart.getChart(bodyCv) : 'n/a');
+    }, 1000);
 
     // Lazy-load row-level data for the recent-invoices and credit-notes
     // tables. Filtered by period date range so the panel honours the
