@@ -1920,20 +1920,47 @@ function validateAliasTarget(entityType, pelagicEntityId) {
   return { ok: true };
 }
 
+// Canonical uniqueness key for a provider-entity alias, mirroring the DB's two
+// partial unique indexes (see alias_buyer_qualification.sql):
+//   supplier -> (buyer_entity_id, external_string)  PROVIDER-INDEPENDENT
+//   buyer    -> (provider_id, external_string)       provider-scoped
+// Supplier keys strip any branch suffix off the buyer (vendor masters are
+// org-level). Save / delete / transfer / import all key through this so the
+// app and DB never disagree on what "the same alias" means.
+function aliasKey(a) {
+  if (a.entityType === "supplier") {
+    var pb = a.buyerEntityId ? String(a.buyerEntityId).split(":")[0] : "";
+    return "supplier|" + pb + "|" + (a.externalString || "");
+  }
+  return "buyer|" + (a.providerId || "") + "|" + (a.externalString || "");
+}
+
 async function saveProviderAlias(alias) {
-  // alias: { providerId, entityType, externalString, pelagicEntityId, firstSeenInUploadId?, verifiedBy?, verifiedAt?, notes? }
-  // Idempotent upsert keyed on (provider_id, entity_type, external_string). If a row already
-  // exists for that triple, this overwrites pelagic_entity_id — that's intentional, it's
-  // how the admin UI's "edit alias" action lands.
-  if (!alias || !alias.providerId || !alias.entityType || !alias.externalString) return { ok: false, reason: "missing required fields" };
+  // alias: { providerId?, entityType, externalString, pelagicEntityId, buyerEntityId?, firstSeenInUploadId?, verifiedBy?, verifiedAt?, notes? }
+  // Uniqueness now lives in two PARTIAL indexes (supplier: buyer_entity_id+external_string,
+  // provider-independent; buyer: provider_id+external_string). PostgREST's on_conflict can't
+  // target a partial index, so we don't upsert — we update the matching row in place if one
+  // exists (per the type-aware aliasKey), else insert. The DB index is the race backstop.
+  if (!alias || !alias.entityType || !alias.externalString) return { ok: false, reason: "missing required fields" };
+  if (alias.entityType === "buyer" && !alias.providerId) return { ok: false, reason: "buyer alias requires a providerId" };
+  var parentBuyer = null;
+  if (alias.entityType === "supplier") {
+    if (!alias.buyerEntityId) return { ok: false, reason: "supplier alias requires a qualifying buyerEntityId" };
+    parentBuyer = String(alias.buyerEntityId).split(":")[0];
+    if (!BUYERS_DB.find(function(b) { return b.id === parentBuyer; })) {
+      toast.error("Cannot save alias", "Qualifying buyer '" + parentBuyer + "' not found in Main Portal");
+      return { ok: false, reason: "qualifying buyer not found" };
+    }
+  }
   var v = validateAliasTarget(alias.entityType, alias.pelagicEntityId);
   if (!v.ok) { toast.error("Cannot save alias", v.reason); return v; }
   _isSaving = true;
   try {
     var row = {
-      provider_id: alias.providerId,
+      provider_id: alias.providerId || null,
       entity_type: alias.entityType,
       external_string: alias.externalString,
+      buyer_entity_id: alias.entityType === "supplier" ? parentBuyer : null,
       pelagic_entity_id: alias.pelagicEntityId,
       first_seen_at: alias.firstSeenAt || new Date().toISOString(),
       first_seen_in_upload_id: alias.firstSeenInUploadId || null,
@@ -1941,13 +1968,26 @@ async function saveProviderAlias(alias) {
       verified_at: alias.verifiedAt || null,
       notes: alias.notes || null
     };
-    var paRes = await supabase.from("provider_entity_aliases").upsert([row], { onConflict: "provider_id,entity_type,external_string" });
-    if (paRes && paRes.error) { console.error("[SaveAlias]:", paRes.error); toast.error("Alias save failed", paRes.error.message || "Database error."); _isSaving = false; return { ok: false, reason: paRes.error.message }; }
-    // Mirror into in-memory cache
-    var existingIdx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a.providerId === alias.providerId && a.entityType === alias.entityType && a.externalString === alias.externalString; });
+    var probeKey = aliasKey({ entityType: alias.entityType, providerId: alias.providerId, externalString: alias.externalString, buyerEntityId: parentBuyer });
+    var existingIdx = PROVIDER_ALIASES_DB.findIndex(function(a) { return aliasKey(a) === probeKey; });
+    var dbRes;
+    if (existingIdx >= 0) {
+      // Update the existing unique row in place (leave first_seen_at intact).
+      var upd = supabase.from("provider_entity_aliases").update({
+        provider_id: row.provider_id,
+        pelagic_entity_id: row.pelagic_entity_id,
+        verified_by: row.verified_by, verified_at: row.verified_at, notes: row.notes
+      }).eq("entity_type", row.entity_type).eq("external_string", row.external_string);
+      upd = alias.entityType === "supplier" ? upd.eq("buyer_entity_id", parentBuyer) : upd.eq("provider_id", alias.providerId);
+      dbRes = await upd;
+    } else {
+      dbRes = await supabase.from("provider_entity_aliases").insert([row]);
+    }
+    if (dbRes && dbRes.error) { console.error("[SaveAlias]:", dbRes.error); toast.error("Alias save failed", dbRes.error.message || "Database error."); _isSaving = false; return { ok: false, reason: dbRes.error.message }; }
     var cacheEntry = {
-      providerId: alias.providerId, entityType: alias.entityType, externalString: alias.externalString,
-      pelagicEntityId: alias.pelagicEntityId,
+      providerId: row.provider_id, entityType: row.entity_type, externalString: row.external_string,
+      buyerEntityId: row.buyer_entity_id,
+      pelagicEntityId: row.pelagic_entity_id,
       firstSeenAt: row.first_seen_at, firstSeenInUploadId: row.first_seen_in_upload_id,
       verifiedBy: row.verified_by, verifiedAt: row.verified_at, notes: row.notes
     };
@@ -1958,41 +1998,50 @@ async function saveProviderAlias(alias) {
   return { ok: true };
 }
 
-async function deleteProviderAlias(providerId, entityType, externalString) {
+async function deleteProviderAlias(alias) {
+  // alias: { entityType, externalString, providerId?, buyerEntityId? }
+  // Targets the row by its type-aware unique key: suppliers by
+  // (buyer_entity_id, external_string), buyers by (provider_id, external_string).
+  if (!alias || !alias.entityType || !alias.externalString) return;
   _isSaving = true;
   try {
-    var delRes = await supabase.from("provider_entity_aliases").delete()
-      .eq("provider_id", providerId)
-      .eq("entity_type", entityType)
-      .eq("external_string", externalString);
+    var q = supabase.from("provider_entity_aliases").delete()
+      .eq("entity_type", alias.entityType)
+      .eq("external_string", alias.externalString);
+    if (alias.entityType === "supplier") q = q.eq("buyer_entity_id", String(alias.buyerEntityId || "").split(":")[0]);
+    else q = q.eq("provider_id", alias.providerId);
+    var delRes = await q;
     if (delRes && delRes.error) { console.error("[DeleteAlias]:", delRes.error); toast.error("Alias delete failed", delRes.error.message); }
     else {
-      // Drop from in-memory cache
-      var idx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a.providerId === providerId && a.entityType === entityType && a.externalString === externalString; });
+      var probeKey = aliasKey(alias);
+      var idx = PROVIDER_ALIASES_DB.findIndex(function(a) { return aliasKey(a) === probeKey; });
       if (idx >= 0) PROVIDER_ALIASES_DB.splice(idx, 1);
     }
   } catch (e) { console.error("[DeleteAlias] Error:", e); toast.error("Alias delete error", e.message || String(e)); }
   _isSaving = false;
 }
 
-// Transfer aliases from one provider to another. Conflicts (same external_string
-// already exists on the destination, mapped to a different pelagic_entity_id)
-// are rejected — the operator must resolve them manually first. Same-target
-// conflicts are silently merged (the destination row already says what the
-// source row would have said).
+// Transfer aliases from a superseded provider to its replacement.
+// Supplier aliases are provider-independent (provider_id is provenance only), so
+// they are simply RE-STAMPED to the destination — no key change, no possible
+// clash. Only BUYER aliases are provider-scoped and can actually collide on the
+// destination: same external_string already there mapped to a different buyer is
+// a conflict (operator resolves manually); same target is silently merged.
 async function transferProviderAliases(sourceProviderId, destinationProviderId) {
   if (sourceProviderId === destinationProviderId) return { ok: false, reason: "source and destination are the same" };
   var sourceAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === sourceProviderId; });
-  var destAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === destinationProviderId; });
-  var destByKey = {};
-  destAliases.forEach(function(a) { destByKey[a.entityType + "|" + a.externalString] = a; });
+  var srcBuyers = sourceAliases.filter(function(a) { return a.entityType === "buyer"; });
+  var srcSuppliers = sourceAliases.filter(function(a) { return a.entityType === "supplier"; });
+  var destByExt = {};
+  PROVIDER_ALIASES_DB.forEach(function(a) {
+    if (a.providerId === destinationProviderId && a.entityType === "buyer") destByExt[a.externalString] = a;
+  });
 
   var conflicts = [];
   var willMove = [];
   var willMerge = [];
-  sourceAliases.forEach(function(a) {
-    var key = a.entityType + "|" + a.externalString;
-    var dest = destByKey[key];
+  srcBuyers.forEach(function(a) {
+    var dest = destByExt[a.externalString];
     if (!dest) { willMove.push(a); return; }
     if (dest.pelagicEntityId === a.pelagicEntityId) { willMerge.push(a); return; }
     conflicts.push({ sourceAlias: a, destAlias: dest });
@@ -2004,13 +2053,15 @@ async function transferProviderAliases(sourceProviderId, destinationProviderId) 
   // No conflicts — proceed.
   _isSaving = true;
   try {
-    // Move (rows that aren't present in destination): UPDATE provider_id
+    // Move buyer rows with no destination twin: insert at destination. No
+    // onConflict (we verified none clash); the partial index is the backstop.
     if (willMove.length > 0) {
       var movePayload = willMove.map(function(a) {
         return {
           provider_id: destinationProviderId,
-          entity_type: a.entityType,
+          entity_type: "buyer",
           external_string: a.externalString,
+          buyer_entity_id: null,
           pelagic_entity_id: a.pelagicEntityId,
           first_seen_at: a.firstSeenAt,
           first_seen_in_upload_id: a.firstSeenInUploadId,
@@ -2019,13 +2070,17 @@ async function transferProviderAliases(sourceProviderId, destinationProviderId) 
           notes: a.notes
         };
       });
-      // Insert at destination (this is the "move" half)
-      var insRes = await supabase.from("provider_entity_aliases").upsert(movePayload, { onConflict: "provider_id,entity_type,external_string" });
+      var insRes = await supabase.from("provider_entity_aliases").insert(movePayload);
       if (insRes && insRes.error) { console.error("[TransferAliases] insert error:", insRes.error); toast.error("Transfer failed", insRes.error.message); _isSaving = false; return { ok: false, reason: insRes.error.message }; }
     }
-    // Delete source rows (both moved and merged — they no longer need to exist on the source)
-    var delRes = await supabase.from("provider_entity_aliases").delete().eq("provider_id", sourceProviderId);
+    // Delete source buyer rows (both moved and merged).
+    var delRes = await supabase.from("provider_entity_aliases").delete().eq("provider_id", sourceProviderId).eq("entity_type", "buyer");
     if (delRes && delRes.error) { console.error("[TransferAliases] delete error:", delRes.error); toast.error("Transfer cleanup failed", delRes.error.message); _isSaving = false; return { ok: false, reason: delRes.error.message }; }
+    // Re-stamp provenance on the provider-independent supplier aliases.
+    if (srcSuppliers.length > 0) {
+      var updRes = await supabase.from("provider_entity_aliases").update({ provider_id: destinationProviderId }).eq("provider_id", sourceProviderId).eq("entity_type", "supplier");
+      if (updRes && updRes.error) { console.error("[TransferAliases] supplier re-stamp error:", updRes.error); toast.error("Transfer re-stamp failed", updRes.error.message); _isSaving = false; return { ok: false, reason: updRes.error.message }; }
+    }
     // Mark source provider as superseded
     var srcProv = CSV_PROVIDERS_DB.find(function(p) { return p.id === sourceProviderId; });
     if (srcProv) {
@@ -2034,16 +2089,16 @@ async function transferProviderAliases(sourceProviderId, destinationProviderId) 
       srcProv.supersededAt = new Date().toISOString();
       await saveCsvProvider(sourceProviderId);
     }
-    // Mirror into in-memory cache: move source aliases to destination, dropping any that were merged
+    // Mirror into in-memory cache.
     willMove.forEach(function(a) { a.providerId = destinationProviderId; });
-    // Remove merged duplicates from the source side
     willMerge.forEach(function(mergedAlias) {
       var srcIdx = PROVIDER_ALIASES_DB.findIndex(function(a) { return a === mergedAlias; });
       if (srcIdx >= 0) PROVIDER_ALIASES_DB.splice(srcIdx, 1);
     });
+    srcSuppliers.forEach(function(a) { a.providerId = destinationProviderId; });
   } catch (e) { console.error("[TransferAliases] Error:", e); toast.error("Transfer error", e.message || String(e)); _isSaving = false; return { ok: false, reason: e.message }; }
   _isSaving = false;
-  return { ok: true, moved: willMove.length, merged: willMerge.length };
+  return { ok: true, moved: willMove.length, merged: willMerge.length, restamped: srcSuppliers.length };
 }
 
 async function saveHoldbackPayment(hbpId) {
@@ -2396,6 +2451,7 @@ async function loadPersistedData() {
           providerId: row.provider_id,
           entityType: row.entity_type,
           externalString: row.external_string,
+          buyerEntityId: row.buyer_entity_id || null,
           pelagicEntityId: row.pelagic_entity_id,
           firstSeenAt: row.first_seen_at,
           firstSeenInUploadId: row.first_seen_in_upload_id || null,
@@ -3784,6 +3840,34 @@ export default function FactoringDashboard() {
       // steps 1–4 above accomplish. The old prospect_invoices/credit_notes ->
       // invoices/credit_notes upsert was the wrong bridge and is gone.
 
+      // 4b. Seed the buyer-qualified supplier alias from the prospect's own
+      // (buyer, vendor code) so the next AR-feed import from that buyer resolves
+      // the vendor code straight to the new supplier with no manual touch.
+      // Supplier aliases are provider-independent, so providerId stays null.
+      var aliasSeeded = false;
+      var qualBuyer = ps.buyer_id || ps.mapped_buyer_id || null;
+      var vendorCode = ps.supplier_identifier ? String(ps.supplier_identifier).trim() : null;
+      if (qualBuyer && vendorCode && BUYERS_DB.find(function(b) { return b.id === qualBuyer; })) {
+        var seedRes = await saveProviderAlias({
+          providerId: null,
+          entityType: "supplier",
+          externalString: vendorCode,
+          buyerEntityId: qualBuyer,
+          pelagicEntityId: newSupplierId,
+          firstSeenInUploadId: deepLink.uploadId || ps.upload_id || null,
+          verifiedBy: (typeof userProfile !== "undefined" && userProfile) ? userProfile.id : null,
+          verifiedAt: new Date().toISOString()
+        });
+        aliasSeeded = !!(seedRes && seedRes.ok);
+        if (aliasSeeded) {
+          auditLog("Alias Created", "Supplier alias '" + vendorCode + "' under buyer " + qualBuyer + " \u2192 " + newSupplierId + " (seeded on prospect conversion)", { entityId: newSupplierId, buyerEntityId: qualBuyer, externalString: vendorCode, pelagicEntityId: newSupplierId, source: "prospect_conversion_seed" });
+        } else {
+          console.warn("[Conversion] Alias seed skipped/failed:", seedRes && seedRes.reason);
+        }
+      } else {
+        console.warn("[Conversion] Alias not seeded \u2014 missing/unknown buyer or vendor code on prospect (buyer:", qualBuyer, "code:", vendorCode, ")");
+      }
+
       // 7. Audit log entry on FF side (Step I)
       auditLog("Prospect Converted", "Supplier " + newSupplierId + " (" + newSupplierName + ") created from prospect " + deepLink.prospectId + ". Identity linked; " + notesMigrated + " note(s) transferred. No invoice data migrated (AR-feed sourced).", {
         entityId: newSupplierId,
@@ -3795,7 +3879,7 @@ export default function FactoringDashboard() {
         source: "prospect_conversion"
       });
 
-      toast.success("Prospect converted", newSupplierName + " \u2014 identity linked, " + notesMigrated + " note(s) transferred");
+      toast.success("Prospect converted", newSupplierName + " \u2014 identity linked, " + notesMigrated + " note(s) transferred" + (aliasSeeded ? ", import alias seeded" : ""));
       setProspectDeepLink(null);
     } catch (e) {
       console.error("[Conversion] Unexpected error:", e);
@@ -23239,18 +23323,17 @@ export default function FactoringDashboard() {
                 var unknownBuyIds = {};
                 var unknownSupBranches = {};
                 var unknownBuyBranches = {};
-                var unrecognisedSupExt = {}; // key: external_string, val: count
+                var unrecognisedSupExt = {}; // key: buyerParent|external_string, val: { buyerId, externalString, count }
                 var unrecognisedBuyExt = {};
                 var nameDivergences = [];
                 var newPairs = {}; // key: "SUP-XXX|BUY-YYY", val: { supId, buyId, count }
-                // Index existing PROVIDER_ALIASES_DB for fast lookup
+                // Index all aliases by canonical key. Buyer aliases scope by
+                // provider, supplier aliases scope by buyer (provider-independent),
+                // so we index the whole table and let aliasKey do the scoping.
                 var aliasIdx = {};
-                if (csvProvider) {
-                  PROVIDER_ALIASES_DB.forEach(function(a) {
-                    if (a.providerId !== csvProvider.id) return;
-                    aliasIdx[a.entityType + "|" + a.externalString] = a.pelagicEntityId;
-                  });
-                }
+                PROVIDER_ALIASES_DB.forEach(function(a) {
+                  aliasIdx[aliasKey(a)] = a.pelagicEntityId;
+                });
                 // Index existing INVOICES_DB by parent-level (supplier, buyer) pair so
                 // Warning 1 can check "have we ever seen this combination before?". Done
                 // once before the row loop so it's O(n+m) not O(n*m).
@@ -23274,41 +23357,7 @@ export default function FactoringDashboard() {
                   var csvSupName = getMapped(row, "supplier");
                   var csvBuyName = getMapped(row, "buyer");
 
-                  // Supplier resolution
-                  var resolvedSupId = null;
-                  var resolvedSupBranchId = null;
-                  if (supId) {
-                    resolvedSupId = supId;
-                    resolvedSupBranchId = supBranchId || null;
-                  } else if (extSupStr) {
-                    if (!csvProvider) { errors.push({ row: rowIdx + 2, ref: ref, msg: "external_supplier_string set but no provider selected. Choose a provider before validating." }); return; }
-                    var aliasHit = aliasIdx["supplier|" + extSupStr];
-                    if (!aliasHit) { unrecognisedSupExt[extSupStr] = (unrecognisedSupExt[extSupStr] || 0) + 1; return; }
-                    var parsed = parseEntityId(aliasHit);
-                    resolvedSupId = parsed.supplierId;
-                    resolvedSupBranchId = parsed.branchId || null;
-                  } else {
-                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no supplier identity (need supplier_id OR external_supplier_string)" });
-                    return;
-                  }
 
-                  // Buyer resolution
-                  var resolvedBuyId = null;
-                  var resolvedBuyBranchId = null;
-                  if (buyId) {
-                    resolvedBuyId = buyId;
-                    resolvedBuyBranchId = buyBranchId || null;
-                  } else if (extBuyStr) {
-                    if (!csvProvider) { errors.push({ row: rowIdx + 2, ref: ref, msg: "external_buyer_string set but no provider selected. Choose a provider before validating." }); return; }
-                    var aliasHitB = aliasIdx["buyer|" + extBuyStr];
-                    if (!aliasHitB) { unrecognisedBuyExt[extBuyStr] = (unrecognisedBuyExt[extBuyStr] || 0) + 1; return; }
-                    var parsedB = parseEntityId(aliasHitB);
-                    resolvedBuyId = parsedB.supplierId;
-                    resolvedBuyBranchId = parsedB.branchId || null;
-                  } else {
-                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no buyer identity (need buyer_id OR external_buyer_string)" });
-                    return;
-                  }
 
                   // Validate parent entities exist
                   var sup = SUPPLIERS_DB.find(function(s) { return s.id === resolvedSupId; });
@@ -23371,8 +23420,9 @@ export default function FactoringDashboard() {
                 // we fall back to the legacy text-error format directing the
                 // operator to pick a provider first.
                 if (!csvProvider) {
-                  Object.keys(unrecognisedSupExt).forEach(function(str) {
-                    errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + str + "' (" + unrecognisedSupExt[str] + " row" + (unrecognisedSupExt[str] === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
+                  Object.keys(unrecognisedSupExt).forEach(function(k) {
+                    var u = unrecognisedSupExt[k];
+                    errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + u.externalString + "' (" + u.count + " row" + (u.count === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
                   });
                   Object.keys(unrecognisedBuyExt).forEach(function(str) {
                     errors.push({ row: null, ref: null, msg: "unrecognised external buyer string '" + str + "' (" + unrecognisedBuyExt[str] + " row" + (unrecognisedBuyExt[str] === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
@@ -23388,8 +23438,9 @@ export default function FactoringDashboard() {
                 // (and the text errors above already explain that).
                 var unrecognisedAliases = [];
                 if (csvProvider) {
-                  Object.keys(unrecognisedSupExt).forEach(function(str) {
-                    unrecognisedAliases.push({ entityType: "supplier", externalString: str, count: unrecognisedSupExt[str] });
+                  Object.keys(unrecognisedSupExt).forEach(function(k) {
+                    var u = unrecognisedSupExt[k];
+                    unrecognisedAliases.push({ entityType: "supplier", externalString: u.externalString, buyerEntityId: u.buyerId, count: u.count });
                   });
                   Object.keys(unrecognisedBuyExt).forEach(function(str) {
                     unrecognisedAliases.push({ entityType: "buyer", externalString: str, count: unrecognisedBuyExt[str] });
@@ -23872,9 +23923,9 @@ export default function FactoringDashboard() {
                     // the errors list (and unrecognisedAliases list) refresh — if all
                     // unrecognised strings are now resolved (and nothing else is wrong),
                     // the step transitions automatically to "processing".
-                    async function saveInlineAlias(entityType, externalString) {
+                    async function saveInlineAlias(entityType, externalString, buyerEntityId) {
                       if (!csvProvider) { toast.error("No provider selected", "Pick a provider before adding aliases."); return; }
-                      var pickKey = entityType + "|" + externalString;
+                      var pickKey = entityType === "supplier" ? ("supplier|" + buyerEntityId + "|" + externalString) : ("buyer|" + externalString);
                       var target = csvAliasPicks[pickKey];
                       if (!target) { toast.error("No target selected", "Pick a Pelagic entity for this alias first."); return; }
                       setCsvAliasSaving(function(p) { var n = Object.assign({}, p); n[pickKey] = true; return n; });
@@ -23883,13 +23934,14 @@ export default function FactoringDashboard() {
                         providerId: csvProvider.id,
                         entityType: entityType,
                         externalString: externalString,
+                        buyerEntityId: entityType === "supplier" ? buyerEntityId : null,
                         pelagicEntityId: target,
                         verifiedBy: verifiedBy,
                         verifiedAt: new Date().toISOString()
                       });
                       setCsvAliasSaving(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
                       if (!result.ok) return;
-                      auditLog("Alias Created", "Alias " + entityType + " '" + externalString + "' \u2192 " + target + " (provider: " + csvProvider.id + ", via CSV validation)", { providerId: csvProvider.id, entityType: entityType, externalString: externalString, pelagicEntityId: target, source: "csv_validation_inline" });
+                      auditLog("Alias Created", "Alias " + entityType + " '" + externalString + "'" + (entityType === "supplier" ? " under buyer " + buyerEntityId : "") + " \u2192 " + target + " (provider: " + csvProvider.id + ", via CSV validation)", { providerId: csvProvider.id, entityType: entityType, externalString: externalString, buyerEntityId: buyerEntityId || null, pelagicEntityId: target, source: "csv_validation_inline" });
                       // Drop this pick from local state (now persisted) and re-validate.
                       setCsvAliasPicks(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
                       validateImport();
@@ -23913,15 +23965,16 @@ export default function FactoringDashboard() {
                             <th style={{ padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", width: 80 }}></th>
                           </tr></thead>
                           <tbody>{unrecAliases.map(function(ua) {
-                            var pickKey = ua.entityType + "|" + ua.externalString;
+                            var pickKey = ua.entityType === "supplier" ? ("supplier|" + ua.buyerEntityId + "|" + ua.externalString) : ("buyer|" + ua.externalString);
                             var picked = csvAliasPicks[pickKey] || "";
                             var saving = !!csvAliasSaving[pickKey];
                             var entityOptions = ua.entityType === "supplier" ? getAllSupplierEntities() : getAllBuyerEntities();
+                            var buyerLabel = ua.entityType === "supplier" ? (function() { var b = BUYERS_DB.find(function(x) { return x.id === ua.buyerEntityId; }); return b ? (b.name + " (" + ua.buyerEntityId + ")") : ua.buyerEntityId; })() : null;
                             return <tr key={pickKey} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "8px 10px" }}>
                                 <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: "uppercase", background: ua.entityType === "supplier" ? "#10B98120" : "#8B5CF620", color: ua.entityType === "supplier" ? "#10B981" : "#8B5CF6" }}>{ua.entityType}</span>
                               </td>
-                              <td style={{ padding: "8px 10px", fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", wordBreak: "break-all" }}>{ua.externalString}</td>
+                              <td style={{ padding: "8px 10px", fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", wordBreak: "break-all" }}>{ua.externalString}{buyerLabel && <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>buyer: {buyerLabel}</div>}</td>
                               <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{ua.count}</td>
                               <td style={{ padding: "8px 10px" }}>
                                 <select value={picked} onChange={function(e) {
@@ -23933,7 +23986,7 @@ export default function FactoringDashboard() {
                                 </select>
                               </td>
                               <td style={{ padding: "8px 10px", textAlign: "right" }}>
-                                <button onClick={function() { saveInlineAlias(ua.entityType, ua.externalString); }} disabled={!picked || saving} style={{ padding: "5px 12px", borderRadius: 5, border: "none", background: (picked && !saving) ? "var(--accent)" : "var(--border)", color: (picked && !saving) ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: (picked && !saving) ? "pointer" : "default" }}>{saving ? "Saving\u2026" : "Save"}</button>
+                                <button onClick={function() { saveInlineAlias(ua.entityType, ua.externalString, ua.buyerEntityId); }} disabled={!picked || saving} style={{ padding: "5px 12px", borderRadius: 5, border: "none", background: (picked && !saving) ? "var(--accent)" : "var(--border)", color: (picked && !saving) ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: (picked && !saving) ? "pointer" : "default" }}>{saving ? "Saving\u2026" : "Save"}</button>
                               </td>
                             </tr>;
                           })}</tbody>
@@ -24358,6 +24411,7 @@ export default function FactoringDashboard() {
               var nowDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
               var prov = managePopup && managePopup.type === "providerEdit" ? managePopup.data : null;
               var alias = managePopup && managePopup.type === "aliasEdit" ? managePopup.data : null;
+              var aliasCanSave = !!(alias && alias.externalString && alias.pelagicEntityId && (alias.entityType !== "supplier" || alias.buyerEntityId));
               var transfer = managePopup && managePopup.type === "providerTransfer" ? managePopup : null;
 
               function startProviderEdit(p) {
@@ -24397,17 +24451,22 @@ export default function FactoringDashboard() {
 
               function startAliasEdit(providerId, a) {
                 var data = a ? Object.assign({}, a) : { providerId: providerId, entityType: "supplier", externalString: "", pelagicEntityId: "" };
-                setManagePopup({ type: "aliasEdit", data: data, isNew: !a, originalKey: a ? (a.entityType + "|" + a.externalString) : null });
+                setManagePopup({ type: "aliasEdit", data: data, isNew: !a, originalKey: a ? aliasKey(a) : null });
               }
               async function saveAliasFromModal() {
                 if (!alias) return;
                 if (!alias.externalString || !alias.pelagicEntityId) { toast.error("Missing fields", "External string and Pelagic ID are both required."); return; }
-                // If editing and the (entity_type, external_string) key changed, delete the old row first
-                if (managePopup.originalKey && managePopup.originalKey !== (alias.entityType + "|" + alias.externalString)) {
+                if (alias.entityType === "supplier" && !alias.buyerEntityId) { toast.error("Missing buyer", "Supplier aliases are buyer-qualified \u2014 pick the qualifying buyer."); return; }
+                // If editing and the canonical key changed (external string, or the
+                // qualifying buyer on a supplier alias), delete the old row first.
+                if (managePopup.originalKey && managePopup.originalKey !== aliasKey(alias)) {
                   var parts = managePopup.originalKey.split("|");
-                  await deleteProviderAlias(alias.providerId, parts[0], parts[1]);
+                  var oldExt = parts.slice(2).join("|");
+                  await deleteProviderAlias(parts[0] === "supplier"
+                    ? { entityType: "supplier", buyerEntityId: parts[1], externalString: oldExt }
+                    : { entityType: "buyer", providerId: parts[1], externalString: oldExt });
                 }
-                var ctx = { providerId: alias.providerId, entityType: alias.entityType, externalString: alias.externalString, pelagicEntityId: alias.pelagicEntityId };
+                var ctx = { providerId: alias.providerId, entityType: alias.entityType, externalString: alias.externalString, buyerEntityId: alias.buyerEntityId || null, pelagicEntityId: alias.pelagicEntityId };
                 var verifiedBy = (typeof userProfile !== "undefined" && userProfile) ? userProfile.id : null;
                 var result = await saveProviderAlias(Object.assign({}, alias, { verifiedBy: verifiedBy, verifiedAt: new Date().toISOString() }));
                 if (!result.ok) return;
@@ -24417,7 +24476,7 @@ export default function FactoringDashboard() {
               }
               async function removeAlias(a) {
                 if (!window.confirm("Remove alias '" + a.externalString + "' \u2192 " + a.pelagicEntityId + "?")) return;
-                await deleteProviderAlias(a.providerId, a.entityType, a.externalString);
+                await deleteProviderAlias(a);
                 auditLog("Alias Removed", "Alias " + a.entityType + " '" + a.externalString + "' removed from " + a.providerId, { providerId: a.providerId, entityType: a.entityType, externalString: a.externalString, pelagicEntityId: a.pelagicEntityId });
                 setDataVer(function(v) { return v + 1; });
               }
@@ -24559,11 +24618,20 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 16 }}>{managePopup.isNew ? "Add Alias" : "Edit Alias"}</div>
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Entity Type</label>
-                      <select value={alias.entityType} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { entityType: e.target.value, pelagicEntityId: "" }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                      <select value={alias.entityType} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { entityType: e.target.value, pelagicEntityId: "", buyerEntityId: "" }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
                         <option value="supplier">Supplier</option>
                         <option value="buyer">Buyer</option>
                       </select>
                     </div>
+                    {alias.entityType === "supplier" && <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>Qualifying Buyer (the vendor code is unique only within this buyer)</label>
+                      <select value={alias.buyerEntityId || ""} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { buyerEntityId: e.target.value }) }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, width: "100%" }}>
+                        <option value="">{"\u2014 Select buyer \u2014"}</option>
+                        {getAllBuyerEntities().map(function(o) {
+                          return <option key={o.value} value={o.value}>{o.label} ({o.value})</option>;
+                        })}
+                      </select>
+                    </div>}
                     <div style={{ marginBottom: 12 }}>
                       <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 4 }}>External String (as it appears in the provider's CSV)</label>
                       <input type="text" value={alias.externalString} onChange={function(e) { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { externalString: e.target.value }) }); }); }} placeholder="e.g. VEND-4837" style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" }} />
@@ -24579,7 +24647,7 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
                       <button onClick={function() { setManagePopup(null); }} style={{ padding: "9px 18px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-                      <button onClick={saveAliasFromModal} disabled={!alias.externalString || !alias.pelagicEntityId} style={{ padding: "9px 20px", borderRadius: 7, border: "none", background: (alias.externalString && alias.pelagicEntityId) ? "var(--accent)" : "var(--border)", color: (alias.externalString && alias.pelagicEntityId) ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: (alias.externalString && alias.pelagicEntityId) ? "pointer" : "default" }}>{managePopup.isNew ? "Create" : "Save"}</button>
+                      <button onClick={saveAliasFromModal} disabled={!aliasCanSave} style={{ padding: "9px 20px", borderRadius: 7, border: "none", background: aliasCanSave ? "var(--accent)" : "var(--border)", color: aliasCanSave ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: aliasCanSave ? "pointer" : "default" }}>{managePopup.isNew ? "Create" : "Save"}</button>
                     </div>
                   </div>
                 </div>}
