@@ -24001,8 +24001,8 @@ export default function FactoringDashboard() {
                       : "These rows reference Pelagic IDs (Supplier ID / Buyer ID) that don't exist, or are missing required fields. If your file uses the buyer's own vendor/buyer codes, map those columns to 'External Supplier ID' / 'External Buyer ID' and pick a file-level buyer so they resolve via aliases. Otherwise onboard the missing entity in Main Portal first."}</div>
 
                     {hasResolvable && <div style={{ marginBottom: 16, padding: "14px 18px", borderRadius: 8, background: "#0EA5E908", border: "1px solid #0EA5E940" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginBottom: 4 }}>{unrecAliases.length} unrecognised alias{unrecAliases.length === 1 ? "" : "es"} \u2014 resolve inline</div>
-                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12 }}>Each external string below appeared in the CSV but has no alias defined under <strong>{csvProvider ? csvProvider.name : "this provider"}</strong>. Pick the matching Pelagic entity and click Save to add the alias \u2014 validation will re-run automatically.</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginBottom: 4 }}>{unrecAliases.length} unrecognised alias{unrecAliases.length === 1 ? "" : "es"} {"\u2014"} resolve inline</div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12 }}>Each external string below appeared in the CSV but has no alias defined under <strong>{csvProvider ? csvProvider.name : "this provider"}</strong>. Pick the matching Pelagic entity and click Save to add the alias {"\u2014"} validation will re-run automatically.</div>
                       <div style={{ maxHeight: 360, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, background: "var(--card)" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                           <thead><tr style={{ background: "var(--bg)" }}>
