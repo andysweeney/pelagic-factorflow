@@ -4868,8 +4868,6 @@ function renderGroupPanel(group) {
     if (group.verification_source) {
         var srcLabel =
             group.verification_source === 'companies_house' ? 'Companies House' :
-            group.verification_source === 'manual'          ? 'Manual verification' :
-            group.verification_source === 'other'           ? 'Other registry' :
             group.verification_source;
         verifySuffix = ' · ' + escHTML(srcLabel) +
             (group.verification_jurisdiction ? ' (' + escHTML(group.verification_jurisdiction) + ')' : '');
@@ -5358,8 +5356,6 @@ function renderProspectDetail(prospect) {
     if (prospect.verified_at) {
         var srcPrefix =
             prospect.verification_source === 'companies_house' ? 'CH' :
-            prospect.verification_source === 'manual'          ? 'Manual' :
-            prospect.verification_source === 'other'           ? 'Reg' :
             'Verified';
         var jurisSuffix = prospect.verification_jurisdiction
             ? ' (' + escHTML(prospect.verification_jurisdiction) + ')'
@@ -5581,8 +5577,6 @@ function renderProspectWorkspace(prospect) {
     if (prospect.verified_at) {
         var sourceLabel =
             prospect.verification_source === 'companies_house' ? 'Companies House' :
-            prospect.verification_source === 'manual'          ? 'Manual verification' :
-            prospect.verification_source === 'other'           ? 'Other registry' :
             'Verified';
         var jurisLabel = prospect.verification_jurisdiction
             ? ' · <span class="mono">' + escHTML(prospect.verification_jurisdiction) + '</span>'
@@ -5601,17 +5595,12 @@ function renderProspectWorkspace(prospect) {
                 '<button class="btn btn-xs" id="pdReverifyBtn" style="margin-top:8px;">Re-verify</button>' +
             '</div>';
     } else {
-        // Source picker + conditional inputs
-        verifiedHtml =
-            '<div class="pd-form-row">' +
-                '<label>Source</label>' +
-                '<select id="pdVerifySource">' +
-                    '<option value="companies_house" selected>Companies House (GB)</option>' +
-                    '<option value="manual">Manual verification</option>' +
-                    '<option value="other">Other registry</option>' +
-                '</select>' +
-            '</div>' +
-            '<div id="pdVerifyFields"></div>';
+        // Stage 1.7: Manual Verification removed. Verification is binary —
+        // either against Companies House, or not at all. Prospects that can't
+        // be CH-verified can still be converted manually in MP (without a
+        // registry link) via the affordance below; they flow through as
+        // unverified entities. No spurious "manual verification" state.
+        verifiedHtml = '<div id="pdVerifyFields"></div>';
     }
 
     var chSection =
@@ -5867,13 +5856,9 @@ function wireProspectWorkspaceHandlers(prospect) {
         });
     });
 
-    // VERIFICATION — source-aware
-    var verifySourceSel = document.getElementById('pdVerifySource');
-    if (verifySourceSel) {
-        renderVerifyFields(verifySourceSel.value, prospect);
-        verifySourceSel.addEventListener('change', function() {
-            renderVerifyFields(verifySourceSel.value, prospect);
-        });
+    // VERIFICATION — CH only (Manual / Other removed in stage 1.7)
+    if (!prospect.verified_at) {
+        renderVerifyFields('companies_house', prospect);
     }
 
     var reverifyBtn = document.getElementById('pdReverifyBtn');
@@ -5999,10 +5984,16 @@ function wireProspectWorkspaceHandlers(prospect) {
     // CONVERT
     var convertBtn = document.getElementById('pdConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
-        if (!prospect.registry_id) return;
+        if (!prospect.legal_name) return;
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
-        params.set('company_number', prospect.registry_id);
+        params.set('legal_name', prospect.legal_name);
+        // company_number ONLY when verified against a recognised registry.
+        // Today that's Companies House (GB) only. Anything else flows through
+        // as an unverified entity that MP creates without a registry link.
+        if (prospect.verification_source === 'companies_house' && prospect.registry_id) {
+            params.set('company_number', prospect.registry_id);
+        }
         if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
         if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
         if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
@@ -6022,102 +6013,80 @@ function wireProspectWorkspaceHandlers(prospect) {
 
 // Render the verification sub-form based on the selected source.
 // Companies House → number input + Lookup button (live API).
-// Manual / Other   → free-text fields + Save (no API).
+// Manual / Other branches removed in stage 1.7 — verification is CH-only.
+// Prospects that can't be CH-verified can still be onboarded in MP as
+// unverified entities via the affordance at the bottom of the CH form.
 function renderVerifyFields(source, prospect) {
     var fieldsEl = document.getElementById('pdVerifyFields');
     if (!fieldsEl) return;
 
-    if (source === 'companies_house') {
-        fieldsEl.innerHTML =
-            '<div class="pd-form-row" style="margin-bottom:6px;">' +
-                '<label>CH number</label>' +
-                '<input type="text" id="pdCHInput" placeholder="e.g. 00445790" style="font-family:var(--mono); text-transform:uppercase;">' +
-                '<button class="btn btn-sm btn-primary" id="pdCHLookupBtn">Lookup</button>' +
-            '</div>' +
-            '<div id="pdCHResult" style="font-size:11px; margin-top:6px;"></div>';
+    fieldsEl.innerHTML =
+        '<div class="pd-form-row" style="margin-bottom:6px;">' +
+            '<label>CH number</label>' +
+            '<input type="text" id="pdCHInput" placeholder="e.g. 00445790" style="font-family:var(--mono); text-transform:uppercase;">' +
+            '<button class="btn btn-sm btn-primary" id="pdCHLookupBtn">Lookup</button>' +
+        '</div>' +
+        '<div id="pdCHResult" style="font-size:11px; margin-top:6px;"></div>' +
+        '<div style="margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); font-size:11px; color:var(--text-secondary); line-height:1.5;">' +
+            'Not in Companies House (e.g. UK partnership, sole trader)? ' +
+            '<a href="#" id="pdConvertUnverifiedLink" style="color:var(--accent); text-decoration:underline;">Onboard in main portal as unverified</a>' +
+        '</div>';
 
-        document.getElementById('pdCHLookupBtn').addEventListener('click', function() {
-            var num = (document.getElementById('pdCHInput').value || '').trim().toUpperCase();
-            if (!num) {
-                document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>';
-                return;
-            }
-            document.getElementById('pdCHResult').innerHTML = 'Looking up…';
-            fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (!data || data.error) {
-                        document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
-                        return;
-                    }
-                    var legalName = data.company_name || data.legal_name || '';
-                    document.getElementById('pdCHResult').innerHTML =
-                        '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
-                            '<strong>' + escHTML(legalName) + '</strong>' +
-                            ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
-                            '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
-                        '</div>';
-                    document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
-                        saveVerification(prospect, {
-                            registry_id:               num,
-                            legal_name:                legalName,
-                            verification_source:       'companies_house',
-                            verification_jurisdiction: 'GB',
-                            verification_raw:          data,
-                            verification_notes:        null
-                        });
+    document.getElementById('pdCHLookupBtn').addEventListener('click', function() {
+        var num = (document.getElementById('pdCHInput').value || '').trim().toUpperCase();
+        if (!num) {
+            document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Enter a number first.</span>';
+            return;
+        }
+        document.getElementById('pdCHResult').innerHTML = 'Looking up\u2026';
+        fetch(CH_WORKER_URL + '/company/' + encodeURIComponent(num))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || data.error) {
+                    document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">' + escHTML((data && data.error) || 'Not found') + '</span>';
+                    return;
+                }
+                var legalName = data.company_name || data.legal_name || '';
+                document.getElementById('pdCHResult').innerHTML =
+                    '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
+                        '<strong>' + escHTML(legalName) + '</strong>' +
+                        ' \u00b7 CH: <span class="mono">' + escHTML(num) + '</span>' +
+                        '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                    '</div>';
+                document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
+                    saveVerification(prospect, {
+                        registry_id:               num,
+                        legal_name:                legalName,
+                        verification_source:       'companies_house',
+                        verification_jurisdiction: 'GB',
+                        verification_raw:          data,
+                        verification_notes:        null
                     });
-                })
-                .catch(function(err) {
-                    document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
                 });
-        });
-    } else {
-        // Manual / Other — free-text entry, no API
-        var isManual = (source === 'manual');
-        fieldsEl.innerHTML =
-            '<div class="pd-form-row"><label>Legal name</label>' +
-                '<input type="text" id="pdManualName" placeholder="e.g. Acme Widgets Ltd">' +
-            '</div>' +
-            '<div class="pd-form-row"><label>Registry ID</label>' +
-                '<input type="text" id="pdManualRegId" placeholder="e.g. company number, D-U-N-S" style="font-family:var(--mono);">' +
-            '</div>' +
-            '<div class="pd-form-row"><label>Jurisdiction</label>' +
-                '<select id="pdManualJuris">' +
-                    '<option value="GB">GB — United Kingdom</option>' +
-                    '<option value="IE">IE — Ireland</option>' +
-                    '<option value="US">US — United States</option>' +
-                    '<option value="DE">DE — Germany</option>' +
-                    '<option value="FR">FR — France</option>' +
-                    '<option value="NL">NL — Netherlands</option>' +
-                    '<option value="OTHER">Other</option>' +
-                '</select>' +
-            '</div>' +
-            '<div class="pd-form-row"><label>Notes</label>' +
-                '<input type="text" id="pdManualNotes" placeholder="' + (isManual ? 'How did you confirm? (called, email, etc.)' : 'Which registry?') + '">' +
-            '</div>' +
-            '<button class="btn btn-sm btn-primary" id="pdManualSaveBtn" style="margin-top:6px;">Save verification</button>' +
-            '<div id="pdManualMsg" style="font-size:11px; margin-top:6px; color:var(--text-secondary);"></div>';
-
-        document.getElementById('pdManualSaveBtn').addEventListener('click', function() {
-            var name  = (document.getElementById('pdManualName').value || '').trim();
-            var regId = (document.getElementById('pdManualRegId').value || '').trim();
-            var juris = document.getElementById('pdManualJuris').value;
-            var notes = (document.getElementById('pdManualNotes').value || '').trim() || null;
-            if (!name) {
-                document.getElementById('pdManualMsg').innerHTML = '<span style="color:var(--danger);">Legal name is required.</span>';
-                return;
-            }
-            saveVerification(prospect, {
-                registry_id:               regId || null,
-                legal_name:                name,
-                verification_source:       source,
-                verification_jurisdiction: juris,
-                verification_raw:          null,
-                verification_notes:        notes
+            })
+            .catch(function(err) {
+                document.getElementById('pdCHResult').innerHTML = '<span style="color:var(--danger);">Lookup failed: ' + escHTML(err.message) + '</span>';
             });
-        });
-    }
+    });
+
+    // Unverified-onboard path. Operator types a legal name in a quick prompt;
+    // we open MP with legal_name only (no company_number). MP creates the
+    // entity as unverified. The prospect is NOT marked verified here — the
+    // operator is making an explicit "can't verify, onboard anyway" choice.
+    document.getElementById('pdConvertUnverifiedLink').addEventListener('click', function(e) {
+        e.preventDefault();
+        var name = prompt('Legal name for this unverified entity:', prospect.legal_name || '');
+        if (!name || !name.trim()) return;
+        name = name.trim();
+        var params = new URLSearchParams();
+        params.set('action', 'create-supplier');
+        params.set('legal_name', name);
+        params.set('prospect_id', prospect.id);
+        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
+        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+    });
 }
 
 // Save verification fields + add system note + re-render.
@@ -6143,7 +6112,6 @@ function saveVerification(prospect, fields) {
         // System note
         var sourceLabel =
             fields.verification_source === 'companies_house' ? 'Companies House' :
-            fields.verification_source === 'manual'          ? 'Manual' :
             'Other registry';
         var noteContent = 'Verified via ' + sourceLabel +
             ': ' + fields.legal_name +
@@ -9162,10 +9130,16 @@ function wireProspectSalesHandlers(prospect) {
     // Convert: deep-link to main portal
     var convertBtn = document.getElementById('prConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
-        if (!prospect.registry_id) return;
+        if (!prospect.legal_name) return;
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
-        params.set('company_number', prospect.registry_id);
+        params.set('legal_name', prospect.legal_name);
+        // company_number ONLY when verified against a recognised registry.
+        // Today that's Companies House (GB) only. Unverified prospects flow
+        // through as unverified entities in MP (no registry link).
+        if (prospect.verification_source === 'companies_house' && prospect.registry_id) {
+            params.set('company_number', prospect.registry_id);
+        }
         if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
         if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
         if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
