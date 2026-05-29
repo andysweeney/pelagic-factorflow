@@ -1739,7 +1739,7 @@ async function saveSupplier(supId) {
       program_paused: s.programPaused || {},
       // Companies House persistence fields (added in stage 1.6)
       entity_source: s.entitySource || "manual",
-      verification_source: s.verificationSource || (s.companyNumber ? "companies_house" : null),
+      verification_source: s.verificationSource || null,
       ch_verification: s.chVerification || null,
       directors: s.directors || [],
       company_status: s.companyStatus || null,
@@ -1778,7 +1778,7 @@ async function saveBuyer(buyId) {
       branches: b.branches || [],
       // Companies House persistence fields (added in stage 1.6)
       entity_source: b.entitySource || "manual",
-      verification_source: b.verificationSource || (b.companyNumber ? "companies_house" : null),
+      verification_source: b.verificationSource || null,
       ch_verification: b.chVerification || null,
       directors: b.directors || [],
       company_status: b.companyStatus || null,
@@ -1815,7 +1815,7 @@ async function saveServiceProvider(spId) {
       paused: sp.paused || false,
       // Companies House persistence fields (added in stage 1.6)
       entity_source: sp.entitySource || "manual",
-      verification_source: sp.verificationSource || (sp.companyNumber ? "companies_house" : null),
+      verification_source: sp.verificationSource || null,
       ch_verification: sp.chVerification || null,
       directors: sp.directors || [],
       company_status: sp.companyStatus || null,
@@ -2846,7 +2846,7 @@ async function savePersistedData() {
         paused: s.paused || false,
         // Companies House persistence fields (added in stage 1.6)
         entity_source: s.entitySource || "manual",
-      verification_source: s.verificationSource || (s.companyNumber ? "companies_house" : null),
+      verification_source: s.verificationSource || null,
       ch_verification: s.chVerification || null,
         directors: s.directors || [],
         company_status: s.companyStatus || null,
@@ -2878,7 +2878,7 @@ async function savePersistedData() {
         branches: b.branches || [],
         // Companies House persistence fields (added in stage 1.6)
         entity_source: b.entitySource || "manual",
-      verification_source: b.verificationSource || (b.companyNumber ? "companies_house" : null),
+      verification_source: b.verificationSource || null,
       ch_verification: b.chVerification || null,
         directors: b.directors || [],
         company_status: b.companyStatus || null,
@@ -2909,7 +2909,7 @@ async function savePersistedData() {
         paused: sp.paused || false,
         // Companies House persistence fields (added in stage 1.6)
         entity_source: sp.entitySource || "manual",
-      verification_source: sp.verificationSource || (sp.companyNumber ? "companies_house" : null),
+      verification_source: sp.verificationSource || null,
       ch_verification: sp.chVerification || null,
         directors: sp.directors || [],
         company_status: sp.companyStatus || null,
@@ -4435,16 +4435,20 @@ export default function FactoringDashboard() {
   var chLive2 = useState(false), chLiveLoading = chLive2[0], setChLiveLoading = chLive2[1];
 
   // Step D: Detect prospect deep-link on mount. Format:
-  //   ?action=create-supplier&company_number=12345678&prospect_id=...&upload_id=...
-  // Stash params, navigate to Manage > Suppliers > New Entity, populate company number.
+  //   ?action=create-supplier&company_number=12345678&legal_name=...&prospect_id=...&upload_id=...
+  // company_number is OPTIONAL — unverified prospects send legal_name only.
+  // Stash params, navigate to Manage > Suppliers > New Entity, populate fields.
   useEffect(function() {
     if (typeof window === "undefined" || !window.location) return;
     var params = new URLSearchParams(window.location.search);
     if (params.get("action") !== "create-supplier") return;
-    var coNum = params.get("company_number");
-    if (!coNum) return;
+    var coNum = params.get("company_number") || "";
+    var legalName = params.get("legal_name") || "";
+    // Need at least one of (company_number, legal_name) to do anything useful.
+    if (!coNum && !legalName) return;
     var deepLink = {
       companyNumber: coNum,
+      legalName: legalName,
       prospectId: params.get("prospect_id") || null,
       uploadId: params.get("upload_id") || null,
       contactName: params.get("contact_name") || "",
@@ -4465,8 +4469,8 @@ export default function FactoringDashboard() {
     setShowNewEntity(true);
     setManageEdit(null);
     setManageFields(Object.assign({}, EMPTY_ADDR, {
-      name: "",
-      companyNumber: prospectDeepLink.companyNumber,
+      name: prospectDeepLink.legalName || "",
+      companyNumber: prospectDeepLink.companyNumber || "",
       incorporationDate: "",
       companyStatus: "",
       directors: [],
@@ -4476,8 +4480,16 @@ export default function FactoringDashboard() {
       primaryEmail: prospectDeepLink.contactEmail || "",
       primaryPhone: prospectDeepLink.contactPhone || ""
     }));
-    setChImportStep("lookup");
-    setChCompanyNo(prospectDeepLink.companyNumber);
+    // CH import step only makes sense when a CH number was passed (verified
+    // prospect). For unverified prospects (no company_number), start on the
+    // manual create form straight away.
+    if (prospectDeepLink.companyNumber) {
+      setChImportStep("lookup");
+      setChCompanyNo(prospectDeepLink.companyNumber);
+    } else {
+      setChImportStep(null);
+      setChCompanyNo("");
+    }
     setChError("");
   }, [prospectDeepLink, storageLoading]);
   var aps1 = useState(""), allocProgFilter = aps1[0], setAllocProgFilter = aps1[1];
@@ -19918,16 +19930,28 @@ export default function FactoringDashboard() {
             if (!f.name) return;
             // --- Stage 1.7 gate: registry-ID dedup + CH name-mismatch ---------
             // Only suppliers and buyers are registry-verified; SPs skip the gate.
+            //
+            // Semantics: verification_source is ONLY stamped when the CH lookup
+            // succeeds (either silent match, or operator confirms mismatch as
+            // CH name). A typed number that fails lookup / can't be reached is
+            // an *identifier* not a *verification* — companyNumber is preserved
+            // so we don't lose what the operator typed, but verification_source
+            // stays null and ch_verification carries the reason. The pill rule
+            // (verified iff source && number) therefore reflects truth.
             var gated = (manageTab === "suppliers" || manageTab === "buyers");
             var coNum = (f.companyNumber || "").trim();
-            var src = f.verificationSource || (coNum ? "companies_house" : null);
 
             // (a) Registry clash — create path only. On edit, the row already
             //     holds this number; re-saving it must not flag itself.
+            //     The clash check scopes by source; for unverified numbers we
+            //     check the companies_house scope by default since today that's
+            //     the only registry recognised. A future second registry will
+            //     need a "which registry?" prompt before this point.
             if (gated && !manageEdit && coNum) {
-              var clash = findRegistryClash(db, src, coNum, null);
+              var clashSrc = f.verificationSource || "companies_house";
+              var clash = findRegistryClash(db, clashSrc, coNum, null);
               if (clash) {
-                setEntityClash({ existing: clash, entityType: entityLabel, fields: Object.assign({}, f), source: src });
+                setEntityClash({ existing: clash, entityType: entityLabel, fields: Object.assign({}, f), source: clashSrc });
                 return; // modal drives the next step
               }
             }
@@ -19957,33 +19981,41 @@ export default function FactoringDashboard() {
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(data) {
                   if (!data || !data.company_name) {
-                    // Lookup failed -> allow but flag as unverified.
-                    var ff = Object.assign({}, f, { verificationSource: src, chVerification: "unverified_lookup_failed" });
-                    toast.info("CH lookup failed", "Saved " + (f.name || "entity") + " but flagged unverified \u2014 number " + num + " not found.");
+                    // Lookup failed -> save as identifier-only. Source stays
+                    // null because we cannot claim this is a CH registration.
+                    var ff = Object.assign({}, f, { verificationSource: null, chVerification: "unverified_lookup_failed" });
+                    toast.info("CH lookup failed", "Saved " + (f.name || "entity") + " but flagged unverified \u2014 number " + num + " not found in Companies House.");
                     saveEntityCore(ff);
                     return;
                   }
                   var chName = data.company_name;
                   if (normLegalName(chName) !== normLegalName(f.name)) {
-                    // Material mismatch -> confirm modal.
+                    // Material mismatch -> confirm modal. The modal's "Use CH
+                    // name" path stamps verification_source = 'companies_house'
+                    // and ch_verification = 'verified'; "Keep my name anyway"
+                    // path stamps source = 'companies_house' (the number IS a
+                    // valid CH registration) and ch_verification =
+                    // 'mismatch_confirmed' so the audit trail records the
+                    // operator's decision.
                     setChMismatch({
                       chName: chName, enteredName: f.name, number: num,
-                      entityType: entityLabel, source: src,
-                      fields: Object.assign({}, f, { verificationSource: src })
+                      entityType: entityLabel,
+                      fields: f
                     });
                     return;
                   }
-                  // Match -> proceed, stamp verified.
-                  saveEntityCore(Object.assign({}, f, { verificationSource: src, chVerification: "verified" }));
+                  // Clean match -> verified against CH.
+                  saveEntityCore(Object.assign({}, f, { verificationSource: "companies_house", chVerification: "verified" }));
                 })
                 .catch(function() {
-                  var ff = Object.assign({}, f, { verificationSource: src, chVerification: "unverified_lookup_failed" });
+                  // Proxy unreachable -> identifier-only, source null.
+                  var ff = Object.assign({}, f, { verificationSource: null, chVerification: "unverified_lookup_failed" });
                   toast.info("CH unreachable", "Saved " + (f.name || "entity") + " but flagged unverified \u2014 could not reach Companies House.");
                   saveEntityCore(ff);
                 });
               return; // async path owns the save
             }
-            // No CH number (or SP) -> straight through.
+            // No CH number (or SP) -> straight through. Unverified.
             saveEntityCore(f);
           }
 
@@ -20276,8 +20308,8 @@ export default function FactoringDashboard() {
                   </div>
                   {!canAct && <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 12 }}>Your role can view this warning but not resolve it.</div>}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { name: m.chName, chVerification: "verified" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: canAct ? "var(--accent)" : "var(--border)", color: canAct ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canAct ? "pointer" : "not-allowed" }}>Use CH name</button>
-                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { chVerification: "mismatch_confirmed" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: canAct ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: canAct ? "pointer" : "not-allowed" }}>Keep my name anyway</button>
+                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { name: m.chName, verificationSource: "companies_house", chVerification: "verified" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "none", background: canAct ? "var(--accent)" : "var(--border)", color: canAct ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canAct ? "pointer" : "not-allowed" }}>Use CH name</button>
+                    <button disabled={!canAct} onClick={function() { var m = chMismatch; setChMismatch(null); saveEntityCore(Object.assign({}, m.fields, { verificationSource: "companies_house", chVerification: "mismatch_confirmed" })); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: canAct ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: canAct ? "pointer" : "not-allowed" }}>Keep my name anyway</button>
                     <button onClick={function() { setChMismatch(null); }} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
                   </div>
                 </div>
@@ -20427,7 +20459,11 @@ export default function FactoringDashboard() {
                       // Stage 1.7: verification status. "Verified" requires both a
                       // registry source and a registry ID; otherwise the entity is
                       // explicitly unverified (UK partnership, sole trader, etc.).
-                      if (det.verificationSource && det.companyNumber) {
+                      // Verified iff explicit source + number + ch_verification
+                      // confirms it. Bare source+number without verification is
+                      // treated as unverified for safety.
+                      if (det.verificationSource && det.companyNumber &&
+                          (det.chVerification === "verified" || det.chVerification === "mismatch_confirmed")) {
                         var srcLabel = det.verificationSource === "companies_house" ? "CH" : det.verificationSource;
                         return <span title={"Verified against " + srcLabel} style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 3, background: "#10B98114", color: "#10B981", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>{"\u2713 " + srcLabel + " " + det.companyNumber}</span>;
                       }
@@ -22109,7 +22145,13 @@ export default function FactoringDashboard() {
                           {!hasBranches && supportsBranches && <span style={{ display: "inline-block", marginRight: 6, width: 10 }}></span>}
                           {ent.id}
                           {!isSPTab && (function() {
-                            var verified = !!(ent.verificationSource && ent.companyNumber);
+                            // Defence-in-depth: even if a source+number pair
+                            // is present on the row, only treat as verified
+                            // when ch_verification explicitly confirms it.
+                            // Catches stale data and the "operator typed a
+                            // number but lookup failed" case.
+                            var verified = !!(ent.verificationSource && ent.companyNumber &&
+                                              (ent.chVerification === "verified" || ent.chVerification === "mismatch_confirmed"));
                             return <span title={verified ? "Verified \u2014 " + (ent.verificationSource === "companies_house" ? "CH " : (ent.verificationSource + " ")) + ent.companyNumber : "Unverified \u2014 no registry link"} style={{ display: "inline-block", marginLeft: 6, width: 7, height: 7, borderRadius: "50%", background: verified ? "#10B981" : "var(--muted)", verticalAlign: "middle", cursor: "help" }}></span>;
                           })()}
                         </td>
