@@ -1919,6 +1919,7 @@ function initApp() {
                                 loadBuyerOptions();
                             }
                             showSignedInChrome(result.data.session.user, profile);
+                            subscribeToProspectConversions();
                             loadAllData();
                         });
                 });
@@ -1930,6 +1931,69 @@ function initApp() {
             }
         }
         tryInitSupabase();
+    }
+}
+
+// ================================================================
+// REALTIME — prospect conversion sync from Main Portal
+// ================================================================
+// When MP creates a supplier from a deep-linked prospect, MP writes back
+// to prospect_suppliers (status='converted', converted_supplier_id, ...).
+// Without this subscription BI only learns about the writeback on reload,
+// so the operator sees Step 1 still active and may click it again. With
+// it, the UI flips to the green "Converted" block within ~1s of MP's
+// write. Cheap insurance; runs once at session start.
+function subscribeToProspectConversions() {
+    if (!sbClient || !sbClient.channel) return;
+    try {
+        sbClient.channel('prospect-conversions')
+            .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'prospect_suppliers' },
+                function(payload) {
+                    var updated = payload && payload.new;
+                    if (!updated || !updated.id) return;
+                    // Patch state.prospects so subsequent re-renders see the
+                    // converted status without a full reload.
+                    var sp = (state.prospects || []).find(function(p) { return p.id === updated.id; });
+                    if (sp) {
+                        sp.status = updated.status;
+                        sp.converted_at = updated.converted_at;
+                        sp.converted_supplier_id = updated.converted_supplier_id;
+                    }
+                    // If the open prospect panel is showing this row, re-render
+                    // so Step 1/Step 2 collapse into the green "Converted" pill.
+                    var active = window._activeProspect;
+                    if (active && active.id === updated.id) {
+                        active.status = updated.status;
+                        active.converted_at = updated.converted_at;
+                        active.converted_supplier_id = updated.converted_supplier_id;
+                        if (typeof renderProspectDetail === 'function') {
+                            renderProspectDetail(active);
+                        }
+                    }
+                    // Dashboard prospect-detail card (separate render path) also
+                    // needs refreshing if it's the open prospect.
+                    var openId = new URLSearchParams(window.location.search).get('prospect');
+                    if (openId === updated.id) {
+                        var workspace = document.querySelector('.pd-workspace');
+                        var p = (state.prospects || []).find(function(x) { return x.id === openId; });
+                        if (p && workspace && typeof renderProspectWorkspace === 'function') {
+                            workspace.innerHTML = '<div class="card-title">Sales workspace</div>' + renderProspectWorkspace(p);
+                            if (typeof wireProspectWorkspaceHandlers === 'function') wireProspectWorkspaceHandlers(p);
+                            if (typeof wireGroupSectionHandlers === 'function') wireGroupSectionHandlers(p);
+                        }
+                    }
+                })
+            .subscribe(function(status) {
+                if (status === 'SUBSCRIBED') {
+                    console.log('Prospect conversion sync: active');
+                } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn('Prospect conversion sync:', status, '(falling back to reload-on-demand)');
+                }
+            });
+    } catch (e) {
+        // Realtime is a nice-to-have; degrade silently if it can't be set up.
+        console.warn('Could not subscribe to prospect conversions:', e && e.message);
     }
 }
 
@@ -5625,18 +5689,28 @@ function renderProspectWorkspace(prospect) {
             '</div>' +
             downloadCsvBlock;
     } else {
+        // GB/CH conversions are auto-finalised by MP's writeback. Non-GB /
+        // non-CH still need the explicit Step 2 link (no automatic path).
+        var pdNeedsManualConfirm = prospect.verification_source !== 'companies_house' ||
+                                    prospect.verification_jurisdiction !== 'GB';
         convertHtml =
             '<button class="btn btn-primary" id="pdConvertBtn" style="width:100%; margin-bottom:6px;">' +
                 '<span style="opacity:0.6;">1.</span>&nbsp; Open FactorFlow &amp; Convert \u2192' +
             '</button>' +
-            '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%; margin-bottom:8px;">' +
-                '<span style="opacity:0.7;">2.</span>&nbsp; Confirm Conversion Complete' +
-            '</button>' +
-            '<div style="font-size:10px; color:var(--text-secondary); margin-top:8px; margin-bottom:10px; line-height:1.4;">' +
-                'Step 1 opens the main portal pre-filled with the supplier\'s registry data. ' +
-                'Step 2 links the prospect once you\'ve finished creating the entity there. ' +
-                'Invoice import happens separately via the main portal\'s CSV import.' +
-            '</div>' +
+            (pdNeedsManualConfirm
+                ? '<button class="btn btn-sm" id="pdConvertConfirmBtn" style="background:var(--success); color:#fff; width:100%; margin-bottom:8px;">' +
+                      '<span style="opacity:0.7;">2.</span>&nbsp; Confirm Conversion Complete' +
+                  '</button>' +
+                  '<div style="font-size:10px; color:var(--text-secondary); margin-top:8px; margin-bottom:10px; line-height:1.4;">' +
+                      'Step 1 opens the main portal pre-filled with the supplier\'s registry data. ' +
+                      'Step 2 links the prospect once you\'ve finished creating the entity there. ' +
+                      'Invoice import happens separately via the main portal\'s CSV import.' +
+                  '</div>'
+                : '<div style="font-size:10px; color:var(--text-secondary); margin-top:6px; margin-bottom:10px; line-height:1.4;">' +
+                      'Opens the main portal pre-filled with the supplier\'s registry data. ' +
+                      'After you create the entity there, this prospect will be marked converted automatically \u2014 usually within seconds. ' +
+                      'Invoice import happens separately via the main portal\'s CSV import.' +
+                  '</div>') +
             downloadCsvBlock;
     }
 
@@ -8902,6 +8976,13 @@ function renderProspectSalesSections(prospect) {
           '<div id="prCHResult" style="margin-top:8px; font-size:11px;"></div>';
 
     var convertReady = prospect.verified_at && prospect.status !== 'converted';
+    // Step 2 (manual confirm) is only needed when MP cannot auto-writeback.
+    // GB/CH conversions trigger MP's completeProspectConversion which flips
+    // prospect_suppliers.status to 'converted' directly — Step 2 there is
+    // redundant friction. For non-GB / non-CH verifications, MP has no
+    // automatic path, so Step 2 remains the only way to link the prospect.
+    var needsManualConfirm = prospect.verification_source !== 'companies_house' ||
+                             prospect.verification_jurisdiction !== 'GB';
     var convertBlock = prospect.status === 'converted'
         ? '<div style="padding:10px 12px; background:#10B98180; color:#fff; border-radius:6px; font-size:12px;">' +
             'Converted ' + formatDateTime(prospect.converted_at) + (prospect.converted_supplier_id ? ' · FactorFlow ID: <span class="mono">' + escHTML(prospect.converted_supplier_id) + '</span>' : '') +
@@ -8909,7 +8990,8 @@ function renderProspectSalesSections(prospect) {
         : '<button class="btn btn-primary" id="prConvertBtn"' + (convertReady ? '' : ' disabled') + '>' +
             (convertReady ? 'Open FactorFlow & Convert →' : 'Verify CH first to enable conversion') +
           '</button>' +
-          (convertReady ? '<button class="btn btn-sm" id="prConvertConfirmBtn" style="margin-left:8px; background:var(--success); color:#fff;">Confirm Conversion Complete</button>' : '');
+          (convertReady && needsManualConfirm ? '<button class="btn btn-sm" id="prConvertConfirmBtn" style="margin-left:8px; background:var(--success); color:#fff;">Confirm Conversion Complete</button>' : '') +
+          (convertReady && !needsManualConfirm ? '<div style="margin-top:8px; font-size:10px; color:var(--text-secondary); line-height:1.4;">After creating the entity in FactorFlow, this prospect will be marked converted automatically — usually within seconds. No further action needed here.</div>' : '');
 
     return '' +
         '<div class="sup-panel-section">' +
