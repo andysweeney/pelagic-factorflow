@@ -3863,6 +3863,29 @@ function renderProspectsForUpload(upload, visibleUploads) {
     var tbody = document.getElementById('prospectsBody');
     if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted); font-style:italic;">Loading\u2026</td></tr>';
 
+    // ── Outreach gate ────────────────────────────────────
+    // Prospects only exist for buyers with supplier_outreach_permitted =
+    // true; populate_prospect_suppliers() returns 0 without inserting for
+    // any other buyer. The supplier list here is derived from the buyer's
+    // snapshot, which is built regardless of outreach permission — so
+    // without this gate we render clickable rows with no prospect_suppliers
+    // row behind them (unopenable stubs). Suppress the list for
+    // non-permitted buyers and explain how to enable it instead.
+    var prBuyer = (state.buyers || []).find(function(b) { return b.id === upload.buyer_id; });
+    if (!prBuyer || !prBuyer.supplier_outreach_permitted) {
+        var prStatsEl = document.getElementById('prospectsStats');
+        if (prStatsEl) prStatsEl.innerHTML = '';
+        var prEmptyEl = document.getElementById('prospectsEmpty');
+        if (prEmptyEl) prEmptyEl.classList.add('hidden');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="text-align:center; padding:30px; color:var(--muted);">' +
+            'Supplier outreach is not enabled for <strong>' + escHTML(buyerName(upload) || upload.buyer_id) + '</strong>.<br>' +
+            'Enable it in the Buyers panel (Upload History tab) to surface this buyer’s suppliers as prospects.' +
+            '</td></tr>';
+        var prStatusEl = document.getElementById('prospectsStatusLine');
+        if (prStatusEl) prStatusEl.textContent = 'Outreach not enabled for this buyer — no prospects.';
+        return;
+    }
+
     // Distinct (supplier_identifier, currency) pairs for this upload.
     //
     // We used to page through buyer_invoices 1,000 rows at a time to derive
