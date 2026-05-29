@@ -5988,6 +5988,7 @@ function wireProspectWorkspaceHandlers(prospect) {
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
         params.set('legal_name', prospect.legal_name);
+        params.set('prospect_id', prospect.id);
         // company_number ONLY when verified against a recognised registry.
         // Today that's Companies House (GB) only. Anything else flows through
         // as an unverified entity that MP creates without a registry link.
@@ -9134,6 +9135,7 @@ function wireProspectSalesHandlers(prospect) {
         var params = new URLSearchParams();
         params.set('action', 'create-supplier');
         params.set('legal_name', prospect.legal_name);
+        params.set('prospect_id', prospect.id);
         // company_number ONLY when verified against a recognised registry.
         // Today that's Companies House (GB) only. Unverified prospects flow
         // through as unverified entities in MP (no registry link).
