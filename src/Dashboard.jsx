@@ -4615,6 +4615,7 @@ export default function FactoringDashboard() {
   // direct-Pelagic-ID flow stays available for back-compat). When set, external string
   // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
   var csvProv1 = useState(null), csvProvider = csvProv1[0], setCsvProvider = csvProv1[1];
+  var csvDefBuy1 = useState(""), csvDefaultBuyer = csvDefBuy1[0], setCsvDefaultBuyer = csvDefBuy1[1];
   var ps1 = useState(25), PS = ps1[0], setPS = ps1[1];
   var sel1 = useState({}), selectedInvs = sel1[0], setSelectedInvs = sel1[1]; // {invoiceId: true} for bulk actions
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isI = view === "invoices", isUI = view === "unpurchased", isM = view === "manage";
@@ -23357,7 +23358,51 @@ export default function FactoringDashboard() {
                   var csvSupName = getMapped(row, "supplier");
                   var csvBuyName = getMapped(row, "buyer");
 
+                  // Buyer resolution FIRST — supplier aliases are buyer-qualified,
+                  // so the row's buyer must be known before its supplier resolves.
+                  var resolvedBuyId = null;
+                  var resolvedBuyBranchId = null;
+                  if (buyId) {
+                    resolvedBuyId = buyId;
+                    resolvedBuyBranchId = buyBranchId || null;
+                  } else if (extBuyStr) {
+                    if (!csvProvider) { errors.push({ row: rowIdx + 2, ref: ref, msg: "external_buyer_string set but no provider selected. Choose a provider before validating." }); return; }
+                    var aliasHitB = aliasIdx[aliasKey({ entityType: "buyer", providerId: csvProvider.id, externalString: extBuyStr })];
+                    if (!aliasHitB) { unrecognisedBuyExt[extBuyStr] = (unrecognisedBuyExt[extBuyStr] || 0) + 1; return; }
+                    var parsedB = parseEntityId(aliasHitB);
+                    resolvedBuyId = parsedB.supplierId;
+                    resolvedBuyBranchId = parsedB.branchId || null;
+                  } else if (csvDefaultBuyer) {
+                    resolvedBuyId = csvDefaultBuyer;
+                  } else {
+                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no buyer identity (need buyer_id, external_buyer_string, or a file-level buyer)" });
+                    return;
+                  }
+                  var buyerParent = String(resolvedBuyId).split(":")[0];
 
+                  // Supplier resolution — within the row's buyer. Provider-independent,
+                  // so no CSV provider is needed to resolve a supplier alias.
+                  var resolvedSupId = null;
+                  var resolvedSupBranchId = null;
+                  if (supId) {
+                    resolvedSupId = supId;
+                    resolvedSupBranchId = supBranchId || null;
+                  } else if (extSupStr) {
+                    var aliasHit = aliasIdx[aliasKey({ entityType: "supplier", buyerEntityId: buyerParent, externalString: extSupStr })];
+                    if (!aliasHit) {
+                      var uKey = buyerParent + "|" + extSupStr;
+                      var u = unrecognisedSupExt[uKey] || { buyerId: buyerParent, externalString: extSupStr, count: 0 };
+                      u.count += 1;
+                      unrecognisedSupExt[uKey] = u;
+                      return;
+                    }
+                    var parsed = parseEntityId(aliasHit);
+                    resolvedSupId = parsed.supplierId;
+                    resolvedSupBranchId = parsed.branchId || null;
+                  } else {
+                    errors.push({ row: rowIdx + 2, ref: ref, msg: "no supplier identity (need supplier_id OR external_supplier_string)" });
+                    return;
+                  }
 
                   // Validate parent entities exist
                   var sup = SUPPLIERS_DB.find(function(s) { return s.id === resolvedSupId; });
@@ -23413,21 +23458,11 @@ export default function FactoringDashboard() {
                   var parts = key.split(":");
                   errors.push({ row: null, ref: null, msg: "unknown buyer_branch_id '" + parts[1] + "' on buyer " + parts[0] + " (" + unknownBuyBranches[key] + " row" + (unknownBuyBranches[key] === 1 ? "" : "s") + "). Add the branch in Main Portal first." });
                 });
-                // Unrecognised external strings: when a CSV provider IS selected,
-                // route these into the structured `unrecognisedAliases` field so
-                // the validation_failed screen can resolve them inline. When NO
-                // provider is selected, alias creation isn't possible at all, so
-                // we fall back to the legacy text-error format directing the
-                // operator to pick a provider first.
-                if (!csvProvider) {
-                  Object.keys(unrecognisedSupExt).forEach(function(k) {
-                    var u = unrecognisedSupExt[k];
-                    errors.push({ row: null, ref: null, msg: "unrecognised external supplier string '" + u.externalString + "' (" + u.count + " row" + (u.count === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
-                  });
-                  Object.keys(unrecognisedBuyExt).forEach(function(str) {
-                    errors.push({ row: null, ref: null, msg: "unrecognised external buyer string '" + str + "' (" + unrecognisedBuyExt[str] + " row" + (unrecognisedBuyExt[str] === 1 ? "" : "s") + "). Select a provider in the mapping step first, then aliases can be added inline." });
-                  });
-                }
+                // Unrecognised strings route into the structured unrecognisedAliases
+                // list for inline resolution below. Supplier aliases are provider-
+                // independent (resolvable with or without a provider); a buyer row
+                // with no provider already errored during resolution, so there is
+                // nothing to surface here.
 
                 // Build a structured list of unrecognised aliases — the
                 // validation_failed screen renders these as an interactive
@@ -23437,20 +23472,21 @@ export default function FactoringDashboard() {
                 // is selected — without a provider, aliases can't be added
                 // (and the text errors above already explain that).
                 var unrecognisedAliases = [];
+                // Suppliers are provider-independent — always inline-resolvable.
+                Object.keys(unrecognisedSupExt).forEach(function(k) {
+                  var u = unrecognisedSupExt[k];
+                  unrecognisedAliases.push({ entityType: "supplier", externalString: u.externalString, buyerEntityId: u.buyerId, count: u.count });
+                });
+                // Buyers are provider-scoped — only inline-resolvable with a provider.
                 if (csvProvider) {
-                  Object.keys(unrecognisedSupExt).forEach(function(k) {
-                    var u = unrecognisedSupExt[k];
-                    unrecognisedAliases.push({ entityType: "supplier", externalString: u.externalString, buyerEntityId: u.buyerId, count: u.count });
-                  });
                   Object.keys(unrecognisedBuyExt).forEach(function(str) {
                     unrecognisedAliases.push({ entityType: "buyer", externalString: str, count: unrecognisedBuyExt[str] });
                   });
-                  // Stable sort: suppliers first, then alphabetical within type
-                  unrecognisedAliases.sort(function(a, b) {
-                    if (a.entityType !== b.entityType) return a.entityType < b.entityType ? -1 : 1;
-                    return a.externalString.toLowerCase() < b.externalString.toLowerCase() ? -1 : 1;
-                  });
                 }
+                unrecognisedAliases.sort(function(a, b) {
+                  if (a.entityType !== b.entityType) return a.entityType < b.entityType ? -1 : 1;
+                  return a.externalString.toLowerCase() < b.externalString.toLowerCase() ? -1 : 1;
+                });
 
                 var newPairsArr = Object.keys(newPairs).map(function(k) { return newPairs[k]; });
                 setCsvResolution({ errors: errors, nameDivergences: nameDivergences, newPairs: newPairsArr, unrecognisedAliases: unrecognisedAliases });
@@ -23498,30 +23534,33 @@ export default function FactoringDashboard() {
                   var csvSupplierName = getMapped(row, "supplier");
                   var csvBuyerName = getMapped(row, "buyer");
 
-                  // Resolve supplier identity
-                  var supParentId = null, supBranchIdFinal = null;
-                  if (csvSupplierId) {
-                    supParentId = csvSupplierId;
-                    supBranchIdFinal = csvSupplierBranchId || null;
-                  } else if (csvExtSupStr && csvProvider) {
-                    var aliasRowS = PROVIDER_ALIASES_DB.find(function(a) { return a.providerId === csvProvider.id && a.entityType === "supplier" && a.externalString === csvExtSupStr; });
-                    if (aliasRowS) {
-                      var parsedS = parseEntityId(aliasRowS.pelagicEntityId);
-                      supParentId = parsedS.supplierId;
-                      supBranchIdFinal = parsedS.branchId || null;
-                    }
-                  }
-                  // Resolve buyer identity
+                  // Resolve buyer identity FIRST (supplier alias is buyer-qualified).
                   var buyParentId = null, buyBranchIdFinal = null;
                   if (csvBuyerId) {
                     buyParentId = csvBuyerId;
                     buyBranchIdFinal = csvBuyerBranchId || null;
                   } else if (csvExtBuyStr && csvProvider) {
-                    var aliasRowB = PROVIDER_ALIASES_DB.find(function(a) { return a.providerId === csvProvider.id && a.entityType === "buyer" && a.externalString === csvExtBuyStr; });
+                    var aliasRowB = PROVIDER_ALIASES_DB.find(function(a) { return a.entityType === "buyer" && a.providerId === csvProvider.id && a.externalString === csvExtBuyStr; });
                     if (aliasRowB) {
                       var parsedB = parseEntityId(aliasRowB.pelagicEntityId);
                       buyParentId = parsedB.supplierId;
                       buyBranchIdFinal = parsedB.branchId || null;
+                    }
+                  } else if (csvDefaultBuyer) {
+                    buyParentId = csvDefaultBuyer;
+                  }
+                  var buyParentParent = buyParentId ? String(buyParentId).split(":")[0] : null;
+                  // Resolve supplier identity WITHIN that buyer (provider-independent).
+                  var supParentId = null, supBranchIdFinal = null;
+                  if (csvSupplierId) {
+                    supParentId = csvSupplierId;
+                    supBranchIdFinal = csvSupplierBranchId || null;
+                  } else if (csvExtSupStr && buyParentParent) {
+                    var aliasRowS = PROVIDER_ALIASES_DB.find(function(a) { return a.entityType === "supplier" && String(a.buyerEntityId || "").split(":")[0] === buyParentParent && a.externalString === csvExtSupStr; });
+                    if (aliasRowS) {
+                      var parsedS = parseEntityId(aliasRowS.pelagicEntityId);
+                      supParentId = parsedS.supplierId;
+                      supBranchIdFinal = parsedS.branchId || null;
                     }
                   }
 
@@ -23874,6 +23913,15 @@ export default function FactoringDashboard() {
                       </select>
                       {csvProvider && <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-secondary)" }}>Aliases registered: <strong>{PROVIDER_ALIASES_DB.filter(function(a) { return a.providerId === csvProvider.id; }).length}</strong></div>}
                     </div>
+                    <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                      <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", display: "block", marginBottom: 6, letterSpacing: "0.05em" }}>Buyer for this file <span style={{ color: "var(--text-secondary)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional \u2014 used for any row that has no buyer column)</span></label>
+                      <select value={csvDefaultBuyer} onChange={function(e) { setCsvDefaultBuyer(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 12, minWidth: 320 }}>
+                        <option value="">{"\u2014 No file-level buyer (each row names its own) \u2014"}</option>
+                        {getAllBuyerEntities().map(function(o) {
+                          return <option key={o.value} value={o.value}>{o.label} ({o.value})</option>;
+                        })}
+                      </select>
+                    </div>
 
                     <div style={{ marginBottom: 20 }}>
                       <input type="file" accept=".csv" onChange={function(e) { if (e.target.files[0]) handleCsvFile(e.target.files[0]); }} style={{ fontSize: 13 }} />
@@ -23924,14 +23972,15 @@ export default function FactoringDashboard() {
                     // unrecognised strings are now resolved (and nothing else is wrong),
                     // the step transitions automatically to "processing".
                     async function saveInlineAlias(entityType, externalString, buyerEntityId) {
-                      if (!csvProvider) { toast.error("No provider selected", "Pick a provider before adding aliases."); return; }
+                      if (entityType === "buyer" && !csvProvider) { toast.error("No provider selected", "Buyer aliases are provider-scoped \u2014 pick a provider first."); return; }
                       var pickKey = entityType === "supplier" ? ("supplier|" + buyerEntityId + "|" + externalString) : ("buyer|" + externalString);
                       var target = csvAliasPicks[pickKey];
                       if (!target) { toast.error("No target selected", "Pick a Pelagic entity for this alias first."); return; }
                       setCsvAliasSaving(function(p) { var n = Object.assign({}, p); n[pickKey] = true; return n; });
                       var verifiedBy = (typeof userProfile !== "undefined" && userProfile) ? userProfile.id : null;
+                      var provId = csvProvider ? csvProvider.id : null;
                       var result = await saveProviderAlias({
-                        providerId: csvProvider.id,
+                        providerId: provId,
                         entityType: entityType,
                         externalString: externalString,
                         buyerEntityId: entityType === "supplier" ? buyerEntityId : null,
@@ -23941,7 +23990,7 @@ export default function FactoringDashboard() {
                       });
                       setCsvAliasSaving(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
                       if (!result.ok) return;
-                      auditLog("Alias Created", "Alias " + entityType + " '" + externalString + "'" + (entityType === "supplier" ? " under buyer " + buyerEntityId : "") + " \u2192 " + target + " (provider: " + csvProvider.id + ", via CSV validation)", { providerId: csvProvider.id, entityType: entityType, externalString: externalString, buyerEntityId: buyerEntityId || null, pelagicEntityId: target, source: "csv_validation_inline" });
+                      auditLog("Alias Created", "Alias " + entityType + " '" + externalString + "'" + (entityType === "supplier" ? " under buyer " + buyerEntityId : "") + " \u2192 " + target + " (provider: " + (provId || "none") + ", via CSV validation)", { providerId: provId, entityType: entityType, externalString: externalString, buyerEntityId: buyerEntityId || null, pelagicEntityId: target, source: "csv_validation_inline" });
                       // Drop this pick from local state (now persisted) and re-validate.
                       setCsvAliasPicks(function(p) { var n = Object.assign({}, p); delete n[pickKey]; return n; });
                       validateImport();
