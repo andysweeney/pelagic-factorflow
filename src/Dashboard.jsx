@@ -20068,6 +20068,17 @@ export default function FactoringDashboard() {
                 });
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
+                // Stage 1.7: log the unverified -> verified transition explicitly.
+                // Catches the case where an entity created without a registry ID
+                // (UK partnership, sole trader, pre-onboarding stub) is later
+                // linked to a recognised registry. Distinct from "Entity Edited"
+                // so it can be reported on independently.
+                var wasUnverified = !oldCoNum;
+                var nowVerified = !!(newCoNum && (f.verificationSource || ent.verificationSource));
+                if (wasUnverified && nowVerified) {
+                  var promSrc = f.verificationSource || ent.verificationSource || "companies_house";
+                  auditLog("Entity Verified", entityLabel + " " + manageEdit + " (" + f.name + ") promoted from unverified to verified via " + promSrc + " " + newCoNum, { entityType: entityLabel, entityId: manageEdit, registrySource: promSrc, registryId: newCoNum });
+                }
                 Object.assign(ent, f);
                 // Persist to Supabase. Without this, credit-limit and other manage-panel edits
                 // would only live in memory until the next bulk save. Applies to suppliers, buyers, and SPs.
@@ -20412,7 +20423,16 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 18, fontWeight: 800 }}>{det.name}</div>
                       {detEntity && detEntity.paused && <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430", textTransform: "uppercase", letterSpacing: "0.04em" }}>{"\u23F8"} Paused</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {det.companyNumber ? "\u2014 Co. " + det.companyNumber : ""} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)" }}>{isSup ? "Supplier" : "Buyer"} {(function() {
+                      // Stage 1.7: verification status. "Verified" requires both a
+                      // registry source and a registry ID; otherwise the entity is
+                      // explicitly unverified (UK partnership, sole trader, etc.).
+                      if (det.verificationSource && det.companyNumber) {
+                        var srcLabel = det.verificationSource === "companies_house" ? "CH" : det.verificationSource;
+                        return <span title={"Verified against " + srcLabel} style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 3, background: "#10B98114", color: "#10B981", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>{"\u2713 " + srcLabel + " " + det.companyNumber}</span>;
+                      }
+                      return <span title="No registry link \u2014 can be promoted to verified later by adding a registry number" style={{ marginLeft: 4, padding: "1px 6px", borderRadius: 3, background: "var(--muted)20", color: "var(--muted)", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>UNVERIFIED</span>;
+                    })()} {det.companyStatus ? "\u2014 " + det.companyStatus : ""} {"\u2014"} {entityInvs.length} invoices {"\u2014"} Total: {money(totalAmt, "GBP")} {"\u2014"} Outstanding: {money(totalOS, "GBP")}</div>
                   </div>
                   {detEntity && <button onClick={function() {
                     // Stage 1.9: KYC gating. Suppliers and buyers cannot be unpaused
@@ -22088,6 +22108,10 @@ export default function FactoringDashboard() {
                             }} style={{ display: "inline-block", marginRight: 6, color: "var(--text-secondary)", cursor: "pointer", userSelect: "none", fontSize: 10, width: 10 }} title={isExpanded ? "Collapse branches" : "Expand " + branches.length + " branch" + (branches.length === 1 ? "" : "es")}>{isExpanded ? "\u25be" : "\u25b8"}</span>}
                           {!hasBranches && supportsBranches && <span style={{ display: "inline-block", marginRight: 6, width: 10 }}></span>}
                           {ent.id}
+                          {!isSPTab && (function() {
+                            var verified = !!(ent.verificationSource && ent.companyNumber);
+                            return <span title={verified ? "Verified \u2014 " + (ent.verificationSource === "companies_house" ? "CH " : (ent.verificationSource + " ")) + ent.companyNumber : "Unverified \u2014 no registry link"} style={{ display: "inline-block", marginLeft: 6, width: 7, height: 7, borderRadius: "50%", background: verified ? "#10B981" : "var(--muted)", verticalAlign: "middle", cursor: "help" }}></span>;
+                          })()}
                         </td>
                         <td style={{ padding: "9px 12px", fontSize: 12, fontWeight: 600 }}>
                           <span onClick={function() { setManageDetail({ type: isSupTab ? "supplier" : isSPTab ? "service_provider" : "buyer", name: ent.name }); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"View " + entityLabel.toLowerCase() + " detail"}>{ent.name}</span>
