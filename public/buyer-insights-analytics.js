@@ -155,6 +155,22 @@
 
     // ── Single-supplier stats ──────────────────────────────────────
 
+    // Implicit dilution (short-pay): an invoice with a recorded payment that
+    // is less than its face amount. Mechanically distinct from a credit note
+    // (no CN document) but the same economic leakage. Definition mirrors the
+    // server aggregate (populate_buyer_monthly_aggregate): a paid_amount is
+    // present and is below the invoice amount — NOT gated on invoice_status,
+    // so partial settlements on not-yet-'paid' invoices are still counted.
+    function shortPaySum(invs) {
+        var amount = 0, count = 0;
+        (invs || []).forEach(function(inv) {
+            if (inv.paid_amount == null) return;
+            var shortfall = numericAmount(inv.amount) - numericAmount(inv.paid_amount);
+            if (shortfall > 0.005) { amount += shortfall; count += 1; }
+        });
+        return { amount: amount, count: count };
+    }
+
     function computeSupplierStats(sup, currencyTotalSpend) {
         var invoices = sup.invoices;
         var cns      = sup.cns;
@@ -162,6 +178,9 @@
         var totalSpend = sum(invoices, function(r) { return numericAmount(r.amount); });
         var cnTotal    = sum(cns,      function(r) { return numericAmount(r.amount); });
         var dilutionRate = totalSpend > 0 ? cnTotal / totalSpend : 0;
+        var sp = shortPaySum(invoices);
+        var implicitDilutionRate = totalSpend > 0 ? sp.amount / totalSpend : 0;
+        var combinedDilutionRate = totalSpend > 0 ? (cnTotal + sp.amount) / totalSpend : 0;
 
         var invDates = invoices.map(function(r) { return r.invoice_date; }).filter(Boolean).sort();
         var firstInvoice = invDates[0] || null;
@@ -246,6 +265,10 @@
             cnCount:              cns.length,
             cnTotal:              round2(cnTotal),
             dilutionRate:         dilutionRate,
+            shortPayCount:        sp.count,
+            shortPayAmount:       round2(sp.amount),
+            implicitDilutionRate: implicitDilutionRate,
+            combinedDilutionRate: combinedDilutionRate,
 
             monthlyInvoiceCount:  monthlyCount,
             monthlyInvoiceAmount: mapValues(monthlyAmount, function(v) { return round2(v); }),
@@ -265,6 +288,8 @@
             }
         });
 
+        var spTot = shortPaySum(invoices);
+
         return {
             invoiceCount:  invoices.length,
             cnCount:       cns.length,
@@ -273,6 +298,10 @@
             totalCNs:      round2(totalCNs),
             netSpend:      round2(totalSpend - totalCNs),
             dilutionRate:  totalSpend > 0 ? totalCNs / totalSpend : 0,
+            shortPayTotal: round2(spTot.amount),
+            shortPayCount: spTot.count,
+            implicitDilutionRate: totalSpend > 0 ? spTot.amount / totalSpend : 0,
+            combinedDilutionRate: totalSpend > 0 ? (totalCNs + spTot.amount) / totalSpend : 0,
             avgInvoiceAmount: invoices.length > 0 ? round2(totalSpend / invoices.length) : 0,
             // DSO/DPO surrogate — average days from invoice_date to paid_date
             // for paid invoices only. This is what the supplier "feels" as
@@ -387,6 +416,7 @@
     // ── Dilution ───────────────────────────────────────────────────
 
     function computeDilution(suppliers, totalSpend, totalCNs) {
+        var totalShortPay = suppliers.reduce(function(a, s) { return a + (s.shortPayAmount || 0); }, 0);
         // League: suppliers ranked by dilution rate, but only those with enough
         // invoice base to be meaningful (>=3 invoices and non-zero spend).
         // A single invoice with one CN gives 100% dilution but isn't a signal.
@@ -397,6 +427,10 @@
                     identifier:   s.identifier,
                     name:         s.name,
                     dilutionRate: s.dilutionRate,
+                    implicitDilutionRate: s.implicitDilutionRate,
+                    combinedDilutionRate: s.combinedDilutionRate,
+                    shortPayCount: s.shortPayCount,
+                    shortPayAmount: s.shortPayAmount,
                     cnTotal:      s.cnTotal,
                     cnCount:      s.cnCount,
                     invoiceTotal: s.totalSpend,
@@ -408,6 +442,9 @@
 
         return {
             overallRate:    totalSpend > 0 ? totalCNs / totalSpend : 0,
+            shortPayTotal:  round2(totalShortPay),
+            implicitRate:   totalSpend > 0 ? totalShortPay / totalSpend : 0,
+            combinedRate:   totalSpend > 0 ? (totalCNs + totalShortPay) / totalSpend : 0,
             totalCNs:       round2(totalCNs),
             cnInvoiceRatio: totalSpend > 0 ? totalCNs / totalSpend : 0,
             league:         league
@@ -531,11 +568,15 @@
             // streams flowing through time. Rate is the per-bucket ratio.
             var invTotal = sum(invs, function(r) { return numericAmount(r.amount); });
             var cnTotal  = sum(cns,  function(r) { return numericAmount(r.amount); });
+            var spBucket = shortPaySum(invs);
             dilution.push({
-                bucket:   b,
-                invTotal: round2(invTotal),
-                cnTotal:  round2(cnTotal),
-                rate:     invTotal > 0 ? cnTotal / invTotal : 0
+                bucket:        b,
+                invTotal:      round2(invTotal),
+                cnTotal:       round2(cnTotal),
+                shortPayTotal: round2(spBucket.amount),
+                rate:          invTotal > 0 ? cnTotal / invTotal : 0,
+                shortPayRate:  invTotal > 0 ? spBucket.amount / invTotal : 0,
+                combinedRate:  invTotal > 0 ? (cnTotal + spBucket.amount) / invTotal : 0
             });
         });
 
