@@ -3808,26 +3808,47 @@ export default function FactoringDashboard() {
       var notesMigrated = 0;
       var pnRes = await supabase.from("prospect_notes").select("*").eq("prospect_supplier_id", deepLink.prospectId).order("created_at", { ascending: true });
       if (!pnRes.error && pnRes.data && pnRes.data.length > 0) {
+        var fmtNoteTime = function(iso) {
+          var d = iso ? new Date(iso) : new Date();
+          return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+        };
+        var enStamp = Date.now();
+        // entity_notes canonical columns: id / entity_id / entity_type /
+        // note_text / display_time / created_at / source / prospect_note_id
+        // (the loader and manual-add path both use these). The old insert
+        // wrote note_type/content, which the loader never reads -> notes
+        // landed invisible. Match the schema here.
         var entityNotes = [{
+          id: "EN-" + newSupplierId + "-" + enStamp,
           entity_id: newSupplierId,
           entity_type: "supplier",
-          note_type: "system",
-          content: "Notes imported from Prospect Pipeline \u2014 " + pnRes.data.length + " notes transferred during conversion."
+          note_text: "Notes imported from Prospect Pipeline \u2014 " + pnRes.data.length + " note(s) transferred during conversion.",
+          display_time: fmtNoteTime(null),
+          created_at: new Date().toISOString(),
+          source: "prospect",
+          prospect_note_id: null
         }];
-        pnRes.data.forEach(function(pn) {
+        pnRes.data.forEach(function(pn, i) {
           entityNotes.push({
+            id: "EN-" + newSupplierId + "-" + enStamp + "-" + i,
             entity_id: newSupplierId,
             entity_type: "supplier",
-            note_type: pn.note_type,
-            content: "[Prospect] " + pn.content,
+            note_text: "[Prospect] " + pn.content,
+            display_time: fmtNoteTime(pn.created_at),
             created_at: pn.created_at,
-            prospect_note_id: pn.id,
-            source: "prospect"
+            source: "prospect",
+            prospect_note_id: pn.id
           });
         });
         var enRes = await supabase.from("entity_notes").insert(entityNotes);
         if (enRes.error) console.error("[Conversion] Notes migration failed:", enRes.error);
-        else notesMigrated = pnRes.data.length;
+        else {
+          notesMigrated = pnRes.data.length;
+          // Mirror into the in-memory store so notes show without a reload.
+          entityNotes.forEach(function(en) {
+            ENTITY_NOTES_DB.push({ id: en.id, entityId: en.entity_id, entityType: en.entity_type, text: en.note_text, display: en.display_time, createdAt: en.created_at, source: en.source, prospectNoteId: en.prospect_note_id });
+          });
+        }
       }
 
       // Steps 5 & 6 (invoice + credit-note migration) REMOVED — stage 1.7.
