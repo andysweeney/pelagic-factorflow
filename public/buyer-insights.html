@@ -3735,6 +3735,24 @@ function toggleBuyerOutreach(buyerId, newValue, checkbox) {
 // converted prospects we resolve the display name from the linked suppliers
 // row instead. Read-only, no write-back/sync — fetched on demand + cached.
 var MP_SUPPLIER_NAMES = {};
+var MP_SUPPLIER_STATUS = {};
+// Small badge showing the linked supplier's status in the Main Portal
+// (FactorFlow). Source of truth = suppliers.status (e.g. 'Active' / 'Paused').
+// Renders nothing when we have no cached status for this id, so unknown or
+// not-yet-fetched values degrade gracefully.
+function mpStatusBadge(supplierId, compact) {
+    if (!supplierId) return '';
+    var st = MP_SUPPLIER_STATUS[supplierId];
+    if (!st) return '';
+    var s = String(st).toLowerCase(), bg;
+    if (s === 'active')      bg = '#10B981';
+    else if (s === 'paused') bg = '#F59E0B';
+    else                     bg = '#6B7280';
+    return '<span style="display:inline-block; padding:' + (compact ? '1px 6px' : '2px 8px') +
+        '; border-radius:4px; background:' + bg + '; color:#fff; font-size:' + (compact ? '9px' : '10px') +
+        '; font-weight:600; margin-left:6px; white-space:nowrap; vertical-align:middle;"' +
+        ' title="Supplier status in FactorFlow">In FactorFlow \u00B7 ' + escHTML(String(st)) + '</span>';
+}
 function prospectDisplayName(p) {
     if (p && p.converted_supplier_id && MP_SUPPLIER_NAMES[p.converted_supplier_id]) {
         return MP_SUPPLIER_NAMES[p.converted_supplier_id];
@@ -3745,10 +3763,11 @@ function resolveMpSupplierName(supplierId, cb) {
     if (!supplierId) { cb(null); return; }
     if (MP_SUPPLIER_NAMES[supplierId]) { cb(MP_SUPPLIER_NAMES[supplierId]); return; }
     if (!sbClient) { cb(null); return; }
-    sbClient.from('suppliers').select('id, name').eq('id', supplierId).single().then(function(res) {
-        if (!res.error && res.data && res.data.name) {
-            MP_SUPPLIER_NAMES[res.data.id] = res.data.name;
-            cb(res.data.name);
+    sbClient.from('suppliers').select('id, name, status').eq('id', supplierId).single().then(function(res) {
+        if (!res.error && res.data) {
+            if (res.data.name)   MP_SUPPLIER_NAMES[res.data.id]  = res.data.name;
+            if (res.data.status) MP_SUPPLIER_STATUS[res.data.id] = res.data.status;
+            cb(res.data.name || null);
         } else { cb(null); }
     });
 }
@@ -3759,8 +3778,12 @@ function prefetchConvertedSupplierNames(cb) {
     });
     var list = Object.keys(ids);
     if (list.length === 0 || !sbClient) { if (cb) cb(); return; }
-    sbClient.from('suppliers').select('id, name').in('id', list).then(function(res) {
-        if (!res.error && res.data) res.data.forEach(function(s) { if (s && s.id && s.name) MP_SUPPLIER_NAMES[s.id] = s.name; });
+    sbClient.from('suppliers').select('id, name, status').in('id', list).then(function(res) {
+        if (!res.error && res.data) res.data.forEach(function(s) {
+            if (!s || !s.id) return;
+            if (s.name)   MP_SUPPLIER_NAMES[s.id]  = s.name;
+            if (s.status) MP_SUPPLIER_STATUS[s.id] = s.status;
+        });
         if (cb) cb();
     });
 }
@@ -4669,6 +4692,7 @@ function applyAndRenderProspects(enriched) {
             tr.innerHTML =
                 '<td>' + escHTML(e.buyer_name) + '</td>' +
                 '<td><a href="' + prospectHref + '" class="pr-row-link"><strong>' + escHTML(displayName) + '</strong>' +
+                    (p.converted_supplier_id ? mpStatusBadge(p.converted_supplier_id, true) : '') +
                     subtitle +
                 '</a></td>' +
                 '<td>' + escHTML(p.currency) + '</td>' +
@@ -5445,6 +5469,7 @@ function renderProspectDetail(prospect) {
                     '<span class="pd-arrow">→</span>' +
                     '<span id="pdSupName">' + escHTML(displayName) + '</span>' +
                     '<span id="pdSupNameSrc" style="font-size:10px; color:var(--muted); margin-left:6px;"></span>' +
+                    '<span id="pdSupMpStatus"></span>' +
                     '<span class="pd-ccy">· ' + escHTML(ccy) + '</span>' +
                 '</div>' +
                 '<div class="pd-meta-row">' +
@@ -5552,6 +5577,8 @@ function renderProspectDetail(prospect) {
     // Post-conversion: MP owns the name. Resolve from suppliers (read-only).
     if (prospect.converted_supplier_id) {
         resolveMpSupplierName(prospect.converted_supplier_id, function(mpName) {
+            var stEl = document.getElementById('pdSupMpStatus');
+            if (stEl) stEl.innerHTML = mpStatusBadge(prospect.converted_supplier_id, false);
             if (!mpName) return;
             var nameEl = document.getElementById('pdSupName');
             if (nameEl) nameEl.textContent = mpName;
