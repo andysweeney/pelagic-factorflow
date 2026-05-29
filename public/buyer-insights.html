@@ -5985,20 +5985,7 @@ function wireProspectWorkspaceHandlers(prospect) {
     var convertBtn = document.getElementById('pdConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
         if (!prospect.legal_name) return;
-        var params = new URLSearchParams();
-        params.set('action', 'create-supplier');
-        params.set('legal_name', prospect.legal_name);
-        params.set('prospect_id', prospect.id);
-        // company_number ONLY when verified against a recognised registry.
-        // Today that's Companies House (GB) only. Anything else flows through
-        // as an unverified entity that MP creates without a registry link.
-        if (prospect.verification_source === 'companies_house' && prospect.registry_id) {
-            params.set('company_number', prospect.registry_id);
-        }
-        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
-        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
-        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
-        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+        openConvertInMainPortal(prospect);
     });
 
     var confirmBtn = document.getElementById('pdConvertConfirmBtn');
@@ -6078,15 +6065,7 @@ function renderVerifyFields(source, prospect) {
         e.preventDefault();
         var name = prompt('Legal name for this unverified entity:', prospect.legal_name || '');
         if (!name || !name.trim()) return;
-        name = name.trim();
-        var params = new URLSearchParams();
-        params.set('action', 'create-supplier');
-        params.set('legal_name', name);
-        params.set('prospect_id', prospect.id);
-        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
-        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
-        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
-        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+        openConvertInMainPortal(prospect, { legalName: name.trim(), unverified: true });
     });
 }
 
@@ -8925,6 +8904,29 @@ function populateSupplierPanel(name, supId, ccy, st, ccyStats, lifetimeSupplier,
 var CH_WORKER_URL = 'https://companies-house-proxy.pelagic.workers.dev';
 var FACTORFLOW_URL = 'https://app.early.money';
 
+// Single source of truth for the BI -> Main Portal convert deep link. Every
+// convert entry point (verified prospect-detail button, verified prospects-row
+// button, and the unverified-onboard link) routes through here so the params
+// can't drift apart again. prospect_id in particular MUST always be present or
+// MP skips the conversion writeback + alias seed. Pass { legalName } to override
+// the name (the unverified path prompts for one); pass { unverified:true } to
+// force-skip company_number even if a registry_id is present.
+function openConvertInMainPortal(prospect, opts) {
+    opts = opts || {};
+    var params = new URLSearchParams();
+    params.set('action', 'create-supplier');
+    params.set('legal_name', opts.legalName || prospect.legal_name);
+    params.set('prospect_id', prospect.id);
+    // company_number ONLY for registry-verified prospects (Companies House, GB).
+    if (!opts.unverified && prospect.verification_source === 'companies_house' && prospect.registry_id) {
+        params.set('company_number', prospect.registry_id);
+    }
+    if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
+    if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
+    if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
+    window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+}
+
 function renderProspectSalesSections(prospect) {
     var statusOpts = ['lead','contacted','interested','negotiating','onboarding','declined','converted']
         .map(function(s) {
@@ -9132,20 +9134,7 @@ function wireProspectSalesHandlers(prospect) {
     var convertBtn = document.getElementById('prConvertBtn');
     if (convertBtn) convertBtn.addEventListener('click', function() {
         if (!prospect.legal_name) return;
-        var params = new URLSearchParams();
-        params.set('action', 'create-supplier');
-        params.set('legal_name', prospect.legal_name);
-        params.set('prospect_id', prospect.id);
-        // company_number ONLY when verified against a recognised registry.
-        // Today that's Companies House (GB) only. Unverified prospects flow
-        // through as unverified entities in MP (no registry link).
-        if (prospect.verification_source === 'companies_house' && prospect.registry_id) {
-            params.set('company_number', prospect.registry_id);
-        }
-        if (prospect.contact_name)  params.set('contact_name',  prospect.contact_name);
-        if (prospect.contact_email) params.set('contact_email', prospect.contact_email);
-        if (prospect.contact_phone) params.set('contact_phone', prospect.contact_phone);
-        window.open(FACTORFLOW_URL + '/?' + params.toString(), '_blank');
+        openConvertInMainPortal(prospect);
     });
 
     var confirmBtn = document.getElementById('prConvertConfirmBtn');
