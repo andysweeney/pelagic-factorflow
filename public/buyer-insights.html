@@ -3441,6 +3441,11 @@ function fetchProspectsChunk(offset) {
                 if (!document.getElementById('tab-prospects').classList.contains('hidden')) {
                     renderProspects();
                 }
+                // Resolve linked MP names for converted prospects (single
+                // source of truth post-conversion), then refresh the list.
+                prefetchConvertedSupplierNames(function() {
+                    if (!document.getElementById('tab-prospects').classList.contains('hidden')) renderProspects();
+                });
                 // Final chunk: signal that prospects are fully loaded so URL
                 // routing can open a deep-linked prospect now.
                 document.dispatchEvent(new CustomEvent('bi:prospectsLoaded'));
@@ -3723,6 +3728,42 @@ function toggleBuyerOutreach(buyerId, newValue, checkbox) {
 // per buyer (analytics). The buyer dropdown is populated from state.buyers
 // filtered to permitted; rows can be filtered by status, currency, search,
 // and the quick pills.
+
+// Post-conversion, MP (suppliers.name) is the single source of truth for a
+// supplier's name. BI keeps its own prospect_suppliers.supplier_name (set at
+// import) which can drift once an admin renames the supplier in MP. So for
+// converted prospects we resolve the display name from the linked suppliers
+// row instead. Read-only, no write-back/sync — fetched on demand + cached.
+var MP_SUPPLIER_NAMES = {};
+function prospectDisplayName(p) {
+    if (p && p.converted_supplier_id && MP_SUPPLIER_NAMES[p.converted_supplier_id]) {
+        return MP_SUPPLIER_NAMES[p.converted_supplier_id];
+    }
+    return (p && (p.supplier_name || p.supplier_identifier)) || '';
+}
+function resolveMpSupplierName(supplierId, cb) {
+    if (!supplierId) { cb(null); return; }
+    if (MP_SUPPLIER_NAMES[supplierId]) { cb(MP_SUPPLIER_NAMES[supplierId]); return; }
+    if (!sbClient) { cb(null); return; }
+    sbClient.from('suppliers').select('id, name').eq('id', supplierId).single().then(function(res) {
+        if (!res.error && res.data && res.data.name) {
+            MP_SUPPLIER_NAMES[res.data.id] = res.data.name;
+            cb(res.data.name);
+        } else { cb(null); }
+    });
+}
+function prefetchConvertedSupplierNames(cb) {
+    var ids = {};
+    (state.prospects || []).forEach(function(p) {
+        if (p.converted_supplier_id && !MP_SUPPLIER_NAMES[p.converted_supplier_id]) ids[p.converted_supplier_id] = true;
+    });
+    var list = Object.keys(ids);
+    if (list.length === 0 || !sbClient) { if (cb) cb(); return; }
+    sbClient.from('suppliers').select('id, name').in('id', list).then(function(res) {
+        if (!res.error && res.data) res.data.forEach(function(s) { if (s && s.id && s.name) MP_SUPPLIER_NAMES[s.id] = s.name; });
+        if (cb) cb();
+    });
+}
 
 function renderProspects() {
     if (!state.prospects) state.prospects = [];
@@ -4543,7 +4584,7 @@ function applyAndRenderProspects(enriched) {
             // Display name primary, vendor ID secondary. Even when anonymised
             // the upload often has VEND-01000 as both name and ID, which renders
             // identically — but when it's "Acme Widgets Ltd" we want that prominent.
-            var displayName = p.supplier_name || p.supplier_identifier;
+            var displayName = prospectDisplayName(p);
             var showIdSeparately = p.supplier_name && p.supplier_name !== p.supplier_identifier;
             var subtitle;
             if (p.legal_name && p.legal_name !== displayName) {
@@ -4946,7 +4987,7 @@ function renderGroupPanel(group) {
     var rowsHtml = constituentRowsData.map(function(r) {
         var p = r.prospect;
         var prospectHref = window.location.pathname + '?prospect=' + encodeURIComponent(p.id);
-        var displayName = p.supplier_name || p.supplier_identifier;
+        var displayName = prospectDisplayName(p);
         var subtitle = (p.supplier_name && p.supplier_name !== p.supplier_identifier)
             ? '<div style="font-size:10px; color:var(--muted); font-family:var(--mono);">' + escHTML(p.supplier_identifier) + '</div>'
             : '';
@@ -5368,7 +5409,7 @@ function renderProspectDetail(prospect) {
         ? stats.suppliers.find(function(s) { return s.identifier === prospect.supplier_identifier; })
         : null;
 
-    var displayName = prospect.supplier_name || supplier && supplier.name || prospect.supplier_identifier;
+    var displayName = (prospect.converted_supplier_id && MP_SUPPLIER_NAMES[prospect.converted_supplier_id]) || prospect.supplier_name || (supplier && supplier.name) || prospect.supplier_identifier;
     var statusPill =
         '<span class="pr-status-pill pr-status-' + prospect.status + ' pd-status-pill-lg">' +
             prospect.status +
@@ -5402,7 +5443,8 @@ function renderProspectDetail(prospect) {
                 '<div class="pd-title-row">' +
                     escHTML(buyerName) +
                     '<span class="pd-arrow">→</span>' +
-                    escHTML(displayName) +
+                    '<span id="pdSupName">' + escHTML(displayName) + '</span>' +
+                    '<span id="pdSupNameSrc" style="font-size:10px; color:var(--muted); margin-left:6px;"></span>' +
                     '<span class="pd-ccy">· ' + escHTML(ccy) + '</span>' +
                 '</div>' +
                 '<div class="pd-meta-row">' +
@@ -5507,6 +5549,16 @@ function renderProspectDetail(prospect) {
 
     // Wire handlers
     document.getElementById('pdBackBtn').addEventListener('click', closeProspectDetail);
+    // Post-conversion: MP owns the name. Resolve from suppliers (read-only).
+    if (prospect.converted_supplier_id) {
+        resolveMpSupplierName(prospect.converted_supplier_id, function(mpName) {
+            if (!mpName) return;
+            var nameEl = document.getElementById('pdSupName');
+            if (nameEl) nameEl.textContent = mpName;
+            var srcEl = document.getElementById('pdSupNameSrc');
+            if (srcEl) srcEl.textContent = '· name from Main Portal';
+        });
+    }
     wireProspectWorkspaceHandlers(prospect);
     wireGroupSectionHandlers(prospect);
     wireSupSearchHandlers(ccy);
@@ -6027,6 +6079,23 @@ function wireProspectWorkspaceHandlers(prospect) {
 // Manual / Other branches removed in stage 1.7 — verification is CH-only.
 // Prospects that can't be CH-verified can still be onboarded in MP as
 // unverified entities via the affordance at the bottom of the CH form.
+function chNormName(s) {
+    return (s || '').toLowerCase()
+        .replace(/[^a-z0-9 ]+/g, ' ')
+        .replace(/\b(limited|ltd|plc|llp|lp|llc|inc|co|company|uk|holdings|group|the)\b/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+}
+function chNamesMatch(prospectName, chName) {
+    var a = chNormName(prospectName), b = chNormName(chName);
+    if (!a || !b) return true;            // nothing to compare against — don't block
+    if (a === b) return true;
+    if (a.indexOf(b) !== -1 || b.indexOf(a) !== -1) return true;
+    var ta = a.split(' '), tb = b.split(' ');
+    var setB = {}; tb.forEach(function(t) { setB[t] = 1; });
+    var common = ta.filter(function(t) { return setB[t]; }).length;
+    return common / Math.max(ta.length, tb.length) >= 0.6;
+}
+
 function renderVerifyFields(source, prospect) {
     var fieldsEl = document.getElementById('pdVerifyFields');
     if (!fieldsEl) return;
@@ -6058,13 +6127,17 @@ function renderVerifyFields(source, prospect) {
                     return;
                 }
                 var legalName = data.company_name || data.legal_name || '';
+                var prospectName = prospect.supplier_name || prospect.legal_name || prospect.supplier_identifier || '';
+                var nameMatches = chNamesMatch(prospectName, legalName);
                 document.getElementById('pdCHResult').innerHTML =
                     '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
                         '<strong>' + escHTML(legalName) + '</strong>' +
                         ' \u00b7 CH: <span class="mono">' + escHTML(num) + '</span>' +
-                        '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                        '<button class="btn btn-xs btn-primary" id="pdCHSaveBtn" style="margin-left:10px;">' + (nameMatches ? 'Save verification' : 'Save anyway') + '</button>' +
+                        (nameMatches ? '' : '<div style="margin-top:6px; padding:6px 8px; background:#F59E0B14; border:1px solid #F59E0B40; border-radius:4px; color:#B45309; line-height:1.4;">\u26A0\uFE0F CH name <strong>' + escHTML(legalName) + '</strong> doesn\u2019t match prospect <strong>' + escHTML(prospectName) + '</strong>. Confirm before saving.</div>') +
                     '</div>';
                 document.getElementById('pdCHSaveBtn').addEventListener('click', function() {
+                    if (!nameMatches && !confirm('CH name "' + legalName + '" doesn\u2019t match prospect "' + prospectName + '". Verify anyway?')) return;
                     saveVerification(prospect, {
                         registry_id:               num,
                         legal_name:                legalName,
@@ -7425,6 +7498,11 @@ function renderSectionStressSignals(c, ccy) {
             supSignals.push({ tag: 'quality', text: pct(s.dilutionRate) + ' credit-note rate — sustained quality issues' });
         }
 
+        // Signal 4: implicit dilution (short-pay) >= 3%
+        if (s.implicitDilutionRate != null && s.implicitDilutionRate >= 0.03 && s.invoiceCount >= 3) {
+            supSignals.push({ tag: 'shortpay', text: pct(s.implicitDilutionRate) + ' short-pay rate — ' + (s.shortPayCount || 0) + ' invoice' + ((s.shortPayCount || 0) === 1 ? '' : 's') + ' paid short' });
+        }
+
         if (supSignals.length > 0) {
             signals.push({ supplier: s, signals: supSignals });
         }
@@ -7435,7 +7513,7 @@ function renderSectionStressSignals(c, ccy) {
             '<div class="section">' +
                 '<div class="section-eyebrow">Section 5</div>' +
                 '<div class="section-title">Stress signals across your supplier base</div>' +
-                '<div class="section-lede">No stress signals detected for ' + ccy + ' suppliers in this period. Monitored signals are declining invoice volume, prolonged silence, and sustained credit-note rates.</div>' +
+                '<div class="section-lede">No stress signals detected for ' + ccy + ' suppliers in this period. Monitored signals are declining invoice volume, prolonged silence, sustained credit-note rates, and short-paid invoices.</div>' +
             '</div>';
     }
 
@@ -7449,7 +7527,7 @@ function renderSectionStressSignals(c, ccy) {
     var rows = top10.map(function(entry) {
         var s = entry.supplier;
         var tags = entry.signals.map(function(sig) {
-            var color = sig.tag === 'silent' ? 'var(--danger)' : sig.tag === 'declining' ? 'var(--warning)' : 'var(--purple)';
+            var color = sig.tag === 'silent' ? 'var(--danger)' : sig.tag === 'declining' ? 'var(--warning)' : sig.tag === 'shortpay' ? '#DC2626' : 'var(--purple)';
             return '<div style="margin:4px 0; padding:6px 10px; background:var(--bg); border-left:3px solid ' + color + '; border-radius:3px; font-size:12px;">' + escHTML(sig.text) + '</div>';
         }).join('');
 
@@ -7470,7 +7548,7 @@ function renderSectionStressSignals(c, ccy) {
         '<div class="section">' +
             '<div class="section-eyebrow">Section 5</div>' +
             '<div class="section-title">Stress signals across your supplier base</div>' +
-            '<div class="section-lede">Suppliers showing one or more leading indicators of relationship distress: declining invoice volume, prolonged silence relative to the period end, or sustained credit-note rates. Worth a procurement conversation — could be them, could be you.</div>' +
+            '<div class="section-lede">Suppliers showing one or more leading indicators of relationship distress: declining invoice volume, prolonged silence relative to the period end, sustained credit-note rates, or short-paid invoices. Worth a procurement conversation — could be them, could be you.</div>' +
 
             '<div class="chart-box">' +
                 '<table class="report-table">' +
@@ -7910,30 +7988,29 @@ function drawTrendsDilution(labels, ts) {
     // 50% (DILUTION_CAP) for legibility. Cost: at typical 0.5-2% rates the
     // chart looked flat against a 0-50% axis. Tradeoff was wrong — auto-scale
     // is clearer and outliers should show as outliers, not get hidden.
-    var rates = ts.dilution.map(function(d) { return d.rate; });
+    var cnRates    = ts.dilution.map(function(d) { return d.rate; });
+    var spRates    = ts.dilution.map(function(d) { return d.shortPayRate != null ? d.shortPayRate : 0; });
+    var totalRates = ts.dilution.map(function(d) { return d.combinedRate != null ? d.combinedRate : d.rate; });
 
     _chartInstances['trends-dilution'] = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [{
-                label: 'Dilution rate',
-                data: rates,
-                borderColor: '#F59E0B',
-                backgroundColor: '#F59E0B20',
-                borderWidth: 2,
-                pointRadius: 2,
-                fill: true,
-                tension: 0.3
-            }]
+            datasets: [
+                { label: 'Credit notes',   data: cnRates,    borderColor: '#F59E0B', backgroundColor: '#F59E0B20', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3 },
+                { label: 'Short-pay',      data: spRates,    borderColor: '#DC2626', backgroundColor: '#DC262620', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3 },
+                { label: 'Total dilution', data: totalRates, borderColor: '#6366F1', backgroundColor: '#6366F120', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3, borderDash: [5, 3] }
+            ]
         },
         options: chartCommonOptions({
             yLeftLabel: 'Rate',
             yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; },
             tooltipFormatter: function(ctx) {
-                var idx = ctx.dataIndex;
-                var d = ts.dilution[idx];
-                return 'Dilution: ' + (ctx.parsed.y * 100).toFixed(2) + '% (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
+                var d = ts.dilution[ctx.dataIndex];
+                var pctv = (ctx.parsed.y * 100).toFixed(2) + '%';
+                if (ctx.datasetIndex === 0) return 'Credit notes: ' + pctv + ' (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
+                if (ctx.datasetIndex === 1) return 'Short-pay: ' + pctv + ' (' + (d.shortPayTotal != null ? d.shortPayTotal : 0) + ' short / inv ' + d.invTotal + ')';
+                return 'Total dilution: ' + pctv + ' (CN ' + d.cnTotal + ' + short-pay ' + (d.shortPayTotal != null ? d.shortPayTotal : 0) + ')';
             }
         })
     });
@@ -9060,13 +9137,17 @@ function wireProspectSalesHandlers(prospect) {
                     return;
                 }
                 var legalName = data.company_name || data.legal_name || '';
+                var prospectName = prospect.supplier_name || prospect.legal_name || prospect.supplier_identifier || '';
+                var nameMatches = chNamesMatch(prospectName, legalName);
                 document.getElementById('prCHResult').innerHTML =
                     '<div style="padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:4px;">' +
                         '<strong>' + escHTML(legalName) + '</strong>' +
                         ' · CH: <span class="mono">' + escHTML(num) + '</span>' +
-                        '<button class="btn btn-xs btn-primary" id="prCHSaveBtn" style="margin-left:10px;">Save verification</button>' +
+                        '<button class="btn btn-xs btn-primary" id="prCHSaveBtn" style="margin-left:10px;">' + (nameMatches ? 'Save verification' : 'Save anyway') + '</button>' +
+                        (nameMatches ? '' : '<div style="margin-top:6px; padding:6px 8px; background:#F59E0B14; border:1px solid #F59E0B40; border-radius:4px; color:#B45309; line-height:1.4;">\u26A0\uFE0F CH name <strong>' + escHTML(legalName) + '</strong> doesn\u2019t match prospect <strong>' + escHTML(prospectName) + '</strong>. Confirm before saving.</div>') +
                     '</div>';
                 document.getElementById('prCHSaveBtn').addEventListener('click', function() {
+                    if (!nameMatches && !confirm('CH name "' + legalName + '" doesn\u2019t match prospect "' + prospectName + '". Verify anyway?')) return;
                     sbClient.from('prospect_suppliers').update({
                         registry_id: num,
                         legal_name:     legalName,
@@ -11490,14 +11571,20 @@ function drawTrendsPrintDilution(ccy, ts) {
     var canvas = document.getElementById('print-trends-dil-' + ccy);
     if (!canvas) return;
     // Auto-scale Y axis — same fix as the screen version. See drawTrendsDilution.
-    var rates = ts.dilution.map(function(d) { return d.rate; });
+    var cnRates    = ts.dilution.map(function(d) { return d.rate; });
+    var spRates    = ts.dilution.map(function(d) { return d.shortPayRate != null ? d.shortPayRate : 0; });
+    var totalRates = ts.dilution.map(function(d) { return d.combinedRate != null ? d.combinedRate : d.rate; });
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: {
             labels: ts.buckets,
-            datasets: [{ label: 'Dilution rate', data: rates, borderColor: '#F59E0B', backgroundColor: '#F59E0B25', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3 }]
+            datasets: [
+                { label: 'Credit notes',   data: cnRates,    borderColor: '#F59E0B', backgroundColor: '#F59E0B25', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3 },
+                { label: 'Short-pay',      data: spRates,    borderColor: '#DC2626', backgroundColor: '#DC262625', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3 },
+                { label: 'Total dilution', data: totalRates, borderColor: '#6366F1', backgroundColor: '#6366F125', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3, borderDash: [4, 2] }
+            ]
         },
-        options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; } })
+        options: trendsPrintChartOptions({ legend: true, yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; } })
     });
     _printChartInstances.push(inst);
 }
