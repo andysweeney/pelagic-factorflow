@@ -9755,13 +9755,18 @@ export default function FactoringDashboard() {
             var nOut = progInvs.length;
             var avgOut = nOut > 0 ? progOut / nOut : 0;
             var available = getProgramAvailableBalance(fp.id);
+            var _es = fp.eligibleSuppliers || [], _eb = fp.eligibleBuyers || [];
+            var eSupA = 0, eSupP = 0, eBuyA = 0, eBuyP = 0;
+            _es.forEach(function(sid) { var s = SUPPLIERS_DB.find(function(x) { return x.id === sid; }); if (!s) return; if (s.paused) eSupP++; else eSupA++; });
+            _eb.forEach(function(bid) { var b = BUYERS_DB.find(function(x) { return x.id === bid; }); if (!b) return; if (b.paused) eBuyP++; else eBuyA++; });
             return {
               id: fp.id, name: fp.name, currency: fp.currency,
               balance: fp.currentFundedBalance || 0, max: fp.maxSize || 0, pct: pct,
               outstanding: progOut, available: available, nOutstanding: nOut, avgOutstanding: avgOut,
               pctNotYetDue: nOut > 0 ? pNotYetDue / nOut : 0,
               pctOverdue: nOut > 0 ? pOverdue / nOut : 0,
-              pctRecovery: nOut > 0 ? pRecovery / nOut : 0
+              pctRecovery: nOut > 0 ? pRecovery / nOut : 0,
+              eligSupActive: eSupA, eligSupPaused: eSupP, eligBuyActive: eBuyA, eligBuyPaused: eBuyP
             };
           }).sort(function(a, b) { return b.pct - a.pct; });
 
@@ -9794,6 +9799,16 @@ export default function FactoringDashboard() {
           var cardBodyH = 200; // scrollable body height
           var cardTotalMinH = 256; // approx total incl. header and footer
 
+          // Overview header metrics: available-for-funding headroom per currency
+          // (live, via getProgramAvailableBalance — not the stored counter), plus
+          // active/paused entity counts.
+          var ovAvailByCcy = {};
+          FUNDING_PROGRAMS_DB.forEach(function(fp) { var a = getProgramAvailableBalance(fp.id); var c2 = fp.currency || "GBP"; ovAvailByCcy[c2] = (ovAvailByCcy[c2] || 0) + (a > 0 ? a : 0); });
+          var ovSupActive = 0, ovSupPaused = 0;
+          SUPPLIERS_DB.forEach(function(s) { if (s.paused) ovSupPaused++; else ovSupActive++; });
+          var ovBuyActive = 0, ovBuyPaused = 0;
+          BUYERS_DB.forEach(function(b) { if (b.paused) ovBuyPaused++; else ovBuyActive++; });
+
           return <div>
             {/* ============ HEADER STRIP ============ */}
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "4px 6px 18px", borderBottom: "1px solid var(--border)", marginBottom: 20 }}>
@@ -9802,6 +9817,11 @@ export default function FactoringDashboard() {
                 <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>Outstanding</span>
                   {ccyList.length === 0 ? <span style={{ fontSize: 23, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace" }}>{"\u2014"}</span> : ccyList.map(function(c, i) { return <span key={c} style={{ fontSize: i === 0 ? 23 : 13, fontWeight: i === 0 ? 600 : 400, color: i === 0 ? "var(--text)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{(i === 0 ? "" : "\u00b7 ") + money(r2(outByCcy[c]), c)}</span>; })}
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 20, flexWrap: "wrap", marginTop: 8 }}>
+                  <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", marginRight: 6 }}>Available for Funding</span><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace" }}>{Object.keys(ovAvailByCcy).length === 0 ? "\u2014" : Object.keys(ovAvailByCcy).map(function(c) { return money(r2(ovAvailByCcy[c]), c); }).join(" \u00b7 ")}</span></div>
+                  <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", marginRight: 6 }}>Suppliers</span><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace" }}>{ovSupActive + " active \u00b7 " + ovSupPaused + " paused"}</span></div>
+                  <div><span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", marginRight: 6 }}>Buyers</span><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", fontFamily: "'JetBrains Mono', monospace" }}>{ovBuyActive + " active \u00b7 " + ovBuyPaused + " paused"}</span></div>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6 }}>
                   {totalInvoiceCount + " funded invoice" + (totalInvoiceCount === 1 ? "" : "s") + " across " + FUNDING_PROGRAMS_DB.length + " program" + (FUNDING_PROGRAMS_DB.length === 1 ? "" : "s")}
@@ -9926,6 +9946,8 @@ export default function FactoringDashboard() {
                         <div><div style={lbl}>Available Funds</div><div style={val}>{money(r2(p.available), p.currency)}</div></div>
                         <div><div style={lbl}># Invoices O/S</div><div style={val}>{p.nOutstanding}</div></div>
                         <div><div style={lbl}>Avg O/S Invoice</div><div style={val}>{p.nOutstanding > 0 ? money(r2(p.avgOutstanding), p.currency) : "\u2014"}</div></div>
+                        <div><div style={lbl}>Eligible Suppliers</div><div style={Object.assign({}, val, { fontSize: 12 })}>{p.eligSupActive + " active \u00b7 " + p.eligSupPaused + " paused"}</div></div>
+                        <div><div style={lbl}>Eligible Buyers</div><div style={Object.assign({}, val, { fontSize: 12 })}>{p.eligBuyActive + " active \u00b7 " + p.eligBuyPaused + " paused"}</div></div>
                       </div>
 
                       {/* Bucket percentages */}
@@ -10565,6 +10587,14 @@ export default function FactoringDashboard() {
           var supInvs = viewData.invoices.filter(function(inv) { var selBrId = parseEntityId(selectedSupplier).branchId; var match = selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); return match && invInProgramScope(inv, supProgram); });
           var displayCcy = (function() { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === supProgram; }); return fp ? fp.currency : "GBP"; })();
           var supplier = getSupplierById(selectedSupplier) || getParentSupplier(selectedSupplier);
+          // Display tweaks: unpurchased totals + funding-available (all programs) and
+          // external aliases mapped to this supplier (with buyer + provider context).
+          var supAllInvs = viewData.invoices.filter(function(inv) { var _sbr = parseEntityId(selectedSupplier).branchId; return _sbr ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); });
+          var supUnpurch = supAllInvs.filter(function(inv) { return inv.fundingStatus === "pending"; });
+          var supUnpurchTotal = supUnpurch.reduce(function(s, inv) { return s + (inv.amount || 0); }, 0);
+          var supUnpurchMaxCap = supUnpurch.reduce(function(s, inv) { return s + (inv.maxAvailableCapital || 0); }, 0);
+          var _supParentForAlias = parseEntityId(selectedSupplier).supplierId || selectedSupplier;
+          var supAliases = PROVIDER_ALIASES_DB.filter(function(a) { return a.entityType === "supplier" && a.pelagicEntityId === _supParentForAlias; });
 
           // Compute balances (exclude pending)
           var totalCapOS = 0, totalIntOS = 0, totalPenOS = 0, balanceOwed = 0;
@@ -10865,11 +10895,24 @@ export default function FactoringDashboard() {
                   </div>;
                 })()}
               </div>
-              {/* Right: 2 dilution cards side by side */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
+              {/* Right column: unpurchased/funding tiles stacked above the 2 dilution cards */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", borderLeft: "4px solid #6366F1" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 4 }}>Unpurchased Invoice Total</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", lineHeight: 1.1 }}>{money(r2(supUnpurchTotal), displayCcy)}</div>
+                    <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{supUnpurch.length + " pending invoice" + (supUnpurch.length === 1 ? "" : "s")}</div>
+                  </div>
+                  <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", borderLeft: "4px solid #10B981" }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 4 }}>Funding Amount Available</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#10B981", lineHeight: 1.1 }}>{money(r2(supUnpurchMaxCap), displayCcy)}</div>
+                    <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>sum of max available capital</div>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Supplier Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices in period"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: dilutionRate > 10 ? "#DC2626" : dilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: dilutionRate > 10 ? "#DC2626" : dilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
                   {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.dilRate > 10 ? "#DC2626" : parentRollup.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.dilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
@@ -10881,9 +10924,9 @@ export default function FactoringDashboard() {
                     <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil90.rate > 10 ? "#DC2626" : dil90.rate > 5 ? "#D97706" : "#059669" }}>{dil90.rate > 0 ? dil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil90.numerator, displayCcy)} / {money(dil90.denominator, displayCcy)}</div></div>
                   </div>
                 </div>
-                <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
+                <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: fdilutionRate > 10 ? "#DC2626" : fdilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: fdilutionRate > 10 ? "#DC2626" : fdilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
                   {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.fdilRate > 10 ? "#DC2626" : parentRollup.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.fdilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
@@ -10895,6 +10938,7 @@ export default function FactoringDashboard() {
                     <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil90.rate > 10 ? "#DC2626" : fdil90.rate > 5 ? "#D97706" : "#059669" }}>{fdil90.rate > 0 ? fdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil90.numerator, displayCcy)} / {money(fdil90.denominator, displayCcy)}</div></div>
                   </div>
                 </div>
+              </div>
               </div>
             </div>
 
@@ -11188,6 +11232,32 @@ export default function FactoringDashboard() {
                     <div style={{ marginTop: 2 }}>{supplier && supplier.bankVerified ? <Badge label="Verified" bg="#2E8B5714" color="#059669" border="#2E8B5730" icon={"\u2713"} /> : <Badge label="Unverified" bg="#C0392B14" color="#EF4444" border="#DC262625" icon="!" />}</div>
                   </div>
                 </div>
+
+                {/* ALIASES \u2014 external/provider codes that resolve to this supplier */}
+                <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", margin: "22px 0 10px", paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Aliases ({supAliases.length})</div>
+                {supAliases.length === 0 ? <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>No external aliases mapped to this supplier.</div> :
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr>
+                    <th style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>External Code</th>
+                    <th style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Buyer</th>
+                    <th style={{ textAlign: "left", padding: "5px 8px", fontSize: 8.5, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Provider</th>
+                  </tr></thead>
+                  <tbody>
+                    {supAliases.map(function(al, ai) {
+                      var _bid = al.buyerEntityId || "";
+                      var _bp = parseEntityId(_bid).supplierId || _bid;
+                      var _bobj = _bp ? BUYERS_DB.find(function(x) { return x.id === _bp; }) : null;
+                      var _buyerLabel = _bid ? ((_bobj ? _bobj.name : _bp) + (parseEntityId(_bid).branchId ? " \u00b7 " + parseEntityId(_bid).branchId : "")) : "Any buyer";
+                      var _pobj = al.providerId ? CSV_PROVIDERS_DB.find(function(x) { return x.id === al.providerId; }) : null;
+                      var _provLabel = al.providerId ? (_pobj ? _pobj.name : al.providerId) : "Provider-independent";
+                      return <tr key={"supal-" + ai}>
+                        <td style={{ padding: "5px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", borderBottom: "1px solid var(--border)" }}>{al.externalString}</td>
+                        <td style={{ padding: "5px 8px", fontSize: 12, color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{_buyerLabel}</td>
+                        <td style={{ padding: "5px 8px", fontSize: 12, color: al.providerId ? "var(--text-secondary)" : "var(--muted)", fontStyle: al.providerId ? "normal" : "italic", borderBottom: "1px solid var(--border)" }}>{_provLabel}</td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>}
               </div>
 
               {/* Rates & Balances — scoped to the currently-selected program (supProgram).
