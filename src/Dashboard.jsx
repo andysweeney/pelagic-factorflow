@@ -13495,7 +13495,6 @@ export default function FactoringDashboard() {
                       {bFld("County", "county")}
                       {bFld("Country", "country")}
                       {bFld("Postcode", "postcode")}
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>Remittance SLA (Business Days)</label><input type="number" min="0" step="1" value={f.remittanceSlaDays != null ? f.remittanceSlaDays : 5} onChange={function(e) { var v = e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0); setManageFields(function(p) { return Object.assign({}, p, { remittanceSlaDays: v }); }); }} style={inpS} title={"Business days after a declared settle before an unpaid invoice escalates from Awaiting Remittance to Recovery Mode. Default 5."} /></div>
                       {bFld("Primary Contact", "primaryContact")}
                       {bFld("Primary Email", "primaryEmail", "email")}
                       {bFld("Primary Phone", "primaryPhone", "tel")}
@@ -22313,6 +22312,14 @@ export default function FactoringDashboard() {
                     });
                   })()}</tbody>
                 </table>
+              </div>}
+              {manageTab === "buyers" && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Remittance</div>
+                <div style={{ maxWidth: 340 }}>
+                  <label style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", display: "block", marginBottom: 4 }}>Remittance SLA (Business Days)</label>
+                  <input type="number" min="0" step="1" value={f.remittanceSlaDays != null ? f.remittanceSlaDays : 5} onChange={function(e) { var v = e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0); setManageFields(function(pp) { return Object.assign({}, pp, { remittanceSlaDays: v }); }); }} title={"Business days after a declared settle before an unpaid invoice escalates from Awaiting Remittance to Recovery Mode. Default 5."} style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>Days a declared-settled invoice waits for cash before escalating to Recovery.</div>
+                </div>
               </div>}
               {(isSupTab || manageTab === "buyers") && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
