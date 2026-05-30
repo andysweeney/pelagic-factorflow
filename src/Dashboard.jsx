@@ -23634,7 +23634,13 @@ export default function FactoringDashboard() {
                     var statusHist = [{ status: "Received", date: nowStr, note: "Created via CSV import" }];
                     var invStatus = "Received";
 
-                    if (approvalDate) { statusHist.push({ status: "Approved", date: approvalDate, note: "Via CSV import" }); invStatus = "Approved"; }
+                    if (approvalDate) {
+                      // Map to MP's status taxonomy: full vs part by approved_amount.
+                      // Plain "Approved" is not a recognised INV_STATUSES value and would
+                      // fall outside dilution eligibility + status styling.
+                      var apprStatus = (approvedAmount !== null && approvedAmount > 0 && approvedAmount < amount) ? "Approved in Part" : "Approved in Full";
+                      statusHist.push({ status: apprStatus, date: approvalDate, note: "Via CSV import" }); invStatus = apprStatus;
+                    }
                     if (cancelledDate) { statusHist.push({ status: "Cancelled", date: cancelledDate, note: "Via CSV import" }); invStatus = "Cancelled"; }
                     if (declinedDate) { statusHist.push({ status: "Declined", date: declinedDate, note: "Via CSV import" }); invStatus = "Declined"; }
                     if (disputedDate) { statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" }); invStatus = "Disputed"; }
