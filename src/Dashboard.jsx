@@ -1775,6 +1775,7 @@ async function saveBuyer(buyId) {
       program_paused: b.programPaused || {},
       credit_limits: b.creditLimits || {},
       single_invoice_limits: b.singleInvoiceLimits || {},
+        remittance_sla_days: (b.remittanceSlaDays != null && b.remittanceSlaDays !== "") ? parseInt(b.remittanceSlaDays, 10) : 5,
       branches: b.branches || [],
       // Companies House persistence fields (added in stage 1.6)
       entity_source: b.entitySource || "manual",
@@ -2215,6 +2216,7 @@ async function loadPersistedData() {
           bankVerified: false,
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           programBankAccounts: row.program_bank_accounts || {},
           programRates: row.program_rates || {},
           rates: row.rates || [],
@@ -2251,6 +2253,7 @@ async function loadPersistedData() {
           programPaused: row.program_paused || {},
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           branches: row.branches || [],
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
@@ -2784,6 +2787,7 @@ async function reloadSuppliers() {
           accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           programBankAccounts: row.program_bank_accounts || {},
           programRates: row.program_rates || {},
           rates: row.rates || [], branches: row.branches || [],
@@ -2819,6 +2823,7 @@ async function reloadBuyers() {
           programPaused: row.program_paused || {},
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           branches: row.branches || [],
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
@@ -2931,6 +2936,7 @@ async function savePersistedData() {
         paused: b.paused || false,
         credit_limits: b.creditLimits || {},
         single_invoice_limits: b.singleInvoiceLimits || {},
+        remittance_sla_days: (b.remittanceSlaDays != null && b.remittanceSlaDays !== "") ? parseInt(b.remittanceSlaDays, 10) : 5,
         branches: b.branches || [],
         // Companies House persistence fields (added in stage 1.6)
         entity_source: b.entitySource || "manual",
@@ -3397,7 +3403,18 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
     else if (rawInv.fundingStatus === "write_off" && debtBal < 0.005) fs = "fully_repaid";
     else if (debtBal < 0.005 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
-    else if ((statusAsOfDate === "Settled" || statusAsOfDate === "Cancelled") && debtBal > 0.01) fs = "recovery_mode";
+    else if (statusAsOfDate === "Settled" && debtBal > 0.01) {
+      // Settled declared but our cash hasn't landed yet. Hold as awaiting_remittance
+      // (a funded sub-state) until the buyer's remittance SLA \u2014 business days from
+      // the declared settle date \u2014 lapses, then escalate to recovery_mode. Keeps
+      // recovery_mode meaning genuine non-payment, not a cash-in-transit lag.
+      var _setE = histAsOfDate.find(function(x) { return x.status === "Settled"; });
+      var _setD = _setE ? _setE.date : null;
+      var _bRem = BUYERS_DB.find(function(b) { return b.id === rawInv.buyerId; });
+      var _slaD = (_bRem && _bRem.remittanceSlaDays != null) ? _bRem.remittanceSlaDays : 5;
+      fs = (_setD && businessDaysBetween(_setD, viewDate) > _slaD) ? "recovery_mode" : "awaiting_remittance";
+    }
+    else if (statusAsOfDate === "Cancelled" && debtBal > 0.01) fs = "recovery_mode";
     else if (statusAsOfDate === "Declined") fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < initialCapPlusInt - 0.01) fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < rawInv.amount - 0.01) fs = "at_risk";
@@ -3550,6 +3567,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       amountPostDilutions: r2(rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0)),
       totalFundsApplied: r2(annotatedPays.reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0)),
       paymentsToInvoice: r2(Math.min(totalBuyerPaid, settleThreshold)),
+      totalBuyerPaid: r2(totalBuyerPaid),
       settlementThreshold: r2(settleThreshold),
       penaltyDays: penaltyDays, penaltyStartDate: penaltyStartDate, payments: annotatedPays,
       holdbackApplications: hbApplications, holdbackPayments: annotatedHbPays
@@ -3568,9 +3586,92 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
 }
 
 var IST = { "Received": { bg: "#8C9AB525", color: "#94A3B8", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5725", color: "#10B981", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3025", color: "#F59E0B", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5735", color: "#059669", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728025", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B30", color: "#EF4444", border: "#DC262625", icon: "\u2715" }, "Disputed": { bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B35", color: "#DC2626", border: "#DC262630", icon: "\u2716" } };
-var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", border: "#C08B3030" }, purchased: { label: "Purchased", bg: "#7B5EA725", color: "#8B5CF6", border: "#7B5EA730" }, funded: { label: "Funded", bg: "#2B4C7E25", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5735", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B35", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B25", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728035", color: "#6B7280", border: "#6B728040" }, historic: { label: "Historic", bg: "#64748B25", color: "#94A3B8", border: "#64748B30" } };
+var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", border: "#C08B3030" }, purchased: { label: "Purchased", bg: "#7B5EA725", color: "#8B5CF6", border: "#7B5EA730" }, funded: { label: "Funded", bg: "#2B4C7E25", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5735", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B35", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B25", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728035", color: "#6B7280", border: "#6B728040" }, awaiting_remittance: { label: "Awaiting Remittance", bg: "#0E747225", color: "#14B8A6", border: "#0E747230" }, historic: { label: "Historic", bg: "#64748B25", color: "#94A3B8", border: "#64748B30" } };
 var INV_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
 var FUND_STATUSES = ["pending", "purchased", "funded", "fully_repaid", "at_risk", "recovery_mode", "overdue", "write_off", "historic"];
+
+// Short-payment (implicit, non-credit-note) dilution for ONE invoice. Single source
+// of truth shared by the dilution-rate numerators and the Short Payments surfacing,
+// so listed line items reconcile exactly to the rate.
+//
+// Paid-priority: a Settled invoice uses its CRYSTALLISED shortfall (face minus what
+// was actually collected); an open Approved-in-Part invoice uses the FORECAST
+// approval haircut. Never both — once an invoice settles the forecast is dropped
+// in favour of the realised figure, so the haircut and the crystallised amount can
+// never both be booked for the same invoice.
+//
+// Regime-aware collected figure: where cash flows through us (live / post-onboarding)
+// totalBuyerPaid is the system-of-record receipt and is authoritative. For historic
+// (pre-onboarding) invoices the cash never flowed through us, so we fall back to the
+// buyer-reported csvAmountPaid. "historic" fundingStatus is the proxy for "cash did
+// not flow through us"; null csvAmountPaid on a historic settle means no shortfall
+// info, so we assume paid-in-full (zero short-pay) rather than invent leakage.
+//
+// Net of credit notes: the crystallised gap (face - collected) already contains any
+// CN reduction (the settle threshold was lowered by CNs and the buyer paid the
+// reduced figure), and CNs are counted separately in the numerator, so we subtract
+// CN dilution here to avoid double-booking it.
+// Whole weekdays strictly after `fromStr` up to and including `toStr` (weekends only,
+// no holiday calendar, per design). Drives the remittance-SLA escalation clock.
+function businessDaysBetween(fromStr, toStr) {
+  if (!fromStr || !toStr || toStr <= fromStr) return 0;
+  var d = new Date(fromStr + "T12:00:00"), end = new Date(toStr + "T12:00:00"), n = 0;
+  while (d < end) { d.setDate(d.getDate() + 1); var wd = d.getDay(); if (wd !== 0 && wd !== 6) n++; }
+  return n;
+}
+
+function shortPayDilution(inv) {
+  var face = inv.amount || 0;
+  var cnDil = (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0);
+  if (inv.invoiceStatus === "Settled" && (inv.fundingStatus === "historic" || inv.fundingStatus === "fully_repaid")) {
+    var historic = inv.fundingStatus === "historic";
+    var collected = historic
+      ? (inv.csvAmountPaid != null ? inv.csvAmountPaid : face)
+      : (inv.totalBuyerPaid || 0);
+    var crys = face - collected - cnDil;
+    return { amount: crys > 0 ? r2(crys) : 0, type: "crystallised", basis: historic ? "reported" : "received", collected: r2(collected), face: r2(face) };
+  }
+  if ((inv.invoiceStatus === "Approved in Part" || inv.fundingStatus === "awaiting_remittance") && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < face) {
+    var fc = face - inv.partialApprovedAmount;
+    return { amount: fc > 0 ? r2(fc) : 0, type: "forecast", basis: "approved", collected: r2(inv.partialApprovedAmount), face: r2(face) };
+  }
+  return { amount: 0, type: "none", basis: null, collected: null, face: r2(face) };
+}
+
+// Per-invoice dilution contributors, mirroring the rate numerators exactly so a
+// breakdown reconciles to the headline Dilution Value. mode "supplier" = invoice-
+// status numerator (CN + short-pay + disputed full); mode "funded" = funding-status
+// numerator (CN + short-pay, or full face in recovery_mode).
+function invDilutionParts(inv, mode) {
+  var parts = [];
+  var cn = (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0);
+  if (cn > 0.005) parts.push({ label: "Credit notes", amount: r2(cn) });
+  if (mode === "funded") {
+    if (inv.fundingStatus === "recovery_mode") { parts.push({ label: "Recovery (full face)", amount: r2(inv.amount || 0) }); }
+    else { var sp = shortPayDilution(inv); if (sp.amount > 0.005) parts.push({ label: sp.type === "crystallised" ? "Short payment (crystallised)" : "Approval haircut (forecast)", amount: sp.amount }); }
+  } else {
+    var sp2 = shortPayDilution(inv); if (sp2.amount > 0.005) parts.push({ label: sp2.type === "crystallised" ? "Short payment (crystallised)" : "Approval haircut (forecast)", amount: sp2.amount });
+    if (inv.invoiceStatus === "Disputed") parts.push({ label: "Disputed (full face)", amount: r2(inv.amount || 0) });
+  }
+  return parts;
+}
+// Build the contributor list for a card. The remainder (headline minus itemised
+// parts) is the entity-level unallocated-CN lump that the numerator adds separately,
+// surfaced as its own line so the breakdown always ties to the headline.
+function computeDilBreakdown(invs, mode, headline) {
+  var rows = [], partsTotal = 0;
+  (invs || []).forEach(function(inv) {
+    var parts = invDilutionParts(inv, mode);
+    if (!parts.length) return;
+    var tot = parts.reduce(function(s, p) { return s + p.amount; }, 0);
+    if (tot <= 0.005) return;
+    partsTotal += tot;
+    rows.push({ ref: inv.invoiceReference || inv.id, invoiceStatus: inv.invoiceStatus, parts: parts, total: r2(tot) });
+  });
+  rows.sort(function(a, b) { return b.total - a.total; });
+  var remainder = r2((headline || 0) - partsTotal);
+  return { rows: rows, remainder: remainder > 0.005 ? remainder : 0, headline: r2(headline || 0) };
+}
 
 function Badge(p) { return <span title={p.title || undefined} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, letterSpacing: "0.02em", background: p.bg, color: p.color, border: "1px solid " + p.border, whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace", cursor: p.title ? "help" : undefined }}>{p.icon ? <span style={{ fontSize: 10 }}>{p.icon}</span> : null}{p.label}</span>; }
 
@@ -4388,6 +4489,8 @@ export default function FactoringDashboard() {
   var cnldt1 = useState(""), cnlDateTo = cnldt1[0], setCnlDateTo = cnldt1[1];
   var cnlpg1 = useState(0), cnlPage = cnlpg1[0], setCnlPage = cnlpg1[1];
   var cnlpp1 = useState(25), cnlPerPage = cnlpp1[0], setCnlPerPage = cnlpp1[1];
+  var cnseg1 = useState("creditnotes"), cnSegment = cnseg1[0], setCnSegment = cnseg1[1];
+  var dd1 = useState(null), dilDrill = dd1[0], setDilDrill = dd1[1];
   var cnlsrt1 = useState("date"), cnlSort = cnlsrt1[0], setCnlSort = cnlsrt1[1];
   var cnldir1 = useState("desc"), cnlDir = cnldir1[0], setCnlDir = cnldir1[1];
   var cnff1 = useState({ amount: "", currency: "GBP", date: new Date().toISOString().split("T")[0], reference: "", supplier: "", buyer: "" }), cnFormFields = cnff1[0], setCnFormFields = cnff1[1];
@@ -4739,8 +4842,8 @@ export default function FactoringDashboard() {
       }
     });
     var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
-    var dilElig = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
-    var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+    var dilElig = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
+    var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
     var fbadFS = { "write_off": true, "recovery_mode": true };
     Object.keys(bySupplier).forEach(function(sup) {
       var invs = bySupplier[sup];
@@ -4748,7 +4851,7 @@ export default function FactoringDashboard() {
       // unfunded invoices) reduce inv.dilutionTotal but not the funder's exposure —
       // exclude them from the numerator so dilution rate reflects Pelagic's risk.
       var dN = 0, dD = 0;
-      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
+      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); dN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") dN += a; });
       // Add unallocated credit note amounts for this supplier. Note: branch-keyed
       // buckets don't have a corresponding cnUnallocBySupplier entry yet — the
       // unallocated CN tracking is parent-keyed in viewData. Branch dilution
@@ -4758,13 +4861,13 @@ export default function FactoringDashboard() {
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
       var fN = 0, fD = 0;
-      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; fN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) fN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") fN += a; });
+      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; fN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.fundingStatus !== "recovery_mode") fN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") fN += a; });
       if (supUnalloc > 0) fN += supUnalloc;
       // Period dilutions
       function pDil(days, useInvDate) {
         var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
         var n = 0, d = 0, inc = {};
-        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (badStatuses[inv.invoiceStatus]) n += a; });
+        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); n += shortPayDilution(inv).amount; if (badStatuses[inv.invoiceStatus]) n += a; });
         if (!useInvDate) invs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
         return d > 0.01 ? (n / d) * 100 : 0;
       }
@@ -7024,6 +7127,42 @@ export default function FactoringDashboard() {
         </div>
       </div>}
 
+      {dilDrill && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setDilDrill(null); }}>
+        <div onClick={function(e) { e.stopPropagation(); }} style={{ background: "var(--card)", borderRadius: 14, padding: "24px 28px", maxWidth: 760, width: "92%", maxHeight: "82vh", overflowY: "auto", boxShadow: "0 8px 40px rgba(0,0,0,0.3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{dilDrill.title + " \u2014 Breakdown"}</div>
+            <button onClick={function() { setDilDrill(null); }} style={{ border: "none", background: "transparent", color: "var(--muted)", fontSize: 22, cursor: "pointer", lineHeight: 1 }}>{"\u00d7"}</button>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{"Contributors to the Dilution Value, reconciling to " + money(dilDrill.data.headline, dilDrill.ccy) + "."}</div>
+          {dilDrill.data.rows.length === 0 && dilDrill.data.remainder === 0 ? <div style={{ color: "var(--muted)", fontSize: 13, padding: "20px 0" }}>No dilution contributors.</div> :
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead><tr>
+              <th style={{ textAlign: "left", padding: "6px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Invoice</th>
+              <th style={{ textAlign: "left", padding: "6px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Contribution</th>
+              <th style={{ textAlign: "right", padding: "6px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Amount</th>
+            </tr></thead>
+            <tbody>
+              {dilDrill.data.rows.map(function(rw, i) {
+                return <tr key={i}>
+                  <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", borderBottom: "1px solid var(--border)", verticalAlign: "top" }}>{rw.ref}<div style={{ fontSize: 9, color: "var(--muted)" }}>{rw.invoiceStatus}</div></td>
+                  <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{rw.parts.map(function(pp, pi) { return <div key={pi}>{rw.parts.length > 1 ? pp.label + ": " + money(pp.amount, dilDrill.ccy) : pp.label}</div>; })}</td>
+                  <td style={{ padding: "6px 8px", fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: "#D97706", borderBottom: "1px solid var(--border)", verticalAlign: "top" }}>{money(rw.total, dilDrill.ccy)}</td>
+                </tr>;
+              })}
+              {dilDrill.data.remainder > 0 && <tr>
+                <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{"\u2014"}</td>
+                <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)", borderBottom: "1px solid var(--border)", fontStyle: "italic" }}>Unallocated credit notes</td>
+                <td style={{ padding: "6px 8px", fontSize: 12, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: "#D97706", borderBottom: "1px solid var(--border)" }}>{money(dilDrill.data.remainder, dilDrill.ccy)}</td>
+              </tr>}
+            </tbody>
+            <tfoot><tr>
+              <td colSpan={2} style={{ padding: "11px 8px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text)" }}>Dilution Value</td>
+              <td style={{ padding: "11px 8px", fontSize: 14, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", color: "#D97706" }}>{money(dilDrill.data.headline, dilDrill.ccy)}</td>
+            </tr></tfoot>
+          </table>}
+        </div>
+      </div>}
+
       {fundPopup && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setFundPopup(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 520, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>{fundPopup.isTopup ? "Fund Purchased Invoice" : "Fund Invoice"}: {fundPopup.inv.id}</div>
@@ -7385,8 +7524,8 @@ export default function FactoringDashboard() {
         }
 
         // Dilution rates for this supplier on this program
-        var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
-        var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+        var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
+        var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
         var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
         // Current funded dilution
         var fdilNum = 0, fdilDen = 0;
@@ -7395,7 +7534,7 @@ export default function FactoringDashboard() {
           var invAmt = inv.amount || 0;
           fdilDen += invAmt;
           fdilNum += inv.dilutionTotal || 0;
-          if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) fdilNum += (invAmt - inv.partialApprovedAmount);
+          if (inv.fundingStatus !== "recovery_mode") fdilNum += shortPayDilution(inv).amount;
           if (inv.fundingStatus === "recovery_mode") fdilNum += invAmt;
         });
         var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
@@ -7409,7 +7548,7 @@ export default function FactoringDashboard() {
             var a = inv.amount || 0;
             pD += a;
             pN += inv.dilutionTotal || 0;
-            if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pN += (a - inv.partialApprovedAmount);
+            pN += shortPayDilution(inv).amount;
             if (badStatuses[inv.invoiceStatus]) pN += a;
           });
           return pD > 0.01 ? (pN / pD) * 100 : 0;
@@ -9458,7 +9597,7 @@ export default function FactoringDashboard() {
             <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Dilution", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); setSidebarOpen(false); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
           <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
             <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
@@ -9474,7 +9613,7 @@ export default function FactoringDashboard() {
             <div style={{ marginTop: 12, fontSize: 11, color: "#64748B", fontWeight: 500, letterSpacing: "0.04em" }}>FACTORFLOW</div>
           </div>
           <nav style={{ flex: 1, padding: "12px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Credit Notes", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
+            {[{ k: "company", l: "Pelagic Overview", icon: React.createElement(BarChart3, { size: 18 }) }, { k: "supplier", l: "Suppliers", icon: React.createElement(Users, { size: 18 }) }, { k: "buyer", l: "Buyers", icon: React.createElement(ShoppingCart, { size: 18 }) }, { k: "program", l: "Programs", icon: React.createElement(FolderOpen, { size: 18 }) }, { k: "payments", l: "Payments", icon: React.createElement(CreditCard, { size: 18 }) }, { k: "creditnotes", l: "Dilution", icon: React.createElement(FileText, { size: 18 }) }, { k: "invoices", l: "Invoices", icon: React.createElement(FileCheck, { size: 18 }) }, { k: "unpurchased", l: "Unpurchased Invoices", icon: React.createElement(TrendingUp, { size: 18 }) }, { k: "manage", l: "Admin", icon: React.createElement(Settings, { size: 18 }) }].map(function(item) { var active = view === item.k; return React.createElement("button", { key: item.k, onClick: function() { setView(item.k); setPg(0); setExp(null); setAllocPay(null); setAllocCN(null); setPassThroughAllocs([]); setCnPassThroughAllocs([]); }, style: { display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: active ? 600 : 400, background: active ? "var(--sidebar-active-bg)" : "transparent", color: active ? "var(--sidebar-active-accent)" : "var(--sidebar-text)", transition: "all 0.15s ease", textAlign: "left", width: "100%" } }, item.icon, item.l); })}
           </nav>
           <div style={{ padding: "16px 20px", borderTop: "1px solid var(--sidebar-active-bg)" }}>
             <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
@@ -9488,7 +9627,7 @@ export default function FactoringDashboard() {
           <div style={{ background: "var(--card)", borderBottom: "1px solid var(--border)", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 30 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <button onClick={function() { setSidebarOpen(true); }} style={{ background: "none", border: "none", color: "var(--text)", cursor: "pointer", padding: 4, display: "none" }} className="ff-menu-btn"><Menu size={22} /></button>
-              <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: 0 }}>{{ company: "Pelagic Overview", supplier: "Suppliers", buyer: "Buyers", program: "Programs", payments: "Payments", creditnotes: "Credit Notes", invoices: "Invoices", unpurchased: "Unpurchased Invoices", manage: "Admin" }[view] || "Dashboard"}</h1>
+              <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", margin: 0 }}>{{ company: "Pelagic Overview", supplier: "Suppliers", buyer: "Buyers", program: "Programs", payments: "Payments", creditnotes: "Dilution", invoices: "Invoices", unpurchased: "Unpurchased Invoices", manage: "Admin" }[view] || "Dashboard"}</h1>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, color: "var(--muted)" }}>
               <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{st.n} invoices</span>
@@ -9692,7 +9831,7 @@ export default function FactoringDashboard() {
         {/* ========== PELAGIC OVERVIEW LANDING (isC) — v2 ========== */}
         {isC && (function() {
           // ---------- Shared helpers ----------
-          var fundedAndActive = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+          var fundedAndActive = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
 
           // ---------- Header strip: outstanding totals by currency ----------
           var outByCcy = {};
@@ -10623,14 +10762,14 @@ export default function FactoringDashboard() {
 
           // Supplier Dilution Rate
           // Eligible invoices: Received, Approved in Full, Approved in Part, Disputed
-          var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
+          var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
           var dilNumerator = 0, dilDenominator = 0;
           supInvs.forEach(function(inv) {
             if (!dilEligibleStatuses[inv.invoiceStatus]) return;
             var invAmt = inv.amount || 0;
             dilDenominator += invAmt;
             dilNumerator += inv.dilutionTotal || 0;
-            if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) dilNumerator += (invAmt - inv.partialApprovedAmount);
+            dilNumerator += shortPayDilution(inv).amount;
             if (inv.invoiceStatus === "Disputed") dilNumerator += invAmt;
           });
           // Include unallocated credit notes in dilution numerator
@@ -10639,14 +10778,14 @@ export default function FactoringDashboard() {
           var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
 
           // Current Funded Dilution Rate
-          var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+          var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
           var fdilNumerator = 0, fdilDenominator = 0;
           supInvs.forEach(function(inv) {
             if (!fdilEligibleFS[inv.fundingStatus]) return;
             var invAmt = inv.amount || 0;
             fdilDenominator += invAmt;
             fdilNumerator += inv.dilutionTotal || 0;
-            if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) fdilNumerator += (invAmt - inv.partialApprovedAmount);
+            if (inv.fundingStatus !== "recovery_mode") fdilNumerator += shortPayDilution(inv).amount;
             if (inv.fundingStatus === "recovery_mode") fdilNumerator += invAmt;
           });
           // Include unallocated credit notes in funded dilution numerator
@@ -10682,7 +10821,7 @@ export default function FactoringDashboard() {
               var invAmt = inv.amount || 0;
               pDen += invAmt;
               pNum += inv.dilutionTotal || 0;
-              if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) pNum += (invAmt - inv.partialApprovedAmount);
+              pNum += shortPayDilution(inv).amount;
               if (badStatuses[inv.invoiceStatus]) pNum += invAmt;
             });
             if (supUnallocCN > 0) pNum += supUnallocCN;
@@ -10703,7 +10842,7 @@ export default function FactoringDashboard() {
               pDen += invAmt;
               included[inv.id] = true;
               pNum += inv.dilutionTotal || 0;
-              if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < invAmt) pNum += (invAmt - inv.partialApprovedAmount);
+              pNum += shortPayDilution(inv).amount;
               if (badStatuses[inv.invoiceStatus]) pNum += invAmt;
             });
             // Add invoices funded in period that are now in write-off, recovery or buyer default (if not already included)
@@ -10916,7 +11055,7 @@ export default function FactoringDashboard() {
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
                   {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.dilRate > 10 ? "#DC2626" : parentRollup.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.dilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNumerator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Supplier Dilution", ccy: displayCcy, data: computeDilBreakdown(supInvs, "supplier", dilNumerator) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(dilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -10930,7 +11069,7 @@ export default function FactoringDashboard() {
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
                   {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.fdilRate > 10 ? "#DC2626" : parentRollup.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.fdilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(supInvs, "funded", fdilNumerator) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -13164,24 +13303,24 @@ export default function FactoringDashboard() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                 {(function() {
                   // Buyer Dilution: invoices where buyer owes — based on invoice status
-                  var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
+                  var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
                   var bdN = 0, bdD = 0;
-                  buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; bdN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) bdN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") bdN += a; });
+                  buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; bdN += inv.dilutionTotal || 0; bdN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") bdN += a; });
                   var buyUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(buyName(selectedBuyer)) || 0) : 0;
                   if (buyUnalloc > 0) bdN += buyUnalloc;
                   var bdRate = bdD > 0.01 ? (bdN / bdD) * 100 : 0;
                   // Period dilution
                   var pBadSt = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
-                  function bpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0; buyInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
+                  function bpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0; buyInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
                   var bd30 = bpDil(30), bd90 = bpDil(90);
                   // Funded dilution
-                  var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+                  var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
                   var bfN = 0, bfD = 0;
-                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; bfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) bfN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") bfN += a; });
+                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; bfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode") bfN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") bfN += a; });
                   if (buyUnalloc > 0) bfN += buyUnalloc;
                   var bfRate = bfD > 0.01 ? (bfN / bfD) * 100 : 0;
                   var fbadFS = { "write_off": true, "recovery_mode": true };
-                  function bfpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0, inc = {}; buyInvs.forEach(function(inv) { var dt = inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; }); buyInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
+                  function bfpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0, inc = {}; buyInvs.forEach(function(inv) { var dt = inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; }); buyInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
                   var bf30 = bfpDil(30), bf90 = bfpDil(90);
 
                   // Parent-rollup dilution context. When the operator has
@@ -13200,13 +13339,13 @@ export default function FactoringDashboard() {
                       return (inv.buyerId === _buyParentId) && invInProgramScope(inv, buyProgram);
                     });
                     var pN = 0, pD = 0;
-                    parentInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; pD += a; pN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") pN += a; });
+                    parentInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; pD += a; pN += inv.dilutionTotal || 0; pN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") pN += a; });
                     // Parent unallocated CN: use the parent's display name
                     var parentBuyName = buyName(_buyParentId);
                     var parentUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(parentBuyName) || 0) : 0;
                     if (parentUnalloc > 0) pN += parentUnalloc;
                     var pfN = 0, pfD = 0;
-                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; pfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) pfN += (a - inv.partialApprovedAmount); if (inv.fundingStatus === "recovery_mode") pfN += a; });
+                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; pfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode") pfN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") pfN += a; });
                     if (parentUnalloc > 0) pfN += parentUnalloc;
                     parentBd = {
                       dilRate: pD > 0.01 ? (pN / pD) * 100 : 0,
@@ -13220,7 +13359,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
                     {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.dilRate > 10 ? "#DC2626" : parentBd.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.dilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(bdN), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Buyer Dilution", ccy: displayCcy, data: computeDilBreakdown(buyInvs, "supplier", bdN) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(bdN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bdD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -13234,7 +13373,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
                     {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.fdilRate > 10 ? "#DC2626" : parentBd.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.fdilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(bfN), displayCcy)}</span></div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Buyer Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(buyInvs, "funded", bfN) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(bfN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bfD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -13332,7 +13471,7 @@ export default function FactoringDashboard() {
                   var inpS = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: "100%" };
                   var lblS = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 };
                   function bFld(label, key, type) { return <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>{label}</label><input type={type || "text"} value={f[key] || ""} onChange={function(e) { setManageFields(function(p) { var n = Object.assign({}, p); n[key] = e.target.value; return n; }); }} style={inpS} /></div>; }
-                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
+                  function saveBuyerEdit() { var bChanges = []; var bTrack = { name: "Name", companyNumber: "Company Number", companyStatus: "Company Status", incorporationDate: "Incorporation Date", addressLine1: "Street 1", addressLine2: "Street 2", city: "City", county: "State/County", country: "Country", postcode: "Postcode", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory", remittanceSlaDays: "Remittance SLA (days)" }; Object.keys(bTrack).forEach(function(k) { var ov = buyer[k] !== undefined && buyer[k] !== null ? String(buyer[k]) : ""; var nv = manageFields[k] !== undefined && manageFields[k] !== null ? String(manageFields[k]) : ""; if (ov !== nv) bChanges.push(bTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); }); var bDetail = bChanges.length > 0 ? bChanges.join("; ") : "No field changes"; Object.assign(buyer, manageFields); auditLog("Entity Edited", "Buyer " + buyer.id + " (" + buyer.name + ") edited. Changes: " + bDetail, { entityType: "Buyer", entityId: buyer.id, name: buyer.name, changes: bChanges }); setExp(null); saveBuyer(manageEdit); setDataVer(function(v) { return v + 1; }); }
                   return <div>
                     {/* Floating edit-mode bar */}
                     <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(14,165,233,0.15)" }}>
@@ -13356,6 +13495,7 @@ export default function FactoringDashboard() {
                       {bFld("County", "county")}
                       {bFld("Country", "country")}
                       {bFld("Postcode", "postcode")}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><label style={lblS}>Remittance SLA (Business Days)</label><input type="number" min="0" step="1" value={f.remittanceSlaDays != null ? f.remittanceSlaDays : 5} onChange={function(e) { var v = e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0); setManageFields(function(p) { return Object.assign({}, p, { remittanceSlaDays: v }); }); }} style={inpS} title={"Business days after a declared settle before an unpaid invoice escalates from Awaiting Remittance to Recovery Mode. Default 5."} /></div>
                       {bFld("Primary Contact", "primaryContact")}
                       {bFld("Primary Email", "primaryEmail", "email")}
                       {bFld("Primary Phone", "primaryPhone", "tel")}
@@ -13854,13 +13994,13 @@ export default function FactoringDashboard() {
               var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
 
               // Supplier Dilution Rate (by invoice status)
-              var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
+              var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
               var dilNum = 0, dilDen = 0;
               allProgInvs.forEach(function(inv) {
                 if (!dilEligible[inv.invoiceStatus]) return;
                 var a = inv.amount || 0; dilDen += a;
                 dilNum += inv.dilutionTotal || 0;
-                if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dilNum += (a - inv.partialApprovedAmount);
+                dilNum += shortPayDilution(inv).amount;
                 if (inv.invoiceStatus === "Disputed") dilNum += a;
               });
               // Include unallocated credit notes from all suppliers in this program
@@ -13872,13 +14012,13 @@ export default function FactoringDashboard() {
               var dilRate = dilDen > 0.01 ? (dilNum / dilDen) * 100 : 0;
 
               // Funded Dilution Rate (by funding status)
-              var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true };
+              var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
               var fdilNum = 0, fdilDen = 0;
               allProgInvs.forEach(function(inv) {
                 if (!fdilFS[inv.fundingStatus]) return;
                 var a = inv.amount || 0; fdilDen += a;
                 fdilNum += inv.dilutionTotal || 0;
-                if (inv.fundingStatus !== "recovery_mode" && inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) fdilNum += (a - inv.partialApprovedAmount);
+                if (inv.fundingStatus !== "recovery_mode") fdilNum += shortPayDilution(inv).amount;
                 if (inv.fundingStatus === "recovery_mode") fdilNum += a;
               });
               // Include unallocated credit notes in funded dilution
@@ -13890,7 +14030,7 @@ export default function FactoringDashboard() {
               function pDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
                 var n = 0, d = 0;
-                allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
+                allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; });
                 if (progUnallocCN > 0) n += progUnallocCN;
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
               }
@@ -13901,7 +14041,7 @@ export default function FactoringDashboard() {
               function fpDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
                 var n = 0, d = 0, inc = {};
-                allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) n += (a - inv.partialApprovedAmount); if (pBadSt[inv.invoiceStatus]) n += a; });
+                allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; });
                 allProgInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
                 if (progUnallocCN > 0) n += progUnallocCN;
                 return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
@@ -14049,7 +14189,7 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 24, fontWeight: 700, color: dilRate > 10 ? "#DC2626" : dilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilRate > 0 ? dilRate.toFixed(1) + "%" : "0.0%"}</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{money(r2(dilNum), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Program Dilution", ccy: displayCcy, data: computeDilBreakdown(progInvs, "supplier", dilNum) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(dilNum), displayCcy)}</span></div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -14062,7 +14202,7 @@ export default function FactoringDashboard() {
                       <div style={{ fontSize: 24, fontWeight: 700, color: fdilRate > 10 ? "#DC2626" : fdilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilRate > 0 ? fdilRate.toFixed(1) + "%" : "0.0%"}</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(r2(fdilNum), displayCcy)}</span></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Program Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(progInvs, "funded", fdilNum) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(fdilNum), displayCcy)}</span></div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
@@ -16385,8 +16525,66 @@ export default function FactoringDashboard() {
         {isP && !allocPay && <div>
           {/* Payment Sub-tabs */}
           <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 18 }}>
-            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outgoing_db", l: "Outgoing Payments" }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOqSort("date"); setOqDir("desc"); setOcSearch(""); setOcPage(0); setOcSort("date"); setOcDir("desc"); setOcTypeFilter(""); setOcDateFrom(""); setOcDateTo(""); setInPage(0); setInSort("date"); setInDir("desc"); setOgSearch(""); setOgCcyFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgStatusFilter(""); setOgPage(0); setOgSort("date"); setOgDir("desc"); setExpPay(null); setExp(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
+            {[{ k: "outbound_queue", l: "Outbound Queue" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Pending"; }).length + ")" : "") }, { k: "outgoing_db", l: "Outgoing Payments" }, { k: "outbound_completed", l: "Outbound Completed" + (SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length > 0 ? " (" + SUPPLIER_PAYMENT_QUEUE.filter(function(x) { return x.status === "Failed"; }).length + " failed)" : "") }, { k: "incoming", l: "Incoming Payments" }, { k: "awaiting_remittance", l: (function() { var _c = viewData.invoices.filter(function(i) { return i.fundingStatus === "awaiting_remittance"; }).length; return "Awaiting Remittance" + (_c > 0 ? " (" + _c + ")" : ""); })() }].map(function(t) { return <button key={t.k} onClick={function() { setPayTab(t.k); setOqSearch(""); setOqPage(0); setOqSort("date"); setOqDir("desc"); setOcSearch(""); setOcPage(0); setOcSort("date"); setOcDir("desc"); setOcTypeFilter(""); setOcDateFrom(""); setOcDateTo(""); setInPage(0); setInSort("date"); setInDir("desc"); setOgSearch(""); setOgCcyFilter(""); setOgDateFrom(""); setOgDateTo(""); setOgStatusFilter(""); setOgPage(0); setOgSort("date"); setOgDir("desc"); setExpPay(null); setExp(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: payTab === t.k ? 600 : 400, background: payTab === t.k ? "var(--accent)" : "transparent", color: payTab === t.k ? "#fff" : "var(--muted)", transition: "all 0.15s ease" }}>{t.l}</button>; })}
           </div>
+
+          {payTab === "awaiting_remittance" && (function() {
+            function drillToInvoice(invoiceId) {
+              var inv = INVOICES_DB.find(function(x) { return x.id === invoiceId; });
+              if (!inv) return;
+              var sup = SUPPLIERS_DB.find(function(s) { return s.id === inv.supplierId || s.name === inv.supplierName; });
+              if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
+            }
+            var rows = [];
+            viewData.invoices.forEach(function(inv) {
+              if (inv.fundingStatus !== "awaiting_remittance") return;
+              var setE = (inv.invoiceStatusHistory || []).find(function(h) { return h.status === "Settled"; });
+              var setD = setE ? setE.date : null;
+              var bObj = BUYERS_DB.find(function(b) { return b.id === inv.buyerId; });
+              var sla = (bObj && bObj.remittanceSlaDays != null) ? bObj.remittanceSlaDays : 5;
+              var elapsed = setD ? businessDaysBetween(setD, viewDate) : 0;
+              rows.push({ inv: inv, setD: setD, sla: sla, elapsed: elapsed, remaining: sla - elapsed, expected: inv.settlementThreshold != null ? inv.settlementThreshold : (inv.amount || 0) });
+            });
+            rows.sort(function(a, b) { return a.remaining - b.remaining; });
+            var totByCcy = {};
+            rows.forEach(function(r) { var c2 = r.inv.currency || "GBP"; totByCcy[c2] = (totByCcy[c2] || 0) + (r.expected || 0); });
+            var thS = { textAlign: "left", padding: "9px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" };
+            var thR = Object.assign({}, thS, { textAlign: "right" });
+            var tdS = { padding: "9px 10px", fontSize: 12, borderBottom: "1px solid var(--border)" };
+            var tdR = Object.assign({}, tdS, { textAlign: "right", fontFamily: "'JetBrains Mono', monospace" });
+            return <div>
+              <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Awaiting Remittance</div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, maxWidth: 820 }}>Funded invoices declared settled by the buyer, with our cash not yet received. Each holds here until the buyer's remittance SLA (business days from the declared settle date) lapses, then escalates to Recovery. Record the incoming payment to settle and clear it from this list.</div>
+                <div style={{ display: "flex", gap: 28, marginTop: 14, flexWrap: "wrap" }}>
+                  <div><div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Payments Expected</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{rows.length}</div></div>
+                  <div><div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Total Expected</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#14B8A6" }}>{Object.keys(totByCcy).length === 0 ? "\u2014" : Object.keys(totByCcy).map(function(c2) { return money(r2(totByCcy[c2]), c2); }).join("  \u00b7  ")}</div></div>
+                </div>
+              </div>
+              {rows.length === 0 ? <div style={{ background: "var(--card)", borderRadius: 12, padding: "40px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No invoices awaiting remittance.</div> :
+              <div style={{ background: "var(--card)", borderRadius: 12, padding: "8px 14px", overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 880 }}>
+                  <thead><tr><th style={thS}>Invoice</th><th style={thS}>Supplier</th><th style={thS}>Buyer</th><th style={thR}>Expected</th><th style={thS}>Declared Settled</th><th style={Object.assign({}, thS, { textAlign: "center" })}>Elapsed / SLA</th><th style={thS}>Status</th></tr></thead>
+                  <tbody>
+                    {rows.map(function(r, i) {
+                      var rem = r.remaining;
+                      var sc = rem <= 0 ? "#DC2626" : rem === 1 ? "#D97706" : "#14B8A6";
+                      var sl = rem <= 0 ? "Escalates next business day" : rem === 1 ? "1 business day left" : rem + " business days left";
+                      return <tr key={r.inv.id + "-" + i}>
+                        <td style={Object.assign({}, tdS, { fontFamily: "'JetBrains Mono', monospace" })}><span onClick={function() { drillToInvoice(r.inv.id); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>{r.inv.invoiceReference || r.inv.id}</span></td>
+                        <td style={tdS}>{getParentSupplierName(r.inv.supplierName) || r.inv.supplierName}</td>
+                        <td style={tdS}>{r.inv.buyerName}</td>
+                        <td style={tdR}>{money(r2(r.expected), r.inv.currency)}</td>
+                        <td style={Object.assign({}, tdS, { fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" })}>{r.setD || "\u2014"}</td>
+                        <td style={Object.assign({}, tdS, { textAlign: "center", fontFamily: "'JetBrains Mono', monospace" })}>{r.elapsed + " / " + r.sla}</td>
+                        <td style={tdS}><span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: sc }}></span><span style={{ fontSize: 11, fontWeight: 600, color: sc }}>{sl}</span></span></td>
+                      </tr>;
+                    })}
+                  </tbody>
+                </table>
+              </div>}
+            </div>;
+          })()}
 
           {/* === OUTBOUND PENDING TAB === */}
           {/* === OUTBOUND QUEUE TAB === */}
@@ -18782,6 +18980,55 @@ export default function FactoringDashboard() {
           }
 
           return <div>
+            {/* Dilution segment toggle */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
+              {[{ k: "creditnotes", l: "Credit Notes" }, { k: "shortpayments", l: "Short Payments" }].map(function(s) { var active = cnSegment === s.k; return <button key={s.k} onClick={function() { setCnSegment(s.k); }} style={{ padding: "9px 20px", border: "none", borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent", background: "transparent", color: active ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", marginBottom: -1 }}>{s.l}</button>; })}
+            </div>
+            {cnSegment === "shortpayments" && (function() {
+              var rows = [];
+              viewData.invoices.forEach(function(inv) { var sp = shortPayDilution(inv); if (sp.amount > 0.005) rows.push({ inv: inv, sp: sp }); });
+              rows.sort(function(a, b) { return b.sp.amount - a.sp.amount; });
+              var totByCcy = {};
+              rows.forEach(function(r) { var c = r.inv.currency || "GBP"; totByCcy[c] = (totByCcy[c] || 0) + r.sp.amount; });
+              var thS = { textAlign: "left", padding: "8px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", borderBottom: "1px solid var(--border)", whiteSpace: "nowrap" };
+              var thR = Object.assign({}, thS, { textAlign: "right" });
+              var tdS = { padding: "8px 10px", fontSize: 12, borderBottom: "1px solid var(--border)" };
+              var tdR = Object.assign({}, tdS, { textAlign: "right", fontFamily: "'JetBrains Mono', monospace" });
+              return <div>
+                <div style={{ background: "var(--card)", borderRadius: 12, padding: "18px 22px", marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Short Payments</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, maxWidth: 820 }}>Implicit dilution derived from invoices rather than credit-note documents: the gap between face value and what was approved (forecast) or actually collected (crystallised). These reconcile to the non-credit-note portion of the dilution rate. A Settled invoice still awaiting remittance shows its forecast haircut only; it crystallises once the cash lands.</div>
+                  <div style={{ display: "flex", gap: 28, marginTop: 14, flexWrap: "wrap" }}>
+                    <div><div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Line Items</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{rows.length}</div></div>
+                    <div><div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Total Short-Pay Dilution</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{Object.keys(totByCcy).length === 0 ? "\u2014" : Object.keys(totByCcy).map(function(c) { return money(r2(totByCcy[c]), c); }).join("  \u00b7  ")}</div></div>
+                  </div>
+                </div>
+                {rows.length === 0 ? <div style={{ background: "var(--card)", borderRadius: 12, padding: "40px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No short-payment dilution across the current book.</div> :
+                <div style={{ background: "var(--card)", borderRadius: 12, padding: "8px 14px", overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+                    <thead><tr><th style={thS}>Invoice</th><th style={thS}>Supplier</th><th style={thS}>Buyer</th><th style={thS}>Status</th><th style={thS}>Type</th><th style={thR}>Face</th><th style={thR}>Collected / Approved</th><th style={thR}>Shortfall</th></tr></thead>
+                    <tbody>
+                      {rows.map(function(r, i) {
+                        var inv = r.inv, sp = r.sp, ist = IST[inv.invoiceStatus] || {};
+                        var crystallised = sp.type === "crystallised";
+                        var basisLbl = sp.basis === "reported" ? "Reported (historic)" : sp.basis === "received" ? "Received" : "Approved";
+                        return <tr key={inv.id + "-" + i}>
+                          <td style={Object.assign({}, tdS, { fontFamily: "'JetBrains Mono', monospace" })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>{inv.invoiceReference || inv.id}</span></td>
+                          <td style={tdS}>{getParentSupplierName(inv.supplierName) || inv.supplierName}</td>
+                          <td style={tdS}>{inv.buyerName}</td>
+                          <td style={tdS}><span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 5, fontSize: 10, fontWeight: 600, background: ist.bg, color: ist.color, border: "1px solid " + (ist.border || "transparent") }}>{inv.invoiceStatus}</span>{inv.fundingStatus === "awaiting_remittance" ? <span style={{ marginLeft: 6, fontSize: 9, color: "#14B8A6", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>awaiting</span> : null}</td>
+                          <td style={tdS}><span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: crystallised ? "#DC2626" : "#D97706" }}>{crystallised ? "Crystallised" : "Forecast"}</span><div style={{ fontSize: 9, color: "var(--muted)" }}>{basisLbl}</div></td>
+                          <td style={tdR}>{money(r2(sp.face), inv.currency)}</td>
+                          <td style={tdR}>{sp.collected != null ? money(r2(sp.collected), inv.currency) : "\u2014"}</td>
+                          <td style={Object.assign({}, tdR, { fontWeight: 700, color: "#D97706" })}>{money(r2(sp.amount), inv.currency)}</td>
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>}
+              </div>;
+            })()}
+            {cnSegment === "creditnotes" && <>
             {/* Create Credit Note */}
             <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--accent)", padding: "28px 32px", marginBottom: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Create Credit Note</div>
@@ -19037,6 +19284,8 @@ export default function FactoringDashboard() {
             })()}
 
             {/* Allocation Modal */}
+            </>}
+
             {allocCN && (function() {
               var avail = getCNRemaining(allocCN);
               var allocTotal = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
@@ -19326,7 +19575,7 @@ export default function FactoringDashboard() {
           var statCount = filteredForStats.length;
           var statPending = filteredForStats.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; }).length;
           var statPurchased = filteredForStats.filter(function(inv) { return inv.fundingStatus === "purchased"; }).length;
-          var statFunded = filteredForStats.filter(function(inv) { return inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode"; }).length;
+          var statFunded = filteredForStats.filter(function(inv) { return inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance"; }).length;
           var statDnf = filteredForStats.filter(function(inv) { return inv.doNotFund; }).length;
           var statDna = filteredForStats.filter(function(inv) { return inv.doNotAdvance; }).length;
           var ccyGroups = {};
