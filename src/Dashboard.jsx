@@ -800,6 +800,7 @@ function unpackInvoiceRow(row) {
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
     doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false,
+    writtenDownShort: row.written_down_short || false, writeDownDate: row.write_down_date || null,
     pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
     tranches: row.tranches || [],
     voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null,
@@ -838,6 +839,7 @@ function packInvoiceRow(inv) {
     invoice_status_history: inv.invoiceStatusHistory || [],
     adjustments: inv.adjustments || [],
     do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false,
+    written_down_short: inv.writtenDownShort || false, write_down_date: inv.writeDownDate || null,
     pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
     tranches: inv.tranches || [],
     voided: inv.voided || false, voided_at: inv.voidedAt || null, voided_by: inv.voidedBy || null, void_reason: inv.voidReason || null,
@@ -1581,6 +1583,7 @@ async function saveFundingProgram(progId) {
       min_invoice_size: fp.minInvoiceSize || 0,
       threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
       threshold_recovery: fp.thresholdRecovery || 30,
+        threshold_deemed: fp.thresholdDeemed || 60,
       threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
       max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
       max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
@@ -2310,6 +2313,7 @@ async function loadPersistedData() {
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
+          thresholdDeemed: row.threshold_deemed || 60,
           thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
           maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
           maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
@@ -2855,6 +2859,7 @@ async function reloadFundingPrograms() {
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
+          thresholdDeemed: row.threshold_deemed || 60,
           thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
           maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
           maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
@@ -2994,6 +2999,7 @@ async function savePersistedData() {
         min_invoice_size: fp.minInvoiceSize || 0,
         threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
         threshold_recovery: fp.thresholdRecovery || 30,
+        threshold_deemed: fp.thresholdDeemed || 60,
         threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
         max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
         max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
@@ -3412,7 +3418,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       var _setD = _setE ? _setE.date : null;
       var _bRem = BUYERS_DB.find(function(b) { return b.id === rawInv.buyerId; });
       var _slaD = (_bRem && _bRem.remittanceSlaDays != null) ? _bRem.remittanceSlaDays : 5;
-      fs = (_setD && businessDaysBetween(_setD, viewDate) > _slaD) ? "recovery_mode" : "awaiting_remittance";
+      fs = (rawInv.writtenDownShort || (_setD && businessDaysBetween(_setD, viewDate) > _slaD)) ? "recovery_mode" : "awaiting_remittance";
     }
     else if (statusAsOfDate === "Cancelled" && debtBal > 0.01) fs = "recovery_mode";
     else if (statusAsOfDate === "Declined") fs = "recovery_mode";
@@ -3547,7 +3553,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
       penaltyInterest: r2(penBal), penaltyAccrued: r2(penaltyAccrued), interestOutstanding: r2(intBal),
-      capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd),
+      capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd), daysOverdue: daysOverdue,
       holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
       holdbackOutstanding: r2(hbBal), holdbackOverdrawn: holdbackOverdrawn,
       totalOutstanding: r2(intBal + penBal + capBal + Math.max(hbBal, holdbackOverdrawn)),
@@ -3638,6 +3644,53 @@ function shortPayDilution(inv) {
   return { amount: 0, type: "none", basis: null, collected: null, face: r2(face) };
 }
 
+// ---------------------------------------------------------------------------
+// Deemed vs Actual dilution -- single source of truth (per invoice).
+//
+// ACTUAL  = confirmed not-arriving (receivable basis): credit notes + approval
+//           haircut (Approved in Part) + the uncollected balance once an outcome
+//           is confirmed (operator write-down / Cancelled / Declined).
+// DEEMED  = funder provision on an aged-but-unconfirmed invoice, once it is past
+//           the programme's thresholdDeemed (days past due). Reversible.
+//
+// NOTE (Andy's decision -- MAY REVISIT): deemed provisions CAPITAL ONLY. To switch
+// to capital + interest, change `deemedGross` below to
+//   r2((inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0)).
+// Net-of-holdback is the headline funder loss; gross + holdback are returned too
+// so either figure can be surfaced without recompute.
+// ---------------------------------------------------------------------------
+function invDilutionDA(inv) {
+  var face = inv.amount || 0;
+  var collected = (inv.fundingStatus === "historic") ? (inv.csvAmountPaid || 0) : (inv.totalBuyerPaid || 0);
+  var cn = r2(Math.max(0, (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0)));
+  var uncollected = r2(Math.max(0, face - collected - cn));
+  var st = inv.invoiceStatus;
+  // confirmed bad outcome -> uncollected balance is a known loss
+  var confirmedBad = (inv.writtenDownShort === true)
+    || (st === "Cancelled" && uncollected > 0.005)
+    || (st === "Declined" && uncollected > 0.005);
+  var actualShort = 0;
+  if (confirmedBad) {
+    actualShort = uncollected;
+  } else if (st === "Approved in Part" && (inv.partialApprovedAmount || 0) > 0 && inv.partialApprovedAmount < face - 0.005) {
+    actualShort = r2(face - inv.partialApprovedAmount);
+  }
+  var actual = r2(cn + actualShort);
+  // deemed provision: aged past funder threshold AND not already confirmed/settled-clean
+  var prog = inv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }) : null;
+  var thD = (prog && prog.thresholdDeemed != null) ? prog.thresholdDeemed : 60;
+  var aged = (inv.daysOverdue || 0) > thD;
+  var deemedGross = 0, deemedHoldback = 0, deemedNet = 0;
+  if (aged && !confirmedBad) {
+    deemedGross = r2(inv.capitalOutstanding || 0);           // CAPITAL ONLY -- see note above
+    deemedHoldback = r2(inv.holdbackOutstanding || 0);
+    deemedNet = r2(Math.max(0, deemedGross - deemedHoldback));
+  }
+  return { actual: actual, cn: r2(cn), actualShort: r2(actualShort), confirmedBad: confirmedBad,
+           deemedGross: deemedGross, deemedHoldback: deemedHoldback, deemedNet: deemedNet,
+           uncollected: uncollected, collected: r2(collected), face: r2(face) };
+}
+
 // Per-invoice dilution contributors, mirroring the rate numerators exactly so a
 // breakdown reconciles to the headline Dilution Value. mode "supplier" = invoice-
 // status numerator (CN + short-pay + disputed full); mode "funded" = funding-status
@@ -3647,8 +3700,9 @@ function invDilutionParts(inv, mode) {
   var cn = (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0);
   if (cn > 0.005) parts.push({ label: "Credit notes", amount: r2(cn) });
   if (mode === "funded") {
-    if (inv.fundingStatus === "recovery_mode") { parts.push({ label: "Recovery (full face)", amount: r2(inv.amount || 0) }); }
-    else { var sp = shortPayDilution(inv); if (sp.amount > 0.005) parts.push({ label: sp.type === "crystallised" ? "Short payment (crystallised)" : "Approval haircut (forecast)", amount: sp.amount }); }
+    var daP = invDilutionDA(inv);
+    if (daP.actualShort > 0.005) parts.push({ label: daP.confirmedBad ? "Short settlement (confirmed)" : "Approval haircut", amount: r2(daP.actualShort) });
+    if (daP.deemedNet > 0.005) parts.push({ label: "Deemed (provision, net of holdback)", amount: r2(daP.deemedNet) });
   } else {
     var sp2 = shortPayDilution(inv); if (sp2.amount > 0.005) parts.push({ label: sp2.type === "crystallised" ? "Short payment (crystallised)" : "Approval haircut (forecast)", amount: sp2.amount });
     if (inv.invoiceStatus === "Disputed") parts.push({ label: "Disputed (full face)", amount: r2(inv.amount || 0) });
@@ -4861,7 +4915,7 @@ export default function FactoringDashboard() {
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
       var fN = 0, fD = 0;
-      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; fN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); if (inv.fundingStatus !== "recovery_mode") fN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") fN += a; });
+      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; var _daF = invDilutionDA(inv); fN += _daF.actual + _daF.deemedNet; });
       if (supUnalloc > 0) fN += supUnalloc;
       // Period dilutions
       function pDil(days, useInvDate) {
@@ -7533,9 +7587,7 @@ export default function FactoringDashboard() {
           if (!fdilEligibleFS[inv.fundingStatus]) return;
           var invAmt = inv.amount || 0;
           fdilDen += invAmt;
-          fdilNum += inv.dilutionTotal || 0;
-          if (inv.fundingStatus !== "recovery_mode") fdilNum += shortPayDilution(inv).amount;
-          if (inv.fundingStatus === "recovery_mode") fdilNum += invAmt;
+          var _daF7 = invDilutionDA(inv); fdilNum += _daF7.actual + _daF7.deemedNet;
         });
         var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
         // 30-day and 90-day funded dilution
@@ -10553,6 +10605,9 @@ export default function FactoringDashboard() {
                                     {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
+                                    {/* Write-down: operator confirms no further buyer payments. Crystallises Actual dilution + supplier recourse. */}
+                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback)."); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
+                                    {inv.writtenDownShort && <span style={{ padding: "5px 12px", borderRadius: 7, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262640", fontSize: 11, fontWeight: 700 }} title={"Written down" + (inv.writeDownDate ? " on " + inv.writeDownDate : "") + ". Uncollected balance crystallised as Actual dilution; the funded residual is a supplier recourse debt (net of holdback), accruing at the penalty rate until the supplier clears it."}>Settled Short \u2014 Recourse</span>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: adjInv === inv.id && adjType === "credit" ? "#2E8B5720" : "transparent", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
@@ -10784,9 +10839,7 @@ export default function FactoringDashboard() {
             if (!fdilEligibleFS[inv.fundingStatus]) return;
             var invAmt = inv.amount || 0;
             fdilDenominator += invAmt;
-            fdilNumerator += inv.dilutionTotal || 0;
-            if (inv.fundingStatus !== "recovery_mode") fdilNumerator += shortPayDilution(inv).amount;
-            if (inv.fundingStatus === "recovery_mode") fdilNumerator += invAmt;
+            var _daF10 = invDilutionDA(inv); fdilNumerator += _daF10.actual + _daF10.deemedNet;
           });
           // Include unallocated credit notes in funded dilution numerator
           if (supUnallocCN > 0) fdilNumerator += supUnallocCN;
@@ -13316,7 +13369,7 @@ export default function FactoringDashboard() {
                   // Funded dilution
                   var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
                   var bfN = 0, bfD = 0;
-                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; bfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode") bfN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") bfN += a; });
+                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; var _daFb = invDilutionDA(inv); bfN += _daFb.actual + _daFb.deemedNet; });
                   if (buyUnalloc > 0) bfN += buyUnalloc;
                   var bfRate = bfD > 0.01 ? (bfN / bfD) * 100 : 0;
                   var fbadFS = { "write_off": true, "recovery_mode": true };
@@ -13345,7 +13398,7 @@ export default function FactoringDashboard() {
                     var parentUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(parentBuyName) || 0) : 0;
                     if (parentUnalloc > 0) pN += parentUnalloc;
                     var pfN = 0, pfD = 0;
-                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; pfN += inv.dilutionTotal || 0; if (inv.fundingStatus !== "recovery_mode") pfN += shortPayDilution(inv).amount; if (inv.fundingStatus === "recovery_mode") pfN += a; });
+                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; var _daFp = invDilutionDA(inv); pfN += _daFp.actual + _daFp.deemedNet; });
                     if (parentUnalloc > 0) pfN += parentUnalloc;
                     parentBd = {
                       dilRate: pD > 0.01 ? (pN / pD) * 100 : 0,
@@ -14016,9 +14069,7 @@ export default function FactoringDashboard() {
               allProgInvs.forEach(function(inv) {
                 if (!fdilFS[inv.fundingStatus]) return;
                 var a = inv.amount || 0; fdilDen += a;
-                fdilNum += inv.dilutionTotal || 0;
-                if (inv.fundingStatus !== "recovery_mode") fdilNum += shortPayDilution(inv).amount;
-                if (inv.fundingStatus === "recovery_mode") fdilNum += a;
+                var _daF14 = invDilutionDA(inv); fdilNum += _daF14.actual + _daF14.deemedNet;
               });
               // Include unallocated credit notes in funded dilution
               if (progUnallocCN > 0) fdilNum += progUnallocCN;
@@ -15271,6 +15322,9 @@ export default function FactoringDashboard() {
                                     {inv.voided && <button onClick={function() { setVoidPromptReason(""); setVoidPrompt({ kind: "invoice", action: "unvoid", id: inv.id, name: inv.supplierName + " \u2192 " + inv.buyerName, amount: inv.amount, currency: inv.currency }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Restore this invoice — it will count in calculations again.">Un-void Invoice</button>}
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
+                                    {/* Write-down: operator confirms no further buyer payments. Crystallises Actual dilution + supplier recourse. */}
+                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback)."); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
+                                    {inv.writtenDownShort && <span style={{ padding: "5px 12px", borderRadius: 7, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262640", fontSize: 11, fontWeight: 700 }} title={"Written down" + (inv.writeDownDate ? " on " + inv.writeDownDate : "") + ". Uncollected balance crystallised as Actual dilution; the funded residual is a supplier recourse debt (net of holdback), accruing at the penalty rate until the supplier clears it."}>Settled Short \u2014 Recourse</span>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
                                     <button onClick={function() { setAdjInv(adjInv === inv.id && adjType === "credit" ? null : inv.id); setAdjType("credit"); setAdjPenalty(""); setAdjInterest(""); setAdjCapital(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: adjInv === inv.id && adjType === "credit" ? "#2E8B5720" : "transparent", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Credit Adjustment</button>
@@ -18979,6 +19033,34 @@ export default function FactoringDashboard() {
           }
 
           return <div>
+            {/* Four-totals summary: two lenses (operator exposure + funder dilution) */}
+            {(function() {
+              var actual = {}, deemedNet = {}, deemedGross = {}, recovery = {}, atRisk = {};
+              function add(m, ccy, v) { if (v > 0.005) m[ccy] = (m[ccy] || 0) + v; }
+              viewData.invoices.forEach(function(inv) {
+                var ccy = inv.currency || "GBP";
+                var da = invDilutionDA(inv);
+                add(actual, ccy, da.actual); add(deemedNet, ccy, da.deemedNet); add(deemedGross, ccy, da.deemedGross);
+                if (inv.fundingStatus === "recovery_mode") add(recovery, ccy, inv.balanceOwed || inv.totalOutstanding || 0);
+                if (inv.fundingStatus === "at_risk") add(atRisk, ccy, inv.balanceOwed || inv.totalOutstanding || 0);
+              });
+              function fmtMap(m) { var ks = Object.keys(m); return ks.length === 0 ? money(0, "GBP") : ks.map(function(k) { return money(r2(m[k]), k); }).join("  \u00b7  "); }
+              var cards = [
+                { label: "Actual Dilution", sub: "confirmed not arriving", val: fmtMap(actual), color: "#DC2626", title: "Credit notes + approval haircuts + confirmed short settlements / cancelled / declined." },
+                { label: "Deemed Dilution", sub: "provision \u00b7 net of holdback", val: fmtMap(deemedNet), color: "#D97706", title: "Funder provision on invoices past the programme deemed threshold. Capital only, net of holdback. Gross (capital O/S): " + fmtMap(deemedGross) + "." },
+                { label: "Recovery", sub: "operator \u00b7 outstanding", val: fmtMap(recovery), color: "#EF4444", title: "Outstanding balance on invoices the operator is actively recovering." },
+                { label: "At Risk", sub: "operator \u00b7 outstanding", val: fmtMap(atRisk), color: "#8B5CF6", title: "Outstanding balance on invoices flagged at risk." }
+              ];
+              return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 20 }}>
+                {cards.map(function(cd, i) {
+                  return <div key={i} title={cd.title} style={{ background: "var(--card)", borderRadius: 12, padding: "14px 16px", borderLeft: "4px solid " + cd.color }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>{cd.label}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: cd.color, marginTop: 3, lineHeight: 1.15 }}>{cd.val}</div>
+                    <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 2 }}>{cd.sub}</div>
+                  </div>;
+                })}
+              </div>;
+            })()}
             {/* Dilution segment toggle */}
             <div style={{ display: "flex", gap: 4, marginBottom: 20, borderBottom: "1px solid var(--border)" }}>
               {[{ k: "creditnotes", l: "Credit Notes" }, { k: "shortpayments", l: "Short Payments" }].map(function(s) { var active = cnSegment === s.k; return <button key={s.k} onClick={function() { setCnSegment(s.k); }} style={{ padding: "9px 20px", border: "none", borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent", background: "transparent", color: active ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer", marginBottom: -1 }}>{s.l}</button>; })}
@@ -22669,6 +22751,7 @@ export default function FactoringDashboard() {
                   thresholdOverdue: parseInt(pf.thresholdOverdue) || 1,
                   thresholdAtRisk: parseInt(pf.thresholdAtRisk) || 7,
                   thresholdRecovery: parseInt(pf.thresholdRecovery) || 30,
+                  thresholdDeemed: parseInt(pf.thresholdDeemed) || 60,
                   thresholdDisputeAtRisk: parseInt(pf.thresholdDisputeAtRisk) || 1,
                   thresholdDisputeRecovery: parseInt(pf.thresholdDisputeRecovery) || 14,
                   minInvoiceTenor: parseInt(pf.minInvoiceTenor) || 0,
@@ -22714,6 +22797,7 @@ export default function FactoringDashboard() {
                   thresholdOverdue: String(p.thresholdOverdue !== undefined ? p.thresholdOverdue : "1"),
                   thresholdAtRisk: String(p.thresholdAtRisk !== undefined ? p.thresholdAtRisk : "7"),
                   thresholdRecovery: String(p.thresholdRecovery !== undefined ? p.thresholdRecovery : "30"),
+                  thresholdDeemed: String(p.thresholdDeemed !== undefined ? p.thresholdDeemed : "60"),
                   thresholdDisputeAtRisk: String(p.thresholdDisputeAtRisk !== undefined ? p.thresholdDisputeAtRisk : "1"),
                   thresholdDisputeRecovery: String(p.thresholdDisputeRecovery !== undefined ? p.thresholdDisputeRecovery : "14"),
                   minInvoiceTenor: String(p.minInvoiceTenor || ""),
@@ -23043,6 +23127,10 @@ export default function FactoringDashboard() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#DC2626" }}>Recovery After</label>
                         <input type="number" step="1" value={pf.thresholdRecovery !== undefined ? pf.thresholdRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdRecovery: e.target.value }); }); }} placeholder="30" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#B91C1C" }} title="Funder deemed-dilution threshold: days past due before the unpaid balance is provisioned as Deemed Dilution. Sits outside the operator's Recovery threshold.">Deemed (Funder)</label>
+                        <input type="number" step="1" value={pf.thresholdDeemed !== undefined ? pf.thresholdDeemed : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDeemed: e.target.value }); }); }} placeholder="60" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "#8B5CF6" }}>Dispute At Risk</label>
@@ -23486,7 +23574,7 @@ export default function FactoringDashboard() {
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                   <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Funding Programs {mpHasActive && filteredProgs.length !== FUNDING_PROGRAMS_DB.length ? "(" + filteredProgs.length + " of " + FUNDING_PROGRAMS_DB.length + ")" : "(" + FUNDING_PROGRAMS_DB.length + ")"}</div>
-                    {!editing && <button onClick={function() { setShowNewProgram(true); setEditProg(null); setProgFields({ currency: "GBP", maxAdvanceRate: String((ADVANCE_RATE * 100).toFixed(0)), minInterestRate: String((ANNUAL_RATE * 100).toFixed(1)), maxInvoiceTerm: "90", thresholdOverdue: "1", thresholdAtRisk: "7", thresholdRecovery: "30", thresholdDisputeAtRisk: "1", thresholdDisputeRecovery: "14", minInvoiceTenor: "", minInvoiceSize: "", maxSupDilLive: "", maxSupDil30: "", maxSupDil90: "", maxFundDilLive: "", maxFundDil30: "", maxFundDil90: "", eligibleBuyers: [], eligibleSuppliers: [], eligibleBuyerJurisdictions: [], eligibleSupplierJurisdictions: [] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>New Program</button>}
+                    {!editing && <button onClick={function() { setShowNewProgram(true); setEditProg(null); setProgFields({ currency: "GBP", maxAdvanceRate: String((ADVANCE_RATE * 100).toFixed(0)), minInterestRate: String((ANNUAL_RATE * 100).toFixed(1)), maxInvoiceTerm: "90", thresholdOverdue: "1", thresholdAtRisk: "7", thresholdRecovery: "30", thresholdDeemed: "60", thresholdDisputeAtRisk: "1", thresholdDisputeRecovery: "14", minInvoiceTenor: "", minInvoiceSize: "", maxSupDilLive: "", maxSupDil30: "", maxSupDil90: "", maxFundDilLive: "", maxFundDil30: "", maxFundDil90: "", eligibleBuyers: [], eligibleSuppliers: [], eligibleBuyerJurisdictions: [], eligibleSupplierJurisdictions: [] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>New Program</button>}
                   </div>
                   {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <input type="text" value={mgProgSearch} onChange={function(e) { setMgProgSearch(e.target.value); }} placeholder="Search programs..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
