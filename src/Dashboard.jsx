@@ -3682,9 +3682,11 @@ function invDilutionDA(inv) {
   var uncollected = r2(Math.max(0, face - collected - cn));
   var st = inv.invoiceStatus;
   // confirmed bad outcome -> uncollected balance is a known loss
+  // (incl. a closed Settled invoice that came up short net of credit notes)
   var confirmedBad = (inv.writtenDownShort === true)
     || (st === "Cancelled" && uncollected > 0.005)
-    || (st === "Declined" && uncollected > 0.005);
+    || (st === "Declined" && uncollected > 0.005)
+    || (st === "Settled" && uncollected > 0.005);
   var actualShort = 0;
   if (confirmedBad) {
     actualShort = uncollected;
@@ -3708,21 +3710,18 @@ function invDilutionDA(inv) {
 }
 
 // Per-invoice dilution contributors, mirroring the rate numerators exactly so a
-// breakdown reconciles to the headline Dilution Value. mode "supplier" = invoice-
-// status numerator (CN + short-pay + disputed full); mode "funded" = funding-status
-// numerator (CN + short-pay, or full face in recovery_mode).
+// breakdown reconciles to the headline Total Dilution. All dilution rates are now
+// Total = Actual + Deemed, so both modes itemise the same contributors:
+//   Actual = credit notes + confirmed short / approval haircut
+//   Deemed = aging provision (net of holdback), funder-driven but attributed to
+//            the supplier/buyer for trigger + granularity purposes.
+// The mode arg is retained for callers but no longer changes the parts.
 function invDilutionParts(inv, mode) {
   var parts = [];
-  var cn = (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0);
-  if (cn > 0.005) parts.push({ label: "Credit notes", amount: r2(cn) });
-  if (mode === "funded") {
-    var daP = invDilutionDA(inv);
-    if (daP.actualShort > 0.005) parts.push({ label: daP.confirmedBad ? "Short settlement (confirmed)" : "Approval haircut", amount: r2(daP.actualShort) });
-    if (daP.deemedNet > 0.005) parts.push({ label: "Deemed (provision, net of holdback)", amount: r2(daP.deemedNet) });
-  } else {
-    var sp2 = shortPayDilution(inv); if (sp2.amount > 0.005) parts.push({ label: sp2.type === "crystallised" ? "Short payment (crystallised)" : "Approval haircut (forecast)", amount: sp2.amount });
-    if (inv.invoiceStatus === "Disputed") parts.push({ label: "Disputed (full face)", amount: r2(inv.amount || 0) });
-  }
+  var daP = invDilutionDA(inv);
+  if (daP.cn > 0.005) parts.push({ label: "Credit notes", amount: r2(daP.cn) });
+  if (daP.actualShort > 0.005) parts.push({ label: daP.confirmedBad ? "Short settlement (confirmed)" : "Approval haircut", amount: r2(daP.actualShort) });
+  if (daP.deemedNet > 0.005) parts.push({ label: "Deemed (provision, net of holdback)", amount: r2(daP.deemedNet) });
   return parts;
 }
 // Build the contributor list for a card. The remainder (headline minus itemised
@@ -4920,28 +4919,38 @@ export default function FactoringDashboard() {
       // Current supplier dilution. Stage 1.7: pass-through CN allocations (against
       // unfunded invoices) reduce inv.dilutionTotal but not the funder's exposure —
       // exclude them from the numerator so dilution rate reflects Pelagic's risk.
-      var dN = 0, dD = 0;
-      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); dN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") dN += a; });
+      var dNa = 0, dNd = 0, dD = 0;
+      invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; var _da = invDilutionDA(inv); dNa += _da.actual; dNd += _da.deemedNet; });
       // Add unallocated credit note amounts for this supplier. Note: branch-keyed
       // buckets don't have a corresponding cnUnallocBySupplier entry yet — the
       // unallocated CN tracking is parent-keyed in viewData. Branch dilution
       // therefore omits unallocated CN contribution today; if branch-keyed CN
       // tracking gets added later, wire it here.
       var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(sup) || 0) : 0;
-      if (supUnalloc > 0) dN += supUnalloc;
+      if (supUnalloc > 0) dNa += supUnalloc;
       // Current funded dilution
-      var fN = 0, fD = 0;
-      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; var _daF = invDilutionDA(inv); fN += _daF.actual + _daF.deemedNet; });
-      if (supUnalloc > 0) fN += supUnalloc;
+      var fNa = 0, fNd = 0, fD = 0;
+      invs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; fD += a; var _daF = invDilutionDA(inv); fNa += _daF.actual; fNd += _daF.deemedNet; });
+      if (supUnalloc > 0) fNa += supUnalloc;
       // Period dilutions
       function pDil(days, useInvDate) {
         var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
-        var n = 0, d = 0, inc = {};
-        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += (inv.dilutionTotal || 0) - (inv.passThroughDilutionTotal || 0); n += shortPayDilution(inv).amount; if (badStatuses[inv.invoiceStatus]) n += a; });
-        if (!useInvDate) invs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
-        return d > 0.01 ? (n / d) * 100 : 0;
+        var na = 0, nd = 0, d = 0;
+        invs.forEach(function(inv) { var dt = useInvDate ? inv.invoiceDate : inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; var _dp = invDilutionDA(inv); na += _dp.actual; nd += _dp.deemedNet; });
+        var ra = d > 0.01 ? (na / d) * 100 : 0, rd = d > 0.01 ? (nd / d) * 100 : 0;
+        return { total: ra + rd, actual: ra, deemed: rd };
       }
-      rates[sup] = { dilRate: dD > 0.01 ? (dN / dD) * 100 : 0, fdilRate: fD > 0.01 ? (fN / fD) * 100 : 0, dil30: pDil(30, true), dil90: pDil(90, true), fdil30: pDil(30, false), fdil90: pDil(90, false) };
+      var _d30 = pDil(30, true), _d90 = pDil(90, true), _f30 = pDil(30, false), _f90 = pDil(90, false);
+      var dRA = dD > 0.01 ? (dNa / dD) * 100 : 0, dRD = dD > 0.01 ? (dNd / dD) * 100 : 0;
+      var fRA = fD > 0.01 ? (fNa / fD) * 100 : 0, fRD = fD > 0.01 ? (fNd / fD) * 100 : 0;
+      rates[sup] = {
+        dilRate: dRA + dRD, dilRateA: dRA, dilRateD: dRD,
+        fdilRate: fRA + fRD, fdilRateA: fRA, fdilRateD: fRD,
+        dil30: _d30.total, dil30A: _d30.actual, dil30D: _d30.deemed,
+        dil90: _d90.total, dil90A: _d90.actual, dil90D: _d90.deemed,
+        fdil30: _f30.total, fdil30A: _f30.actual, fdil30D: _f30.deemed,
+        fdil90: _f90.total, fdil90A: _f90.actual, fdil90D: _f90.deemed
+      };
     });
     return rates;
   }, [viewData, viewDate]);
@@ -7598,31 +7607,34 @@ export default function FactoringDashboard() {
         var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
         var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
         // Current funded dilution
-        var fdilNum = 0, fdilDen = 0;
+        var fdilNumA = 0, fdilNumD = 0, fdilDen = 0;
         spInvs.forEach(function(inv) {
           if (!fdilEligibleFS[inv.fundingStatus]) return;
           var invAmt = inv.amount || 0;
           fdilDen += invAmt;
-          var _daF7 = invDilutionDA(inv); fdilNum += _daF7.actual + _daF7.deemedNet;
+          var _daF7 = invDilutionDA(inv); fdilNumA += _daF7.actual; fdilNumD += _daF7.deemedNet;
         });
+        var fdilNum = fdilNumA + fdilNumD;
         var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
+        var fdilRateA = fdilDen > 0.01 ? (fdilNumA / fdilDen) * 100 : 0;
+        var fdilRateD = fdilDen > 0.01 ? (fdilNumD / fdilDen) * 100 : 0;
         // 30-day and 90-day funded dilution
         function calcFDil(days) {
           var cutoff = new Date(viewDate + "T12:00:00"); cutoff.setDate(cutoff.getDate() - days);
           var cutoffStr = cutoff.toISOString().split("T")[0];
-          var pN = 0, pD = 0;
+          var pNa = 0, pNd = 0, pD = 0;
           spInvs.forEach(function(inv) {
             if (!inv.fundedDate || inv.fundedDate < cutoffStr) return;
             var a = inv.amount || 0;
             pD += a;
-            pN += inv.dilutionTotal || 0;
-            pN += shortPayDilution(inv).amount;
-            if (badStatuses[inv.invoiceStatus]) pN += a;
+            var _cf = invDilutionDA(inv); pNa += _cf.actual; pNd += _cf.deemedNet;
           });
-          return pD > 0.01 ? (pN / pD) * 100 : 0;
+          var ra = pD > 0.01 ? (pNa / pD) * 100 : 0, rd = pD > 0.01 ? (pNd / pD) * 100 : 0;
+          return { total: ra + rd, actual: ra, deemed: rd };
         }
-        var fdil30 = calcFDil(30);
-        var fdil90 = calcFDil(90);
+        var _fd30 = calcFDil(30), _fd90 = calcFDil(90);
+        var fdil30 = _fd30.total, fdil30A = _fd30.actual, fdil30D = _fd30.deemed;
+        var fdil90 = _fd90.total, fdil90A = _fd90.actual, fdil90D = _fd90.deemed;
         // Program max dilution limits
         var progMaxDilLive = activeProg ? (activeProg.maxFundDilLive || 0) : 0;
         var progMaxDil30 = activeProg ? (activeProg.maxFundDil30 || 0) : 0;
@@ -7880,21 +7892,21 @@ export default function FactoringDashboard() {
                       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                         React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "Current"),
                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                          React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: progMaxDilLive > 0 && fdilRate > progMaxDilLive ? spRed : spText, fontFamily: spMono } }, fdilRate.toFixed(1) + "%"),
+                          React.createElement("span", { style: { fontSize: 16, fontWeight: 700, color: progMaxDilLive > 0 && fdilRate > progMaxDilLive ? spRed : spText, fontFamily: spMono, cursor: "help" }, title: "Total " + fdilRate.toFixed(1) + "% \u2014 " + fdilRateA.toFixed(1) + "% Actual + " + fdilRateD.toFixed(1) + "% Deemed" }, fdilRate.toFixed(1) + "%"),
                           progMaxDilLive > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDilLive.toFixed(1) + "%") : null
                         )
                       ),
                       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                         React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "30 Day"),
                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil30 > 0 && fdil30 > progMaxDil30 ? spRed : spText, fontFamily: spMono } }, fdil30.toFixed(1) + "%"),
+                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil30 > 0 && fdil30 > progMaxDil30 ? spRed : spText, fontFamily: spMono, cursor: "help" }, title: "Total " + fdil30.toFixed(1) + "% \u2014 " + fdil30A.toFixed(1) + "% Actual + " + fdil30D.toFixed(1) + "% Deemed" }, fdil30.toFixed(1) + "%"),
                           progMaxDil30 > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDil30.toFixed(1) + "%") : null
                         )
                       ),
                       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                         React.createElement("span", { style: { fontSize: 11, color: spMuted, fontFamily: spFont } }, "90 Day"),
                         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil90 > 0 && fdil90 > progMaxDil90 ? spRed : spText, fontFamily: spMono } }, fdil90.toFixed(1) + "%"),
+                          React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: progMaxDil90 > 0 && fdil90 > progMaxDil90 ? spRed : spText, fontFamily: spMono, cursor: "help" }, title: "Total " + fdil90.toFixed(1) + "% \u2014 " + fdil90A.toFixed(1) + "% Actual + " + fdil90D.toFixed(1) + "% Deemed" }, fdil90.toFixed(1) + "%"),
                           progMaxDil90 > 0 ? React.createElement("span", { style: { fontSize: 9, color: spMuted, fontFamily: spMono } }, "/ " + progMaxDil90.toFixed(1) + "%") : null
                         )
                       )
@@ -8433,7 +8445,8 @@ export default function FactoringDashboard() {
                                                 );
                                               })()
                                             )
-                                          )
+                                          ),
+                                          p.supplierContribution && React.createElement("span", { style: { marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#D9770618", color: "#D97706", border: "1px solid #D9770640", fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }, title: p.contributionType === "holdback" ? "Supplier contribution \u2014 redirected holdback. Reduces the balance but is not a buyer collection." : "Supplier contribution \u2014 recourse repayment. Reduces the balance but is not a buyer collection." }, p.contributionType === "holdback" ? "Supplier \u00b7 HB" : "Supplier")
                                         ),
                                           React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, color: spText } }, fmt(p.date)),
                                           React.createElement("td", { style: { padding: "8px 10px", fontSize: 11, fontFamily: spMono, color: spGreen } }, money(p.amount, inv.currency)),
@@ -10834,32 +10847,36 @@ export default function FactoringDashboard() {
           // Supplier Dilution Rate
           // Eligible invoices: Received, Approved in Full, Approved in Part, Disputed
           var dilEligibleStatuses = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
-          var dilNumerator = 0, dilDenominator = 0;
+          var dilNumeratorA = 0, dilNumeratorD = 0, dilDenominator = 0;
           supInvs.forEach(function(inv) {
             if (!dilEligibleStatuses[inv.invoiceStatus]) return;
             var invAmt = inv.amount || 0;
             dilDenominator += invAmt;
-            dilNumerator += inv.dilutionTotal || 0;
-            dilNumerator += shortPayDilution(inv).amount;
-            if (inv.invoiceStatus === "Disputed") dilNumerator += invAmt;
+            var _daS = invDilutionDA(inv); dilNumeratorA += _daS.actual; dilNumeratorD += _daS.deemedNet;
           });
-          // Include unallocated credit notes in dilution numerator
+          // Include unallocated credit notes in dilution numerator (booked to Actual)
           var supUnallocCN = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(getEntityDisplayName(selectedSupplier) || getParentSupplierName(selectedSupplier)) || 0) : 0;
-          if (supUnallocCN > 0) dilNumerator += supUnallocCN;
+          if (supUnallocCN > 0) dilNumeratorA += supUnallocCN;
+          var dilNumerator = dilNumeratorA + dilNumeratorD;
           var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
+          var dilutionRateA = dilDenominator > 0.01 ? (dilNumeratorA / dilDenominator) * 100 : 0;
+          var dilutionRateD = dilDenominator > 0.01 ? (dilNumeratorD / dilDenominator) * 100 : 0;
 
           // Current Funded Dilution Rate
           var fdilEligibleFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
-          var fdilNumerator = 0, fdilDenominator = 0;
+          var fdilNumeratorA = 0, fdilNumeratorD = 0, fdilDenominator = 0;
           supInvs.forEach(function(inv) {
             if (!fdilEligibleFS[inv.fundingStatus]) return;
             var invAmt = inv.amount || 0;
             fdilDenominator += invAmt;
-            var _daF10 = invDilutionDA(inv); fdilNumerator += _daF10.actual + _daF10.deemedNet;
+            var _daF10 = invDilutionDA(inv); fdilNumeratorA += _daF10.actual; fdilNumeratorD += _daF10.deemedNet;
           });
-          // Include unallocated credit notes in funded dilution numerator
-          if (supUnallocCN > 0) fdilNumerator += supUnallocCN;
+          // Include unallocated credit notes in funded dilution numerator (booked to Actual)
+          if (supUnallocCN > 0) fdilNumeratorA += supUnallocCN;
+          var fdilNumerator = fdilNumeratorA + fdilNumeratorD;
           var fdilutionRate = fdilDenominator > 0.01 ? (fdilNumerator / fdilDenominator) * 100 : 0;
+          var fdilutionRateA = fdilDenominator > 0.01 ? (fdilNumeratorA / fdilDenominator) * 100 : 0;
+          var fdilutionRateD = fdilDenominator > 0.01 ? (fdilNumeratorD / fdilDenominator) * 100 : 0;
 
           // Parent-rollup dilution context. When the user has drilled into a
           // specific branch (selectedSupplier carries a branchId), we show the
@@ -10875,7 +10892,11 @@ export default function FactoringDashboard() {
             // Show parent's "current" supplier dilution and "current funded" dilution
             parentRollup = {
               dilRate: supDilRates[_selParentId].dilRate || 0,
-              fdilRate: supDilRates[_selParentId].fdilRate || 0
+              dilRateA: supDilRates[_selParentId].dilRateA || 0,
+              dilRateD: supDilRates[_selParentId].dilRateD || 0,
+              fdilRate: supDilRates[_selParentId].fdilRate || 0,
+              fdilRateA: supDilRates[_selParentId].fdilRateA || 0,
+              fdilRateD: supDilRates[_selParentId].fdilRateD || 0
             };
           }
 
@@ -10884,17 +10905,16 @@ export default function FactoringDashboard() {
           function calcPeriodDilution(days) {
             var cutoff = new Date(viewDate + "T12:00:00"); cutoff.setDate(cutoff.getDate() - days);
             var cutoffStr = cutoff.toISOString().split("T")[0];
-            var pNum = 0, pDen = 0;
+            var pNa = 0, pNd = 0, pDen = 0;
             supInvs.forEach(function(inv) {
               if (!inv.invoiceDate || inv.invoiceDate < cutoffStr) return;
               var invAmt = inv.amount || 0;
               pDen += invAmt;
-              pNum += inv.dilutionTotal || 0;
-              pNum += shortPayDilution(inv).amount;
-              if (badStatuses[inv.invoiceStatus]) pNum += invAmt;
+              var _pp = invDilutionDA(inv); pNa += _pp.actual; pNd += _pp.deemedNet;
             });
-            if (supUnallocCN > 0) pNum += supUnallocCN;
-            return { numerator: r2(pNum), denominator: r2(pDen), rate: pDen > 0.01 ? (pNum / pDen) * 100 : 0 };
+            if (supUnallocCN > 0) pNa += supUnallocCN;
+            var ra = pDen > 0.01 ? (pNa / pDen) * 100 : 0, rd = pDen > 0.01 ? (pNd / pDen) * 100 : 0;
+            return { numerator: r2(pNa + pNd), numeratorA: r2(pNa), numeratorD: r2(pNd), denominator: r2(pDen), rate: ra + rd, rateA: ra, rateD: rd };
           }
           var dil30 = calcPeriodDilution(30);
           var dil90 = calcPeriodDilution(90);
@@ -10904,28 +10924,16 @@ export default function FactoringDashboard() {
           function calcFundedPeriodDilution(days) {
             var cutoff = new Date(viewDate + "T12:00:00"); cutoff.setDate(cutoff.getDate() - days);
             var cutoffStr = cutoff.toISOString().split("T")[0];
-            var pNum = 0, pDen = 0, included = {};
+            var pNa = 0, pNd = 0, pDen = 0;
             supInvs.forEach(function(inv) {
               if (!inv.fundedDate || inv.fundedDate < cutoffStr) return;
               var invAmt = inv.amount || 0;
               pDen += invAmt;
-              included[inv.id] = true;
-              pNum += inv.dilutionTotal || 0;
-              pNum += shortPayDilution(inv).amount;
-              if (badStatuses[inv.invoiceStatus]) pNum += invAmt;
+              var _pf = invDilutionDA(inv); pNa += _pf.actual; pNd += _pf.deemedNet;
             });
-            // Add invoices funded in period that are now in write-off, recovery or buyer default (if not already included)
-            supInvs.forEach(function(inv) {
-              if (included[inv.id]) return;
-              if (!inv.fundedDate || inv.fundedDate < cutoffStr) return;
-              if (badFundStatuses[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") {
-                var invAmt = inv.amount || 0;
-                pDen += invAmt;
-                pNum += invAmt;
-              }
-            });
-            if (supUnallocCN > 0) pNum += supUnallocCN;
-            return { numerator: r2(pNum), denominator: r2(pDen), rate: pDen > 0.01 ? (pNum / pDen) * 100 : 0 };
+            if (supUnallocCN > 0) pNa += supUnallocCN;
+            var ra = pDen > 0.01 ? (pNa / pDen) * 100 : 0, rd = pDen > 0.01 ? (pNd / pDen) * 100 : 0;
+            return { numerator: r2(pNa + pNd), numeratorA: r2(pNa), numeratorD: r2(pNd), denominator: r2(pDen), rate: ra + rd, rateA: ra, rateD: rd };
           }
           var fdil30 = calcFundedPeriodDilution(30);
           var fdil90 = calcFundedPeriodDilution(90);
@@ -11121,29 +11129,31 @@ export default function FactoringDashboard() {
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Supplier Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices in period"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: dilutionRate > 10 ? "#DC2626" : dilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilutionRate > 0 ? dilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{dilutionRateA.toFixed(1)}% Actual + {dilutionRateD.toFixed(1)}% Deemed</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
-                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.dilRate > 10 ? "#DC2626" : parentRollup.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.dilRate.toFixed(1)}%</span></div>}
+                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span title={"Total " + parentRollup.dilRate.toFixed(1) + "% \u2014 " + parentRollup.dilRateA.toFixed(1) + "% Actual + " + parentRollup.dilRateD.toFixed(1) + "% Deemed"} style={{ color: parentRollup.dilRate > 10 ? "#DC2626" : parentRollup.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600, cursor: "help" }}>{parentRollup.dilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Supplier Dilution", ccy: displayCcy, data: computeDilBreakdown(supInvs, "supplier", dilNumerator) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(dilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil30.rate > 10 ? "#DC2626" : dil30.rate > 5 ? "#D97706" : "#059669" }}>{dil30.rate > 0 ? dil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil30.numerator, displayCcy)} / {money(dil30.denominator, displayCcy)}</div></div>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil90.rate > 10 ? "#DC2626" : dil90.rate > 5 ? "#D97706" : "#059669" }}>{dil90.rate > 0 ? dil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil90.numerator, displayCcy)} / {money(dil90.denominator, displayCcy)}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil30.rate > 10 ? "#DC2626" : dil30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + dil30.rate.toFixed(1) + "% \u2014 " + dil30.rateA.toFixed(1) + "% Actual + " + dil30.rateD.toFixed(1) + "% Deemed"}>{dil30.rate > 0 ? dil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil30.numerator, displayCcy)} / {money(dil30.denominator, displayCcy)}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: dil90.rate > 10 ? "#DC2626" : dil90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + dil90.rate.toFixed(1) + "% \u2014 " + dil90.rateA.toFixed(1) + "% Actual + " + dil90.rateD.toFixed(1) + "% Deemed"}>{dil90.rate > 0 ? dil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(dil90.numerator, displayCcy)} / {money(dil90.denominator, displayCcy)}</div></div>
                   </div>
                 </div>
                 <div style={{ background: "var(--card)", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 3, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: fdilutionRate > 10 ? "#DC2626" : fdilutionRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilutionRate > 0 ? fdilutionRate.toFixed(1) + "%" : "0.0%"}</div>
+                  <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{fdilutionRateA.toFixed(1)}% Actual + {fdilutionRateD.toFixed(1)}% Deemed</div>
                   <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentRollup ? "This branch, current" : "Current"}</div>
-                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentRollup.fdilRate > 10 ? "#DC2626" : parentRollup.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentRollup.fdilRate.toFixed(1)}%</span></div>}
+                  {parentRollup && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span title={"Total " + parentRollup.fdilRate.toFixed(1) + "% \u2014 " + parentRollup.fdilRateA.toFixed(1) + "% Actual + " + parentRollup.fdilRateD.toFixed(1) + "% Deemed"} style={{ color: parentRollup.fdilRate > 10 ? "#DC2626" : parentRollup.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600, cursor: "help" }}>{parentRollup.fdilRate.toFixed(1)}%</span></div>}
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(supInvs, "funded", fdilNumerator) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(fdilNumerator), displayCcy)}</span></div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDenominator), displayCcy)}</span></div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil30.rate > 10 ? "#DC2626" : fdil30.rate > 5 ? "#D97706" : "#059669" }}>{fdil30.rate > 0 ? fdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil30.numerator, displayCcy)} / {money(fdil30.denominator, displayCcy)}</div></div>
-                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil90.rate > 10 ? "#DC2626" : fdil90.rate > 5 ? "#D97706" : "#059669" }}>{fdil90.rate > 0 ? fdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil90.numerator, displayCcy)} / {money(fdil90.denominator, displayCcy)}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil30.rate > 10 ? "#DC2626" : fdil30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + fdil30.rate.toFixed(1) + "% \u2014 " + fdil30.rateA.toFixed(1) + "% Actual + " + fdil30.rateD.toFixed(1) + "% Deemed"}>{fdil30.rate > 0 ? fdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil30.numerator, displayCcy)} / {money(fdil30.denominator, displayCcy)}</div></div>
+                    <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fdil90.rate > 10 ? "#DC2626" : fdil90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + fdil90.rate.toFixed(1) + "% \u2014 " + fdil90.rateA.toFixed(1) + "% Actual + " + fdil90.rateD.toFixed(1) + "% Deemed"}>{fdil90.rate > 0 ? fdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fdil90.numerator, displayCcy)} / {money(fdil90.denominator, displayCcy)}</div></div>
                   </div>
                 </div>
               </div>
@@ -13373,23 +13383,29 @@ export default function FactoringDashboard() {
                 {(function() {
                   // Buyer Dilution: invoices where buyer owes — based on invoice status
                   var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
-                  var bdN = 0, bdD = 0;
-                  buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; bdN += inv.dilutionTotal || 0; bdN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") bdN += a; });
+                  var bdNa = 0, bdNd = 0, bdD = 0;
+                  buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; var _bd = invDilutionDA(inv); bdNa += _bd.actual; bdNd += _bd.deemedNet; });
                   var buyUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(buyName(selectedBuyer)) || 0) : 0;
-                  if (buyUnalloc > 0) bdN += buyUnalloc;
+                  if (buyUnalloc > 0) bdNa += buyUnalloc;
+                  var bdN = bdNa + bdNd;
                   var bdRate = bdD > 0.01 ? (bdN / bdD) * 100 : 0;
+                  var bdRateA = bdD > 0.01 ? (bdNa / bdD) * 100 : 0;
+                  var bdRateD = bdD > 0.01 ? (bdNd / bdD) * 100 : 0;
                   // Period dilution
                   var pBadSt = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
-                  function bpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0; buyInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
+                  function bpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var na = 0, nd = 0, d = 0; buyInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; var _b = invDilutionDA(inv); na += _b.actual; nd += _b.deemedNet; }); var ra = d > 0.01 ? (na / d) * 100 : 0, rd = d > 0.01 ? (nd / d) * 100 : 0; return { numerator: r2(na + nd), numeratorA: r2(na), numeratorD: r2(nd), denominator: r2(d), rate: ra + rd, rateA: ra, rateD: rd }; }
                   var bd30 = bpDil(30), bd90 = bpDil(90);
                   // Funded dilution
                   var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
-                  var bfN = 0, bfD = 0;
-                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; var _daFb = invDilutionDA(inv); bfN += _daFb.actual + _daFb.deemedNet; });
-                  if (buyUnalloc > 0) bfN += buyUnalloc;
+                  var bfNa = 0, bfNd = 0, bfD = 0;
+                  buyInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; bfD += a; var _daFb = invDilutionDA(inv); bfNa += _daFb.actual; bfNd += _daFb.deemedNet; });
+                  if (buyUnalloc > 0) bfNa += buyUnalloc;
+                  var bfN = bfNa + bfNd;
                   var bfRate = bfD > 0.01 ? (bfN / bfD) * 100 : 0;
+                  var bfRateA = bfD > 0.01 ? (bfNa / bfD) * 100 : 0;
+                  var bfRateD = bfD > 0.01 ? (bfNd / bfD) * 100 : 0;
                   var fbadFS = { "write_off": true, "recovery_mode": true };
-                  function bfpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var n = 0, d = 0, inc = {}; buyInvs.forEach(function(inv) { var dt = inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; }); buyInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } }); return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 }; }
+                  function bfpDil(days) { var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0]; var na = 0, nd = 0, d = 0; buyInvs.forEach(function(inv) { var dt = inv.fundedDate; if (!dt || dt < cs) return; var a = inv.amount || 0; d += a; var _b = invDilutionDA(inv); na += _b.actual; nd += _b.deemedNet; }); var ra = d > 0.01 ? (na / d) * 100 : 0, rd = d > 0.01 ? (nd / d) * 100 : 0; return { numerator: r2(na + nd), numeratorA: r2(na), numeratorD: r2(nd), denominator: r2(d), rate: ra + rd, rateA: ra, rateD: rd }; }
                   var bf30 = bfpDil(30), bf90 = bfpDil(90);
 
                   // Parent-rollup dilution context. When the operator has
@@ -13407,47 +13423,53 @@ export default function FactoringDashboard() {
                     var parentInvs = viewData.invoices.filter(function(inv) {
                       return (inv.buyerId === _buyParentId) && invInProgramScope(inv, buyProgram);
                     });
-                    var pN = 0, pD = 0;
-                    parentInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; pD += a; pN += inv.dilutionTotal || 0; pN += shortPayDilution(inv).amount; if (inv.invoiceStatus === "Disputed") pN += a; });
-                    // Parent unallocated CN: use the parent's display name
+                    var pNa = 0, pNd = 0, pD = 0;
+                    parentInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; pD += a; var _p = invDilutionDA(inv); pNa += _p.actual; pNd += _p.deemedNet; });
+                    // Parent unallocated CN: use the parent's display name (booked to Actual)
                     var parentBuyName = buyName(_buyParentId);
                     var parentUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(parentBuyName) || 0) : 0;
-                    if (parentUnalloc > 0) pN += parentUnalloc;
-                    var pfN = 0, pfD = 0;
-                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; var _daFp = invDilutionDA(inv); pfN += _daFp.actual + _daFp.deemedNet; });
-                    if (parentUnalloc > 0) pfN += parentUnalloc;
+                    if (parentUnalloc > 0) pNa += parentUnalloc;
+                    var pfNa = 0, pfNd = 0, pfD = 0;
+                    parentInvs.forEach(function(inv) { if (!fdilFS[inv.fundingStatus]) return; var a = inv.amount || 0; pfD += a; var _daFp = invDilutionDA(inv); pfNa += _daFp.actual; pfNd += _daFp.deemedNet; });
+                    if (parentUnalloc > 0) pfNa += parentUnalloc;
                     parentBd = {
-                      dilRate: pD > 0.01 ? (pN / pD) * 100 : 0,
-                      fdilRate: pfD > 0.01 ? (pfN / pfD) * 100 : 0
+                      dilRate: pD > 0.01 ? ((pNa + pNd) / pD) * 100 : 0,
+                      dilRateA: pD > 0.01 ? (pNa / pD) * 100 : 0,
+                      dilRateD: pD > 0.01 ? (pNd / pD) * 100 : 0,
+                      fdilRate: pfD > 0.01 ? ((pfNa + pfNd) / pfD) * 100 : 0,
+                      fdilRateA: pfD > 0.01 ? (pfNa / pfD) * 100 : 0,
+                      fdilRateD: pfD > 0.01 ? (pfNd / pfD) * 100 : 0
                     };
                   }
 
                   return <><div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Buyer Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bdRate > 10 ? "#DC2626" : bdRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bdRate > 0 ? bdRate.toFixed(1) + "%" : "0.0%"}</div>
+                    <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{bdRateA.toFixed(1)}% Actual + {bdRateD.toFixed(1)}% Deemed</div>
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
-                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.dilRate > 10 ? "#DC2626" : parentBd.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.dilRate.toFixed(1)}%</span></div>}
+                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span title={"Total " + parentBd.dilRate.toFixed(1) + "% \u2014 " + parentBd.dilRateA.toFixed(1) + "% Actual + " + parentBd.dilRateD.toFixed(1) + "% Deemed"} style={{ color: parentBd.dilRate > 10 ? "#DC2626" : parentBd.dilRate > 5 ? "#D97706" : "#059669", fontWeight: 600, cursor: "help" }}>{parentBd.dilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Buyer Dilution", ccy: displayCcy, data: computeDilBreakdown(buyInvs, "supplier", bdN) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(bdN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bdD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bd30.rate > 10 ? "#DC2626" : bd30.rate > 5 ? "#D97706" : "#059669" }}>{bd30.rate > 0 ? bd30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bd30.numerator, displayCcy)} / {money(bd30.denominator, displayCcy)}</div></div>
-                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bd90.rate > 10 ? "#DC2626" : bd90.rate > 5 ? "#D97706" : "#059669" }}>{bd90.rate > 0 ? bd90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bd90.numerator, displayCcy)} / {money(bd90.denominator, displayCcy)}</div></div>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bd30.rate > 10 ? "#DC2626" : bd30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + bd30.rate.toFixed(1) + "% \u2014 " + bd30.rateA.toFixed(1) + "% Actual + " + bd30.rateD.toFixed(1) + "% Deemed"}>{bd30.rate > 0 ? bd30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bd30.numerator, displayCcy)} / {money(bd30.denominator, displayCcy)}</div></div>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bd90.rate > 10 ? "#DC2626" : bd90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + bd90.rate.toFixed(1) + "% \u2014 " + bd90.rateA.toFixed(1) + "% Actual + " + bd90.rateD.toFixed(1) + "% Deemed"}>{bd90.rate > 0 ? bd90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bd90.numerator, displayCcy)} / {money(bd90.denominator, displayCcy)}</div></div>
                     </div>
                   </div>
                   <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                     <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                     <div style={{ fontSize: 24, fontWeight: 700, color: bfRate > 10 ? "#DC2626" : bfRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{bfRate > 0 ? bfRate.toFixed(1) + "%" : "0.0%"}</div>
+                    <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{bfRateA.toFixed(1)}% Actual + {bfRateD.toFixed(1)}% Deemed</div>
                     <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>{parentBd ? "This branch, current" : "Current"}</div>
-                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span style={{ color: parentBd.fdilRate > 10 ? "#DC2626" : parentBd.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600 }}>{parentBd.fdilRate.toFixed(1)}%</span></div>}
+                    {parentBd && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>Parent rollup: <span title={"Total " + parentBd.fdilRate.toFixed(1) + "% \u2014 " + parentBd.fdilRateA.toFixed(1) + "% Actual + " + parentBd.fdilRateD.toFixed(1) + "% Deemed"} style={{ color: parentBd.fdilRate > 10 ? "#DC2626" : parentBd.fdilRate > 5 ? "#D97706" : "#059669", fontWeight: 600, cursor: "help" }}>{parentBd.fdilRate.toFixed(1)}%</span></div>}
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Buyer Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(buyInvs, "funded", bfN) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(bfN), displayCcy)}</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(bfD), displayCcy)}</span></div>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bf30.rate > 10 ? "#DC2626" : bf30.rate > 5 ? "#D97706" : "#059669" }}>{bf30.rate > 0 ? bf30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bf30.numerator, displayCcy)} / {money(bf30.denominator, displayCcy)}</div></div>
-                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bf90.rate > 10 ? "#DC2626" : bf90.rate > 5 ? "#D97706" : "#059669" }}>{bf90.rate > 0 ? bf90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bf90.numerator, displayCcy)} / {money(bf90.denominator, displayCcy)}</div></div>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bf30.rate > 10 ? "#DC2626" : bf30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + bf30.rate.toFixed(1) + "% \u2014 " + bf30.rateA.toFixed(1) + "% Actual + " + bf30.rateD.toFixed(1) + "% Deemed"}>{bf30.rate > 0 ? bf30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bf30.numerator, displayCcy)} / {money(bf30.denominator, displayCcy)}</div></div>
+                      <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: bf90.rate > 10 ? "#DC2626" : bf90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + bf90.rate.toFixed(1) + "% \u2014 " + bf90.rateA.toFixed(1) + "% Actual + " + bf90.rateD.toFixed(1) + "% Deemed"}>{bf90.rate > 0 ? bf90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(bf90.numerator, displayCcy)} / {money(bf90.denominator, displayCcy)}</div></div>
                     </div>
                   </div></>;
                 })()}
@@ -14063,42 +14085,47 @@ export default function FactoringDashboard() {
 
               // Supplier Dilution Rate (by invoice status)
               var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
-              var dilNum = 0, dilDen = 0;
+              var dilNumA = 0, dilNumD = 0, dilDen = 0;
               allProgInvs.forEach(function(inv) {
                 if (!dilEligible[inv.invoiceStatus]) return;
                 var a = inv.amount || 0; dilDen += a;
-                dilNum += inv.dilutionTotal || 0;
-                dilNum += shortPayDilution(inv).amount;
-                if (inv.invoiceStatus === "Disputed") dilNum += a;
+                var _dp = invDilutionDA(inv); dilNumA += _dp.actual; dilNumD += _dp.deemedNet;
               });
-              // Include unallocated credit notes from all suppliers in this program
+              // Include unallocated credit notes from all suppliers in this program (booked to Actual)
               var progSuppliers = {};
               allProgInvs.forEach(function(inv) { progSuppliers[getParentSupplierName(inv.supplierName)] = true; });
               var progUnallocCN = 0;
               if (viewData.cnUnallocBySupplier) Object.keys(progSuppliers).forEach(function(s) { progUnallocCN += viewData.cnUnallocBySupplier.get(s) || 0; });
-              if (progUnallocCN > 0) dilNum += progUnallocCN;
+              if (progUnallocCN > 0) dilNumA += progUnallocCN;
+              var dilNum = dilNumA + dilNumD;
               var dilRate = dilDen > 0.01 ? (dilNum / dilDen) * 100 : 0;
+              var dilRateA = dilDen > 0.01 ? (dilNumA / dilDen) * 100 : 0;
+              var dilRateD = dilDen > 0.01 ? (dilNumD / dilDen) * 100 : 0;
 
               // Funded Dilution Rate (by funding status)
               var fdilFS = { "funded": true, "at_risk": true, "overdue": true, "recovery_mode": true, "awaiting_remittance": true };
-              var fdilNum = 0, fdilDen = 0;
+              var fdilNumA = 0, fdilNumD = 0, fdilDen = 0;
               allProgInvs.forEach(function(inv) {
                 if (!fdilFS[inv.fundingStatus]) return;
                 var a = inv.amount || 0; fdilDen += a;
-                var _daF14 = invDilutionDA(inv); fdilNum += _daF14.actual + _daF14.deemedNet;
+                var _daF14 = invDilutionDA(inv); fdilNumA += _daF14.actual; fdilNumD += _daF14.deemedNet;
               });
-              // Include unallocated credit notes in funded dilution
-              if (progUnallocCN > 0) fdilNum += progUnallocCN;
+              // Include unallocated credit notes in funded dilution (booked to Actual)
+              if (progUnallocCN > 0) fdilNumA += progUnallocCN;
+              var fdilNum = fdilNumA + fdilNumD;
               var fdilRate = fdilDen > 0.01 ? (fdilNum / fdilDen) * 100 : 0;
+              var fdilRateA = fdilDen > 0.01 ? (fdilNumA / fdilDen) * 100 : 0;
+              var fdilRateD = fdilDen > 0.01 ? (fdilNumD / fdilDen) * 100 : 0;
 
               // Period dilution (by invoice date)
               var pBadSt = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
               function pDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
-                var n = 0, d = 0;
-                allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; });
-                if (progUnallocCN > 0) n += progUnallocCN;
-                return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
+                var na = 0, nd = 0, d = 0;
+                allProgInvs.forEach(function(inv) { if (!inv.invoiceDate || inv.invoiceDate < cs) return; var a = inv.amount || 0; d += a; var _dp = invDilutionDA(inv); na += _dp.actual; nd += _dp.deemedNet; });
+                if (progUnallocCN > 0) na += progUnallocCN;
+                var ra = d > 0.01 ? (na / d) * 100 : 0, rd = d > 0.01 ? (nd / d) * 100 : 0;
+                return { numerator: r2(na + nd), numeratorA: r2(na), numeratorD: r2(nd), denominator: r2(d), rate: ra + rd, rateA: ra, rateD: rd };
               }
               var pdil30 = pDil(30), pdil90 = pDil(90);
 
@@ -14106,11 +14133,11 @@ export default function FactoringDashboard() {
               var fbadFS = { "write_off": true, "recovery_mode": true };
               function fpDil(days) {
                 var co = new Date(viewDate + "T12:00:00"); co.setDate(co.getDate() - days); var cs = co.toISOString().split("T")[0];
-                var n = 0, d = 0, inc = {};
-                allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; inc[inv.id] = true; n += inv.dilutionTotal || 0; n += shortPayDilution(inv).amount; if (pBadSt[inv.invoiceStatus]) n += a; });
-                allProgInvs.forEach(function(inv) { if (inc[inv.id]) return; if (!inv.fundedDate || inv.fundedDate < cs) return; if (fbadFS[inv.fundingStatus] || inv.invoiceStatus === "Buyer Default") { var a = inv.amount || 0; d += a; n += a; } });
-                if (progUnallocCN > 0) n += progUnallocCN;
-                return { numerator: r2(n), denominator: r2(d), rate: d > 0.01 ? (n / d) * 100 : 0 };
+                var na = 0, nd = 0, d = 0;
+                allProgInvs.forEach(function(inv) { if (!inv.fundedDate || inv.fundedDate < cs) return; var a = inv.amount || 0; d += a; var _fp = invDilutionDA(inv); na += _fp.actual; nd += _fp.deemedNet; });
+                if (progUnallocCN > 0) na += progUnallocCN;
+                var ra = d > 0.01 ? (na / d) * 100 : 0, rd = d > 0.01 ? (nd / d) * 100 : 0;
+                return { numerator: r2(na + nd), numeratorA: r2(na), numeratorD: r2(nd), denominator: r2(d), rate: ra + rd, rateA: ra, rateD: rd };
               }
               var fpdil30 = fpDil(30), fpdil90 = fpDil(90);
 
@@ -14253,27 +14280,29 @@ export default function FactoringDashboard() {
                     <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid #C08B30", minWidth: 0 }}>
                       <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Program Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Disputed Invoice Values) \u00F7 Invoice Amounts\nEligible: Received, Approved in Full, Approved in Part, Disputed\n\n30d / 90d = same formula filtered by Invoice Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices"} style={{ fontSize: 12, color: "#D97706", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                       <div style={{ fontSize: 24, fontWeight: 700, color: dilRate > 10 ? "#DC2626" : dilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{dilRate > 0 ? dilRate.toFixed(1) + "%" : "0.0%"}</div>
+                      <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{dilRateA.toFixed(1)}% Actual + {dilRateD.toFixed(1)}% Deemed</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Program Dilution", ccy: displayCcy, data: computeDilBreakdown(progInvs, "supplier", dilNum) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(dilNum), displayCcy)}</span></div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(dilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pdil30.rate > 10 ? "#DC2626" : pdil30.rate > 5 ? "#D97706" : "#059669" }}>{pdil30.rate > 0 ? pdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(pdil30.numerator, displayCcy)} / {money(pdil30.denominator, displayCcy)}</div></div>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pdil90.rate > 10 ? "#DC2626" : pdil90.rate > 5 ? "#D97706" : "#059669" }}>{pdil90.rate > 0 ? pdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(pdil90.numerator, displayCcy)} / {money(pdil90.denominator, displayCcy)}</div></div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pdil30.rate > 10 ? "#DC2626" : pdil30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + pdil30.rate.toFixed(1) + "% \u2014 " + pdil30.rateA.toFixed(1) + "% Actual + " + pdil30.rateD.toFixed(1) + "% Deemed"}>{pdil30.rate > 0 ? pdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(pdil30.numerator, displayCcy)} / {money(pdil30.denominator, displayCcy)}</div></div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: pdil90.rate > 10 ? "#DC2626" : pdil90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + pdil90.rate.toFixed(1) + "% \u2014 " + pdil90.rateA.toFixed(1) + "% Actual + " + pdil90.rateD.toFixed(1) + "% Deemed"}>{pdil90.rate > 0 ? pdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(pdil90.numerator, displayCcy)} / {money(pdil90.denominator, displayCcy)}</div></div>
                       </div>
                     </div>
                     <div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 22px", display: "flex", flexDirection: "column", gap: 5, borderLeft: "4px solid var(--accent)", minWidth: 0 }}>
                       <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.09em", color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}><span style={{ fontSize: 14 }}>{"\u0394"}</span> Funded Dilution<span title={"Current = (Credit Notes + Unapproved Amounts + Recovery Mode Values) \u00F7 Invoice Amounts\nEligible: Funded, Part Paid, At Risk, Overdue, Recovery Mode\n\n30d / 90d = filtered by Funded Date in period\nPlus full value of Disputed, Cancelled, Declined, Buyer Default invoices\nPlus invoices funded in period now in Write-Off, Recovery or Buyer Default"} style={{ fontSize: 12, color: "var(--text)", cursor: "help", marginLeft: 2, position: "relative", top: -2 }}>*</span></div>
                       <div style={{ fontSize: 24, fontWeight: 700, color: fdilRate > 10 ? "#DC2626" : fdilRate > 5 ? "#D97706" : "#059669", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.1 }}>{fdilRate > 0 ? fdilRate.toFixed(1) + "%" : "0.0%"}</div>
+                      <div style={{ fontSize: 9, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 2 }}>{fdilRateA.toFixed(1)}% Actual + {fdilRateD.toFixed(1)}% Deemed</div>
                       <div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginTop: 2 }}>Current</div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Dilution Value</span><span onClick={function() { setDilDrill({ title: "Program Funded Dilution", ccy: displayCcy, data: computeDilBreakdown(progInvs, "funded", fdilNum) }); }} title="Click for breakdown" style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", cursor: "pointer", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 2 }}>{money(r2(fdilNum), displayCcy)}</span></div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 3 }}><span style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Invoice Base</span><span style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{money(r2(fdilDen), displayCcy)}</span></div>
                       </div>
                       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 4, display: "flex", gap: 16 }}>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fpdil30.rate > 10 ? "#DC2626" : fpdil30.rate > 5 ? "#D97706" : "#059669" }}>{fpdil30.rate > 0 ? fpdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fpdil30.numerator, displayCcy)} / {money(fpdil30.denominator, displayCcy)}</div></div>
-                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fpdil90.rate > 10 ? "#DC2626" : fpdil90.rate > 5 ? "#D97706" : "#059669" }}>{fpdil90.rate > 0 ? fpdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fpdil90.numerator, displayCcy)} / {money(fpdil90.denominator, displayCcy)}</div></div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>30 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fpdil30.rate > 10 ? "#DC2626" : fpdil30.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + fpdil30.rate.toFixed(1) + "% \u2014 " + fpdil30.rateA.toFixed(1) + "% Actual + " + fpdil30.rateD.toFixed(1) + "% Deemed"}>{fpdil30.rate > 0 ? fpdil30.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fpdil30.numerator, displayCcy)} / {money(fpdil30.denominator, displayCcy)}</div></div>
+                        <div style={{ flex: 1 }}><div style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 2 }}>90 Day</div><div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: fpdil90.rate > 10 ? "#DC2626" : fpdil90.rate > 5 ? "#D97706" : "#059669", cursor: "help" }} title={"Total " + fpdil90.rate.toFixed(1) + "% \u2014 " + fpdil90.rateA.toFixed(1) + "% Actual + " + fpdil90.rateD.toFixed(1) + "% Deemed"}>{fpdil90.rate > 0 ? fpdil90.rate.toFixed(1) + "%" : "0.0%"}</div><div style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 1 }}>{money(fpdil90.numerator, displayCcy)} / {money(fpdil90.denominator, displayCcy)}</div></div>
                       </div>
                     </div>
                   </div>
