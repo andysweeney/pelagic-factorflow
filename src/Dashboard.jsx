@@ -10876,17 +10876,18 @@ export default function FactoringDashboard() {
           // from the buyer. Received / Approved in Full -> full value; Approved in Part ->
           // the approved amount; Disputed, Buyer Default, Settled, Cancelled, Declined ->
           // nothing. Holdback is a Pelagic retention, not a buyer receivable -> excluded.
-          var collateralValue = 0;
+          // Cover (2026 review): exposure scoped to the SAME universe as collateral
+          // (change 1 \u2014 only Received / Approved in Full / Approved in Part) and measured
+          // as capital advanced/outstanding rather than total balance owed (change 2).
+          var collateralValue = 0, collateralExposure = 0;
           supInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
-            var ist = inv.invoiceStatus;
-            if (ist === "Received" || ist === "Approved in Full") {
-              collateralValue += inv.amount || 0;
-            } else if (ist === "Approved in Part") {
-              collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0));
-            }
+            var ist = inv.invoiceStatus, inUniverse = false;
+            if (ist === "Received" || ist === "Approved in Full") { collateralValue += inv.amount || 0; inUniverse = true; }
+            else if (ist === "Approved in Part") { collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0)); inUniverse = true; }
+            if (inUniverse) collateralExposure += inv.capitalOutstanding || 0;
           });
-          var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
+          var collateralCover = collateralExposure > 0.01 ? collateralValue / collateralExposure : 0;
 
           // Supplier Dilution Rate
           // Eligible invoices: Received, Approved in Full, Approved in Part, Disputed
@@ -13251,14 +13252,15 @@ export default function FactoringDashboard() {
           // Collateral value (2026 review): unpaid buyer receivable still expected to arrive.
           // Received / Approved in Full -> full; Approved in Part -> approved amount; Disputed,
           // Buyer Default, Settled, Cancelled, Declined -> nothing; holdback excluded.
-          var collateralValue = 0;
+          var collateralValue = 0, collateralExposure = 0;
           buyInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
-            var ist = inv.invoiceStatus;
-            if (ist === "Received" || ist === "Approved in Full") collateralValue += inv.amount || 0;
-            else if (ist === "Approved in Part") collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0));
+            var ist = inv.invoiceStatus, inUniverse = false;
+            if (ist === "Received" || ist === "Approved in Full") { collateralValue += inv.amount || 0; inUniverse = true; }
+            else if (ist === "Approved in Part") { collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0)); inUniverse = true; }
+            if (inUniverse) collateralExposure += inv.capitalOutstanding || 0;
           });
-          var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
+          var collateralCover = collateralExposure > 0.01 ? collateralValue / collateralExposure : 0;
 
           // Funded Volume chart data
           var fvByMonth = {};
@@ -14133,15 +14135,18 @@ export default function FactoringDashboard() {
               var utilisation = utilisationDenom > 0.01 ? (fundedBalance / utilisationDenom * 100).toFixed(1) : "0.0";
 
               // Collateral
-              var collateralValue = 0;
+              // Aligned with supplier/buyer cards: collateral = Received / Approved in Full
+              // -> full value, Approved in Part -> approved amount; all else 0; holdback excluded.
+              // Exposure scoped to that universe (change 1) and = capital advanced (change 2).
+              var collateralValue = 0, collateralExposure = 0;
               progInvs.forEach(function(inv) {
                 if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
-                var ist = inv.invoiceStatus;
-                if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
-                else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
-                collateralValue += inv.holdbackAvailable || 0;
+                var ist = inv.invoiceStatus, inUniverse = false;
+                if (ist === "Received" || ist === "Approved in Full") { collateralValue += inv.amount || 0; inUniverse = true; }
+                else if (ist === "Approved in Part") { collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0)); inUniverse = true; }
+                if (inUniverse) collateralExposure += inv.capitalOutstanding || 0;
               });
-              var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
+              var collateralCover = collateralExposure > 0.01 ? collateralValue / collateralExposure : 0;
 
               // Supplier Dilution Rate (by invoice status)
               var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true, "Settled": true };
