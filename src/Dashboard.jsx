@@ -5030,7 +5030,7 @@ export default function FactoringDashboard() {
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
     if (bf !== "all") d = d.filter(function(x) { return x.buyerName === bf; });
-    if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0 || (x.supplierRef || "").toLowerCase().indexOf(s) >= 0; }); }
+    if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0 || (x.supplierRef || "").toLowerCase().indexOf(s) >= 0 || (x.buyerRef || "").toLowerCase().indexOf(s) >= 0 || (x.supplierId || "").toLowerCase().indexOf(s) >= 0 || (x.buyerId || "").toLowerCase().indexOf(s) >= 0; }); }
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
     return sorted;
@@ -6863,6 +6863,7 @@ export default function FactoringDashboard() {
     cols.push({ key: "annualRate", label: "Interest Rate p.a.", tooltip: "Annual interest rate captured when the invoice was funded." });
   } else if (isB) {
     cols.push({ key: "supplierName", label: "Supplier" });
+    cols.push({ key: "buyerRef", label: "Buyer Reference" });
     cols.push({ key: "amount", label: "Amount" });
     cols.push({ key: "capitalDue", label: "Advance", tooltip: "For pending invoices: capacity available. For funded: capital advanced." });
     cols.push({ key: "totalOutstanding", label: "Total Balance O/S" });
@@ -6872,7 +6873,7 @@ export default function FactoringDashboard() {
     cols.push({ key: "annualRate", label: "Interest Rate p.a.", tooltip: "Annual interest rate captured when the invoice was funded." });
   } else {
     cols.push({ key: "supplierName", label: "Supplier" });
-    cols.push({ key: "buyerName", label: "Buyer" }, { key: "amount", label: "Amount" });
+    cols.push({ key: "buyerName", label: "Buyer" }, { key: "supplierId", label: "Supplier ID" }, { key: "buyerId", label: "Buyer ID" }, { key: "amount", label: "Amount" });
     cols.push({ key: "capitalDue", label: "Capital" });
     cols.push({ key: "interestCharged", label: "Initial Interest" }, { key: "penaltyInterest", label: "Penalty" });
     cols.push({ key: "invoiceDate", label: "Inv Date" }, { key: "dueDate", label: "Due" });
@@ -10513,8 +10514,11 @@ export default function FactoringDashboard() {
                       {isS && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
                       {isS && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" })}>{inv.supplierRef || "\u2014"}</td>}
                       {isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.supplierName}</td>}
+                      {isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" })}>{inv.buyerRef || "\u2014"}</td>}
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontWeight: 500 })}>{inv.supplierName}</td>}
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" })}>{inv.supplierId || "\u2014"}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" })}>{inv.buyerId || "\u2014"}</td>}
                       <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       {(isS || isB) && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
                       {(isS || isB) && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
