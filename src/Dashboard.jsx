@@ -3483,12 +3483,12 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var settleThreshold = rawInv.amount;
     if (rawInv.partialApprovedAmount > 0 && rawInv.partialApprovedAmount < settleThreshold) settleThreshold = rawInv.partialApprovedAmount;
     if (amtPostDil < settleThreshold) settleThreshold = amtPostDil;
-    var totalBuyerPaid = 0;
+    var totalBuyerPaid = 0, dispSupplierPaid = 0;
     // Buyer collection = the buyer settling THIS receivable. Supplier contributions
     // (recourse-sourced payments, or applied/redirected holdback) still reduce the
     // outstanding balance via the waterfall above, but must NOT register as buyer-paid
     // or they would flatter the Actual-dilution / collection figures.
-    paysForInv.forEach(function(p) { if (p.source !== "supplier_recourse" && p.kind !== "holdback") totalBuyerPaid += p.amount || 0; });
+    paysForInv.forEach(function(p) { if (p.source === "supplier_recourse" || p.kind === "holdback" || p.kind === "pass_through") dispSupplierPaid += p.amount || 0; if (p.source !== "supplier_recourse" && p.kind !== "holdback") totalBuyerPaid += p.amount || 0; });
     if (totalBuyerPaid >= settleThreshold - 0.01 && settleThreshold > 0.01 && statusAsOfDate !== "Settled" && statusAsOfDate !== "Cancelled" && statusAsOfDate !== "Declined") {
       // Find the date of the payment that crossed the threshold
       var runningTotal = 0, settlePayDate = viewDate;
@@ -3590,6 +3590,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       totalFundsApplied: r2(annotatedPays.reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0)),
       paymentsToInvoice: r2(Math.min(totalBuyerPaid, settleThreshold)),
       totalBuyerPaid: r2(totalBuyerPaid),
+      supplierPaidToInvoice: r2(dispSupplierPaid),
       settlementThreshold: r2(settleThreshold),
       penaltyDays: penaltyDays, penaltyStartDate: penaltyStartDate, payments: annotatedPays,
       holdbackApplications: hbApplications, holdbackPayments: annotatedHbPays
@@ -5022,7 +5023,7 @@ export default function FactoringDashboard() {
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
     if (bf !== "all") d = d.filter(function(x) { return x.buyerName === bf; });
-    if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0; }); }
+    if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0 || (x.supplierRef || "").toLowerCase().indexOf(s) >= 0; }); }
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
     return sorted;
@@ -6845,6 +6846,7 @@ export default function FactoringDashboard() {
   var cols = [{ key: "id", label: "Invoice" }];
   if (isS) {
     cols.push({ key: "buyerName", label: "Buyer" });
+    cols.push({ key: "supplierRef", label: "Supplier Ref" });
     cols.push({ key: "amount", label: "Amount" });
     cols.push({ key: "capitalDue", label: "Advance", tooltip: "For pending invoices: capacity available. For funded: capital advanced." });
     cols.push({ key: "totalOutstanding", label: "Total Balance O/S" });
@@ -10009,13 +10011,17 @@ export default function FactoringDashboard() {
             var nOut = progInvs.length;
             var avgOut = nOut > 0 ? progOut / nOut : 0;
             var available = getProgramAvailableBalance(fp.id);
+            // Utilisation "used" = capital deployed against the facility limit, derived
+            // from available headroom (consistent with the Available Funds stat). The
+            // stored fp.currentFundedBalance is not maintained and read 0. (2026 review.)
+            var deployed = Math.max(0, (fp.maxSize || 0) - available); var utilPct = fp.maxSize > 0 ? deployed / fp.maxSize : 0;
             var _es = fp.eligibleSuppliers || [], _eb = fp.eligibleBuyers || [];
             var eSupA = 0, eSupP = 0, eBuyA = 0, eBuyP = 0;
             _es.forEach(function(sid) { var s = SUPPLIERS_DB.find(function(x) { return x.id === sid; }); if (!s) return; if (s.paused) eSupP++; else eSupA++; });
             _eb.forEach(function(bid) { var b = BUYERS_DB.find(function(x) { return x.id === bid; }); if (!b) return; if (b.paused) eBuyP++; else eBuyA++; });
             return {
               id: fp.id, name: fp.name, currency: fp.currency,
-              balance: fp.currentFundedBalance || 0, max: fp.maxSize || 0, pct: pct,
+              balance: deployed, max: fp.maxSize || 0, pct: utilPct,
               outstanding: progOut, available: available, nOutstanding: nOut, avgOutstanding: avgOut,
               pctNotYetDue: nOut > 0 ? pNotYetDue / nOut : 0,
               pctOverdue: nOut > 0 ? pOverdue / nOut : 0,
@@ -10498,6 +10504,7 @@ export default function FactoringDashboard() {
                       {isS && <td style={{ padding: "8px 8px", width: 36 }}>{inv.fundingStatus === "pending" ? <input type="checkbox" checked={!!selectedInvs[inv.id]} onChange={function(e) { var checked = e.target.checked; setSelectedInvs(function(p) { var n = Object.assign({}, p); if (checked) n[inv.id] = true; else delete n[inv.id]; return n; }); }} style={{ accentColor: "var(--accent)", cursor: "pointer" }} /> : <span style={{ fontSize: 10, color: "var(--muted)" }}></span>}</td>}
                       <td style={Object.assign({}, mc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                       {isS && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
+                      {isS && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" })}>{inv.supplierRef || "\u2014"}</td>}
                       {isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.supplierName}</td>}
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontWeight: 500 })}>{inv.supplierName}</td>}
                       {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
@@ -10569,7 +10576,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
                                           <div style={row}><span style={lbl}>Amount Post Dilutions</span><span style={Object.assign({}, val, { color: inv.dilutionTotal > 0 ? "#D97706" : "var(--text)", fontWeight: inv.dilutionTotal > 0 ? 700 : 400 })}>{money(inv.amountPostDilutions, inv.currency)}{inv.dilutionTotal > 0 && <span style={{ fontSize: 9, color: "#DC2626", marginLeft: 4 }}>(-{money(inv.dilutionTotal, inv.currency)})</span>}</span></div>
-                                          <div style={row}><span style={lbl}>Payments to Invoice</span><span style={Object.assign({}, val, { color: inv.paymentsToInvoice > 0 ? "#059669" : "var(--muted)" })}>{money(inv.paymentsToInvoice || 0, inv.currency)}<span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4 }}>(of {money(inv.settlementThreshold || 0, inv.currency)})</span>{inv.paymentsToInvoice >= (inv.settlementThreshold || 0) - 0.01 && (inv.settlementThreshold || 0) > 0.01 && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginLeft: 6, background: "#2E8B5715", padding: "1px 5px", borderRadius: 3 }}>Settled</span>}</span></div>
+                                          <div style={row}><span style={lbl}>Buyer Payments</span><span style={Object.assign({}, val, { color: inv.paymentsToInvoice > 0 ? "#059669" : "var(--muted)" })}>{money(inv.paymentsToInvoice || 0, inv.currency)}<span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4 }}>(of {money(inv.settlementThreshold || 0, inv.currency)})</span>{inv.paymentsToInvoice >= (inv.settlementThreshold || 0) - 0.01 && (inv.settlementThreshold || 0) > 0.01 && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginLeft: 6, background: "#2E8B5715", padding: "1px 5px", borderRadius: 3 }}>Settled</span>}</span></div><div style={row}><span style={lbl} title="Supplier contributions to this invoice \u2014 redirected holdback, applied pass-throughs, and direct supplier (recourse) payments. These reduce the balance but are not buyer collections.">Supplier Payments</span><span style={Object.assign({}, val, { color: (inv.supplierPaidToInvoice || 0) > 0 ? "#D97706" : "var(--muted)" })}>{money(inv.supplierPaidToInvoice || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
                                           <div style={sectionHeader}>Dates</div>
                                           <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
@@ -10669,7 +10676,7 @@ export default function FactoringDashboard() {
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {/* Write-down: operator confirms no further buyer payments. Crystallises Actual dilution + supplier recourse. */}
-                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback)."); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
+                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; raw.invoiceStatus = "Settled"; raw.settledDate = raw.settledDate || REF_DATE; if (!raw.invoiceStatusHistory) raw.invoiceStatusHistory = []; raw.invoiceStatusHistory.push({ status: "Settled", date: REF_DATE, note: "Settled short \u2014 no further buyer payments expected; residual re-pointed as supplier recourse." }); saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback).", { invoiceId: raw.id }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
                                     {inv.writtenDownShort && <span style={{ padding: "5px 12px", borderRadius: 7, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262640", fontSize: 11, fontWeight: 700 }} title={"Written down" + (inv.writeDownDate ? " on " + inv.writeDownDate : "") + ". Uncollected balance crystallised as Actual dilution; the funded residual is a supplier recourse debt (net of holdback), accruing at the penalty rate until the supplier clears it."}>Settled Short \u2014 Recourse</span>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
@@ -10863,18 +10870,19 @@ export default function FactoringDashboard() {
             balanceOwed += inv.balanceOwed || 0;
           });
 
-          // Collateral value: only funded invoices — invoice values for Received/Approved in Part/Approved in Full,
-          // unpaid balance of Settled invoices, and holdback not yet disbursed
+          // Collateral value (2026 review): unpaid invoice amounts still expected to arrive
+          // from the buyer. Received / Approved in Full -> full value; Approved in Part ->
+          // the approved amount; Disputed, Buyer Default, Settled, Cancelled, Declined ->
+          // nothing. Holdback is a Pelagic retention, not a buyer receivable -> excluded.
           var collateralValue = 0;
           supInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
-            if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") {
+            if (ist === "Received" || ist === "Approved in Full") {
               collateralValue += inv.amount || 0;
-            } else if (ist === "Settled") {
-              collateralValue += inv.balanceOwed || 0;
+            } else if (ist === "Approved in Part") {
+              collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0));
             }
-            collateralValue += inv.holdbackAvailable || 0;
           });
           var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
 
@@ -10996,7 +11004,9 @@ export default function FactoringDashboard() {
           var fvMax = Math.max.apply(null, fvChartData.map(function(e) { return e[1]; }).concat([1]));
 
           // Pending invoices
-          var pendingInvs = supInvs.filter(function(inv) { return inv.fundingStatus === "pending" && !inv.doNotFund; });
+          // Only show pending invoices eligible for the program in scope (its funding
+          // criteria). With no program selected, fall back to all pending. (2026 review.)
+          var pendingInvs = supInvs.filter(function(inv) { if (inv.fundingStatus !== "pending" || inv.doNotFund) return false; if (!supProgram) return true; return getEligiblePrograms(inv, supDilRates).some(function(fp) { return fp.id === supProgram; }); });
 
           // Approved — awaiting funding
           var approvedInvs = supInvs.filter(function(inv) { return inv.fundingStatus === "purchased"; });
@@ -12898,7 +12908,7 @@ export default function FactoringDashboard() {
                                 return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
                                   <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div>
                                   <div style={row}><span style={lbl}>Payment Ref</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div>
-                                  <div style={row}><span style={lbl}>{isBundle ? "Invoices (" + ((fp.invoiceIds || []).length || 1) + ")" : "Invoice"}</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div>
+                                  <div style={row}><span style={lbl}>{isBundle ? "Invoices (" + ((fp.invoiceIds || []).length || 1) + ")" : "Invoice"}</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{isBundle ? renderInvoiceRef(fp) : (fp.invoiceId || "\u2014")}</span></div>
                                   <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>
                                   {fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}
                                   {fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}
@@ -12922,6 +12932,18 @@ export default function FactoringDashboard() {
                                 </div>;
                               })()}
                             </div>
+                            {isBundle && (fp.invoiceIds || []).length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginTop: 16 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Bundle Invoices ({(fp.invoiceIds || []).length})</div>
+                              <div style={{ maxHeight: 220, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 6 }}>
+                                {(fp.invoiceIds || []).map(function(iid) {
+                                  var binv = INVOICES_DB.find(function(x) { return x.id === iid; });
+                                  return <div key={iid} onClick={function(e) { e.stopPropagation(); drillToInvoice(iid); }} title={"Drill into " + iid} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", cursor: "pointer", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                                    <span style={{ color: "var(--accent)", fontWeight: 600 }}>{iid}</span>
+                                    <span style={{ color: "var(--muted)" }}>{binv ? money(binv.amount, binv.currency) : ""}</span>
+                                  </div>;
+                                })}
+                              </div>
+                            </div>}
                             {/* Notes */}
                             <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Notes {fp.notes && fp.notes.length > 0 ? "(" + fp.notes.length + ")" : ""}</div>
@@ -13224,13 +13246,15 @@ export default function FactoringDashboard() {
             balanceOwed += inv.balanceOwed || 0;
           });
 
+          // Collateral value (2026 review): unpaid buyer receivable still expected to arrive.
+          // Received / Approved in Full -> full; Approved in Part -> approved amount; Disputed,
+          // Buyer Default, Settled, Cancelled, Declined -> nothing; holdback excluded.
           var collateralValue = 0;
           buyInvs.forEach(function(inv) {
             if (inv.fundingStatus === "pending" || inv.fundingStatus === "historic") return;
             var ist = inv.invoiceStatus;
-            if (ist === "Received" || ist === "Approved in Part" || ist === "Approved in Full") collateralValue += inv.amount || 0;
-            else if (ist === "Settled") collateralValue += inv.balanceOwed || 0;
-            collateralValue += inv.holdbackAvailable || 0;
+            if (ist === "Received" || ist === "Approved in Full") collateralValue += inv.amount || 0;
+            else if (ist === "Approved in Part") collateralValue += (inv.partialApprovedAmount > 0 ? inv.partialApprovedAmount : (inv.amount || 0));
           });
           var collateralCover = balanceOwed > 0.01 ? collateralValue / balanceOwed : 0;
 
@@ -15302,7 +15326,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
                                           <div style={row}><span style={lbl}>Amount Post Dilutions</span><span style={Object.assign({}, val, { color: inv.dilutionTotal > 0 ? "#D97706" : "var(--text)", fontWeight: inv.dilutionTotal > 0 ? 700 : 400 })}>{money(inv.amountPostDilutions, inv.currency)}{inv.dilutionTotal > 0 && <span style={{ fontSize: 9, color: "#DC2626", marginLeft: 4 }}>(-{money(inv.dilutionTotal, inv.currency)})</span>}</span></div>
-                                          <div style={row}><span style={lbl}>Payments to Invoice</span><span style={Object.assign({}, val, { color: inv.paymentsToInvoice > 0 ? "#059669" : "var(--muted)" })}>{money(inv.paymentsToInvoice || 0, inv.currency)}<span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4 }}>(of {money(inv.settlementThreshold || 0, inv.currency)})</span>{inv.paymentsToInvoice >= (inv.settlementThreshold || 0) - 0.01 && (inv.settlementThreshold || 0) > 0.01 && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginLeft: 6, background: "#2E8B5715", padding: "1px 5px", borderRadius: 3 }}>Settled</span>}</span></div>
+                                          <div style={row}><span style={lbl}>Buyer Payments</span><span style={Object.assign({}, val, { color: inv.paymentsToInvoice > 0 ? "#059669" : "var(--muted)" })}>{money(inv.paymentsToInvoice || 0, inv.currency)}<span style={{ fontSize: 9, color: "var(--muted)", marginLeft: 4 }}>(of {money(inv.settlementThreshold || 0, inv.currency)})</span>{inv.paymentsToInvoice >= (inv.settlementThreshold || 0) - 0.01 && (inv.settlementThreshold || 0) > 0.01 && <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginLeft: 6, background: "#2E8B5715", padding: "1px 5px", borderRadius: 3 }}>Settled</span>}</span></div><div style={row}><span style={lbl} title="Supplier contributions to this invoice \u2014 redirected holdback, applied pass-throughs, and direct supplier (recourse) payments. These reduce the balance but are not buyer collections.">Supplier Payments</span><span style={Object.assign({}, val, { color: (inv.supplierPaidToInvoice || 0) > 0 ? "#D97706" : "var(--muted)" })}>{money(inv.supplierPaidToInvoice || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
                                           <div style={sectionHeader}>Dates</div>
                                           <div style={row}><span style={lbl}>Invoice Date</span><span style={val}>{fmt(inv.invoiceDate)}</span></div>
@@ -15402,7 +15426,7 @@ export default function FactoringDashboard() {
                                     {!inv.doNotAdvance && inv.fundingStatus === "purchased" && (inv.capitalDue || 0) > 0.01 && <button onClick={function() { setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #38BDF8", background: "#38BDF810", color: "#38BDF8", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Open Outbound Queue to execute the funding payment">Execute Funding {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingStatus === "purchased" && (inv.capitalDue || 0) < 0.01) || ((inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") && (inv.fundingHeadroom || 0) > 0.01)) && <button onClick={function() { openFundPopupFor(inv); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title={"Advance capital against this invoice. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{inv.fundingStatus === "purchased" ? "Fund Invoice" : "Top Up Funding"}</button>}
                                     {/* Write-down: operator confirms no further buyer payments. Crystallises Actual dilution + supplier recourse. */}
-                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback)."); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
+                                    {!inv.voided && !inv.writtenDownShort && (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue" || inv.fundingStatus === "recovery_mode" || inv.fundingStatus === "awaiting_remittance") && (((inv.balanceOwed || 0) > 0.01) || ((inv.totalOutstanding || 0) > 0.01)) && <button onClick={function() { var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; }); if (!raw) return; var _da = invDilutionDA(inv); var _net = r2(Math.max(0, (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) - (inv.holdbackOutstanding || 0))); var _msg = "No further buyer payments expected on " + (inv.invoiceReference || inv.id) + "?\n\nThis crystallises " + money(_da.uncollected, inv.currency) + " as Actual dilution and moves the invoice to Recovery as a supplier recourse debt of " + money(_net, inv.currency) + " (net of holdback, settled by the supplier)."; if (typeof window !== "undefined" && window.confirm && !window.confirm(_msg)) return; raw.writtenDownShort = true; raw.writeDownDate = REF_DATE; raw.invoiceStatus = "Settled"; raw.settledDate = raw.settledDate || REF_DATE; if (!raw.invoiceStatusHistory) raw.invoiceStatusHistory = []; raw.invoiceStatusHistory.push({ status: "Settled", date: REF_DATE, note: "Settled short \u2014 no further buyer payments expected; residual re-pointed as supplier recourse." }); saveInvoice(raw.id); auditLog("Written Down (Settled Short)", raw.id + " \u2014 no further buyer payments expected; uncollected " + money(_da.uncollected, inv.currency) + " crystallised as Actual dilution; residual " + money(_net, inv.currency) + " re-pointed as supplier recourse (net of holdback).", { invoiceId: raw.id }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #DC2626", background: "#DC262610", color: "#EF4444", fontSize: 11, fontWeight: 700, cursor: "pointer" }} title="Confirm the buyer will not pay the remaining balance. Crystallises the uncollected amount as Actual dilution and converts the funded residual into a supplier recourse debt (net of holdback).">No Further Payments Expected</button>}
                                     {inv.writtenDownShort && <span style={{ padding: "5px 12px", borderRadius: 7, background: "#DC262615", color: "#EF4444", border: "1px solid #DC262640", fontSize: 11, fontWeight: 700 }} title={"Written down" + (inv.writeDownDate ? " on " + inv.writeDownDate : "") + ". Uncollected balance crystallised as Actual dilution; the funded residual is a supplier recourse debt (net of holdback), accruing at the penalty rate until the supplier clears it."}>Settled Short \u2014 Recourse</span>}
                                     {inv.holdbackAvailable > 0.01 && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>}
                                     {inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundingStatus !== "fully_repaid" && inv.fundingStatus !== "write_off" && <button onClick={function() { var procInv = viewData.invoices.find(function(x) { return x.id === inv.id; }); setWriteOffInv(procInv || inv); setWoPenalty(""); setWoInterest(""); setWoCapital(""); setWoHoldback(""); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #78716c", background: "#6B728010", color: "#6B7280", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Write-Off</button>}
