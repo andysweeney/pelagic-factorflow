@@ -3278,6 +3278,11 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       var hh = rawInv.invoiceStatusHistory[hi];
       if (hh.date <= viewDate) { statusAsOfDate = hh.status; histAsOfDate.push(hh); }
     }
+    // Legacy/import hygiene: a bare "Approved" history entry is not a canonical status
+    // (the recognised ones are "Approved in Full" / "Approved in Part"). Map it to the
+    // precise approval state so every as-of-date consumer \u2014 collateral value, dilution
+    // eligibility, funding-status derivation \u2014 treats it correctly instead of dropping it.
+    if (statusAsOfDate === "Approved") statusAsOfDate = (rawInv.partialApprovedAmount > 0 && rawInv.partialApprovedAmount < (rawInv.amount || 0)) ? "Approved in Part" : "Approved in Full";
     var paysForInv = (allocsByInvoice.get(rawInv.id) || []).slice();
     // Holdback redirected to THIS invoice (operator applied queued holdback here instead of
     // releasing it to the supplier) is a SUPPLIER CONTRIBUTION: fold it into the waterfall so
