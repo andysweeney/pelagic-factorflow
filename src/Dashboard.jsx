@@ -1680,7 +1680,7 @@ async function savePayment(paymentId) {
   if (!pay) return;
   _isSaving = true;
   try {
-    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
+    var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound", source: pay.source || "buyer" };
     // Optional payment-level supplier/buyer scope (set for outbound or remittance source pairs)
     if (pay.buyerId) {
       var bIds = resolveBuyerIds(pay.buyerId, pay.buyerEntityId);
@@ -2347,7 +2347,7 @@ async function loadPersistedData() {
           paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
           date: prow.date, currency: prow.currency, reference: prow.reference || "",
           allocations: allocsByPayment[prow.payment_id] || [],
-          direction: prow.direction || "inbound",
+          direction: prow.direction || "inbound", source: prow.source || "buyer",
           // Optional payment-level entity scope (set for outbound or remittance source pairs)
           buyerId: prow.buyer_id || null,
           buyerEntityId: prow.buyer_entity_id || null,
@@ -2617,7 +2617,7 @@ async function reloadForSupplier(supplierId) {
         paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
         date: prow.date, currency: prow.currency, reference: prow.reference || "",
         allocations: allocs, notes: prow.notes || [],
-        direction: prow.direction || "inbound",
+        direction: prow.direction || "inbound", source: prow.source || "buyer",
         buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
         supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null
       });
@@ -2701,7 +2701,7 @@ async function reloadPayments() {
           newList.push({
             paymentId: prow.payment_id, amount: parseFloat(prow.amount) || 0,
             date: prow.date, currency: prow.currency, reference: prow.reference || "", allocations: allocs,
-            direction: prow.direction || "inbound",
+            direction: prow.direction || "inbound", source: prow.source || "buyer",
             buyerId: prow.buyer_id || null, buyerEntityId: prow.buyer_entity_id || null,
             supplierId: prow.supplier_id || null, supplierEntityId: prow.supplier_entity_id || null,
             notes: prow.notes || []
@@ -3037,7 +3037,7 @@ async function savePersistedData() {
       var row = {
         payment_id: p.paymentId, amount: p.amount, date: p.date,
         currency: p.currency, reference: p.reference || "",
-        direction: p.direction || "inbound",
+        direction: p.direction || "inbound", source: p.source || "buyer",
         notes: p.notes || []
       };
       // Optional payment-level entity scope (set for outbound or remittance source pairs)
@@ -3177,7 +3177,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (effDate > viewDate) return;
       if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
       allocsByInvoice.get(a.invoiceId).push({
-        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency,
+        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency, source: pay.source || "buyer",
         // Stage 1.7: pass-through allocations are buyer payments to invoices Pelagic
         // didn't fund. They count toward settlement but never recover capital/interest.
         kind: a.kind || "funded_recovery"
@@ -3278,7 +3278,16 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       var hh = rawInv.invoiceStatusHistory[hi];
       if (hh.date <= viewDate) { statusAsOfDate = hh.status; histAsOfDate.push(hh); }
     }
-    var paysForInv = (allocsByInvoice.get(rawInv.id) || []).slice().sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+    var paysForInv = (allocsByInvoice.get(rawInv.id) || []).slice();
+    // Holdback redirected to THIS invoice (operator applied queued holdback here instead of
+    // releasing it to the supplier) is a SUPPLIER CONTRIBUTION: fold it into the waterfall so
+    // it pays the balance down, tagged "holdback" so totalBuyerPaid excludes it (the buyer
+    // didn't pay — the supplier's holdback did). Forward-only in practice: there are no legacy
+    // holdback-to-invoice applications to disturb.
+    (hbAppliedToInvoice.get(rawInv.id) || []).forEach(function(h) {
+      paysForInv.push({ paymentId: h.hbPaymentId, amount: h.amount, date: h.date, currency: h.currency, kind: "holdback" });
+    });
+    paysForInv.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
     var pastDue = rawInv.dueDate < viewDate;
     var decEntry = histAsOfDate.find(function(x) { return x.status === "Declined"; });
     var dispEntry = histAsOfDate.find(function(x) { return x.status === "Disputed"; });
@@ -3321,7 +3330,9 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       annotatedPays.push(Object.assign({}, pay, {
         appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH),
         postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal),
-        passThrough: isPassThrough
+        passThrough: isPassThrough,
+        supplierContribution: (pay.source === "supplier_recourse" || pay.kind === "holdback"),
+        contributionType: pay.kind === "holdback" ? "holdback" : (pay.source === "supplier_recourse" ? "recourse" : null)
       }));
     }
     var invPenaltyRate = rawInv.penaltyRate || PENALTY_RATE;
@@ -3473,11 +3484,15 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (rawInv.partialApprovedAmount > 0 && rawInv.partialApprovedAmount < settleThreshold) settleThreshold = rawInv.partialApprovedAmount;
     if (amtPostDil < settleThreshold) settleThreshold = amtPostDil;
     var totalBuyerPaid = 0;
-    paysForInv.forEach(function(p) { totalBuyerPaid += p.amount || 0; });
+    // Buyer collection = the buyer settling THIS receivable. Supplier contributions
+    // (recourse-sourced payments, or applied/redirected holdback) still reduce the
+    // outstanding balance via the waterfall above, but must NOT register as buyer-paid
+    // or they would flatter the Actual-dilution / collection figures.
+    paysForInv.forEach(function(p) { if (p.source !== "supplier_recourse" && p.kind !== "holdback") totalBuyerPaid += p.amount || 0; });
     if (totalBuyerPaid >= settleThreshold - 0.01 && settleThreshold > 0.01 && statusAsOfDate !== "Settled" && statusAsOfDate !== "Cancelled" && statusAsOfDate !== "Declined") {
       // Find the date of the payment that crossed the threshold
       var runningTotal = 0, settlePayDate = viewDate;
-      paysForInv.forEach(function(p) { runningTotal += p.amount || 0; if (runningTotal >= settleThreshold - 0.01 && !rawInv.settledDate) settlePayDate = p.date; });
+      paysForInv.forEach(function(p) { if (p.source === "supplier_recourse" || p.kind === "holdback") return; runningTotal += p.amount || 0; if (runningTotal >= settleThreshold - 0.01 && !rawInv.settledDate) settlePayDate = p.date; });
       if (!rawInv.settledDate) {
         rawInv.settledDate = settlePayDate;
         rawInv.invoiceStatusHistory = rawInv.invoiceStatusHistory || [];
@@ -3488,6 +3503,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         // skip the block. Splits funded vs pass-through settlement for clarity.
         var settledFunded = 0, settledPassThrough = 0;
         paysForInv.forEach(function(p) {
+          if (p.source === "supplier_recourse" || p.kind === "holdback") return; // supplier contribution, not a buyer settlement
           if (p.kind === "pass_through") settledPassThrough += p.amount || 0;
           else settledFunded += p.amount || 0;
         });
@@ -10685,7 +10701,7 @@ export default function FactoringDashboard() {
                                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
                                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                       <thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                                      <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
+                                      <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}{p.supplierContribution && <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#D9770618", color: "#D97706", border: "1px solid #D9770640", fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }} title={p.contributionType === "holdback" ? "Supplier contribution \u2014 redirected holdback. Reduces the balance but is not a buyer collection." : "Supplier contribution \u2014 recourse repayment. Reduces the balance but is not a buyer collection."}>{p.contributionType === "holdback" ? "Supplier \u00b7 HB" : "Supplier"}</span>}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
                                     </table>
                                   </div>}
                                   {/* Payments to Supplier */}
@@ -13763,7 +13779,7 @@ export default function FactoringDashboard() {
                         </div>
                         {inv.payments && inv.payments.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px", marginBottom: 16 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 6, borderBottom: "2px solid var(--border)" }}>Buyer Payments ({inv.payments.length})</div>
-                          <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Amount", "Penalty", "Interest", "Capital", "Holdback"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{inv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["Date", "Amount", "Penalty", "Interest", "Capital", "Holdback"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{inv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{fmt(p.date)}{p.supplierContribution && <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#D9770618", color: "#D97706", border: "1px solid #D9770640", fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }} title={p.contributionType === "holdback" ? "Supplier contribution \u2014 redirected holdback. Reduces the balance but is not a buyer collection." : "Supplier contribution \u2014 recourse repayment. Reduces the balance but is not a buyer collection."}>{p.contributionType === "holdback" ? "Supplier \u00b7 HB" : "Supplier"}</span>}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "4px 8px", fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
                         </div>}
                       </div>
                     </td></tr>}
@@ -15402,7 +15418,7 @@ export default function FactoringDashboard() {
                                     <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Payments from Buyer ({inv.payments.length})</div>
                                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                       <thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                                      <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
+                                      <tbody>{inv.payments.map(function(p, pi) { return <tr key={pi}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}{p.supplierContribution && <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#D9770618", color: "#D97706", border: "1px solid #D9770640", fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }} title={p.contributionType === "holdback" ? "Supplier contribution \u2014 redirected holdback. Reduces the balance but is not a buyer collection." : "Supplier contribution \u2014 recourse repayment. Reduces the balance but is not a buyer collection."}>{p.contributionType === "holdback" ? "Supplier \u00b7 HB" : "Supplier"}</span>}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, inv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, inv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, inv.currency) : "\u2014"}</td></tr>; })}</tbody>
                                     </table>
                                   </div>}
                                   {/* Payments to Supplier */}
@@ -18212,6 +18228,18 @@ export default function FactoringDashboard() {
                 </div>
               </div>
 
+              {/* Payment-level source: where the cash came from (set once for the payment) */}
+              <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Source</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[{ k: "buyer", l: "Buyer Remittance" }, { k: "supplier_recourse", l: "Supplier Recourse" }].map(function(o) {
+                    var active = (pay ? (pay.source || "buyer") : "buyer") === o.k;
+                    return <button key={o.k} onClick={function() { if (!pay) return; pay.source = o.k; savePayment(pay.paymentId); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "6px 16px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--muted)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{o.l}</button>;
+                  })}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic", flex: 1, minWidth: 200 }}>{(pay && pay.source === "supplier_recourse") ? "Funds from the supplier clearing a recourse debt \u2014 recorded against the supplier, not as a buyer collection." : "Normal buyer payment against the receivable (default)."}</div>
+              </div>
+
               {/* Existing routings */}
               {payRoutings.length > 0 && <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>Allocated</div>
@@ -18748,7 +18776,7 @@ export default function FactoringDashboard() {
                 // All done
                 if (pay) {
                   _isSaving = true;
-                  var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
+                  var payRow = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound", source: pay.source || "buyer" };
                   supabase.from("payments").upsert([payRow], { onConflict: "payment_id" }).then(function(upRes) {
                     if (upRes && upRes.error) { console.error("[Inline SavePayment] payments upsert error:", upRes.error, "row:", payRow); toast.error("Payment save failed", upRes.error.message || "Routing succeeded locally but DB save failed."); }
                     supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId).then(function(delRes) {
@@ -20893,7 +20921,7 @@ export default function FactoringDashboard() {
                       {pInv.payments.length > 0 && <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Buyer Payments ({pInv.payments.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                        <tbody>{pInv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, pInv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, pInv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
+                        <tbody>{pInv.payments.map(function(p, pi) { return <tr key={pi} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{p.paymentId}{p.supplierContribution && <span style={{ marginLeft: 6, padding: "1px 5px", borderRadius: 3, background: "#D9770618", color: "#D97706", border: "1px solid #D9770640", fontSize: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }} title={p.contributionType === "holdback" ? "Supplier contribution \u2014 redirected holdback. Reduces the balance but is not a buyer collection." : "Supplier contribution \u2014 recourse repayment. Reduces the balance but is not a buyer collection."}>{p.contributionType === "holdback" ? "Supplier \u00b7 HB" : "Supplier"}</span>}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{fmt(p.date)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>{money(p.amount, pInv.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626" }}>{p.appliedToPenalty > 0 ? money(p.appliedToPenalty, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{p.appliedToInterest > 0 ? money(p.appliedToInterest, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>{p.appliedToCapital > 0 ? money(p.appliedToCapital, pInv.currency) : "\u2014"}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{p.appliedToHoldback > 0 ? money(p.appliedToHoldback, pInv.currency) : "\u2014"}</td></tr>; })}</tbody></table>
                       </div>}
                       {pInv.holdbackPayments && pInv.holdbackPayments.length > 0 && <div>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#059669", marginBottom: 6 }}>Holdback Payments Applied ({pInv.holdbackPayments.length})</div>
