@@ -3485,14 +3485,16 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     if (amtPostDil < settleThreshold) settleThreshold = amtPostDil;
     var totalBuyerPaid = 0, dispSupplierPaid = 0;
     // Buyer collection = the buyer settling THIS receivable. Supplier contributions
-    // (recourse-sourced payments, or applied/redirected holdback) still reduce the
-    // outstanding balance via the waterfall above, but must NOT register as buyer-paid
-    // or they would flatter the Actual-dilution / collection figures.
-    paysForInv.forEach(function(p) { if (p.source === "supplier_recourse" || p.kind === "holdback" || p.kind === "pass_through") dispSupplierPaid += p.amount || 0; if (p.source !== "supplier_recourse" && p.kind !== "holdback") totalBuyerPaid += p.amount || 0; });
+    // (recourse-sourced payments, redirected holdback, and pass-throughs applied to a
+    // FUNDED invoice \u2014 the supplier settling the funder's exposure) still reduce the
+    // outstanding balance via the waterfall above, but must NOT register as buyer-paid or
+    // they would flatter the Actual-dilution / collection figures. A pass-through on an
+    // UNFUNDED invoice is the buyer's money flowing through and remains buyer-paid.
+    paysForInv.forEach(function(p) { var supC = (p.source === "supplier_recourse" || p.kind === "holdback" || (p.kind === "pass_through" && isFunded)); if (supC) dispSupplierPaid += p.amount || 0; else totalBuyerPaid += p.amount || 0; });
     if (totalBuyerPaid >= settleThreshold - 0.01 && settleThreshold > 0.01 && statusAsOfDate !== "Settled" && statusAsOfDate !== "Cancelled" && statusAsOfDate !== "Declined") {
       // Find the date of the payment that crossed the threshold
       var runningTotal = 0, settlePayDate = viewDate;
-      paysForInv.forEach(function(p) { if (p.source === "supplier_recourse" || p.kind === "holdback") return; runningTotal += p.amount || 0; if (runningTotal >= settleThreshold - 0.01 && !rawInv.settledDate) settlePayDate = p.date; });
+      paysForInv.forEach(function(p) { if (p.source === "supplier_recourse" || p.kind === "holdback" || (p.kind === "pass_through" && isFunded)) return; runningTotal += p.amount || 0; if (runningTotal >= settleThreshold - 0.01 && !rawInv.settledDate) settlePayDate = p.date; });
       if (!rawInv.settledDate) {
         rawInv.settledDate = settlePayDate;
         rawInv.invoiceStatusHistory = rawInv.invoiceStatusHistory || [];
@@ -3503,7 +3505,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         // skip the block. Splits funded vs pass-through settlement for clarity.
         var settledFunded = 0, settledPassThrough = 0;
         paysForInv.forEach(function(p) {
-          if (p.source === "supplier_recourse" || p.kind === "holdback") return; // supplier contribution, not a buyer settlement
+          if (p.source === "supplier_recourse" || p.kind === "holdback" || (p.kind === "pass_through" && isFunded)) return; // supplier contribution (recourse, holdback, or pass-through on a funded invoice), not a buyer settlement
           if (p.kind === "pass_through") settledPassThrough += p.amount || 0;
           else settledFunded += p.amount || 0;
         });
