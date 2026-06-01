@@ -1153,6 +1153,45 @@
                isn't reliable across browsers, so we inline a footer band on
                each .print-page instead. Done via the body content directly. */
         }
+            /* Working-capital scorecard (Section 1) */
+        .wc-scorecard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 4px 0 22px; }
+        .wc-cluster { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+        .wc-cluster-label { font-size: 10px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+        .wc-cluster-tiles { display: flex; flex-direction: column; gap: 10px; }
+        .wc-tile { border-left: 3px solid var(--border); padding: 2px 0 2px 10px; }
+        .wc-tile-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 2px; }
+        .wc-tile-value { font-size: 18px; font-weight: 700; color: var(--text); font-family: var(--mono); line-height: 1.2; }
+        .wc-tile-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+        .wc-tile.wc-good { border-left-color: var(--success); }
+        .wc-tile.wc-watch { border-left-color: var(--warning); }
+        .wc-tile.wc-concern { border-left-color: var(--danger); }
+        @media (max-width: 900px) { .wc-scorecard { grid-template-columns: 1fr; } }
+
+        /* Finding cards + questions capstone (Section 6) */
+        .findings-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; }
+        .finding { display: flex; gap: 14px; background: var(--bg); border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius); padding: 14px 16px; }
+        .finding-concern { border-left-color: var(--danger); }
+        .finding-watch { border-left-color: var(--warning); }
+        .finding-strength { border-left-color: var(--success); }
+        .finding-rank { flex: 0 0 24px; font-size: 16px; font-weight: 700; color: var(--text-secondary); font-family: var(--mono); }
+        .finding-main { flex: 1; }
+        .finding-head { display: flex; gap: 6px; margin-bottom: 6px; }
+        .finding-owner, .finding-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 10px; }
+        .finding-owner.own-proc { background: #8B5CF620; color: var(--purple); }
+        .finding-owner.own-ap { background: #F59E0B20; color: var(--warning); }
+        .finding-owner.own-both { background: #94A3B820; color: var(--text-secondary); }
+        .finding-tag.tag-risk { background: #EF444420; color: var(--danger); }
+        .finding-tag.tag-opt { background: #10B98120; color: var(--success); }
+        .finding-headline { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.45; }
+        .finding-why { font-size: 12px; color: var(--text-secondary); margin-top: 5px; line-height: 1.45; }
+        .finding-q { font-size: 12px; color: var(--text); margin-top: 8px; padding-left: 10px; border-left: 2px solid var(--border); font-style: italic; }
+        .questions-capstone { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+        .qc-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+        .qc-sub { font-size: 11px; color: var(--text-secondary); margin-bottom: 12px; }
+        .qc-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+        .q-item { display: flex; gap: 9px; align-items: baseline; font-size: 12px; color: var(--text); line-height: 1.45; }
+        .q-item .q-text { flex: 1; }
+
     </style>
 </head>
 <body>
@@ -6783,8 +6822,11 @@ function enrichSnapshotCcy(c) {
     var enrichedTotals = Object.assign({}, t, {
         netSpend:           Math.round(((t.totalSpend || 0) - (t.totalCNs || 0)) * 100) / 100,
         avgInvoiceAmount:   (t.invoiceCount || 0) > 0 ? Math.round((t.totalSpend / t.invoiceCount) * 100) / 100 : 0,
-        paymentCoveragePct: (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0,
-        avgDaysToPaid:      null  // not derivable from snapshot
+        paymentCoveragePct: (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0
+        // Tier-B working-capital fields (avgDaysToPaid, avgStatedTermDays,
+        // apOutstandingAvg, dpdBuckets, earlyPaidSpend/Count, latePaidSpend,
+        // veryLatePaidSpend) pass through from the snapshot via the spread of
+        // `t` above once the server builder emits them. No client override.
     });
 
     // ── Per-supplier trendSlope / trendSlopeNormalised ──────────────
@@ -7154,25 +7196,71 @@ function renderSectionAtAGlance(c, ccy) {
     var t = c.totals;
     var fact = chooseSurprisingFact(c, ccy);
 
+    // ── Working capital cluster ───────────────────────────────────
+    var wcTiles = '';
+    var hasTerms = (t.avgStatedTermDays != null) && (t.avgDaysToPaid != null);
+    if (hasTerms) {
+        var gap = Math.round((t.avgDaysToPaid - t.avgStatedTermDays) * 10) / 10;
+        var gapRead = gap > 14 ? 'concern' : gap > 7 ? 'watch' : gap <= 0 ? 'good' : '';
+        wcTiles += wcTile('Stated terms', 'Net ' + Math.round(t.avgStatedTermDays), 'weighted average', '');
+        wcTiles += wcTile('Actual time to pay', t.avgDaysToPaid + 'd', 'invoice to payment', '');
+        wcTiles += wcTile('Terms gap', (gap >= 0 ? '+' : '') + gap + 'd', gap > 0 ? 'paid past your own terms' : 'inside terms', gapRead);
+        if (t.apOutstandingAvg != null) {
+            wcTiles += wcTile('Supplier credit financing you', moneyShort(t.apOutstandingAvg, ccy), 'avg ' + ccy + ' balance outstanding', '');
+        }
+    } else if (t.avgDaysPastDue != null) {
+        var dpd = t.avgDaysPastDue;
+        var dpdRead = dpd > 14 ? 'concern' : dpd > 7 ? 'watch' : dpd <= 0 ? 'good' : '';
+        wcTiles += wcTile('Average days past due', (dpd >= 0 ? '+' : '') + dpd + 'd', dpd <= 0 ? 'paid on time on average' : 'past due on average', dpdRead);
+    }
+    var staleAmt = t.staleAmount || 0, staleCnt = t.staleCount || 0, stalePct = t.stalePct || 0;
+    var staleRead = staleCnt === 0 ? 'good' : stalePct >= 0.05 ? 'concern' : 'watch';
+    wcTiles += wcTile('Stale approvals', staleCnt === 0 ? 'None' : moneyShort(staleAmt, ccy),
+        staleCnt === 0 ? 'nothing approved and left unpaid' : staleCnt.toLocaleString() + ' invoices approved, 30+ days unpaid' + (stalePct ? ' (' + pct(stalePct) + ' of spend)' : ''),
+        staleRead);
+
+    // ── Concentration cluster ─────────────────────────────────────
+    var conc = c.concentration;
+    var hhiBand = conc.hhi >= 0.25 ? 'highly concentrated' : conc.hhi >= 0.15 ? 'moderately concentrated' : 'diversified';
+    var hhiRead = conc.hhi >= 0.25 ? 'concern' : conc.hhi >= 0.15 ? 'watch' : 'good';
+    var top1Read = conc.top1Pct >= 0.60 ? 'concern' : conc.top1Pct >= 0.40 ? 'watch' : '';
+    var tailCount = (c.suppliers || []).filter(function(s) { return (s.sharePct || 0) < 0.005; }).length;
+    var concTiles =
+        wcTile('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend', top1Read) +
+        wcTile('HHI', conc.hhi.toFixed(3), hhiBand, hhiRead) +
+        wcTile('Long tail', tailCount.toLocaleString(), 'suppliers under 0.5% each', tailCount >= 50 ? 'watch' : '');
+
+    // ── Invoice quality cluster ───────────────────────────────────
+    var combined = t.combinedDilutionRate || 0, cnRate = t.dilutionRate || 0, spRate = t.implicitDilutionRate || 0;
+    var dilRead = combined >= 0.08 ? 'concern' : combined >= 0.05 ? 'watch' : 'good';
+    var spAmt = t.shortPayAmount || 0, spCnt = t.shortPayCount || 0;
+    var qualTiles =
+        wcTile('Combined dilution', pct(combined), 'CN ' + pct(cnRate) + ' &middot; short-pay ' + pct(spRate), dilRead) +
+        wcTile('Short-paid value', moneyShort(spAmt, ccy), spCnt.toLocaleString() + ' invoices paid short', spAmt > 0 ? (spRate >= 0.05 ? 'concern' : 'watch') : 'good');
+
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 1</div>' +
             '<div class="section-title">Your ' + ccy + ' supply chain at a glance</div>' +
-            '<div class="section-lede">Headline numbers from the period covered, with one observation worth dwelling on.</div>' +
-
+            '<div class="section-lede">A point-in-time read on the period covered &mdash; working capital, concentration, and invoice quality. The Trends tab shows how each is moving.</div>' +
             '<div class="stat-grid">' +
-                statCard('Suppliers', t.supplierCount.toLocaleString(), '') +
-                statCard('Invoices', t.invoiceCount.toLocaleString(), '') +
-                statCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' per invoice') +
-                statCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'dilution ' + pct(t.dilutionRate)) +
+                statCard('Suppliers', (t.supplierCount || 0).toLocaleString(), '') +
+                statCard('Invoices', (t.invoiceCount || 0).toLocaleString(), '') +
+                statCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' / invoice') +
+                statCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'combined dilution ' + pct(combined)) +
             '</div>' +
-
+            '<div class="wc-scorecard">' +
+                wcCluster('Working capital', wcTiles) +
+                wcCluster('Concentration risk', concTiles) +
+                wcCluster('Invoice quality', qualTiles) +
+            '</div>' +
             '<div class="callout">' +
                 '<div class="callout-eyebrow">Worth noting</div>' +
                 '<div class="callout-text">' + fact + '</div>' +
             '</div>' +
         '</div>';
 }
+
 
 function chooseSurprisingFact(c, ccy) {
     // Pick the most attention-grabbing fact from the data. Priority order:
@@ -7326,60 +7414,79 @@ function drawConcentrationChart(ccy, c) {
 // ────────────────────────────────────────────────────────────────
 
 function renderSectionDilution(c, ccy) {
-    var overall = c.dilution.overallRate;
-    var fullLeague = c.dilution.league;
-    var league = fullLeague.slice(0, 10);
-    var suppliersWithCns = fullLeague.filter(function(s) { return s.cnCount > 0; }).length;
+    var t = c.totals;
+    var cnTotal = t.totalCNs || 0;
+    var spTotal = t.shortPayAmount || 0;
+    var combinedRate = t.combinedDilutionRate || 0;
 
-    if (c.totals.cnCount === 0) {
+    // Combined-leakage league built from suppliers (CN + short-pay). The
+    // snapshot's dilution.league is CN-only, so we read suppliers directly.
+    // Exact figures throughout — no estimates.
+    var league = (c.suppliers || [])
+        .filter(function(s) { return (s.invoiceCount || 0) >= 3 && ((s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0); })
+        .map(function(s) {
+            return {
+                identifier: s.identifier, name: s.name,
+                invoiceCount: s.invoiceCount || 0, invoiceTotal: s.totalSpend || 0,
+                cnTotal: s.cnTotal || 0, shortPayAmount: s.shortPayAmount || 0,
+                combinedRate: s.combinedDilutionRate || 0, sharePct: s.sharePct || 0
+            };
+        })
+        .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
+
+    if (cnTotal === 0 && spTotal === 0) {
         return '' +
             '<div class="section">' +
                 '<div class="section-eyebrow">Section 3</div>' +
                 '<div class="section-title">Quality signals from your invoice flow</div>' +
-                '<div class="section-lede">No credit note data was provided for this currency. Dilution analysis is unavailable — re-upload with a credit notes CSV to see this view.</div>' +
+                '<div class="section-lede">No credit notes and no short-paid invoices in this period &mdash; no dilution signal to report.</div>' +
             '</div>';
     }
 
-    var rows = league.map(function(s, idx) {
-        var cls = s.dilutionRate >= 0.08 ? 'high' : s.dilutionRate >= 0.03 ? 'med' : 'low';
+    var withLeak = league.length;
+    var top = league.slice(0, 10);
+    var rows = top.map(function(s, idx) {
+        var cls = s.combinedRate >= 0.08 ? 'high' : s.combinedRate >= 0.03 ? 'med' : 'low';
         return '<tr>' +
             '<td>' + (idx + 1) + '</td>' +
             '<td><span class="sup-link" data-sup-id="' + escHTML(s.identifier) + '" data-sup-ccy="' + escHTML(ccy) + '"><strong>' + escHTML(s.name) + '</strong></span></td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
-            '<td class="text-right mono">' + s.cnCount.toLocaleString() + '</td>' +
-            '<td class="text-right mono">' + moneyShort(s.cnTotal, ccy) + '</td>' +
-            '<td class="text-right dil-cell ' + cls + '">' + pct(s.dilutionRate) + '</td>' +
+            '<td class="text-right mono">' + (s.cnTotal > 0 ? moneyShort(s.cnTotal, ccy) : '&mdash;') + '</td>' +
+            '<td class="text-right mono">' + (s.shortPayAmount > 0 ? moneyShort(s.shortPayAmount, ccy) : '&mdash;') + '</td>' +
+            '<td class="text-right dil-cell ' + cls + '">' + pct(s.combinedRate) + '</td>' +
             '<td class="text-right mono" style="color:var(--text-secondary);">' + pct(s.sharePct) + '</td>' +
         '</tr>';
     }).join('');
 
-    var jumpLinkHtml = suppliersWithCns > 10
-        ? '<button class="section-jump-link" data-jump-to="all-suppliers">View all ' + suppliersWithCns.toLocaleString() + ' suppliers with credit notes in the All Suppliers tab →</button>'
+    var jumpLinkHtml = withLeak > 10
+        ? '<button class="section-jump-link" data-jump-to="all-suppliers">View all ' + withLeak.toLocaleString() + ' suppliers with dilution in the All Suppliers tab &rarr;</button>'
         : '';
+
+    var lede = (cnTotal === 0 && spTotal > 0)
+        ? 'No credit notes were provided &mdash; the entire dilution signal here is short-pay (invoices settled below face value). A credit-note-only view would show nothing.'
+        : 'Credit notes and short-pays combined, ranked by rate. Above 5% generally indicates a process or quality issue; above 8% is a strong signal.';
 
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 3</div>' +
             '<div class="section-title">Quality signals from your invoice flow</div>' +
-            '<div class="section-lede">Credit notes against invoices, ranked by rate. Above 5% generally indicates a process or quality issue worth investigating; above 8% is a strong signal.</div>' +
-
+            '<div class="section-lede">' + lede + '</div>' +
             '<div class="stat-grid">' +
-                statCard('Overall dilution', pct(overall), 'across ' + c.totals.cnCount + ' credit notes') +
-                statCard('Total credit notes', moneyShort(c.totals.totalCNs, ccy), '') +
-                statCard('Net spend', moneyShort(c.totals.netSpend, ccy), '') +
-                statCard('Suppliers w/ CNs', suppliersWithCns.toLocaleString(), 'of ' + c.suppliers.length) +
+                statCard('Combined dilution', pct(combinedRate), 'of ' + ccy + ' spend') +
+                statCard('Credit notes', moneyShort(cnTotal, ccy), (t.cnCount || 0).toLocaleString() + ' CNs') +
+                statCard('Short-paid', moneyShort(spTotal, ccy), (t.shortPayCount || 0).toLocaleString() + ' invoices') +
+                statCard('Net spend', moneyShort(t.netSpend, ccy), '') +
             '</div>' +
-
             '<div class="chart-box">' +
-                '<div class="chart-box-title">Dilution league — ' + ccy + '</div>' +
+                '<div class="chart-box-title">Dilution league &mdash; ' + ccy + ' (credit notes + short-pay)</div>' +
                 '<table class="report-table">' +
                     '<thead><tr>' +
                         '<th>#</th><th>Supplier</th>' +
                         '<th class="text-right">Invoices</th><th class="text-right">Invoice total</th>' +
-                        '<th class="text-right">CNs</th><th class="text-right">CN total</th>' +
-                        '<th class="text-right">Dilution</th>' +
-                        '<th class="text-right" style="color:var(--muted);">Share of spend</th>' +
+                        '<th class="text-right">Credit notes</th><th class="text-right">Short-paid</th>' +
+                        '<th class="text-right">Combined</th>' +
+                        '<th class="text-right" style="color:var(--muted);">Share</th>' +
                     '</tr></thead>' +
                     '<tbody>' + rows + '</tbody>' +
                 '</table>' +
@@ -7387,6 +7494,7 @@ function renderSectionDilution(c, ccy) {
             '</div>' +
         '</div>';
 }
+
 
 // ────────────────────────────────────────────────────────────────
 // Section 4 — Payment behaviour
@@ -7613,108 +7721,183 @@ function renderSectionStressSignals(c, ccy) {
 // ────────────────────────────────────────────────────────────────
 
 function renderSectionWhatThisMeans(c, ccy) {
-    var obs = generateObservations(c, ccy);
-    var rows = obs.map(function(o) {
-        return '<div class="observation ' + (o.severity || '') + '">' + o.text + '</div>';
-    }).join('');
+    var findings = generateObservations(c, ccy).sort(function(a, b) { return (b.gbp || 0) - (a.gbp || 0); });
+
+    var bodyHtml;
+    if (findings.length === 0) {
+        bodyHtml = '<div class="finding finding-strength"><div class="finding-rank">&#10003;</div><div class="finding-main">' +
+            '<div class="finding-headline">No severe concentration, dilution, or payment-behaviour signals in this ' + ccy + ' period.</div>' +
+            '<div class="finding-why">A strong baseline &mdash; the Pelagic conversation here is usually growth financing rather than risk.</div>' +
+        '</div></div>';
+    } else {
+        var cards = findings.slice(0, 6).map(function(f, i) { return findingCard(f, i + 1); }).join('');
+        var qList = findings.slice(0, 5).map(function(f) {
+            return '<li class="q-item">' + findingOwnerChip(f.owner) + '<span class="q-text">' + escHTML(f.q) + '</span></li>';
+        }).join('');
+        bodyHtml =
+            '<div class="findings-list">' + cards + '</div>' +
+            '<div class="questions-capstone">' +
+                '<div class="qc-title">Questions this raises</div>' +
+                '<div class="qc-sub">Owner-tagged, ranked by value at stake &mdash; the calls to make.</div>' +
+                '<ul class="qc-list">' + qList + '</ul>' +
+            '</div>';
+    }
 
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 6</div>' +
             '<div class="section-title">What this means</div>' +
-            '<div class="section-lede">A few observations drawn from the sections above, named specifically rather than generically.</div>' +
-
-            '<div class="observations">' + rows + '</div>' +
-
+            '<div class="section-lede">The findings above, ranked by value at stake and tagged with who owns the answer &mdash; Procurement or AP.</div>' +
+            bodyHtml +
             '<div class="cta-strip">' +
                 '<div class="cta-text">' +
-                    '<strong>How Pelagic helps:</strong> we fund supplier invoices on the date you receive them, so suppliers get paid on time and you keep your existing payment terms. Concentrated supplier risk, slow-paid SMEs, and dilution disputes are all places where our financing changes the equation.' +
+                    '<strong>How Pelagic helps:</strong> we fund supplier invoices on the date they are received, so suppliers are paid on time while you keep your terms. Concentrated supplier risk, slow-paid SMEs, and dilution disputes are all places our financing changes the equation.' +
                 '</div>' +
                 '<button class="btn btn-primary" onclick="exportReportPDF();">Print / Save as PDF</button>' +
             '</div>' +
         '</div>';
 }
 
-function generateObservations(c, ccy) {
-    var out = [];
-    var top = c.suppliers[0];
 
-    // Observation: concentration
+function generateObservations(c, ccy) {
+    var t = c.totals;
+    var out = [];
+    var meta = (window.__upload && window.__upload.meta) ? window.__upload.meta : {};
+    var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
+    var top = c.suppliers && c.suppliers[0];
+
+    // 1. Concentration — Procurement
     if (top && top.sharePct >= 0.40) {
         out.push({
-            severity: top.sharePct >= 0.60 ? 'danger' : 'warn',
-            text: '<strong>' + escHTML(top.name) + '</strong> represents ' + pct(top.sharePct) +
-                  ' of your ' + ccy + ' spend (' + moneyShort(top.totalSpend, ccy) + '). This is a concentration worth managing — both for continuity risk and because you may be a similarly large share of their book.'
+            sev: top.sharePct >= 0.60 ? 'concern' : 'watch',
+            owner: 'Procurement', tag: 'De-risk', gbp: top.totalSpend || 0,
+            headline: '<strong>' + escHTML(top.name) + '</strong> is ' + pct(top.sharePct) + ' of your ' + ccy + ' spend (' + moneyShort(top.totalSpend, ccy) + ').',
+            why: 'Single-supplier dependence &mdash; both a continuity risk and a sign you may be an outsized share of their book.',
+            q: 'Why is ' + pct(top.sharePct) + ' of ' + ccy + ' spend on one supplier, and what is the continuity plan?'
         });
     }
 
-    // Observation: dilution outliers
-    var dilOutliers = c.dilution.league.filter(function(s) { return s.dilutionRate >= 0.05 && s.invoiceCount >= 3; });
-    if (dilOutliers.length > 0) {
-        var names = dilOutliers.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (' + pct(s.dilutionRate) + ')'; }).join(', ');
-        var moreCount = dilOutliers.length - 3;
+    // 2. Stale approvals — AP
+    var staleAmt = t.staleAmount || 0, staleCnt = t.staleCount || 0;
+    if (staleAmt > 0 && staleCnt > 0) {
         out.push({
-            severity: dilOutliers[0].dilutionRate >= 0.08 ? 'warn' : '',
-            text: 'Suppliers with elevated credit-note rates: ' + names + (moreCount > 0 ? ', plus ' + moreCount + ' more' : '') +
-                  '. AP teams typically don\'t aggregate these — your CFO may be unaware of the cumulative dilution drag.'
+            sev: (t.stalePct || 0) >= 0.05 ? 'concern' : 'watch',
+            owner: 'AP', tag: 'De-risk', gbp: staleAmt,
+            headline: moneyShort(staleAmt, ccy) + ' across ' + staleCnt.toLocaleString() + ' invoices is approved but still unpaid 30+ days past due.',
+            why: 'Invoices the business has already acknowledged it owes. Holding approved payables strains suppliers and is squarely an AP execution question.',
+            q: 'We have approved ' + moneyShort(staleAmt, ccy) + ' of invoices and left them 30+ days past due &mdash; why are we sitting on approved payables?'
         });
     }
 
-    // Observation: payment lateness
-    var late = c.paymentBehaviour.consistentlyLate;
-    if (late.length > 0) {
-        var lateNames = late.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong> (avg +' + s.avgDaysPastDue + 'd)'; }).join(', ');
-        var lateMore = late.length - 3;
+    // 3. Combined dilution — Procurement (exposes the credit-note-only blind spot)
+    var cnTotal = t.totalCNs || 0, spTotal = t.shortPayAmount || 0, combined = (t.totalCNs || 0) + (t.shortPayAmount || 0);
+    if (combined > 0 && (t.combinedDilutionRate || 0) >= 0.03) {
         out.push({
-            severity: 'warn',
-            text: 'You\'re paying ' + lateNames + (lateMore > 0 ? ' and ' + lateMore + ' others' : '') +
-                  ' well past their due dates. Smaller suppliers feel this disproportionately, and it\'s likely affecting their willingness to extend favourable terms.'
+            sev: (t.combinedDilutionRate || 0) >= 0.08 ? 'concern' : 'watch',
+            owner: 'Procurement', tag: 'De-risk', gbp: combined,
+            headline: 'Real leakage is ' + moneyShort(combined, ccy) + ' (' + pct(t.combinedDilutionRate) + ') &mdash; ' + moneyShort(cnTotal, ccy) + ' credit notes plus ' + moneyShort(spTotal, ccy) + ' short-paid.',
+            why: 'A credit-note-only view shows ' + moneyShort(cnTotal, ccy) + '. The short-pay component is the same economic leakage and is usually invisible to the CFO.',
+            q: 'Our true dilution is ' + pct(t.combinedDilutionRate) + ' (' + moneyShort(combined, ccy) + '), not the credit-note figure &mdash; what is driving the short-pays?'
         });
     }
 
-    // Observation: stress signals (if any)
-    var meta = window.__upload.meta;
-    var periodEnd = meta.date_range_max ? new Date(meta.date_range_max + 'T00:00:00') : new Date();
-    var silentSuppliers = c.suppliers.filter(function(s) {
+    // 4. Paid past terms — Procurement / AP (exact spend with persistently-late suppliers)
+    var lateSups = (c.suppliers || []).filter(function(s) { return s.avgDaysPastDue != null && s.avgDaysPastDue > 30 && (s.paidCount || 0) >= 3; });
+    if (lateSups.length > 0) {
+        var lateSpend = lateSups.reduce(function(a, s) { return a + (s.totalSpend || 0); }, 0);
+        out.push({
+            sev: 'watch',
+            owner: 'Procurement / AP', tag: 'De-risk', gbp: lateSpend,
+            headline: moneyShort(lateSpend, ccy) + ' of spend goes to ' + lateSups.length.toLocaleString() + ' suppliers you pay 30+ days past due on average' + (t.avgDaysPastDue != null ? '; overall you settle ' + (t.avgDaysPastDue >= 0 ? '+' : '') + t.avgDaysPastDue + 'd past due.' : '.'),
+            why: 'Could be a sanctioned cash-management stretch or an AP execution gap &mdash; the data cannot tell which.',
+            q: 'Are we deliberately stretching these suppliers, or is AP missing the terms?'
+        });
+    }
+
+    // 5. Paid early — AP / Treasury (fires only on observed early payment)
+    var earlySups = (c.suppliers || []).filter(function(s) { return s.avgDaysPastDue != null && s.avgDaysPastDue < 0 && (s.paidCount || 0) >= 3; });
+    if (earlySups.length > 0) {
+        var earlySpend = earlySups.reduce(function(a, s) { return a + (s.totalSpend || 0); }, 0);
+        out.push({
+            sev: 'watch',
+            owner: 'AP / Treasury', tag: 'Optimise', gbp: earlySpend,
+            headline: moneyShort(earlySpend, ccy) + ' of spend goes to ' + earlySups.length.toLocaleString() + ' suppliers paid before the due date.',
+            why: 'Paying early forgoes the working-capital float unless an early-payment discount is being captured in return.',
+            q: 'Why are we paying these suppliers early &mdash; capturing a discount, or giving up the float for nothing?'
+        });
+    }
+
+    // 6. Going quiet — Procurement (links to Trends)
+    var silent = (c.suppliers || []).filter(function(s) {
         if (!s.lastInvoice) return false;
         var last = new Date(s.lastInvoice + 'T00:00:00');
-        var daysSince = Math.floor((periodEnd - last) / (1000 * 60 * 60 * 24));
-        return daysSince >= 90 && s.activeMonths >= 2;
+        var d = Math.floor((periodEnd - last) / 86400000);
+        return d >= 90 && (s.activeMonths || 0) >= 2;
     });
-    if (silentSuppliers.length > 0) {
-        var silentNames = silentSuppliers.slice(0, 3).map(function(s) {
-            var daysSince = Math.floor((periodEnd - new Date(s.lastInvoice + 'T00:00:00')) / (1000 * 60 * 60 * 24));
-            return '<strong>' + escHTML(s.name) + '</strong> (' + daysSince + ' days silent)';
-        }).join(', ');
+    if (silent.length > 0) {
+        var silentSpend = silent.reduce(function(a, s) { return a + (s.totalSpend || 0); }, 0);
+        var names = silent.slice(0, 3).map(function(s) { return '<strong>' + escHTML(s.name) + '</strong>'; }).join(', ');
         out.push({
-            severity: 'danger',
-            text: 'Suppliers that have gone quiet relative to period end: ' + silentNames +
-                  '. Could be relationship cooling, could be supplier distress — worth a procurement check-in either way.'
+            sev: 'concern',
+            owner: 'Procurement', tag: 'De-risk', gbp: silentSpend,
+            headline: silent.length.toLocaleString() + ' suppliers (' + moneyShort(silentSpend, ccy) + ') have gone quiet &mdash; no invoice in 90+ days before period end: ' + names + (silent.length > 3 ? ', &hellip;' : '') + '.',
+            why: 'Could be relationship cooling or supplier distress. The Trends tab shows each trajectory.',
+            q: 'Have we lost these suppliers, and was that deliberate?'
         });
     }
 
-    // Observation: payment coverage
-    if (c.paymentBehaviour.coveragePct < 0.50 && c.totals.invoiceCount >= 20) {
+    // 7. Coverage gap — AP (data hygiene)
+    var cov = (c.paymentBehaviour && c.paymentBehaviour.coveragePct != null) ? c.paymentBehaviour.coveragePct : (t.paymentCoveragePct || 0);
+    if (cov < 0.50 && (t.invoiceCount || 0) >= 20) {
         out.push({
-            severity: '',
-            text: 'Only ' + pct(c.paymentBehaviour.coveragePct) + ' of ' + ccy + ' invoices have a paid_date populated, which limits the depth of payment analysis. If your AP system tracks settlement separately, re-uploading with paid dates joined in would unlock more of this report.'
-        });
-    }
-
-    // Always end with a positive/neutral framing if obs list is empty (rare but possible).
-    if (out.length === 0) {
-        out.push({
-            severity: '',
-            text: 'Your ' + ccy + ' supply chain shows no severe concentration, quality, or payment-behaviour signals in this period. That\'s a strong baseline — Pelagic typically helps companies in this position with growth financing (advance funding for top-supplier expansion) rather than risk management.'
+            sev: '', owner: 'AP', tag: 'De-risk', gbp: 0,
+            headline: 'Only ' + pct(cov) + ' of ' + ccy + ' invoices carry a paid date, which caps the depth of payment analysis.',
+            why: 'If settlement is tracked in a separate system, joining it in would unlock the full payment-behaviour picture.',
+            q: 'Why is settlement data not joined to our AP extract?'
         });
     }
 
     return out;
 }
 
+
 // ────────────────────────────────────────────────────────────────
 // Helper: stat card markup
 // ────────────────────────────────────────────────────────────────
+
+function wcReadClass(read) { return read ? (' wc-' + read) : ''; }
+function wcTile(label, value, sub, read) {
+    return '<div class="wc-tile' + wcReadClass(read) + '">' +
+        '<div class="wc-tile-label">' + label + '</div>' +
+        '<div class="wc-tile-value">' + value + '</div>' +
+        (sub ? '<div class="wc-tile-sub">' + sub + '</div>' : '') +
+    '</div>';
+}
+function wcCluster(label, tilesHtml) {
+    return '<div class="wc-cluster">' +
+        '<div class="wc-cluster-label">' + label + '</div>' +
+        '<div class="wc-cluster-tiles">' + tilesHtml + '</div>' +
+    '</div>';
+}
+function findingOwnerChip(owner) {
+    var cls = owner === 'AP' ? 'own-ap' : owner === 'Procurement' ? 'own-proc' : 'own-both';
+    return '<span class="finding-owner ' + cls + '">' + escHTML(owner) + '</span>';
+}
+function findingTagChip(tag) {
+    var cls = tag === 'Optimise' ? 'tag-opt' : 'tag-risk';
+    return '<span class="finding-tag ' + cls + '">' + escHTML(tag) + '</span>';
+}
+function findingCard(f, rank) {
+    return '<div class="finding finding-' + (f.sev || 'watch') + '">' +
+        '<div class="finding-rank">' + rank + '</div>' +
+        '<div class="finding-main">' +
+            '<div class="finding-head">' + findingOwnerChip(f.owner) + findingTagChip(f.tag) + '</div>' +
+            '<div class="finding-headline">' + f.headline + '</div>' +
+            (f.why ? '<div class="finding-why">' + f.why + '</div>' : '') +
+            '<div class="finding-q">' + escHTML(f.q) + '</div>' +
+        '</div>' +
+    '</div>';
+}
 
 function statCard(label, value, sub, labelHtml) {
     // labelHtml lets the caller supply already-trusted HTML for the label
