@@ -3300,6 +3300,10 @@ function finishProcessAndSave(selectedBuyerId) {
                                     // will eventually catch up. Log and proceed.
                                     console.warn('populate_prospect_suppliers_now after upload:', rpcRes.error.message);
                                 }
+                                // populate_prospect_suppliers_now refreshes the prior-appearance
+                                // counts server-side; just drop the session cache so the Prospects
+                                // tab re-reads the fresh summary on next open.
+                                if (state._buscByBuyer) state._buscByBuyer[uploadBuyerId] = null;
                                 finishUploadFlow();
                             });
                         } else {
@@ -3710,6 +3714,8 @@ function toggleBuyerOutreach(buyerId, newValue, checkbox) {
                         return;
                     }
                     if (statusEl) statusEl.textContent = 'Permitted · ' + (rpcRes.data || 0) + ' new prospects';
+                    // populate refreshed the counts server-side; drop the session cache.
+                    if (state._buscByBuyer) state._buscByBuyer[buyerId] = null;
                     // Reload all data so the prospects table refreshes.
                     loadAllData();
                 });
@@ -4022,26 +4028,16 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
     var crossDone = false;
     function maybeFinish() { if (sameDone && crossDone) done(prevApp); }
 
-    // Same-buyer prior appearances. Deriving these by scanning raw
-    // buyer_invoices (offset-paged, unfiltered by identifier) melts down on
-    // large datasets: one round-trip per 1,000 rows — hundreds/thousands of
-    // requests for a high-volume buyer — and deep OFFSET makes Postgres
-    // scan-and-discard, timing out the later pages. A server-side aggregate
-    // returns one grouped row per (upload_id, supplier_identifier) — at most
-    // (#other-uploads x #suppliers) rows — in a single request. We filter to
-    // the identifiers present in THIS upload client-side (prevApp already has
-    // a key for each). Requires the buyer_prior_upload_suppliers() RPC.
-    sbClient.rpc('buyer_prior_upload_suppliers', {
-        p_buyer_id: currentUpload.buyer_id,
-        p_exclude_upload: currentUpload.id
-    }).then(function(res) {
-        if (res.error || !res.data) {
-            if (res.error) console.warn('[buildPreviousAppearanceMap] same-buyer RPC:', res.error.message);
-            sameDone = true; maybeFinish(); return;
-        }
-        res.data.forEach(function(r) {
-            // Only surface identifiers that appear in THIS upload.
-            if (!prevApp[r.supplier_identifier]) return;
+    // Same-buyer prior appearances. Read precomputed per-(upload, supplier)
+    // counts from buyer_upload_supplier_counts — refreshed once at populate
+    // time, not aggregated live — so this is a tiny indexed read (bounded by
+    // #uploads x #suppliers, not #invoices). Cached per buyer for the session
+    // so repeat renders / the double render don't re-query. Filter to other
+    // uploads and to identifiers present in THIS upload client-side.
+    function foldSameBuyerCounts(rows) {
+        rows.forEach(function(r) {
+            if (r.upload_id === currentUpload.id) return;   // other uploads only
+            if (!prevApp[r.supplier_identifier]) return;    // idents in THIS upload only
             var u = uploadById[r.upload_id];
             if (!u) return;
             prevApp[r.supplier_identifier].sameBuyer.push({
@@ -4051,7 +4047,35 @@ function buildPreviousAppearanceMap(distinct, currentUpload, done) {
             });
         });
         sameDone = true; maybeFinish();
-    });
+    }
+    if (!state._buscByBuyer) state._buscByBuyer = {};
+    var cachedBusc = state._buscByBuyer[currentUpload.buyer_id];
+    if (cachedBusc) {
+        foldSameBuyerCounts(cachedBusc);
+    } else {
+        // Small table, but PostgREST still caps a response at db-max-rows
+        // (1,000); page through it (almost always a single page).
+        var buscAll = [];
+        var loadBusc = function(boff) {
+            sbClient.from('buyer_upload_supplier_counts')
+                .select('upload_id, supplier_identifier, cnt')
+                .eq('buyer_id', currentUpload.buyer_id)
+                .range(boff, boff + 999)
+                .then(function(res) {
+                    if (res.error || !res.data) {
+                        if (res.error) console.warn('[buildPreviousAppearanceMap] counts read:', res.error.message);
+                        state._buscByBuyer[currentUpload.buyer_id] = buscAll;
+                        foldSameBuyerCounts(buscAll);
+                        return;
+                    }
+                    buscAll = buscAll.concat(res.data);
+                    if (res.data.length === 1000) { loadBusc(boff + 1000); return; }
+                    state._buscByBuyer[currentUpload.buyer_id] = buscAll;
+                    foldSameBuyerCounts(buscAll);
+                });
+        };
+        loadBusc(0);
+    }
 
     // Cross-buyer verified: requires prospects in this upload to have
     // registry_ids, then we look up other prospects with the SAME
