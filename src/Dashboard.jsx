@@ -16519,6 +16519,12 @@ export default function FactoringDashboard() {
             var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; });
             if (!prog) return null;
             var allProgInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
+            // Scope the statement to the selected supplier (progSupFilter), mirroring the
+            // other program tabs. Without this the bank statement ignored the supplier
+            // dropdown and always showed the whole program. progSupFilter is a supplier
+            // display name (or a branch name).
+            var _bsSupMatch = function(nm) { if (!progSupFilter) return true; var selBr = getBranchName(progSupFilter); return selBr ? nm === progSupFilter : getParentSupplierName(nm) === progSupFilter; };
+            if (progSupFilter) allProgInvs = allProgInvs.filter(function(inv) { return _bsSupMatch(inv.supplierName); });
             var progInvIds = {};
             allProgInvs.forEach(function(inv) { progInvIds[inv.id] = true; });
 
@@ -16527,6 +16533,9 @@ export default function FactoringDashboard() {
 
             // 1. Fund inflows/disbursals from program fundFlows
             (prog.fundFlows || []).forEach(function(ff, ffi) {
+              // Fund inflows/disbursals are program-level, not supplier-specific — omit
+              // them when the statement is scoped to a single supplier.
+              if (progSupFilter) return;
               if (ff.type === "inflow") {
                 entries.push({ id: "FF-IN-" + ffi, date: ff.date, sortDate: ff.date + "T00:00:01", type: "Fund Inflow", baseType: "Fund Inflow", status: null, ref: ff.reason || ff.description || "Capital injection", counterparty: ff.serviceProvider || ff.source || "Funder", credit: ff.amount || 0, debit: 0, currency: prog.currency, source: { kind: "fundFlow", index: ffi, data: ff } });
               } else if (ff.type === "outflow" || ff.type === "disbursal") {
@@ -16576,7 +16585,7 @@ export default function FactoringDashboard() {
             // source payment date so the debit and credit legs sit together on the statement.
             // Standalone outbound remittances use executedAt/createdAt (their own date).
             SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
-              if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram) {
+              if (spq.type === "remittance" && spq.status !== "Cancelled" && spq.status !== "Failed" && spq.programId === selectedProgram && _bsSupMatch(spq.supplierName)) {
                 var srcPay = spq.sourcePaymentId ? PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; }) : null;
                 var isPassThrough = srcPay && srcPay.direction === "inbound";
                 var execDate = isPassThrough ? srcPay.date : (spq.executedAt ? spq.executedAt.split("T")[0] : spq.createdAt ? spq.createdAt.split("T")[0] : "");
@@ -16591,6 +16600,7 @@ export default function FactoringDashboard() {
               if (spq.type !== "remittance") return;
               if (spq.status === "Cancelled" || spq.status === "Failed") return;
               if (spq.programId !== selectedProgram) return;
+              if (progSupFilter && !_bsSupMatch(spq.supplierName)) return;
               if (!spq.sourcePaymentId) return;
               var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === spq.sourcePaymentId; });
               if (pay && pay.direction === "outbound") return;
@@ -16657,7 +16667,7 @@ export default function FactoringDashboard() {
             var totalCredits = entries.reduce(function(s, e) { return s + e.credit; }, 0);
             var totalDebits = entries.reduce(function(s, e) { return s + e.debit; }, 0);
             var closingBal = entries.length > 0 ? entries[entries.length - 1].balance : 0;
-            var calcAvail = getProgramAvailableBalance(selectedProgram);
+            var calcAvail = progSupFilter ? closingBal : getProgramAvailableBalance(selectedProgram);
             var bsDelta = r2(closingBal - calcAvail);
 
             // Filtered totals (when active)
