@@ -1109,19 +1109,131 @@ function getBenchmark(benchmarkId) {
   return BENCHMARKS_DB.find(function(b) { return b.id === benchmarkId; }) || null;
 }
 
-// Resolve a rateDefinition object into a numeric rate. Currently only the
-// "fixed" mode is supported; the benchmark/buyer/parent modes are
-// placeholder-returns-null until the recomputation engine is built.
-// context (optional): { benchmark, parentRate, buyerRate } — values the
-// future engine will pass in so this function can resolve chained modes.
+// Resolve a rateDefinition object into a numeric rate.
+//   fixed     -> { mode:"fixed", value }            -> value
+//   benchmark -> { mode:"benchmark", spread }        -> context.benchmark + spread
+//   parent    -> { mode:"parent", spread }           -> context.parentRate + spread  (branches)
+// The benchmark id is NOT carried on the definition: benchmark mode inherits the
+// program's benchmark, so the caller resolves that value and passes it in via
+// context. Returns null if the needed context value is missing (caller then
+// falls back to the materialised numeric rate on the entry).
 function resolveRateDefinition(def, context) {
   if (!def || typeof def !== "object") return null;
+  context = context || {};
   if (def.mode === "fixed") return (typeof def.value === "number") ? def.value : null;
-  // benchmark / buyer / parent modes intentionally not yet implemented.
-  // Returning null means callers fall back to the materialised numeric rate
-  // already stored on the entry (annualRate / penaltyRate / advanceRate),
-  // which is the source of truth until the engine is in place.
+  if (def.mode === "benchmark") return (typeof context.benchmark === "number") ? context.benchmark + (typeof def.spread === "number" ? def.spread : 0) : null;
+  if (def.mode === "parent") return (typeof context.parentRate === "number") ? context.parentRate + (typeof def.spread === "number" ? def.spread : 0) : null;
+  // "buyer" mode is not used in the current model.
   return null;
+}
+
+// ======== Rate-chain resolver (pass 1) ========
+// Inert until the eligibility path (pass 2) and entry UI (pass 3) are wired;
+// these are pure read helpers over the existing programRates / benchmark data.
+
+// Normalise an as-of value for string comparison against effectiveTimestamp /
+// effectiveDate keys. A bare date (length 10) becomes end-of-day so a same-day
+// entry counts as in effect.
+function _asOfTs(asOf) {
+  if (!asOf) return new Date().toISOString();
+  return (String(asOf).length === 10) ? (asOf + "T23:59:59.999Z") : asOf;
+}
+
+// As-of value of a benchmark, walking its history plus its current value.
+function benchmarkValueAsOf(benchmarkId, asOf) {
+  var b = getBenchmark(benchmarkId);
+  if (!b) return null;
+  var ts = _asOfTs(asOf);
+  var cands = (b.history || []).slice();
+  cands.push({ rate: b.currentRate, effectiveDate: b.effectiveDate });
+  var best = null, bestKey = null;
+  for (var i = 0; i < cands.length; i++) {
+    var c = cands[i];
+    if (typeof c.rate !== "number") continue;
+    var k = c.effectiveTimestamp || c.effectiveDate || "";
+    if (k && k <= ts && (bestKey === null || k > bestKey)) { best = c.rate; bestKey = k; }
+  }
+  return best;
+}
+
+// Resolve the entity object (supplier / supplier-branch / buyer / buyer-branch)
+// that holds .programRates, from a composite entity id. Prefix decides side.
+function _rateEntity(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  var isBuyer = /^BUY/i.test(parsed.supplierId || "");
+  if (parsed.branchId) return isBuyer ? getBuyerBranchById(entityId) : getBranchById(entityId);
+  return isBuyer ? getBuyerById(entityId) : getSupplierById(entityId);
+}
+
+// The rate ENTRY in effect for an entity's program as of a date. Buyer-keying
+// is not used in the current model, so we resolve the default history only.
+function _rateEntryAsOf(entityObj, programId, asOf) {
+  if (!entityObj || !entityObj.programRates) return null;
+  var arr = _resolveProgramRateHistory(entityObj.programRates, programId, null);
+  if (!arr || arr.length === 0) return null;
+  var ts = _asOfTs(asOf);
+  var sorted = arr.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate || "").localeCompare(b.effectiveTimestamp || b.effectiveDate || ""); });
+  var entry = null;
+  for (var i = 0; i < sorted.length; i++) {
+    var k = sorted[i].effectiveTimestamp || sorted[i].effectiveDate || "";
+    if (k && k <= ts) entry = sorted[i];
+  }
+  if (entry && entry.removed) return null;
+  return entry;
+}
+
+// Effective ANNUAL rate for an entity + program as of a date, following its
+// rateDefinition (fixed / benchmark / parent, recursive for branches). Falls
+// back to the materialised annualRate on the entry for pre-rate-chain data.
+function getEffectiveRate(entityId, programId, asOf) {
+  if (!entityId || !programId) return null;
+  var entityObj = _rateEntity(entityId);
+  if (!entityObj) return null;
+  var entry = _rateEntryAsOf(entityObj, programId, asOf);
+  if (!entry) return null;
+  var def = entry.rateDefinition && entry.rateDefinition.annualRate;
+  if (!def) return (typeof entry.annualRate === "number") ? entry.annualRate : null;
+  var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
+  var ctx = {};
+  if (def.mode === "benchmark") ctx.benchmark = prog ? benchmarkValueAsOf(prog.benchmark, asOf) : null;
+  if (def.mode === "parent") ctx.parentRate = getEffectiveRate(getParentEntityId(entityId), programId, asOf);
+  var resolved = resolveRateDefinition(def, ctx);
+  return (typeof resolved === "number") ? resolved : ((typeof entry.annualRate === "number") ? entry.annualRate : null);
+}
+
+// Program MINIMUM rate as of a date (fixed / benchmark + spread; inherits the
+// program's benchmark). Returns null when no minimum is configured.
+function resolveProgramMin(programId, asOf) {
+  var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
+  if (!prog || !Array.isArray(prog.minRate) || prog.minRate.length === 0) return null;
+  var ts = _asOfTs(asOf);
+  var sorted = prog.minRate.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate || "").localeCompare(b.effectiveTimestamp || b.effectiveDate || ""); });
+  var entry = null;
+  for (var i = 0; i < sorted.length; i++) {
+    var k = sorted[i].effectiveTimestamp || sorted[i].effectiveDate || "";
+    if (k && k <= ts) entry = sorted[i];
+  }
+  if (!entry) return null;
+  var def = entry.rateDefinition && entry.rateDefinition.annualRate;
+  if (!def) return (typeof entry.annualRate === "number") ? entry.annualRate : null;
+  var ctx = {};
+  if (def.mode === "benchmark") ctx.benchmark = benchmarkValueAsOf(prog.benchmark, asOf);
+  var resolved = resolveRateDefinition(def, ctx);
+  return (typeof resolved === "number") ? resolved : ((typeof entry.annualRate === "number") ? entry.annualRate : null);
+}
+
+// Eligibility test: a charged supplier(-branch) rate must clear BOTH the buyer
+// floor and the program minimum (>=). Returns the components plus the binding
+// floor (null when no floor is configured -> no constraint).
+function rateFundability(chargedRate, buyerEntityId, programId, asOf) {
+  var buyerFloor = getEffectiveRate(buyerEntityId, programId, asOf);
+  var programMin = resolveProgramMin(programId, asOf);
+  var floor = null;
+  if (typeof buyerFloor === "number") floor = buyerFloor;
+  if (typeof programMin === "number") floor = (floor === null) ? programMin : Math.max(floor, programMin);
+  var fundable = (floor === null) || (typeof chargedRate === "number" && chargedRate >= floor);
+  return { fundable: fundable, buyerFloor: buyerFloor, programMin: programMin, floor: floor };
 }
 
 // Programs the given supplier ID participates in (member of eligible_suppliers).
@@ -1213,7 +1325,17 @@ function getEligiblePrograms(inv, supDilRates) {
     var elgBuyerKey = inv.buyerEntityId || inv.buyerId || null;
     var supRate = getSupplierRateForProgram(entityIdForRate, fp.id, null, elgBuyerKey) || getSupplierRateForProgram(parentId, fp.id, null, elgBuyerKey);
     if (!supRate) return false;
-    if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
+    // Rate-chain floor: the charged supplier rate must clear BOTH the program
+    // minimum and the buyer floor. resolveProgramMin / getEffectiveRate return null
+    // when no rateDefinition is configured, so we fall back to the materialised
+    // supplier rate and the legacy fp.minInterestRate scalar -> identical to the old
+    // behaviour for un-migrated data. Floors resolve live.
+    var chargedRate = getEffectiveRate(entityIdForRate, fp.id, null);
+    if (typeof chargedRate !== "number") chargedRate = supRate.annualRate;
+    var progMin = resolveProgramMin(fp.id, null); if (progMin === null) progMin = fp.minInterestRate;
+    var buyerFloor = getEffectiveRate(inv.buyerEntityId || inv.buyerId, fp.id, null);
+    var rateFloor = (typeof buyerFloor === "number") ? ((typeof progMin === "number") ? Math.max(progMin, buyerFloor) : buyerFloor) : progMin;
+    if (typeof rateFloor === "number" && chargedRate < rateFloor - 0.0001) return false;
     if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
     if (term > fp.maxInvoiceTerm) return false;
     if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) return false;
@@ -1270,8 +1392,14 @@ function getEligibilityReasons(inv, supDilRates) {
     if (!supRate) {
       reasons.push("No commercial rate configured for this supplier on this program");
     } else {
-      if (supRate.annualRate < fp.minInterestRate - 0.0001) {
-        reasons.push("Supplier rate " + (supRate.annualRate * 100).toFixed(2) + "% is below program minimum " + (fp.minInterestRate * 100).toFixed(2) + "%");
+      var chargedRate = getEffectiveRate(entityIdForRate, fp.id, null);
+      if (typeof chargedRate !== "number") chargedRate = supRate.annualRate;
+      var progMin = resolveProgramMin(fp.id, null); if (progMin === null) progMin = fp.minInterestRate;
+      var buyerFloor = getEffectiveRate(inv.buyerEntityId || inv.buyerId, fp.id, null);
+      var rateFloor = (typeof buyerFloor === "number") ? ((typeof progMin === "number") ? Math.max(progMin, buyerFloor) : buyerFloor) : progMin;
+      if (typeof rateFloor === "number" && chargedRate < rateFloor - 0.0001) {
+        var floorLabel = (typeof buyerFloor === "number" && buyerFloor >= (typeof progMin === "number" ? progMin : -Infinity)) ? "buyer floor" : "program minimum";
+        reasons.push("Rate " + (chargedRate * 100).toFixed(2) + "% is below the " + floorLabel + " of " + (rateFloor * 100).toFixed(2) + "%");
       }
       if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) {
         reasons.push("Supplier advance rate " + (supRate.advanceRate * 100).toFixed(1) + "% exceeds program maximum " + (fp.maxAdvanceRate * 100).toFixed(1) + "%");
@@ -1581,6 +1709,7 @@ async function saveFundingProgram(progId) {
       max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
       max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
       min_invoice_size: fp.minInvoiceSize || 0,
+      penalty_multiplier: fp.penaltyMultiplier != null ? fp.penaltyMultiplier : 1.5, day_count: fp.dayCount === 365 ? 365 : 360, penalty_grace_days: fp.penaltyGraceDays != null ? fp.penaltyGraceDays : 0, min_rate: fp.minRate || [],
       threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
       threshold_recovery: fp.thresholdRecovery || 30,
         threshold_deemed: fp.thresholdDeemed || 60,
@@ -1777,6 +1906,7 @@ async function saveBuyer(buyId) {
       paused: b.paused || false,
       program_paused: b.programPaused || {},
       credit_limits: b.creditLimits || {},
+      program_rates: b.programRates || {},
       single_invoice_limits: b.singleInvoiceLimits || {},
         remittance_sla_days: (b.remittanceSlaDays != null && b.remittanceSlaDays !== "") ? parseInt(b.remittanceSlaDays, 10) : 5,
       branches: b.branches || [],
@@ -2255,6 +2385,7 @@ async function loadPersistedData() {
           paused: row.paused || false,
           programPaused: row.program_paused || {},
           creditLimits: row.credit_limits || {},
+          programRates: row.program_rates || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           branches: row.branches || [],
@@ -2311,6 +2442,7 @@ async function loadPersistedData() {
           maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
           maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
+          penaltyMultiplier: row.penalty_multiplier != null ? row.penalty_multiplier : 1.5, dayCount: row.day_count === 365 ? 365 : 360, penaltyGraceDays: row.penalty_grace_days != null ? row.penalty_grace_days : 0, minRate: row.min_rate || [],
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
           thresholdDeemed: row.threshold_deemed || 60,
@@ -2826,6 +2958,7 @@ async function reloadBuyers() {
           paused: row.paused || false,
           programPaused: row.program_paused || {},
           creditLimits: row.credit_limits || {},
+          programRates: row.program_rates || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
           remittanceSlaDays: row.remittance_sla_days != null ? row.remittance_sla_days : 5,
           branches: row.branches || [],
@@ -2857,6 +2990,7 @@ async function reloadFundingPrograms() {
           maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
           maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
+          penaltyMultiplier: row.penalty_multiplier != null ? row.penalty_multiplier : 1.5, dayCount: row.day_count === 365 ? 365 : 360, penaltyGraceDays: row.penalty_grace_days != null ? row.penalty_grace_days : 0, minRate: row.min_rate || [],
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
           thresholdDeemed: row.threshold_deemed || 60,
@@ -2940,6 +3074,7 @@ async function savePersistedData() {
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
         paused: b.paused || false,
         credit_limits: b.creditLimits || {},
+        program_rates: b.programRates || {},
         single_invoice_limits: b.singleInvoiceLimits || {},
         remittance_sla_days: (b.remittanceSlaDays != null && b.remittanceSlaDays !== "") ? parseInt(b.remittanceSlaDays, 10) : 5,
         branches: b.branches || [],
@@ -2997,6 +3132,7 @@ async function savePersistedData() {
         max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
         max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
         min_invoice_size: fp.minInvoiceSize || 0,
+        penalty_multiplier: fp.penaltyMultiplier != null ? fp.penaltyMultiplier : 1.5, day_count: fp.dayCount === 365 ? 365 : 360, penalty_grace_days: fp.penaltyGraceDays != null ? fp.penaltyGraceDays : 0, min_rate: fp.minRate || [],
         threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
         threshold_recovery: fp.thresholdRecovery || 30,
         threshold_deemed: fp.thresholdDeemed || 60,
@@ -3305,7 +3441,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
     var hbBal = isFunded ? (rawInv.deferredPayment !== undefined && rawInv.deferredPayment !== null ? rawInv.deferredPayment : r2((rawInv.holdback || 0) - (rawInv.interestCharged || 0))) : 0;
     var hbRecd = 0;
-    var penaltyAccrued = 0;
+    var penaltyAccrued = 0, addlIntAccrued = 0;
     var annotatedPays = [];
     var penaltyStartDate = null;
     if (declinedDate && declinedDate < viewDate) penaltyStartDate = declinedDate;
@@ -3340,8 +3476,17 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         contributionType: pay.kind === "holdback" ? "holdback" : (pay.source === "supplier_recourse" ? "recourse" : null)
       }));
     }
-    var invPenaltyRate = rawInv.penaltyRate || PENALTY_RATE;
-    var invPenaltyDailyRate = invPenaltyRate / 360;
+    // Program-configurable accrual parameters: penalty-rate multiplier, day-count basis
+    // (360 or 365) and grace-period days before penalty interest begins. Resolved once
+    // here; prog is reused for the funding-status thresholds further below.
+    var prog = rawInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === rawInv.fundingProgram; }) : null;
+    var dayCount = (prog && prog.dayCount === 365) ? 365 : 360;
+    var penMult = (prog && prog.penaltyMultiplier != null) ? prog.penaltyMultiplier : 1.5;
+    var graceDays = (prog && prog.penaltyGraceDays != null) ? prog.penaltyGraceDays : 0;
+    var invAnnualRate = rawInv.annualRate || ANNUAL_RATE;
+    var invRegularDailyRate = invAnnualRate / dayCount;
+    var invPenaltyRate = invAnnualRate * penMult;
+    var invPenaltyDailyRate = invPenaltyRate / dayCount;
     // Pre-check write-offs: if all capital+interest+penalty would be written off, skip penalty accrual
     var preWoP = 0, preWoI = 0, preWoC = 0;
     if (rawInv.writeOffs) rawInv.writeOffs.forEach(function(wo) { preWoP += wo.penalty || 0; preWoI += wo.interest || 0; preWoC += wo.capital || 0; });
@@ -3351,8 +3496,14 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       while (payIdx < paysForInv.length && paysForInv[payIdx].date <= penaltyStartDate) { applyPay(paysForInv[payIdx], false); payIdx++; }
       for (var d = 1; d <= penaltyDays; d++) {
         var today = addDays(penaltyStartDate, d);
-        if (capBal > 0.01) { var dayPen = capBal * invPenaltyDailyRate; penBal += dayPen; penaltyAccrued += dayPen; }
-        while (payIdx < paysForInv.length && paysForInv[payIdx].date <= today) { applyPay(paysForInv[payIdx], true); payIdx++; }
+        var inGrace = d <= graceDays;
+        if (capBal > 0.01) {
+          // Grace window: interest accrues at the REGULAR rate (added to interest).
+          // After grace: the penalty rate applies (added to penalty).
+          if (inGrace) { var dayInt = capBal * invRegularDailyRate; intBal += dayInt; addlIntAccrued += dayInt; }
+          else { var dayPen = capBal * invPenaltyDailyRate; penBal += dayPen; penaltyAccrued += dayPen; }
+        }
+        while (payIdx < paysForInv.length && paysForInv[payIdx].date <= today) { applyPay(paysForInv[payIdx], !inGrace); payIdx++; }
       }
       while (payIdx < paysForInv.length) { applyPay(paysForInv[payIdx], true); payIdx++; }
     } else {
@@ -3441,8 +3592,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     else if (rawInv.fundedDate && effectiveAmt < initialCapPlusInt - 0.01) fs = "recovery_mode";
     else if (rawInv.fundedDate && effectiveAmt < rawInv.amount - 0.01) fs = "at_risk";
     else {
-      // Get thresholds from program if available, otherwise use defaults
-      var prog = rawInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === rawInv.fundingProgram; }) : null;
+      // Thresholds from the program (prog resolved above with the accrual params), else defaults.
       var thOverdue = (prog && prog.thresholdOverdue !== undefined) ? prog.thresholdOverdue : 1;
       var thAtRisk = (prog && prog.thresholdAtRisk !== undefined) ? prog.thresholdAtRisk : 7;
       var thRecovery = (prog && prog.thresholdRecovery !== undefined) ? prog.thresholdRecovery : 30;
@@ -3572,10 +3722,21 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     rawInv.amountPostDilutions = r2(amtPostDil);
     rawInv.currentInvoiceStatus = statusAsOfDate;
     rawInv.disputedDate = disputedDate || null;
+    // Continual floor enforcement: floors resolve live, so a funded invoice's
+    // snapshotted rate can drop below a risen buyer/program floor after funding.
+    // Compute (as of viewDate) whether the charged rate still clears the floor.
+    var _curFloorProg = prog ? resolveProgramMin(prog.id, viewDate) : null;
+    var _curFloorBuyer = prog ? getEffectiveRate(rawInv.buyerEntityId || rawInv.buyerId, prog.id, viewDate) : null;
+    var _curFloor = null;
+    if (typeof _curFloorProg === "number") _curFloor = _curFloorProg;
+    if (typeof _curFloorBuyer === "number") _curFloor = (_curFloor === null) ? _curFloorBuyer : Math.max(_curFloor, _curFloorBuyer);
+    var _rateBelowFloor = !!(rawInv.fundingProgram && typeof rawInv.annualRate === "number" && capBal > 0.005 && _curFloor !== null && rawInv.annualRate < _curFloor - 0.0001);
     processed.push(Object.assign({}, rawInv, {
       invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
       fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
       penaltyInterest: r2(penBal), penaltyAccrued: r2(penaltyAccrued), interestOutstanding: r2(intBal),
+      additionalInterest: r2(addlIntAccrued), effectivePenaltyRate: rawInv.annualRate ? r6(rawInv.annualRate * penMult) : 0,
+      rateBelowFloor: _rateBelowFloor, currentRateFloor: (_curFloor !== null ? r6(_curFloor) : null),
       capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd), daysOverdue: daysOverdue,
       holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
       holdbackOutstanding: r2(hbBal), holdbackOverdrawn: holdbackOverdrawn,
@@ -5940,16 +6101,24 @@ export default function FactoringDashboard() {
     var pendingFundingAmt = 0;
     progInvs.forEach(function(inv) {
       if (inv.fundingStatus === "pending") return;
-      // Funded/at-risk/overdue invoices: capital is fully deployed
-      if (inv.fundingStatus === "funded" || inv.fundingStatus === "at_risk" || inv.fundingStatus === "overdue") {
+      // Purchased: capital is queued for execution but not yet deployed.
+      if (inv.fundingStatus === "purchased") {
+        pendingFundingAmt += inv.capitalDue || 0;
+        return;
+      }
+      // Any invoice that has actually been funded (has a fundedDate and is past
+      // pending/purchased) has had its capital advanced — subtract it regardless of
+      // its CURRENT status. This mirrors the bank-statement ledger's Capital Advance
+      // rule exactly (it debits every such invoice). That covers funded/at_risk/overdue
+      // AND the intermediate states (recovery_mode, awaiting_remittance, settled,
+      // fully_repaid, historic, defaulted, deemed). Repaid capital is added back via
+      // buyerReceipts below, so repaid invoices net out to interest only. Previously only
+      // funded/at_risk/overdue were counted, leaving deployed capital in the other
+      // statuses unsubtracted and overstating the available balance (the reconciliation delta).
+      if (inv.fundedDate) {
         fundedBalance += inv.capitalDue || 0;
         // Pending top-ups stage additional capital — count as committed
         pendingFundingAmt += inv.pendingTopUpAmount || 0;
-        return;
-      }
-      // Purchased invoices: capital is queued for execution but not yet deployed
-      if (inv.fundingStatus === "purchased") {
-        pendingFundingAmt += inv.capitalDue || 0;
       }
     });
     var funderInflows = 0, totalDisbursed = 0, pendingDisbursalsAmt = 0;
@@ -6191,7 +6360,17 @@ export default function FactoringDashboard() {
     var newCap = r2(parseFloat(fundPopupFields.capitalDue) || 0);
     var rate = parseFloat(fundPopupFields.annualRate) / 100;
     if (newCap < 0) { alert("Capital amount cannot be negative."); return; }
-    if (rate < fundPopupFields.minRate - 0.0001) { alert("Annual rate is below program minimum (" + (fundPopupFields.minRate * 100).toFixed(2) + "%)."); return; }
+    // Rate-chain floor at funding: enforce the LIVE program minimum AND buyer floor,
+    // falling back to the popup's scalar minRate when no rateDefinition is configured.
+    var _fundProgMin = resolveProgramMin(prog ? prog.id : null, null);
+    if (typeof _fundProgMin !== "number") _fundProgMin = fundPopupFields.minRate;
+    var _fundBuyerFloor = getEffectiveRate((inv && (inv.buyerEntityId || inv.buyerId)) || null, prog ? prog.id : null, null);
+    var _fundFloor = _fundProgMin;
+    if (typeof _fundBuyerFloor === "number") _fundFloor = (typeof _fundFloor === "number") ? Math.max(_fundFloor, _fundBuyerFloor) : _fundBuyerFloor;
+    if (typeof _fundFloor === "number" && rate < _fundFloor - 0.0001) {
+      var _fundWhich = (typeof _fundBuyerFloor === "number" && _fundBuyerFloor >= (typeof _fundProgMin === "number" ? _fundProgMin : -Infinity)) ? "buyer floor" : "program minimum";
+      alert("Annual rate " + (rate * 100).toFixed(2) + "% is below the " + _fundWhich + " (" + (_fundFloor * 100).toFixed(2) + "%)."); return;
+    }
     // Fresh headroom recompute (popup-open snapshot may be stale if other actions occurred)
     var raw = INVOICES_DB.find(function(x) { return x.id === inv.id; });
     if (!raw) return;
@@ -6956,7 +7135,17 @@ export default function FactoringDashboard() {
         // Both flows now require programId (was only checked for buyers; the supplier
         // path silently saved with empty programId, corrupting program_rates keys).
         // Suppliers additionally require rates; buyers don't have a rate model.
-        var canSubmit = !!(entityId && m.programId) && (isBuyer || !!(m.advanceRate && m.annualRate && m.penaltyRate));
+        var canSubmit = !!(entityId && m.programId) && (isBuyer || !!(m.advanceRate && m.annualRate));
+        // Prefill/visibility: resolve the buyer's currently-stored floor definition for this
+        // program so the inputs default to it (until edited) and we can show a "current" hint.
+        var _curFloorDef = null;
+        if (isBuyer) {
+          var _curEnt = m.isBranch ? getBuyerBranchById(entityId) : getBuyerById(entityId);
+          var _curArr = (_curEnt && _curEnt.programRates) ? _curEnt.programRates[m.programId] : null;
+          if (Array.isArray(_curArr) && _curArr.length) { var _ce = _curArr[_curArr.length - 1]; _curFloorDef = (_ce && _ce.rateDefinition) ? _ce.rateDefinition.annualRate : null; }
+        }
+        var _curFloorMode = _curFloorDef ? _curFloorDef.mode : "";
+        var _curFloorValStr = _curFloorDef ? (_curFloorDef.mode === "fixed" ? (_curFloorDef.value * 100).toFixed(2) : (_curFloorDef.spread * 100).toFixed(2)) : "";
         return <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setAddToProgramModal(null); }}>
         <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 560, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
           <div style={{ fontSize: 16, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>Add {entityLabel} to Program</div>
@@ -6964,21 +7153,53 @@ export default function FactoringDashboard() {
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16, padding: "10px 12px", background: "var(--bg)", borderRadius: 8, border: "1px solid var(--border)" }}>{isBuyer ? "Set credit limits for this buyer on this program. Limits are optional (blank means no limit)." : "Set commercial terms for this supplier on this program. Rates are required; limits are optional (blank means no limit)."}</div>
 
           {!isBuyer && <>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Rates</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Rate</div>
+          <div style={{ display: "grid", gridTemplateColumns: m.isBranch ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
+            {!m.isBranch && <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Rate Type</label>
+              <select value={m.rateMode || "fixed"} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { rateMode: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box", cursor: "pointer" }}>
+                <option value="fixed">Fixed</option>
+                <option value="benchmark">Benchmark +</option>
+              </select>
+            </div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Advance Rate %</label>
               <input type="number" step="1" value={m.advanceRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { advanceRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Interest Rate % p.a.</label>
-              <input type="number" step="0.1" value={m.annualRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate % p.a.</label>
-              <input type="number" step="0.1" value={m.penaltyRate} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { penaltyRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>{m.isBranch ? "Spread over parent %" : ((m.rateMode === "benchmark") ? "Spread over benchmark %" : "Interest Rate % p.a.")}</label>
+              <input type="number" step="0.1" value={m.annualRate} placeholder={(m.isBranch || m.rateMode === "benchmark") ? "spread %" : "% p.a."} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { annualRate: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
             </div>
           </div>
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", marginBottom: 16 }}>{(function() {
+            if (m.isBranch) { var sp0 = parseFloat(m.annualRate); return isNaN(sp0) ? "Branch rate = parent supplier rate + spread (set the parent's rate too)." : ("Branch rate = parent supplier rate + " + sp0.toFixed(2) + "%."); }
+            if (m.rateMode === "benchmark") { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; }); var bm = fp ? getBenchmark(fp.benchmark) : null; if (!bm) return "Program has no benchmark set \u2014 add one on the program first."; var sp = parseFloat(m.annualRate); if (isNaN(sp)) sp = 0; return bm.id + " " + (bm.currentRate * 100).toFixed(2) + "% + " + sp.toFixed(2) + "% = " + ((bm.currentRate + sp / 100) * 100).toFixed(2) + "% p.a."; }
+            var fv = parseFloat(m.annualRate); return isNaN(fv) ? "Set the interest rate. Penalty applies the program multiplier." : ("Charged rate = " + fv.toFixed(2) + "% p.a. Penalty applies the program multiplier.");
+          })()}</div>
+          </>}
+          {isBuyer && <>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Funding Floor (optional)</div>
+          <div style={{ display: "grid", gridTemplateColumns: m.isBranch ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
+            {!m.isBranch && <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>Floor Type</label>
+              <select value={m.floorMode !== undefined ? m.floorMode : _curFloorMode} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { floorMode: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box", cursor: "pointer" }}>
+                <option value="">No floor</option>
+                <option value="fixed">Fixed</option>
+                <option value="benchmark">Benchmark +</option>
+              </select>
+            </div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)" }}>{m.isBranch ? "Spread over parent floor %" : ((m.floorMode === "benchmark") ? "Spread over benchmark %" : "Floor rate % p.a.")}</label>
+              <input type="number" step="0.1" value={m.floorValue !== undefined ? m.floorValue : _curFloorValStr} placeholder={(m.isBranch || m.floorMode === "benchmark") ? "spread %" : "% p.a."} onChange={function(e) { setAddToProgramModal(function(mm) { return Object.assign({}, mm, { floorValue: e.target.value }); }); }} style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} />
+            </div>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", marginBottom: 20 }}>{(function() {
+            if (m.isBranch) { var sp0 = parseFloat(m.floorValue); return isNaN(sp0) ? "Branch floor = parent buyer floor + spread (set the parent's floor too)." : ("Branch floor = parent buyer floor + " + sp0.toFixed(2) + "%."); }
+            if (m.floorMode === "benchmark") { var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; }); var bm = fp ? getBenchmark(fp.benchmark) : null; if (!bm) return "Program has no benchmark set \u2014 add one on the program first."; var sp = parseFloat(m.floorValue); if (isNaN(sp)) sp = 0; return bm.id + " " + (bm.currentRate * 100).toFixed(2) + "% + " + sp.toFixed(2) + "% = " + ((bm.currentRate + sp / 100) * 100).toFixed(2) + "%"; }
+            if (m.floorMode === "fixed") { var fv = parseFloat(m.floorValue); return isNaN(fv) ? "Set a fixed floor rate." : ("Floor = " + fv.toFixed(2) + "% p.a."); }
+            return "No floor \u2014 this buyer won't gate funding on rate.";
+          })()}</div>
+          {_curFloorDef && <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 16 }}>{"Current: " + (_curFloorDef.mode === "fixed" ? "fixed " + _curFloorValStr + "%" : _curFloorDef.mode === "benchmark" ? "benchmark + " + _curFloorValStr + "%" : "parent + " + _curFloorValStr + "%") + ". Re-saving without changes keeps it."}</div>}
           </>}
 
           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Limits (optional)</div>
@@ -7020,6 +7241,27 @@ export default function FactoringDashboard() {
                 if (m.singleInvoiceLimit) {
                   if (!buyLimitsTarget.singleInvoiceLimits) buyLimitsTarget.singleInvoiceLimits = {};
                   buyLimitsTarget.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
+                }
+                // Buyer funding floor (rate-chain): effective-dated programRates entry on the
+                // same target the limits went on (parent buyer or branch). Branch floors are
+                // parent-relative ("parent" mode); parent buyers use fixed or benchmark+spread.
+                var _flMode = m.isBranch ? "parent" : (m.floorMode || "");
+                var _flNum = parseFloat(m.floorValue);
+                if (_flMode && !isNaN(_flNum)) {
+                  var _flUnit = _flNum / 100;
+                  var _flDef = (_flMode === "fixed") ? { mode: "fixed", value: _flUnit } : (_flMode === "benchmark") ? { mode: "benchmark", spread: _flUnit } : { mode: "parent", spread: _flUnit };
+                  var _flFp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+                  var _flBench = _flFp ? getBenchmark(_flFp.benchmark) : null;
+                  var _flResolved = (_flMode === "fixed") ? _flUnit : (_flMode === "benchmark") ? (((_flBench && typeof _flBench.currentRate === "number") ? _flBench.currentRate : 0) + _flUnit) : ((function() { var pr = getEffectiveRate(parentBuyId, m.programId, null); return (typeof pr === "number" ? pr : 0); })() + _flUnit);
+                  if (!buyLimitsTarget.programRates) buyLimitsTarget.programRates = {};
+                  var _flHist = buyLimitsTarget.programRates[m.programId] || [];
+                  var _flLatest = _flHist.length ? _flHist[_flHist.length - 1] : null;
+                  var _flPrev = _flLatest && _flLatest.rateDefinition ? _flLatest.rateDefinition.annualRate : null;
+                  var _flChanged = !_flPrev || _flPrev.mode !== _flDef.mode || (_flDef.mode === "fixed" ? _flPrev.value !== _flDef.value : _flPrev.spread !== _flDef.spread);
+                  if (_flChanged) {
+                    var _flNow = new Date();
+                    buyLimitsTarget.programRates[m.programId] = _flHist.concat([{ rateDefinition: { annualRate: _flDef }, annualRate: r6(_flResolved), effectiveDate: _flNow.toISOString().split("T")[0], effectiveTimestamp: _flNow.toISOString(), effectiveDisplay: _flNow.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }), note: "" }]);
+                  }
                 }
                 // Stage 1.9: force-pause buyers when they transition from "on zero
                 // programs" to "on at least one program". This is the onboarding
@@ -7099,7 +7341,7 @@ export default function FactoringDashboard() {
                 return;
               }
               // Supplier flow (unchanged)
-              if (!m.advanceRate || !m.annualRate || !m.penaltyRate) { alert("Rates are required."); return; }
+              if (!m.advanceRate || !m.annualRate) { alert("Advance rate and interest rate are required."); return; }
               // Resolve the supplier record. Rates ALWAYS live on the parent
               // (today's design — branch-specific rates would require a rate
               // chain mode of "parent", which the schema supports but no UI
@@ -7112,17 +7354,35 @@ export default function FactoringDashboard() {
               var parentId = getParentEntityId(entityId) || entityId;
               var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
               if (!sup) { alert("Supplier not found."); return; }
-              // Set rate (parent-scoped — see comment above)
-              if (!sup.programRates) sup.programRates = {};
-              if (!sup.programRates[m.programId]) sup.programRates[m.programId] = [];
+              // Set rate (rate-chain). Parent suppliers: fixed | benchmark+spread (benchmark
+              // inherits the program's benchmark). Branches: parent+spread, written on the
+              // branch object. Penalty is governed by the program multiplier, not entered here;
+              // we materialise penaltyRate for any legacy reader.
+              var _suRateMode = m.isBranch ? "parent" : (m.rateMode === "benchmark" ? "benchmark" : "fixed");
+              var _suUnit = parseFloat(m.annualRate) / 100;
+              var _suDef = (_suRateMode === "fixed") ? { mode: "fixed", value: _suUnit } : (_suRateMode === "benchmark") ? { mode: "benchmark", spread: _suUnit } : { mode: "parent", spread: _suUnit };
+              var _suFp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+              var _suBench = _suFp ? getBenchmark(_suFp.benchmark) : null;
+              var _suResolved = (_suRateMode === "fixed") ? _suUnit : (_suRateMode === "benchmark") ? (((_suBench && typeof _suBench.currentRate === "number") ? _suBench.currentRate : 0) + _suUnit) : ((function() { var pr = getEffectiveRate(parentId, m.programId, null); return (typeof pr === "number" ? pr : 0); })() + _suUnit);
+              var _suMult = (_suFp && _suFp.penaltyMultiplier != null) ? _suFp.penaltyMultiplier : 1.5;
+              var _suRateTarget = sup;
+              if (m.isBranch) {
+                var _suBrId = parseEntityId(entityId).branchId;
+                var _suBr = (sup.branches || []).find(function(b) { return b.branchId === _suBrId; });
+                if (!_suBr) { alert("Branch not found on supplier."); return; }
+                _suRateTarget = _suBr;
+              }
+              if (!_suRateTarget.programRates) _suRateTarget.programRates = {};
+              if (!Array.isArray(_suRateTarget.programRates[m.programId])) _suRateTarget.programRates[m.programId] = [];
               var now = new Date();
-              sup.programRates[m.programId].push({
+              _suRateTarget.programRates[m.programId].push({
                 effectiveDate: now.toISOString().split("T")[0],
                 effectiveTimestamp: now.toISOString(),
                 effectiveDisplay: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }),
                 advanceRate: parseFloat(m.advanceRate) / 100,
-                annualRate: parseFloat(m.annualRate) / 100,
-                penaltyRate: parseFloat(m.penaltyRate) / 100
+                annualRate: r6(_suResolved),
+                rateDefinition: { annualRate: _suDef },
+                penaltyRate: r6(_suResolved * _suMult)
               });
               // Set limits — branch-scoped when adding a branch, parent-scoped when adding the parent.
               // Find the limits target: the branch object when isBranch, else the parent.
@@ -7218,7 +7478,7 @@ export default function FactoringDashboard() {
                 if (arr.indexOf(entityId) === -1) arr.push(entityId);
                 return Object.assign({}, p, { eligibleSuppliers: arr });
               });
-              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%, Penalty " + m.penaltyRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
+              auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
               setAddToProgramModal(null);
               setDataVer(function(v) { return v + 1; });
             }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>Add to Program</button>
@@ -8340,10 +8600,11 @@ export default function FactoringDashboard() {
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Funded Date"), React.createElement("span", { style: spVal }, fmt(inv.fundedDate))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Advance Provided"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 700 }) }, money(inv.capitalDue || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Rate"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAccent }) }, ((inv.annualRate || 0) * 100).toFixed(1) + "% p.a.")),
-                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Rate"), React.createElement("span", { style: Object.assign({}, spVal, { color: spRed }) }, ((inv.penaltyRate || 0) * 100).toFixed(1) + "% p.a.")),
+                                    React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Rate"), React.createElement("span", { style: Object.assign({}, spVal, { color: spRed }) }, ((inv.effectivePenaltyRate || 0) * 100).toFixed(1) + "% p.a.")),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Initial Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.interestCharged || 0, inv.currency))),
                                     React.createElement("div", { style: Object.assign({}, spRow, { borderBottom: "2px solid " + spBorder, marginTop: 4, marginBottom: 4, paddingBottom: 8 }) }),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Capital Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.capitalOutstanding || 0) > 0.01 ? spAmber : spGreen, fontWeight: 600 }) }, money(inv.capitalOutstanding || 0, inv.currency))),
+                                    ((inv.additionalInterest || 0) > 0.005 ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Additional Interest"), React.createElement("span", { style: Object.assign({}, spVal, { color: spAmber }) }, money(inv.additionalInterest || 0, inv.currency))) : null),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.interestOutstanding || 0) > 0.01 ? spAmber : spGreen }) }, money(inv.interestOutstanding || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Interest Charged"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.penaltyAccrued || 0) > 0.01 ? spRed : spGreen }) }, money(inv.penaltyAccrued || 0, inv.currency))),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Penalty Interest Outstanding"), React.createElement("span", { style: Object.assign({}, spVal, { color: (inv.penaltyInterest || 0) > 0.01 ? spRed : spGreen }) }, money(inv.penaltyInterest || 0, inv.currency))),
@@ -10648,7 +10909,7 @@ export default function FactoringDashboard() {
                                           </div>}
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>{Array.isArray(inv.tranches) && inv.tranches.length >= 2 ? "Initial Interest (all tranches)" : "Initial Interest"}</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
+                                          {(inv.additionalInterest || 0) > 0.005 && <div style={row}><span style={lbl} title="Regular-rate interest accrued during the program's grace period, before penalty interest begins. Already included in Interest O/S below.">Additional Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.additionalInterest || 0, inv.currency)}</span></div>}<div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
@@ -10665,7 +10926,8 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Days to/Past Maturity</span><span style={Object.assign({}, val, { color: matColor, fontWeight: 600 })}>{matLabel}</span></div>
                                           <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.effectivePenaltyRate ? (inv.effectivePenaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          {inv.rateBelowFloor && <div style={row}><span style={lbl}>Rate Floor</span><span style={Object.assign({}, val, { color: "#DC2626", fontWeight: 700 })}>{"\u26A0 Below current floor (" + ((inv.currentRateFloor || 0) * 100).toFixed(2) + "%)"}</span></div>}
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
@@ -13219,7 +13481,16 @@ export default function FactoringDashboard() {
                       </tr>);
                     }
                     return monthRows;
-                  })}</tbody>
+                  })}
+                  {monthBuckets.length > 0 && <tr style={{ borderTop: "2px solid var(--accent)", background: "var(--card-hover)" }}>
+                    <td></td>
+                    <td style={{ padding: "12px 12px", fontSize: 13, fontWeight: 700, color: "var(--accent)" }}>{"Current Position \u2014 as of " + fmt(viewDate)}</td>
+                    <td style={{ padding: "12px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: "var(--text)" }}>{money(stResult.currentPosition.cap, displayCcy)}</td>
+                    <td style={{ padding: "12px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: "#F59E0B" }}>{money(stResult.currentPosition.int, displayCcy)}</td>
+                    <td style={{ padding: "12px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: "#EF4444" }}>{money(stResult.currentPosition.pen, displayCcy)}</td>
+                    <td style={{ padding: "12px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: "#8B5CF6" }}>{money(stResult.currentPosition.hb, displayCcy)}</td>
+                    <td style={{ padding: "12px 12px", fontSize: 13.5, fontFamily: "'JetBrains Mono', monospace", textAlign: "right", fontWeight: 700, color: "var(--text)" }}>{money(stResult.currentPosition.total, displayCcy)}</td>
+                  </tr>}</tbody>
                 </table>
               </div>}
             </div>
@@ -15403,7 +15674,7 @@ export default function FactoringDashboard() {
                                           </div>}
                                           <div style={row}><span style={lbl}>Capital O/S</span><span style={Object.assign({}, val, { color: inv.capitalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.capitalOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>{Array.isArray(inv.tranches) && inv.tranches.length >= 2 ? "Initial Interest (all tranches)" : "Initial Interest"}</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</span></div>
-                                          <div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
+                                          {(inv.additionalInterest || 0) > 0.005 && <div style={row}><span style={lbl} title="Regular-rate interest accrued during the program's grace period, before penalty interest begins. Already included in Interest O/S below.">Additional Interest</span><span style={Object.assign({}, val, { color: "#D97706" })}>{money(inv.additionalInterest || 0, inv.currency)}</span></div>}<div style={row}><span style={lbl}>Interest O/S</span><span style={Object.assign({}, val, { color: inv.interestOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest Charged</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(inv.penaltyAccrued || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Penalty Interest O/S</span><span style={Object.assign({}, val, { color: inv.penaltyInterest > 0 ? "#DC2626" : "#059669" })}>{money(inv.penaltyInterest, inv.currency)}</span></div>
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
@@ -15420,7 +15691,8 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Expected Maturity</span><span style={val}>{inv.dueDate ? fmt(inv.dueDate) : "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Days to/Past Maturity</span><span style={Object.assign({}, val, { color: matColor, fontWeight: 600 })}>{matLabel}</span></div>
                                           <div style={row}><span style={lbl}>Interest Rate</span><span style={Object.assign({}, val, { color: "#D97706" })}>{inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
-                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.penaltyRate ? (inv.penaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>Penalty Rate</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{inv.effectivePenaltyRate ? (inv.effectivePenaltyRate * 100).toFixed(1) + "%" : ((inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate) ? "\u2014 set on funding" : "\u2014"}</span></div>
+                                          {inv.rateBelowFloor && <div style={row}><span style={lbl}>Rate Floor</span><span style={Object.assign({}, val, { color: "#DC2626", fontWeight: 700 })}>{"\u26A0 Below current floor (" + ((inv.currentRateFloor || 0) * 100).toFixed(2) + "%)"}</span></div>}
                                           <div style={Object.assign({}, row, { borderBottom: "2px solid var(--border)", marginTop: 4, marginBottom: 4, paddingBottom: 6 })}></div>
                                           <div style={row}><span style={lbl}>Holdback Due</span><span style={val}>{money(inv.deferredPayment || 0, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Holdback Received</span><span style={val}>{money(inv.holdbackReceived, inv.currency)}</span></div>
@@ -21820,6 +22092,38 @@ export default function FactoringDashboard() {
                   }
 
                   return <div>
+                  {manageTab === "buyers" && detEntity && (function() {
+                    var _bfPrograms = programsForBuyer(detEntity.id);
+                    var _bfFmt = function(eid, pid) {
+                      var ent = parseEntityId(eid).branchId ? getBuyerBranchById(eid) : getBuyerById(eid);
+                      var arr = (ent && ent.programRates) ? ent.programRates[pid] : null;
+                      if (!Array.isArray(arr) || !arr.length) return null;
+                      var def = arr[arr.length - 1].rateDefinition ? arr[arr.length - 1].rateDefinition.annualRate : null;
+                      var live = getEffectiveRate(eid, pid, null);
+                      var label = !def ? "\u2014" : def.mode === "fixed" ? ("Fixed " + (def.value * 100).toFixed(2) + "%") : def.mode === "benchmark" ? ("Benchmark + " + (def.spread * 100).toFixed(2) + "%") : ("Parent + " + (def.spread * 100).toFixed(2) + "%");
+                      return { label: label, live: (typeof live === "number" ? (live * 100).toFixed(2) + "%" : "\u2014") };
+                    };
+                    var _bfTh = { textAlign: "left", padding: "8px 28px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--border)" };
+                    return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden", marginBottom: 20 }}>
+                      <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Funding Floors by Program</div>
+                        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Minimum charged rate this buyer requires before an invoice is fundable. Floors resolve live; set them via "Add to Program".</div>
+                      </div>
+                      {_bfPrograms.length === 0 && <div style={{ padding: "20px 28px", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>Not on any programs.</div>}
+                      {_bfPrograms.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead><tr><th style={_bfTh}>Program</th><th style={_bfTh}>Floor</th><th style={_bfTh}>Live</th></tr></thead>
+                        <tbody>{_bfPrograms.map(function(fp) {
+                          var pf = _bfFmt(detEntity.id, fp.id);
+                          var out = [<tr key={fp.id}><td style={{ padding: "8px 28px", fontSize: 13, color: "var(--text)" }}>{fp.name}</td><td style={{ padding: "8px 28px", fontSize: 12, color: pf ? "var(--text-secondary)" : "var(--muted)" }}>{pf ? pf.label : "No floor"}</td><td style={{ padding: "8px 28px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{pf ? pf.live : "\u2014"}</td></tr>];
+                          (detEntity.branches || []).forEach(function(br) {
+                            var bf = _bfFmt(detEntity.id + ":" + br.branchId, fp.id);
+                            if (bf) out.push(<tr key={fp.id + "-" + br.branchId}><td style={{ padding: "6px 28px 6px 44px", fontSize: 12, color: "var(--muted)" }}>{"\u21b3 " + (br.branchName || br.branchId)}</td><td style={{ padding: "6px 28px", fontSize: 12, color: "var(--text-secondary)" }}>{bf.label}</td><td style={{ padding: "6px 28px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{bf.live}</td></tr>);
+                          });
+                          return out;
+                        })}</tbody>
+                      </table>}
+                    </div>;
+                  })()}
                     <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                       <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Branches ({branches.length})</div>
@@ -22871,14 +23175,33 @@ export default function FactoringDashboard() {
                   if (!bm) { toast.error("Unknown benchmark", "Benchmark '" + pf.benchmark + "' not found. Pick from the dropdown or seed it in the Benchmarks tab."); return; }
                   if (bm.currency !== pf.currency) { toast.error("Benchmark currency mismatch", bm.name + " is " + bm.currency + ", but this program is " + pf.currency + ". Pick a matching benchmark or clear the field."); return; }
                 }
+                // Program minimum rate (rate-chain). Build the definition from the form,
+                // resolve a materialised value (for the legacy minInterestRate scalar that
+                // other code still reads), and append a dated history entry only when the
+                // definition actually changed.
+                var _exMin = (editProg !== null && FUNDING_PROGRAMS_DB[editProg]) ? (FUNDING_PROGRAMS_DB[editProg].minRate || []) : [];
+                var _minMode = (pf.minRateMode === "benchmark") ? "benchmark" : "fixed";
+                var _minNum = parseFloat(pf.minInterestRate); if (isNaN(_minNum)) _minNum = (_minMode === "benchmark") ? 0 : (ANNUAL_RATE * 100);
+                var _minDef = (_minMode === "benchmark") ? { mode: "benchmark", spread: _minNum / 100 } : { mode: "fixed", value: _minNum / 100 };
+                var _minBench = getBenchmark(pf.benchmark);
+                var _minResolved = (_minMode === "benchmark") ? (((_minBench && typeof _minBench.currentRate === "number") ? _minBench.currentRate : 0) + _minDef.spread) : _minDef.value;
+                var _minLatest = _exMin.length ? _exMin[_exMin.length - 1] : null;
+                var _minPrev = _minLatest && _minLatest.rateDefinition ? _minLatest.rateDefinition.annualRate : null;
+                var _minChanged = !_minPrev || _minPrev.mode !== _minDef.mode || (_minDef.mode === "fixed" ? _minPrev.value !== _minDef.value : _minPrev.spread !== _minDef.spread);
+                var _nowIso = new Date().toISOString();
+                var _minRate = _minChanged ? _exMin.concat([{ rateDefinition: { annualRate: _minDef }, annualRate: r6(_minResolved), effectiveDate: _nowIso.split("T")[0], effectiveTimestamp: _nowIso, effectiveDisplay: _nowIso.split("T")[0], note: "" }]) : _exMin;
                 var prog = {
                   name: pf.name, currency: pf.currency,
                   benchmark: pf.benchmark || null,
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
-                  minInterestRate: parseFloat(pf.minInterestRate) / 100 || ANNUAL_RATE,
+                  minInterestRate: r6(_minResolved),
+                  minRate: _minRate,
                   maxInvoiceTerm: parseInt(pf.maxInvoiceTerm) || 90,
+                  penaltyMultiplier: (pf.penaltyMultiplier !== undefined && pf.penaltyMultiplier !== "" && !isNaN(parseFloat(pf.penaltyMultiplier))) ? parseFloat(pf.penaltyMultiplier) : 1.5,
+                  dayCount: parseInt(pf.dayCount) === 365 ? 365 : 360,
+                  penaltyGraceDays: (pf.penaltyGraceDays !== undefined && pf.penaltyGraceDays !== "" && !isNaN(parseInt(pf.penaltyGraceDays))) ? parseInt(pf.penaltyGraceDays) : 0,
                   thresholdOverdue: parseInt(pf.thresholdOverdue) || 1,
                   thresholdAtRisk: parseInt(pf.thresholdAtRisk) || 7,
                   thresholdRecovery: parseInt(pf.thresholdRecovery) || 30,
@@ -22923,8 +23246,12 @@ export default function FactoringDashboard() {
                   benchmark: p.benchmark || null,
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
-                  minInterestRate: String((p.minInterestRate * 100).toFixed(1)),
+                  minRateMode: (function() { var h = (p.minRate || []); var l = h.length ? h[h.length - 1] : null; var d = l && l.rateDefinition ? l.rateDefinition.annualRate : null; return (d && d.mode === "benchmark") ? "benchmark" : "fixed"; })(),
+                  minInterestRate: (function() { var h = (p.minRate || []); var l = h.length ? h[h.length - 1] : null; var d = l && l.rateDefinition ? l.rateDefinition.annualRate : null; if (d && d.mode === "benchmark") return String(((d.spread || 0) * 100).toFixed(2)); if (d && d.mode === "fixed") return String(((d.value || 0) * 100).toFixed(2)); return String(((p.minInterestRate || 0) * 100).toFixed(1)); })(),
                   maxInvoiceTerm: String(p.maxInvoiceTerm || ""),
+                  penaltyMultiplier: String(p.penaltyMultiplier !== undefined ? p.penaltyMultiplier : "1.5"),
+                  dayCount: String(p.dayCount === 365 ? 365 : 360),
+                  penaltyGraceDays: String(p.penaltyGraceDays !== undefined ? p.penaltyGraceDays : "0"),
                   thresholdOverdue: String(p.thresholdOverdue !== undefined ? p.thresholdOverdue : "1"),
                   thresholdAtRisk: String(p.thresholdAtRisk !== undefined ? p.thresholdAtRisk : "7"),
                   thresholdRecovery: String(p.thresholdRecovery !== undefined ? p.thresholdRecovery : "30"),
@@ -23236,13 +23563,35 @@ export default function FactoringDashboard() {
                       <input type="number" step="1" value={pf.maxAdvanceRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxAdvanceRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Min Interest Rate % p.a.</label>
-                      <input type="number" step="0.1" value={pf.minInterestRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInterestRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Minimum Rate</label>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <select value={pf.minRateMode || "fixed"} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minRateMode: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer", flex: "0 0 auto", width: 82, padding: "8px 6px" })}><option value="fixed">Fixed</option><option value="benchmark">Bmk +</option></select>
+                        <input type="number" step="0.1" value={pf.minInterestRate || ""} placeholder={(pf.minRateMode === "benchmark") ? "spread %" : "% p.a."} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInterestRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace", flex: 1, minWidth: 0 })} />
+                      </div>
+                      {(function() { if (pf.minRateMode !== "benchmark") return null; var bm = BENCHMARKS_DB.find(function(b) { return b.id === pf.benchmark; }); if (!bm) return <span style={{ fontSize: 9, color: "#D97706" }}>Set a benchmark above first</span>; var sp = parseFloat(pf.minInterestRate); if (isNaN(sp)) sp = 0; return <span style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{bm.id} {(bm.currentRate * 100).toFixed(2)}% + {sp.toFixed(2)}% = {((bm.currentRate + sp / 100) * 100).toFixed(2)}%</span>; })()}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)" }}>Max Invoice Term (days)</label>
                       <input type="number" step="1" value={pf.maxInvoiceTerm || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxInvoiceTerm: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                     </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0", paddingTop: 14 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Penalty Interest</div>
+                    <div style={{ display: "flex", gap: 16, marginBottom: 6 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Penalty Rate Multiplier</label>
+                        <input type="number" step="0.1" min="1" value={pf.penaltyMultiplier !== undefined ? pf.penaltyMultiplier : ""} placeholder="1.5" onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { penaltyMultiplier: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Day-Count Basis</label>
+                        <select value={pf.dayCount !== undefined ? String(pf.dayCount) : "360"} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { dayCount: e.target.value }); }); }} style={Object.assign({}, inpS, { cursor: "pointer", fontFamily: "'JetBrains Mono', monospace" })}><option value="360">360</option><option value="365">365</option></select>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Grace Period (days)</label>
+                        <input type="number" step="1" min="0" value={pf.penaltyGraceDays !== undefined ? pf.penaltyGraceDays : ""} placeholder="0" onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { penaltyGraceDays: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4 }}>Penalty rate = interest rate \u00d7 multiplier. During the grace period after the due date interest accrues at the regular rate; the penalty rate applies thereafter.</div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0", paddingTop: 14 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-secondary)", marginBottom: 10 }}>Status Escalation Thresholds (days)</div>
@@ -23705,7 +24054,7 @@ export default function FactoringDashboard() {
                   return <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                   <div style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Funding Programs {mpHasActive && filteredProgs.length !== FUNDING_PROGRAMS_DB.length ? "(" + filteredProgs.length + " of " + FUNDING_PROGRAMS_DB.length + ")" : "(" + FUNDING_PROGRAMS_DB.length + ")"}</div>
-                    {!editing && <button onClick={function() { setShowNewProgram(true); setEditProg(null); setProgFields({ currency: "GBP", maxAdvanceRate: String((ADVANCE_RATE * 100).toFixed(0)), minInterestRate: String((ANNUAL_RATE * 100).toFixed(1)), maxInvoiceTerm: "90", thresholdOverdue: "1", thresholdAtRisk: "7", thresholdRecovery: "30", thresholdDeemed: "60", thresholdDisputeAtRisk: "1", thresholdDisputeRecovery: "14", minInvoiceTenor: "", minInvoiceSize: "", maxSupDilLive: "", maxSupDil30: "", maxSupDil90: "", maxFundDilLive: "", maxFundDil30: "", maxFundDil90: "", eligibleBuyers: [], eligibleSuppliers: [], eligibleBuyerJurisdictions: [], eligibleSupplierJurisdictions: [] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>New Program</button>}
+                    {!editing && <button onClick={function() { setShowNewProgram(true); setEditProg(null); setProgFields({ currency: "GBP", maxAdvanceRate: String((ADVANCE_RATE * 100).toFixed(0)), minInterestRate: String((ANNUAL_RATE * 100).toFixed(1)), minRateMode: "fixed", maxInvoiceTerm: "90", penaltyMultiplier: "1.5", dayCount: "360", penaltyGraceDays: "0", thresholdOverdue: "1", thresholdAtRisk: "7", thresholdRecovery: "30", thresholdDeemed: "60", thresholdDisputeAtRisk: "1", thresholdDisputeRecovery: "14", minInvoiceTenor: "", minInvoiceSize: "", maxSupDilLive: "", maxSupDil30: "", maxSupDil90: "", maxFundDilLive: "", maxFundDil30: "", maxFundDil90: "", eligibleBuyers: [], eligibleSuppliers: [], eligibleBuyerJurisdictions: [], eligibleSupplierJurisdictions: [] }); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>New Program</button>}
                   </div>
                   {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <input type="text" value={mgProgSearch} onChange={function(e) { setMgProgSearch(e.target.value); }} placeholder="Search programs..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
