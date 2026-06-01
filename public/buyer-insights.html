@@ -586,6 +586,11 @@
         .report-table tr:last-child td { border-bottom: none; }
         .report-table .text-right { text-align: right; }
         .report-table .text-center { text-align: center; }
+        .terms-panel { margin-top: 20px; }
+        .terms-panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-bottom: 6px; }
+        .terms-panel-summary { font-size: 12px; color: var(--text); margin-bottom: 10px; }
+        .terms-panel .terms-nodue td { color: var(--muted); font-style: italic; }
+        .terms-foot { font-size: 10px; color: var(--muted); margin-top: 6px; }
 
         /* Dilution rate cells */
         .dil-cell { font-family: var(--mono); font-weight: 600; }
@@ -7202,7 +7207,11 @@ function renderSectionAtAGlance(c, ccy) {
     if (hasTerms) {
         var gap = Math.round((t.avgDaysToPaid - t.avgStatedTermDays) * 10) / 10;
         var gapRead = gap > 14 ? 'concern' : gap > 7 ? 'watch' : gap <= 0 ? 'good' : '';
-        wcTiles += wcTile('Stated terms', 'Net ' + Math.round(t.avgStatedTermDays), 'weighted average', '');
+        var _pt = t.paymentTerms || null;
+        var _stVal = 'Net ' + Math.round((_pt && _pt.countWeightedAvgDays != null) ? _pt.countWeightedAvgDays : t.avgStatedTermDays);
+        var _nTerms = (_pt && _pt.distribution) ? _pt.distribution.length : 0;
+        var _stSub = _nTerms > 1 ? (_nTerms + ' terms \u2014 weighted avg, see below') : (_nTerms === 1 ? 'single stated term' : 'weighted average');
+        wcTiles += wcTile('Stated terms', _stVal, _stSub, '');
         wcTiles += wcTile('Actual time to pay', t.avgDaysToPaid + 'd', 'invoice to payment', '');
         wcTiles += wcTile('Terms gap', (gap >= 0 ? '+' : '') + gap + 'd', gap > 0 ? 'paid past your own terms' : 'inside terms', gapRead);
         if (t.apOutstandingAvg != null) {
@@ -7254,6 +7263,7 @@ function renderSectionAtAGlance(c, ccy) {
                 wcCluster('Concentration risk', concTiles) +
                 wcCluster('Invoice quality', qualTiles) +
             '</div>' +
+            renderTermsPanel(t.paymentTerms, ccy) +
             '<div class="callout">' +
                 '<div class="callout-eyebrow">Worth noting</div>' +
                 '<div class="callout-text">' + fact + '</div>' +
@@ -7866,6 +7876,56 @@ function generateObservations(c, ccy) {
 // ────────────────────────────────────────────────────────────────
 
 function wcReadClass(read) { return read ? (' wc-' + read) : ''; }
+function renderTermsPanel(pt, ccy) {
+    if (!pt || !pt.distribution || !pt.distribution.length) return '';
+    var rows = pt.distribution;
+    var totInv = 0, totSpend = 0;
+    rows.forEach(function(r) { totInv += (r.invoices || 0); totSpend += (r.spend || 0); });
+    var body = '';
+    rows.forEach(function(r) {
+        var label = (r.termDays == null) ? 'Other terms' : 'Net ' + r.termDays;
+        var invShare = totInv > 0 ? (r.invoices || 0) / totInv : 0;
+        var spShare = totSpend > 0 ? (r.spend || 0) / totSpend : 0;
+        body += '<tr>' +
+            '<td>' + label + '</td>' +
+            '<td class="text-right">' + (r.invoices || 0).toLocaleString() + '</td>' +
+            '<td class="text-right">' + pct(invShare) + '</td>' +
+            '<td class="text-right">' + moneyShort(r.spend || 0, ccy) + '</td>' +
+            '<td class="text-right">' + pct(spShare) + '</td>' +
+        '</tr>';
+    });
+    if (pt.noDueDateCount) {
+        body += '<tr class="terms-nodue">' +
+            '<td>No due date</td>' +
+            '<td class="text-right">' + pt.noDueDateCount.toLocaleString() + '</td>' +
+            '<td class="text-right">&mdash;</td>' +
+            '<td class="text-right">' + moneyShort(pt.noDueDateSpend || 0, ccy) + '</td>' +
+            '<td class="text-right">&mdash;</td>' +
+        '</tr>';
+    }
+    var cw = pt.countWeightedAvgDays, vw = pt.valueWeightedAvgDays;
+    var summary = 'Weighted average term: ' +
+        (cw != null ? 'Net ' + cw + ' by invoice count' : 'n/a') +
+        (vw != null ? ' &middot; Net ' + vw + ' by spend' : '');
+    return '' +
+        '<div class="terms-panel">' +
+            '<div class="terms-panel-title">Payment terms &mdash; ' + escHTML(ccy) + '</div>' +
+            '<div class="terms-panel-summary">' + summary + '</div>' +
+            '<div class="table-wrap">' +
+                '<table class="report-table">' +
+                    '<thead><tr>' +
+                        '<th>Stated term</th>' +
+                        '<th class="text-right">Invoices</th>' +
+                        '<th class="text-right">% inv</th>' +
+                        '<th class="text-right">Spend</th>' +
+                        '<th class="text-right">% spend</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + body + '</tbody>' +
+                '</table>' +
+            '</div>' +
+            '<div class="terms-foot">Shares are of invoices with a stated due date; the no-due-date row sits outside the percentages.</div>' +
+        '</div>';
+}
 function wcTile(label, value, sub, read) {
     return '<div class="wc-tile' + wcReadClass(read) + '">' +
         '<div class="wc-tile-label">' + label + '</div>' +
