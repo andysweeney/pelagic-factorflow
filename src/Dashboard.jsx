@@ -6115,14 +6115,14 @@ export default function FactoringDashboard() {
       // buyerReceipts below, so repaid invoices net out to interest only. Previously only
       // funded/at_risk/overdue were counted, leaving deployed capital in the other
       // statuses unsubtracted and overstating the available balance (the reconciliation delta).
-      if (inv.fundedDate) {
+      if (inv.fundedDate && inv.fundedDate <= viewDate) {
         fundedBalance += inv.capitalDue || 0;
         // Pending top-ups stage additional capital — count as committed
         pendingFundingAmt += inv.pendingTopUpAmount || 0;
       }
     });
     var funderInflows = 0, totalDisbursed = 0, pendingDisbursalsAmt = 0;
-    if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursalsAmt += ff.amount; else totalDisbursed += ff.amount; });
+    if (prog.fundFlows) prog.fundFlows.forEach(function(ff) { if (ff.date && ff.date > viewDate) return; if (ff.type === "inflow") funderInflows += ff.amount; else if (ff.status === "Pending") pendingDisbursalsAmt += ff.amount; else totalDisbursed += ff.amount; });
     var progInvIdSet = {};
     progInvs.forEach(function(inv) { progInvIdSet[inv.id] = true; });
     SUPPLIER_PAYMENT_QUEUE.forEach(function(spq) {
@@ -9960,7 +9960,16 @@ export default function FactoringDashboard() {
                               ));
                             }
                             return acc;
-                          }, [])
+                          }, []),
+                          (monthBuckets.length > 0 ? React.createElement("tr", { key: "sp-current", style: { borderTop: "2px solid " + spAccent } },
+                            React.createElement("td", null),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13, fontWeight: 700, color: spAccent } }, "Current Position \u2014 as of " + fmt(viewDate)),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: spText } }, money(stResult.currentPosition.cap, spDisplayCcy)),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: "#F59E0B" } }, money(stResult.currentPosition.int, spDisplayCcy)),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: "#EF4444" } }, money(stResult.currentPosition.pen, spDisplayCcy)),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: "#8B5CF6" } }, money(stResult.currentPosition.hb, spDisplayCcy)),
+                            React.createElement("td", { style: { padding: "12px 12px", fontSize: 13.5, fontFamily: spMono, textAlign: "right", fontWeight: 700, color: spText } }, money(stResult.currentPosition.total, spDisplayCcy))
+                          ) : null)
                         )
                       )
                     )
