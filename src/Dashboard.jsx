@@ -335,6 +335,21 @@ function isBuyerPaused(buyerEntityId, programId) {
   return false;
 }
 
+// True unless limits for this (supplier entity, program) have been explicitly
+// left unconfirmed - set when a supplier/branch is freshly added to a program and
+// awaiting limit setup, cleared on "Confirm & activate". Undefined => legacy/confirmed,
+// so existing rows are never retroactively blocked. Independent of pause, so a manual
+// unpause cannot silently count as confirmation.
+function areLimitsConfirmed(entityId, programId) {
+  if (!entityId || !programId) return true;
+  var sup = getSupplierById(entityId);
+  if (!sup) return true;
+  var branch = getBranchById(entityId);
+  var holder = branch ? branch : sup;
+  var lc = holder.limitsConfirmed || {};
+  return lc[programId] !== false;
+}
+
 // ======== Cascade-aware limit helpers (module scope, pure) ========
 // These are pure functions: they read SUPPLIERS_DB / BUYERS_DB and the
 // invoice's own fields, nothing component-scoped. Module scope lets
@@ -1874,6 +1889,7 @@ async function saveSupplier(supId) {
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false,
       program_paused: s.programPaused || {},
+      limits_confirmed: s.limitsConfirmed || {},
       // Companies House persistence fields (added in stage 1.6)
       entity_source: s.entitySource || "manual",
       verification_source: s.verificationSource || null,
@@ -2364,6 +2380,7 @@ async function loadPersistedData() {
           branches: row.branches || [],
           paused: row.paused || false,
           programPaused: row.program_paused || {},
+          limitsConfirmed: row.limits_confirmed || {},
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
           directors: row.directors || [],
@@ -2954,7 +2971,8 @@ async function reloadSuppliers() {
           entityFiles: row.entity_files || [],
           kyc: row.kyc || { passed: false },
           paused: row.paused || false,
-          programPaused: row.program_paused || {}
+          programPaused: row.program_paused || {},
+          limitsConfirmed: row.limits_confirmed || {}
         });
       });
     }
@@ -3067,6 +3085,7 @@ async function savePersistedData() {
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
         paused: s.paused || false,
+        limits_confirmed: s.limitsConfirmed || {},
         // Companies House persistence fields (added in stage 1.6)
         entity_source: s.entitySource || "manual",
       verification_source: s.verificationSource || null,
@@ -6309,6 +6328,7 @@ export default function FactoringDashboard() {
     if (!programId) return "No funding program assigned.";
     if (isEntityPaused(inv.supplierEntityId || inv.supplierId, programId)) return "Supplier is paused on this program - unpause (tick KYC if required) before funding.";
     if (isBuyerPaused(inv.buyerEntityId || inv.buyerId, programId)) return "Buyer is paused on this program - unpause (tick KYC if required) before funding.";
+    if (!areLimitsConfirmed(inv.supplierEntityId || inv.supplierId, programId)) return "Supplier limits are not yet confirmed for this program - set and confirm them in Funding Program edit before funding.";
     var cap = r2(requestedCapital || 0);
     if (cap <= 0) return null;
     if (inv.doNotAdvance) return "Invoice is marked Do Not Advance - capital cannot be advanced against it.";
@@ -7437,7 +7457,7 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 12 }}>{branchId ? "\u2514 " : ""}{label} <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, color: badge.c, background: badge.bg }}>{badge.t}</span></div>
                     <div style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{refTxt}</div>
                   </div>
-                  <input type="number" step="0.01" value={stateVal} placeholder={eff.dynamicValue != null ? "use dynamic" : "no limit"} onChange={function(e) { var val = e.target.value; setAddToProgramModal(function(mm) { var d = Object.assign({}, mm.dynOverrides || {}); d[bid] = val; return Object.assign({}, mm, { dynOverrides: d }); }); }} onBlur={function(e) { writeDynOverride(m.programId, _supEnt, bid, e.target.value); setDataVer(function(v) { return v + 1; }); }} style={{ width: 120, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box", textAlign: "right" }} />
+                  <input type="number" step="0.01" value={stateVal} placeholder={eff.dynamicValue != null ? "use dynamic" : "no limit"} onChange={function(e) { var val = e.target.value; setAddToProgramModal(function(mm) { var d = Object.assign({}, mm.dynOverrides || {}); d[bid] = val; return Object.assign({}, mm, { dynOverrides: d }); }); }} style={{ width: 120, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box", textAlign: "right" }} />
                 </div>;
               })}
             </div>;
@@ -7630,6 +7650,15 @@ export default function FactoringDashboard() {
                 if (!limitsTarget.singleInvoiceLimits) limitsTarget.singleInvoiceLimits = {};
                 limitsTarget.singleInvoiceLimits[m.programId] = parseFloat(m.singleInvoiceLimit);
               }
+              // Confirm & activate: the single point where this supplier's limits for this
+              // program are confirmed. Persist any staged per-buyer overrides together (no
+              // piecemeal blur-saves), mark limits confirmed, and clear ONLY the auto-pause
+              // that lightweight-add set (a deliberate manual pause is left untouched).
+              if (m.dynOverrides) { Object.keys(m.dynOverrides).forEach(function(_bid) { writeDynOverride(m.programId, entityId, _bid, m.dynOverrides[_bid]); }); }
+              var _wasUnconfirmed = !!(limitsTarget.limitsConfirmed && limitsTarget.limitsConfirmed[m.programId] === false);
+              limitsTarget.limitsConfirmed = Object.assign({}, limitsTarget.limitsConfirmed || {});
+              limitsTarget.limitsConfirmed[m.programId] = true;
+              if (_wasUnconfirmed && limitsTarget.programPaused && limitsTarget.programPaused[m.programId] === true) { limitsTarget.programPaused = Object.assign({}, limitsTarget.programPaused); limitsTarget.programPaused[m.programId] = false; }
               // Stage 1.9: force-pause suppliers transitioning from "on zero programs"
               // to "on at least one program". Parent-level pause (branches inherit).
               // KYC tick required to unpause. Subsequent program additions don't re-pause
@@ -7710,7 +7739,7 @@ export default function FactoringDashboard() {
               auditLog("Supplier Added to Program", entityName + " added to " + (m.programName || "program") + " with Advance " + m.advanceRate + "%, Interest " + m.annualRate + "%" + (supForcePaused ? " \u2014 paused pending KYC" : ""), { supplierId: entityId, supplier: entityName, programId: m.programId, programName: m.programName, advanceRate: parseFloat(m.advanceRate) / 100, annualRate: parseFloat(m.annualRate) / 100, penaltyRate: parseFloat(m.penaltyRate) / 100, creditLimit: m.creditLimit ? parseFloat(m.creditLimit) : null, singleInvoiceLimit: m.singleInvoiceLimit ? parseFloat(m.singleInvoiceLimit) : null, forcePaused: supForcePaused });
               setAddToProgramModal(null);
               setDataVer(function(v) { return v + 1; });
-            }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>Add to Program</button>
+            }} disabled={!canSubmit} style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: canSubmit ? "var(--accent)" : "var(--border)", color: canSubmit ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: canSubmit ? "pointer" : "default" }}>{isBuyer ? "Add to Program" : "Confirm & activate"}</button>
           </div>
         </div>
       </div>;
@@ -24180,7 +24209,9 @@ export default function FactoringDashboard() {
                           label: label, parentId: parentId, branchId: branchId,
                           sup: sup, limitsHolder: limitsHolder,
                           cl: cl, sil: sil, rate: rate, overrideCount: overrideCount,
-                          exposure: exposure, headroom: headroom, pct: pct
+                          exposure: exposure, headroom: headroom, pct: pct,
+                          unconfirmed: !!(editingProgramId && (limitsHolder.limitsConfirmed || {})[editingProgramId] === false),
+                          paused: !!(editingProgramId && (((limitsHolder.programPaused || {})[editingProgramId] === true) || sup.paused))
                         };
                       });
 
@@ -24227,23 +24258,27 @@ export default function FactoringDashboard() {
                       }
                       function openAddSup(n) {
                         if (!editingProgramObj) { toast.error("Create the program first", "Click Create Program at the bottom of this form to save the program record, then add buyers and suppliers to it."); return; }
-                        var fpMaxAdv = parseFloat(pf.maxAdvanceRate) || 90;
-                        var fpMinInt = parseFloat(pf.minInterestRate) || 15;
-                        setAddToProgramModal({
-                          supplierId: n.id, supplierName: n.label,
-                          isBranch: n.isBranch,
-                          programId: editingProgramObj.id, programName: pf.name || "",
-                          programCcy: progCcy,
-                          advanceRate: String(Math.max(0, fpMaxAdv - 5).toFixed(0)),
-                          annualRate: String((fpMinInt + 1).toFixed(1)),
-                          penaltyRate: "20.0",
-                          creditLimit: n.isBranch
-                            ? ((n.br.creditLimits && n.br.creditLimits[editingProgramObj.id] !== undefined) ? String(n.br.creditLimits[editingProgramObj.id]) : "")
-                            : ((n.sup.creditLimits && n.sup.creditLimits[editingProgramObj.id] !== undefined) ? String(n.sup.creditLimits[editingProgramObj.id]) : ""),
-                          singleInvoiceLimit: n.isBranch
-                            ? ((n.br.singleInvoiceLimits && n.br.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.br.singleInvoiceLimits[editingProgramObj.id]) : "")
-                            : ((n.sup.singleInvoiceLimits && n.sup.singleInvoiceLimits[editingProgramObj.id] !== undefined) ? String(n.sup.singleInvoiceLimits[editingProgramObj.id]) : "")
-                        });
+                        // Lightweight add: attach the entity to the program PAUSED with limits
+                        // unconfirmed. The operator then opens "Set limits" and clicks
+                        // "Confirm & activate" to set rate/limits and clear the pause - keeping all
+                        // limit-setting in the program editor and preventing funding before limits exist.
+                        var eid = n.id;
+                        var pid = editingProgramObj.id;
+                        var sup = SUPPLIERS_DB.find(function(s) { return s.id === n.parentId; });
+                        if (!sup) { toast.error("Supplier not found", eid); return; }
+                        var holder = sup;
+                        if (n.isBranch) { var br = (sup.branches || []).find(function(b) { return b.branchId === n.branchId; }); if (br) holder = br; }
+                        if (programsForSupplier(n.parentId).length === 0 && !sup.paused) sup.paused = true;
+                        holder.programPaused = Object.assign({}, holder.programPaused || {}); holder.programPaused[pid] = true;
+                        holder.limitsConfirmed = Object.assign({}, holder.limitsConfirmed || {}); holder.limitsConfirmed[pid] = false;
+                        saveSupplier(n.parentId);
+                        setProgFields(function(p) { var arr = (p.eligibleSuppliers || []).slice(); if (arr.indexOf(eid) === -1) arr.push(eid); return Object.assign({}, p, { eligibleSuppliers: arr }); });
+                        editingProgramObj.eligibleSuppliers = (editingProgramObj.eligibleSuppliers || []).slice();
+                        if (editingProgramObj.eligibleSuppliers.indexOf(eid) === -1) editingProgramObj.eligibleSuppliers.push(eid);
+                        saveFundingProgram(pid);
+                        auditLog("Supplier Added to Program", n.label + " added to " + (pf.name || "program") + " \u2014 paused pending limit confirmation", { supplierId: eid, programId: pid, paused: true, limitsConfirmed: false });
+                        toast.success("Added \u2014 paused pending limits", n.label + " is paused until you set limits and click Confirm & activate.");
+                        setDataVer(function(v) { return v + 1; });
                       }
 
                       var thS = { textAlign: "left", padding: "6px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", borderBottom: "1px solid var(--border)", background: "var(--bg)" };
@@ -24274,7 +24309,7 @@ export default function FactoringDashboard() {
                                 </tr>;
                               }
                               return <tr key={r.eid}>
-                                <td style={Object.assign({}, tdS, { fontWeight: r.isBranch ? 400 : 600, paddingLeft: r.isBranch ? 24 : 10 })}>{r.isBranch ? "\u2514 " : ""}{r.label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{r.eid}</span></td>
+                                <td style={Object.assign({}, tdS, { fontWeight: r.isBranch ? 400 : 600, paddingLeft: r.isBranch ? 24 : 10 })}>{r.isBranch ? "\u2514 " : ""}{r.label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{r.eid}</span>{r.unconfirmed ? <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, color: "#C08B30", background: "#C08B3022" }}>Paused \u2014 limits not confirmed</span> : (r.paused ? <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, color: "#C08B30", background: "#C08B3022" }}>Paused</span> : <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, color: "#10B981", background: "#2E8B5722" }}>Active</span>)}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right" })}>{r.rate ? <>
                                   <span style={{ color: "#0EA5E9" }}>{(r.rate.advanceRate * 100).toFixed(0)}%</span>{" / "}
                                   <span style={{ color: "#D97706" }}>{(r.rate.annualRate * 100).toFixed(1)}%</span>{" / "}
@@ -24286,7 +24321,7 @@ export default function FactoringDashboard() {
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.exposure != null ? "var(--text-secondary)" : "var(--muted)" })}>{r.exposure != null ? money(r.exposure, progCcy) : "\u2014"}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", fontWeight: 700, color: pctColor(r.pct) })}>{r.headroom != null ? money(r.headroom, progCcy) : "\u2014"}{r.pct != null && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600 }}>({r.pct.toFixed(0)}%)</span>}</td>
                                 <td style={Object.assign({}, tdS, { textAlign: "right" })}>
-                                  <button onClick={function() { openEditSupRow(r); }} style={btnEdit}>Edit</button>
+                                  <button onClick={function() { openEditSupRow(r); }} style={btnEdit}>{r.unconfirmed ? "Set limits" : "Edit"}</button>
                                   <button onClick={function() { removeSupRow(r); }} style={btnRm}>Remove</button>
                                 </td>
                               </tr>;
