@@ -586,7 +586,7 @@
         .report-table tr:last-child td { border-bottom: none; }
         .report-table .text-right { text-align: right; }
         .report-table .text-center { text-align: center; }
-        .terms-panel { margin-top: 20px; }
+        .terms-panel { margin-top: 20px; margin-bottom: 22px; }
         .terms-panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-bottom: 6px; }
         .terms-panel-summary { font-size: 12px; color: var(--text); margin-bottom: 10px; }
         .terms-panel .terms-nodue td { color: var(--muted); font-style: italic; }
@@ -7883,7 +7883,7 @@ function renderTermsPanel(pt, ccy) {
     rows.forEach(function(r) { totInv += (r.invoices || 0); totSpend += (r.spend || 0); });
     var body = '';
     rows.forEach(function(r) {
-        var label = (r.termDays == null) ? 'Other terms' : 'Net ' + r.termDays;
+        var label = r.band ? r.band.replace('<=', '\u2264') : ((r.termDays == null) ? 'Other terms' : 'Net ' + r.termDays);
         var invShare = totInv > 0 ? (r.invoices || 0) / totInv : 0;
         var spShare = totSpend > 0 ? (r.spend || 0) / totSpend : 0;
         body += '<tr>' +
