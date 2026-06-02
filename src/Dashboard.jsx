@@ -394,6 +394,32 @@ function _invBuyerEntityIdOf(inv) {
   return inv.buyerId || "";
 }
 
+// Effective single-invoice (max invoice size) limit for a (supplier entity,
+// program, buyer): a manual invoice override supersedes the dynamic invoice limit,
+// which supersedes the static per-supplier single-invoice limit. Mirrors
+// getEffectiveSupplierBuyerLimit but for invoice SIZE. Module scope so the cascade
+// gate below can call it.
+function getEffectiveSupplierBuyerInvoiceLimit(supEntityId, programId, buyerEntityId) {
+  var staticVal = null;
+  var sup = getSupplierById(supEntityId);
+  if (sup) {
+    var holder = sup;
+    var br = getBranchById(supEntityId);
+    if (br) holder = br;
+    var sl = (holder.singleInvoiceLimits || {})[programId];
+    if (sl != null) staticVal = Number(sl);
+  }
+  if (!buyerEntityId || !programId) return { value: staticVal, source: "static", staticValue: staticVal, dynamicValue: null, overrideValue: null };
+  var k = dynKey(programId, supEntityId, buyerEntityId);
+  var ov = DYN_OVERRIDES_DB[k];
+  var dyn = DYN_LIMITS_DB[k];
+  var ovVal = (ov && ov.invoiceValue != null) ? ov.invoiceValue : null;
+  var dynVal = (dyn && dyn.invoiceValue != null) ? dyn.invoiceValue : null;
+  if (ovVal != null) return { value: ovVal, source: "override", staticValue: staticVal, dynamicValue: dynVal, overrideValue: ovVal, avg: dyn ? dyn.invoiceAvg : null, multiple: dyn ? dyn.invoiceMultiple : null };
+  if (dynVal != null) return { value: dynVal, source: "dynamic", staticValue: staticVal, dynamicValue: dynVal, overrideValue: null, avg: dyn.invoiceAvg, multiple: dyn.invoiceMultiple };
+  return { value: staticVal, source: "static", staticValue: staticVal, dynamicValue: null, overrideValue: null };
+}
+
 // Check whether an invoice's amount fits under the cascading single-invoice
 // limit (parent's cap AND, if applicable, branch's cap). Returns null if
 // the invoice clears, or a string reason if it doesn't.
@@ -406,6 +432,16 @@ function checkSupplierProgramCascadingSingleInvoiceLimit(inv, programId) {
   var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
   if (!sup) return null;
   var amt = inv.amount || 0;
+  // Dynamic per-buyer invoice limit supersedes the static cascade for this
+  // (supplier, buyer) - same precedence as the credit limit (override > dynamic > static).
+  var _ivBuyer = inv.buyerEntityId || inv.buyerId;
+  if (_ivBuyer) {
+    var _ivEff = getEffectiveSupplierBuyerInvoiceLimit(entityId, programId, _ivBuyer);
+    if (_ivEff && (_ivEff.source === "override" || _ivEff.source === "dynamic") && _ivEff.value != null) {
+      if (amt > _ivEff.value + 0.01) return "Invoice exceeds dynamic single-invoice limit (" + money(_ivEff.value, inv.currency) + ")";
+      return null;
+    }
+  }
   var parentSIL = (sup.singleInvoiceLimits || {})[programId];
   if (parentSIL && parentSIL > 0 && amt > parentSIL) {
     return "Invoice exceeds supplier's single-invoice limit (" + money(parentSIL, inv.currency) + ")";
@@ -2653,13 +2689,13 @@ async function loadPersistedData() {
     if (dynLimRes && !dynLimRes._failed && dynLimRes.data) {
       for (var _kl in DYN_LIMITS_DB) delete DYN_LIMITS_DB[_kl];
       dynLimRes.data.forEach(function(row) {
-        DYN_LIMITS_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.limit_value != null ? Number(row.limit_value) : null, avg: row.avg_outstanding_60d != null ? Number(row.avg_outstanding_60d) : null, multiple: row.multiple != null ? Number(row.multiple) : null, ceiling: row.ceiling != null ? Number(row.ceiling) : null, sampleDays: row.sample_days || 0, windowFrom: row.window_from || null, windowTo: row.window_to || null };
+        DYN_LIMITS_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.limit_value != null ? Number(row.limit_value) : null, avg: row.avg_outstanding_60d != null ? Number(row.avg_outstanding_60d) : null, multiple: row.multiple != null ? Number(row.multiple) : null, ceiling: row.ceiling != null ? Number(row.ceiling) : null, sampleDays: row.sample_days || 0, windowFrom: row.window_from || null, windowTo: row.window_to || null, invoiceValue: row.invoice_limit_value != null ? Number(row.invoice_limit_value) : null, invoiceAvg: row.avg_invoice_size_60d != null ? Number(row.avg_invoice_size_60d) : null, invoiceMultiple: row.invoice_multiple != null ? Number(row.invoice_multiple) : null, invoiceCeiling: row.invoice_ceiling != null ? Number(row.invoice_ceiling) : null, invoiceSampleCount: row.invoice_sample_count || 0 };
       });
     }
     if (dynOvrRes && !dynOvrRes._failed && dynOvrRes.data) {
       for (var _ko in DYN_OVERRIDES_DB) delete DYN_OVERRIDES_DB[_ko];
       dynOvrRes.data.forEach(function(row) {
-        DYN_OVERRIDES_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.override_value != null ? Number(row.override_value) : null, note: row.note || "", setBy: row.set_by || null, updatedAt: row.updated_at || null };
+        DYN_OVERRIDES_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.override_value != null ? Number(row.override_value) : null, note: row.note || "", setBy: row.set_by || null, updatedAt: row.updated_at || null, invoiceValue: row.invoice_override_value != null ? Number(row.invoice_override_value) : null };
       });
     }
 
@@ -6040,7 +6076,7 @@ export default function FactoringDashboard() {
       } else {
         var v = parseFloat(value);
         await supabase.from("supplier_program_buyer_override").upsert([{ funding_program: programId, supplier_entity_id: supEntity, buyer_entity_id: buyerEntity, override_value: v, updated_at: new Date().toISOString() }], { onConflict: "funding_program,supplier_entity_id,buyer_entity_id" });
-        DYN_OVERRIDES_DB[k] = { value: v, note: "", setBy: null, updatedAt: new Date().toISOString() };
+        DYN_OVERRIDES_DB[k] = Object.assign({}, DYN_OVERRIDES_DB[k], { value: v, note: "", setBy: null, updatedAt: new Date().toISOString() });
       }
     } catch (e) { console.error("[DynOverride] write error:", e); }
   }
