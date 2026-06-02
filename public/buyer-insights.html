@@ -1073,6 +1073,7 @@
             .print-section-eyebrow { font-size: 8pt; font-weight: 700; color: #0EA5E9; text-transform: uppercase; letter-spacing: 1pt; margin-bottom: 2mm; }
             .print-section-title { font-size: 16pt; font-weight: 700; color: #0F172A; margin-bottom: 2mm; line-height: 1.2; }
             .print-section-lede { font-size: 9pt; color: #475569; margin-bottom: 5mm; line-height: 1.4; max-width: 200mm; }
+            .print-subhead { font-size: 8.5pt; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.6pt; margin: 4mm 0 2mm 0; }
 
             /* Stat cards in print — tinted for visual interest */
             .print-stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4mm; margin-bottom: 5mm; }
@@ -1123,6 +1124,14 @@
             .print-observation.warn   { border-left-color: #F59E0B; background: #FFFBEB; }
             .print-observation.danger { border-left-color: #EF4444; background: #FEF2F2; }
             .print-observation strong { color: #0F172A; }
+            .print-obs-head { display: flex; align-items: center; gap: 2mm; margin-bottom: 1.5mm; }
+            .print-obs-rank { font-size: 7pt; font-weight: 700; color: #fff; background: #0EA5E9; min-width: 4mm; height: 4mm; padding: 0 1mm; border-radius: 2mm; display: inline-flex; align-items: center; justify-content: center; }
+            .print-obs-owner, .print-obs-tag { font-size: 6.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4pt; padding: 0.5mm 1.5mm; border-radius: 2mm; }
+            .print-obs-owner { background: #E0F2FE; color: #0369A1; }
+            .print-obs-tag { background: #F1F5F9; color: #475569; }
+            .print-obs-headline { font-size: 9pt; font-weight: 600; color: #0F172A; margin-bottom: 1mm; line-height: 1.4; }
+            .print-obs-why { font-size: 8pt; color: #475569; line-height: 1.4; margin-bottom: 1mm; }
+            .print-obs-q { font-size: 8pt; color: #0F172A; font-style: italic; line-height: 1.4; }
 
             /* Stress signal mini-panels */
             .print-stress-sig { margin: 1mm 0; padding: 2mm 3mm; background: #F8FAFC; border-left: 2px solid #94A3B8; border-radius: 1mm; font-size: 8pt; color: #475569; }
@@ -11464,20 +11473,66 @@ function buildPrintDisclaimer() {
 function renderPrintSectionAtAGlance(c, ccy) {
     var t = c.totals;
     var fact = chooseSurprisingFact(c, ccy);
+    var conc = c.concentration;
+    var combined = t.combinedDilutionRate || 0, cnRate = t.dilutionRate || 0, spRate = t.implicitDilutionRate || 0;
+
+    var headline =
+        printStatCard('Suppliers', (t.supplierCount || 0).toLocaleString(), '') +
+        printStatCard('Invoices', (t.invoiceCount || 0).toLocaleString(), '') +
+        printStatCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' / invoice') +
+        printStatCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'combined dilution ' + pct(combined));
+
+    // Working capital
+    var wc = '';
+    if (t.avgStatedTermDays != null && t.avgDaysToPaid != null) {
+        var gap = Math.round((t.avgDaysToPaid - t.avgStatedTermDays) * 10) / 10;
+        var _pt = t.paymentTerms || null;
+        var _stVal = 'Net ' + Math.round((_pt && _pt.countWeightedAvgDays != null) ? _pt.countWeightedAvgDays : t.avgStatedTermDays);
+        wc += printStatCard('Stated terms', _stVal, 'weighted average') +
+              printStatCard('Time to pay', t.avgDaysToPaid + 'd', 'invoice to payment') +
+              printStatCard('Terms gap', (gap >= 0 ? '+' : '') + gap + 'd', gap > 0 ? 'past your own terms' : 'inside terms');
+        if (t.apOutstandingAvg != null) wc += printStatCard('Supplier credit', moneyShort(t.apOutstandingAvg, ccy), 'avg balance financing you');
+    } else if (t.avgDaysPastDue != null) {
+        wc += printStatCard('Avg days past due', (t.avgDaysPastDue >= 0 ? '+' : '') + t.avgDaysPastDue + 'd', '');
+    }
+    var staleCnt = t.staleCount || 0, staleAmt = t.staleAmount || 0, stalePct = t.stalePct || 0;
+    wc += printStatCard('Stale approvals', staleCnt === 0 ? 'None' : moneyShort(staleAmt, ccy),
+        staleCnt === 0 ? 'none approved & unpaid' : staleCnt.toLocaleString() + ' invoices 30+ days' + (stalePct ? ' (' + pct(stalePct) + ')' : ''));
+
+    // Concentration
+    var tailCount = (c.suppliers || []).filter(function(s) { return (s.sharePct || 0) < 0.005; }).length;
+    var hhiBand = conc.hhi >= 0.25 ? 'highly concentrated' : conc.hhi >= 0.15 ? 'moderately concentrated' : 'diversified';
+    var concCards =
+        printStatCard('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend') +
+        printStatCard('Top 5', pct(conc.top5Pct), '') +
+        printStatCard('HHI', conc.hhi.toFixed(3), hhiBand) +
+        printStatCard('Long tail', tailCount.toLocaleString(), 'under 0.5% each');
+
+    // Invoice quality
+    var spAmt = t.shortPayAmount || 0, spCnt = t.shortPayCount || 0;
+    var qual =
+        printStatCard('Combined dilution', pct(combined), 'CN ' + pct(cnRate) + ' / short-pay ' + pct(spRate)) +
+        printStatCard('Short-paid value', moneyShort(spAmt, ccy), spCnt.toLocaleString() + ' invoices');
+    if (t.rejectionRate != null) {
+        var rejCnt = t.rejectedCount || 0, rejAmt = t.rejectedAmount || 0, rejCntRate = t.rejectionCountRate || 0;
+        qual += printStatCard('Rejected / disputed', rejCnt === 0 ? 'None' : pct(t.rejectionRate),
+            rejCnt === 0 ? 'none rejected' : rejCnt.toLocaleString() + ' / ' + moneyShort(rejAmt, ccy) + ' (' + pct(rejCntRate) + ' by count)');
+    }
 
     return '' +
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 1</div>' +
             '<div class="print-section-title">Your ' + ccy + ' supply chain at a glance</div>' +
-            '<div class="print-section-lede">Headline numbers from the period covered, with one observation worth dwelling on.</div>' +
-
-            '<div class="print-stat-grid">' +
-                printStatCard('Suppliers', t.supplierCount.toLocaleString(), '') +
-                printStatCard('Invoices', t.invoiceCount.toLocaleString(), '') +
-                printStatCard('Total spend', moneyShort(t.totalSpend, ccy), 'avg ' + moneyShort(t.avgInvoiceAmount, ccy) + ' per invoice') +
-                printStatCard('Net of credit notes', moneyShort(t.netSpend, ccy), 'dilution ' + pct(t.dilutionRate)) +
-            '</div>' +
-
+            '<div class="print-section-lede">A point-in-time read on the period covered &mdash; working capital, concentration, and invoice quality. The Trends tab shows how each is moving.</div>' +
+            '<div class="print-stat-grid">' + headline + '</div>' +
+            '<div class="print-subhead">Working capital</div>' +
+            '<div class="print-stat-grid">' + wc + '</div>' +
+            '<div class="print-subhead">Concentration risk</div>' +
+            '<div class="print-stat-grid">' + concCards + '</div>' +
+            '<div class="print-subhead">Invoice quality</div>' +
+            '<div class="print-stat-grid">' + qual + '</div>' +
+            renderPrintTermsTable(t.paymentTerms, ccy) +
+            renderPrintApFloat(c, ccy) +
             '<div class="print-callout">' +
                 '<div class="print-callout-eyebrow">Worth noting</div>' +
                 '<div class="print-callout-text">' + fact + '</div>' +
@@ -11490,6 +11545,55 @@ function printStatCard(label, value, sub) {
         '<div class="stat-label">' + escHTML(label) + '</div>' +
         '<div class="stat-value">' + value + '</div>' +
         (sub ? '<div class="stat-sub">' + escHTML(sub) + '</div>' : '') +
+    '</div>';
+}
+
+function renderPrintTermsTable(pt, ccy) {
+    if (!pt || !pt.distribution || !pt.distribution.length) return '';
+    var rows = pt.distribution.map(function(r) {
+        var label = r.band ? r.band.replace('<=', '\u2264') : ((r.termDays == null) ? 'Other terms' : 'Net ' + r.termDays);
+        return '<tr>' +
+            '<td><strong>' + escHTML(label) + '</strong></td>' +
+            '<td class="text-right mono">' + (r.invoices || 0).toLocaleString() + '</td>' +
+            '<td class="text-right mono">' + moneyShort(r.spend || 0, ccy) + '</td>' +
+            '<td class="text-right mono">' + (r.daysBeyondTerms == null ? '&mdash;' : (r.daysBeyondTerms >= 0 ? '+' : '') + r.daysBeyondTerms + 'd') + '</td>' +
+        '</tr>';
+    }).join('');
+    var nodue = pt.noDueDateCount ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">' + pt.noDueDateCount.toLocaleString() + ' invoices with no due date (' + moneyShort(pt.noDueDateSpend || 0, ccy) + ') sit outside the bands.</div>' : '';
+    var cw = pt.countWeightedAvgDays, vw = pt.valueWeightedAvgDays;
+    var summary = 'Weighted average term: ' + (cw != null ? 'Net ' + cw + ' by count' : 'n/a') + (vw != null ? ' &middot; Net ' + vw + ' by spend' : '');
+    return '<div class="print-chart-box">' +
+        '<div class="print-chart-box-title">Payment terms &mdash; ' + ccy + ' (by stated band)</div>' +
+        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">' + summary + '</div>' +
+        '<table class="print-table">' +
+            '<thead><tr><th>Stated term</th><th class="text-right">Invoices</th><th class="text-right">Spend</th><th class="text-right">Days late</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' + nodue +
+    '</div>';
+}
+
+function renderPrintApFloat(c, ccy) {
+    var t = c.totals;
+    if (t.apOutstandingAvg == null) return '';
+    var avg = t.apOutstandingAvg, daily = t.apDailySpend || 0;
+    var impliedDays = daily > 0 ? Math.round(avg / daily) : null;
+    var defRate = 8;
+    var rows = [1, 7, 14, 30].map(function(n) {
+        var freed = daily * n;
+        return '<tr>' +
+            '<td>+' + n + (n === 1 ? ' day' : ' days') + '</td>' +
+            '<td class="text-right mono">' + moneyShort(freed, ccy) + '</td>' +
+            '<td class="text-right mono">' + moneyShort(freed * defRate / 100, ccy) + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="print-chart-box">' +
+        '<div class="print-chart-box-title">Supplier credit &mdash; ' + ccy + ' AP float</div>' +
+        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">On average ' + moneyShort(avg, ccy) + ' of supplier credit is financing you' + (impliedDays != null ? ' &mdash; about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+        '<table class="print-table">' +
+            '<thead><tr><th>Extend terms by</th><th class="text-right">Cash freed (one-off)</th><th class="text-right">Value / yr @ ' + defRate + '%</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">Cash freed = average daily spend &times; days extended. Value/year applies an 8% cost of capital. A treasury what-if, not free money.</div>' +
     '</div>';
 }
 
@@ -11545,50 +11649,70 @@ function renderPrintSectionConcentration(c, ccy) {
 }
 
 function renderPrintSectionDilution(c, ccy) {
-    var overall = c.dilution.overallRate;
-    var league = c.dilution.league.slice(0, 10);
+    var t = c.totals;
+    var cnTotal = t.totalCNs || 0;
+    var spTotal = t.shortPayAmount || 0;
+    var combinedRate = t.combinedDilutionRate || 0;
 
-    if (c.totals.cnCount === 0) {
+    // Combined-leakage league built from suppliers (CN + short-pay), mirroring the
+    // on-screen Section 3 — the snapshot's dilution.league is CN-only.
+    var league = (c.suppliers || [])
+        .filter(function(s) { return (s.invoiceCount || 0) >= 3 && ((s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0); })
+        .map(function(s) {
+            return { name: s.name, invoiceCount: s.invoiceCount || 0, invoiceTotal: s.totalSpend || 0,
+                cnTotal: s.cnTotal || 0, shortPayAmount: s.shortPayAmount || 0,
+                combinedRate: s.combinedDilutionRate || 0 };
+        })
+        .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
+
+    if (cnTotal === 0 && spTotal === 0) {
         return '' +
             '<div class="print-section">' +
                 '<div class="print-section-eyebrow">Section 3</div>' +
                 '<div class="print-section-title">Quality signals from your invoice flow</div>' +
-                '<div class="print-section-lede">No credit note data was provided for this currency. Dilution analysis is unavailable.</div>' +
+                '<div class="print-section-lede">No credit notes and no short-paid invoices in this period &mdash; no dilution signal to report.</div>' +
             '</div>';
     }
 
-    var rows = league.map(function(s, idx) {
-        var cls = s.dilutionRate >= 0.08 ? 'print-dil-high' : s.dilutionRate >= 0.03 ? 'print-dil-med' : 'print-dil-low';
+    var withLeak = league.length;
+    var top = league.slice(0, 10);
+    var rows = top.map(function(s, idx) {
+        var cls = s.combinedRate >= 0.08 ? 'print-dil-high' : s.combinedRate >= 0.03 ? 'print-dil-med' : 'print-dil-low';
         return '<tr>' +
             '<td>' + (idx + 1) + '</td>' +
             '<td><strong>' + escHTML(s.name) + '</strong></td>' +
             '<td class="text-right mono">' + s.invoiceCount.toLocaleString() + '</td>' +
             '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
-            '<td class="text-right mono">' + s.cnCount.toLocaleString() + '</td>' +
-            '<td class="text-right mono">' + moneyShort(s.cnTotal, ccy) + '</td>' +
-            '<td class="text-right ' + cls + '">' + pct(s.dilutionRate) + '</td>' +
+            '<td class="text-right mono">' + (s.cnTotal > 0 ? moneyShort(s.cnTotal, ccy) : '&mdash;') + '</td>' +
+            '<td class="text-right mono">' + (s.shortPayAmount > 0 ? moneyShort(s.shortPayAmount, ccy) : '&mdash;') + '</td>' +
+            '<td class="text-right ' + cls + '">' + pct(s.combinedRate) + '</td>' +
         '</tr>';
     }).join('');
+
+    var lede = (cnTotal === 0 && spTotal > 0)
+        ? 'No credit notes were provided &mdash; the entire dilution signal here is short-pay (invoices settled below face value). A credit-note-only view would show nothing.'
+        : 'Credit notes and short-pays combined, ranked by rate. Above 5% generally indicates a process or quality issue; above 8% is a strong signal.';
 
     return '' +
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 3</div>' +
             '<div class="print-section-title">Quality signals from your invoice flow</div>' +
-            '<div class="print-section-lede">Credit notes against invoices, ranked by rate. Above 5% generally indicates a process or quality issue worth investigating; above 8% is a strong signal.</div>' +
+            '<div class="print-section-lede">' + lede + '</div>' +
 
             '<div class="print-stat-grid">' +
-                printStatCard('Overall dilution', pct(overall), 'across ' + c.totals.cnCount + ' credit notes') +
-                printStatCard('Total credit notes', moneyShort(c.totals.totalCNs, ccy), '') +
-                printStatCard('Net spend', moneyShort(c.totals.netSpend, ccy), '') +
-                printStatCard('Suppliers w/ CNs', league.filter(function(s) { return s.cnCount > 0; }).length.toLocaleString(), '') +
+                printStatCard('Combined dilution', pct(combinedRate), 'of ' + ccy + ' spend') +
+                printStatCard('Credit notes', moneyShort(cnTotal, ccy), (t.cnCount || 0).toLocaleString() + ' CNs') +
+                printStatCard('Short-paid', moneyShort(spTotal, ccy), (t.shortPayCount || 0).toLocaleString() + ' invoices') +
+                printStatCard('Net spend', moneyShort(t.netSpend, ccy), '') +
             '</div>' +
 
             '<div class="print-chart-box">' +
-                '<div class="print-chart-box-title">Dilution league - top ' + league.length + ' suppliers by rate</div>' +
+                '<div class="print-chart-box-title">Dilution league &mdash; top ' + top.length + ' by combined rate (credit notes + short-pay)</div>' +
                 '<table class="print-table">' +
-                    '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Invoice total</th><th class="text-right">CNs</th><th class="text-right">CN total</th><th class="text-right">Dilution</th></tr></thead>' +
+                    '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Invoice total</th><th class="text-right">Credit notes</th><th class="text-right">Short-paid</th><th class="text-right">Combined</th></tr></thead>' +
                     '<tbody>' + rows + '</tbody>' +
                 '</table>' +
+                (withLeak > 10 ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">+ ' + (withLeak - 10) + ' more suppliers with dilution</div>' : '') +
             '</div>' +
         '</div>';
 }
@@ -11724,18 +11848,33 @@ function renderPrintSectionStress(c, ccy, meta) {
 }
 
 function renderPrintSectionWhatThisMeans(c, ccy, meta) {
-    var obs = generateObservations(c, ccy);
-    var rows = obs.map(function(o) {
-        return '<div class="print-observation ' + (o.severity || '') + '">' + o.text + '</div>';
-    }).join('');
+    var findings = generateObservations(c, ccy).sort(function(a, b) { return (b.gbp || 0) - (a.gbp || 0); });
+    function sevClass(sev) { return sev === 'concern' ? 'danger' : sev === 'watch' ? 'warn' : ''; }
+
+    var body;
+    if (findings.length === 0) {
+        body = '<div class="print-observation">No severe concentration, dilution, or payment-behaviour signals in this ' + ccy + ' period &mdash; a strong baseline.</div>';
+    } else {
+        body = findings.slice(0, 6).map(function(f, i) {
+            return '<div class="print-observation ' + sevClass(f.sev) + '">' +
+                '<div class="print-obs-head">' +
+                    '<span class="print-obs-rank">' + (i + 1) + '</span>' +
+                    '<span class="print-obs-owner">' + escHTML(f.owner) + '</span>' +
+                    '<span class="print-obs-tag">' + escHTML(f.tag) + '</span>' +
+                '</div>' +
+                '<div class="print-obs-headline">' + f.headline + '</div>' +
+                '<div class="print-obs-why">' + f.why + '</div>' +
+                '<div class="print-obs-q">' + escHTML(f.q) + '</div>' +
+            '</div>';
+        }).join('');
+    }
 
     return '' +
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 6</div>' +
             '<div class="print-section-title">What this means</div>' +
-            '<div class="print-section-lede">A few observations drawn from the sections above, named specifically rather than generically.</div>' +
-
-            '<div>' + rows + '</div>' +
+            '<div class="print-section-lede">The findings above, ranked by value at stake and tagged with who owns the answer &mdash; Procurement or AP.</div>' +
+            body +
         '</div>';
 }
 
@@ -11833,6 +11972,7 @@ function buildTrendsPrintTree() {
 
         root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'A'));
         root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'B'));
+        root.appendChild(buildTrendsPagePair(ccy, c, ts, granularity, 'C'));
         root.appendChild(buildTrendsSupplierPage(ccy, c, ts, granularity));
     });
 
@@ -11871,7 +12011,7 @@ function buildTrendsPagePair(ccy, c, ts, granularity, pair) {
                     '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-dil-' + ccy + '"></canvas></div>' +
                 '</div>' +
             '</div>';
-    } else {
+    } else if (pair === 'B') {
         chartsHtml =
             '<div class="print-trends-chart-pair">' +
                 '<div class="print-trends-chart">' +
@@ -11879,6 +12019,15 @@ function buildTrendsPagePair(ccy, c, ts, granularity, pair) {
                     '<div class="print-trends-chart-sub">Average days past due, by ' + granularity.replace('ly', '') + ' the invoice was paid. Positive = late.</div>' +
                     '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-pay-' + ccy + '"></canvas></div>' +
                 '</div>' +
+                '<div class="print-trends-chart">' +
+                    '<div class="print-trends-chart-title">Time to pay over time</div>' +
+                    '<div class="print-trends-chart-sub">Average invoice&rarr;payment days (solid) vs stated terms (dashed), by ' + granularity.replace('ly', '') + ' paid. The gap is beyond-terms lateness.</div>' +
+                    '<div class="print-trends-chart-canvas-wrap"><canvas id="print-trends-ttp-' + ccy + '"></canvas></div>' +
+                '</div>' +
+            '</div>';
+    } else {
+        chartsHtml =
+            '<div class="print-trends-chart-pair">' +
                 '<div class="print-trends-chart">' +
                     '<div class="print-trends-chart-title">Concentration over time</div>' +
                     '<div class="print-trends-chart-sub">Share-of-spend of the three largest ' + ccy + ' suppliers vs. everyone else.</div>' +
@@ -11978,6 +12127,7 @@ function renderTrendsPrintCharts() {
         drawTrendsPrintVolume(ccy, ts, c);
         drawTrendsPrintDilution(ccy, ts);
         drawTrendsPrintPayments(ccy, ts);
+        drawTrendsPrintTimeToPay(ccy, ts);
         drawTrendsPrintConcentration(ccy, ts);
     });
 }
@@ -12070,6 +12220,23 @@ function drawTrendsPrintPayments(ccy, ts) {
             datasets: [{ label: 'Avg DPD', data: ts.payments.map(function(p) { return p.avgDpd; }), borderColor: '#EF4444', backgroundColor: '#EF444425', borderWidth: 1.5, pointRadius: 1, fill: true, tension: 0.3, spanGaps: true }]
         },
         options: trendsPrintChartOptions({ yLeftFormat: function(v) { return (v >= 0 ? '+' : '') + v.toFixed(1) + 'd'; } })
+    });
+    _printChartInstances.push(inst);
+}
+
+function drawTrendsPrintTimeToPay(ccy, ts) {
+    var canvas = document.getElementById('print-trends-ttp-' + ccy);
+    if (!canvas) return;
+    var inst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: ts.buckets,
+            datasets: [
+                { label: 'Time to pay', data: ts.payments.map(function(p) { return p.avgDaysToPaid; }), borderColor: '#8B5CF6', backgroundColor: '#8B5CF625', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3, spanGaps: true },
+                { label: 'Stated terms', data: ts.payments.map(function(p) { return p.avgStatedTerm; }), borderColor: '#10B981', backgroundColor: '#10B98125', borderWidth: 1.5, pointRadius: 1, borderDash: [4, 2], fill: false, tension: 0.3, spanGaps: true }
+            ]
+        },
+        options: trendsPrintChartOptions({ legend: true, yLeftFormat: function(v) { return v.toFixed(0) + 'd'; } })
     });
     _printChartInstances.push(inst);
 }
