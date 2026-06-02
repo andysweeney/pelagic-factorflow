@@ -6104,6 +6104,25 @@ export default function FactoringDashboard() {
     return getSupplierProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId).headroom;
   }
 
+  // Buyer-aware supplier headroom for the bulk paths. Routes through the cascade so
+  // per-buyer dynamic/override limits are honoured (the plain shim above drops the buyer
+  // and can only ever see the static per-supplier limit). Returns a running-tally key whose
+  // scope matches the binding: per-(supplier,buyer) for a dynamic/override limit, or
+  // per-supplier-parent for the static cascade so a shared static limit depletes cumulatively
+  // across buyers within one bulk run.
+  function getBulkSupplierHeadroom(raw, programId) {
+    var supEntId = raw.supplierEntityId || raw.supplierId;
+    var buyEntId = raw.buyerEntityId || raw.buyerId;
+    var casc = getSupplierProgramCascadingCreditHeadroom(
+      { id: null, supplierEntityId: supEntId, supplierId: raw.supplierId, buyerEntityId: buyEntId, buyerId: raw.buyerId, fundingProgram: programId },
+      programId, null
+    );
+    var key = casc.binding === "dynamic"
+      ? ("DYN|" + supEntId + "|" + (buyEntId || "") + "|" + programId)
+      : ("SUP|" + getParentEntityId(supEntId) + "|" + programId);
+    return { headroom: casc.headroom, key: key };
+  }
+
   // Check whether an invoice's amount fits under the cascading single-invoice
   // limit. This is just a local-scope alias for the module-level function so
   // existing component-internal call sites don't need to be retargeted.
@@ -6839,7 +6858,7 @@ export default function FactoringDashboard() {
     // sharing a credit limit consume it cumulatively rather than each seeing the starting headroom.
     var totalCapitalQueued = 0;
     var perProgramRemaining = {};
-    var creditHeadroomMap = {}; // key = supplierParentId + ":" + programId
+    var creditHeadroomMap = {}; // key from getBulkSupplierHeadroom (DYN|sup|buyer|prog or SUP|parent|prog)
     var buyerCreditHeadroomMap = {}; // key = buyerId + ":" + programId
     eligible.forEach(function(e) {
       var progId = e.prog.id;
@@ -6849,11 +6868,10 @@ export default function FactoringDashboard() {
         return;
       }
       // Supplier credit-limit gate
-      var supEntId = e.raw.supplierEntityId || e.raw.supplierId;
-      var supParent = getParentEntityId(supEntId);
-      var clKey = supParent + ":" + progId;
+      var _supHr = getBulkSupplierHeadroom(e.raw, progId);
+      var clKey = _supHr.key;
       if (creditHeadroomMap[clKey] === undefined) {
-        creditHeadroomMap[clKey] = getSupplierProgramCreditHeadroom(supEntId, progId, null);
+        creditHeadroomMap[clKey] = _supHr.headroom;
       }
       var clHeadroom = creditHeadroomMap[clKey];
       if (clHeadroom !== Infinity && clHeadroom < e.maxCap - 0.01) {
@@ -20702,7 +20720,7 @@ export default function FactoringDashboard() {
             // supplier or buyer simply by routing through the bulk path.
             var pauseSkippedSup = [], pauseSkippedBuy = [];
             // Track per-supplier and per-buyer credit-limit headroom across the bulk run for the "& Fund" branch.
-            var creditHeadroomMap = {}; // key = supplierParentId
+            var creditHeadroomMap = {}; // key from getBulkSupplierHeadroom (DYN|sup|buyer|prog or SUP|parent|prog)
             var buyerCreditHeadroomMap = {}; // key = buyerId
             var now = new Date();
             var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -20722,15 +20740,15 @@ export default function FactoringDashboard() {
                 var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
                 var cap = r2(effectiveBase * fp.maxAdvanceRate);
                 // Credit-limit gates (apply only when funding, not allocate-only). Both supplier-side and buyer-side.
-                var supEntId = raw.supplierEntityId || raw.supplierId;
-                var supParent = getParentEntityId(supEntId);
-                if (creditHeadroomMap[supParent] === undefined) {
-                  creditHeadroomMap[supParent] = getSupplierProgramCreditHeadroom(supEntId, fp.id, null);
+                var _supHr = getBulkSupplierHeadroom(raw, fp.id);
+                var _supKey = _supHr.key;
+                if (creditHeadroomMap[_supKey] === undefined) {
+                  creditHeadroomMap[_supKey] = _supHr.headroom;
                 }
                 if (buyerCreditHeadroomMap[raw.buyerId] === undefined) {
                   buyerCreditHeadroomMap[raw.buyerId] = getBuyerProgramCreditHeadroom(raw.buyerId, fp.id, null);
                 }
-                var clHeadroom = creditHeadroomMap[supParent];
+                var clHeadroom = creditHeadroomMap[_supKey];
                 var buyHeadroom = buyerCreditHeadroomMap[raw.buyerId];
                 var supBlk = clHeadroom !== Infinity && clHeadroom < cap - 0.01;
                 var buyBlk = buyHeadroom !== Infinity && buyHeadroom < cap - 0.01;
@@ -20749,7 +20767,7 @@ export default function FactoringDashboard() {
                 raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                 raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                 raw.intendedPaymentDate = fundingDate;
-                if (clHeadroom !== Infinity) creditHeadroomMap[supParent] -= cap;
+                if (clHeadroom !== Infinity) creditHeadroomMap[_supKey] -= cap;
                 if (buyHeadroom !== Infinity) buyerCreditHeadroomMap[raw.buyerId] -= cap;
                 funded.push(raw.id);
               } else {
