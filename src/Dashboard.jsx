@@ -1583,6 +1583,10 @@ var PROVIDER_ALIASES_DB = [];
 // See branch_cascade_and_rate_architecture.sql for the data shape and the
 // "notes on data shape" block in that file for the rateDefinition spec.
 var BENCHMARKS_DB = [];
+// Dynamic credit limits, keyed "programId|supEntity|buyerEntity".
+var DYN_LIMITS_DB = {};
+var DYN_OVERRIDES_DB = {};
+function dynKey(programId, supEntity, buyerEntity) { return String(programId) + "|" + String(supEntity) + "|" + String(buyerEntity); }
 
 var _dataLoaded = false;
 var _lastSavedAuditIndex = 0;
@@ -1725,6 +1729,7 @@ async function saveFundingProgram(progId) {
       // benchmark (SOFR/SONIA/ESTR) so its suppliers and buyers may use
       // benchmark-linked rate definitions. No engine yet — this is just
       // persisting the choice so a future build doesn't require a migration.
+      dynamic_limit: fp.dynamicLimit || null,
       benchmark: fp.benchmark || null
     };
     var progRes = await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
@@ -2311,7 +2316,9 @@ async function loadPersistedData() {
       safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases"),                                                                                    // 14
       safeFetch(supabase.from("csv_providers").select("*"), "csv_providers"),                                                                                      // 15
       safeFetch(supabase.from("provider_entity_aliases").select("*"), "provider_entity_aliases"),                                                                  // 16
-      safeFetch(supabase.from("benchmarks").select("*"), "benchmarks")                                                                                              // 17
+      safeFetch(supabase.from("benchmarks").select("*"), "benchmarks"),
+      safeFetch(supabase.from("supplier_program_buyer_limit").select("*"), "supplier_program_buyer_limit"),
+      safeFetch(supabase.from("supplier_program_buyer_override").select("*"), "supplier_program_buyer_override")                                                                                              // 17
     ]);
     console.log("[Load] Parallel fetches completed in " + (Date.now() - t0) + "ms");
 
@@ -2323,6 +2330,7 @@ async function loadPersistedData() {
     var rqRes = results[13], alRes = results[14];
     var cpRes = results[15], paRes = results[16];
     var bmRes = results[17];
+    var dynLimRes = results[18], dynOvrRes = results[19];
 
     // Normalise: the fetchAllRows-wrapped entries hold data arrays directly
     var invData = (invRes && invRes.data) || [];
@@ -2453,6 +2461,7 @@ async function loadPersistedData() {
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
           fundFlows: row.fund_flows || [],
+          dynamicLimit: row.dynamic_limit || null,
           benchmark: row.benchmark || null
         });
       });
@@ -2621,6 +2630,19 @@ async function loadPersistedData() {
           history: row.history || [],
           notes: row.notes || ""
         });
+      });
+    }
+
+    if (dynLimRes && !dynLimRes._failed && dynLimRes.data) {
+      for (var _kl in DYN_LIMITS_DB) delete DYN_LIMITS_DB[_kl];
+      dynLimRes.data.forEach(function(row) {
+        DYN_LIMITS_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.limit_value != null ? Number(row.limit_value) : null, avg: row.avg_outstanding_60d != null ? Number(row.avg_outstanding_60d) : null, multiple: row.multiple != null ? Number(row.multiple) : null, ceiling: row.ceiling != null ? Number(row.ceiling) : null, sampleDays: row.sample_days || 0, windowFrom: row.window_from || null, windowTo: row.window_to || null };
+      });
+    }
+    if (dynOvrRes && !dynOvrRes._failed && dynOvrRes.data) {
+      for (var _ko in DYN_OVERRIDES_DB) delete DYN_OVERRIDES_DB[_ko];
+      dynOvrRes.data.forEach(function(row) {
+        DYN_OVERRIDES_DB[dynKey(row.funding_program, row.supplier_entity_id, row.buyer_entity_id)] = { value: row.override_value != null ? Number(row.override_value) : null, note: row.note || "", setBy: row.set_by || null, updatedAt: row.updated_at || null };
       });
     }
 
@@ -3001,6 +3023,7 @@ async function reloadFundingPrograms() {
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
           fundFlows: row.fund_flows || [],
+          dynamicLimit: row.dynamic_limit || null,
           benchmark: row.benchmark || null
         });
       });
@@ -3142,7 +3165,9 @@ async function savePersistedData() {
         eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
         eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
         created_date: fp.createdDate || null,
-        fund_flows: fp.fundFlows || []
+        fund_flows: fp.fundFlows || [],
+        benchmark: fp.benchmark || null,
+        dynamic_limit: fp.dynamicLimit || null
       };
     });
     if (fpRows.length > 0) await supabase.from("funding_programs").upsert(fpRows, { onConflict: "id" });
@@ -5964,6 +5989,60 @@ export default function FactoringDashboard() {
   //
   // For convenience also returns which bucket binds and what each bucket's
   // own headroom is, so the fund popup can show the breakdown.
+  // Effective per-(supplier,buyer) credit limit for a program:
+  //   override (manual) ?? dynamic (materialised, if present) ?? static (existing per-entity creditLimit).
+  function getEffectiveSupplierBuyerLimit(supEntityId, programId, buyerEntityId) {
+    var k = dynKey(programId, supEntityId, buyerEntityId);
+    var ov = DYN_OVERRIDES_DB[k];
+    var dyn = DYN_LIMITS_DB[k];
+    var overrideValue = (ov && ov.value != null) ? ov.value : null;
+    var dynamicValue = (dyn && dyn.value != null) ? dyn.value : null;
+    var ready = !!dyn;
+    var staticValue = null;
+    var parsed = parseEntityId(supEntityId);
+    var parentId = parsed.supplierId || supEntityId;
+    var sup = SUPPLIERS_DB.find(function(z) { return z.id === parentId; });
+    if (sup) {
+      var holder = sup;
+      if (parsed.branchId) { var br = (sup.branches || []).find(function(b) { return b.branchId === parsed.branchId; }); if (br) holder = br; }
+      var cl = (holder.creditLimits || {})[programId];
+      if (cl != null) staticValue = Number(cl);
+    }
+    if (overrideValue != null) return { value: overrideValue, source: "override", overrideValue: overrideValue, dynamicValue: dynamicValue, staticValue: staticValue, ready: ready, avg: dyn ? dyn.avg : null, multiple: dyn ? dyn.multiple : null };
+    if (dynamicValue != null) return { value: dynamicValue, source: "dynamic", overrideValue: null, dynamicValue: dynamicValue, staticValue: staticValue, ready: true, avg: dyn.avg, multiple: dyn.multiple };
+    return { value: staticValue, source: "static", overrideValue: null, dynamicValue: null, staticValue: staticValue, ready: ready, avg: null, multiple: null };
+  }
+  async function writeDynOverride(programId, supEntity, buyerEntity, value) {
+    var k = dynKey(programId, supEntity, buyerEntity);
+    try {
+      if (value == null || value === "" || isNaN(parseFloat(value))) {
+        await supabase.from("supplier_program_buyer_override").delete().eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
+        delete DYN_OVERRIDES_DB[k];
+      } else {
+        var v = parseFloat(value);
+        await supabase.from("supplier_program_buyer_override").upsert([{ funding_program: programId, supplier_entity_id: supEntity, buyer_entity_id: buyerEntity, override_value: v, updated_at: new Date().toISOString() }], { onConflict: "funding_program,supplier_entity_id,buyer_entity_id" });
+        DYN_OVERRIDES_DB[k] = { value: v, note: "", setBy: null, updatedAt: new Date().toISOString() };
+      }
+    } catch (e) { console.error("[DynOverride] write error:", e); }
+  }
+  // Exposure for an exact (supplier entity, buyer entity) on a program - the
+  // grain the dynamic per-buyer limit is measured against. Same live-exposure
+  // semantics as getSupplierProgramExposureScoped.
+  function getSupplierBuyerProgramExposure(supEntityId, buyerEntityId, programId, excludeInvoiceId) {
+    if (!supEntityId || !buyerEntityId || !programId) return 0;
+    var exposure = 0;
+    viewData.invoices.forEach(function(inv) {
+      if (inv.fundingProgram !== programId) return;
+      if (excludeInvoiceId && inv.id === excludeInvoiceId) return;
+      if ((inv.supplierEntityId || inv.supplierId) !== supEntityId) return;
+      if ((inv.buyerEntityId || inv.buyerId) !== buyerEntityId) return;
+      if (inv.fundingStatus === "pending") return;
+      exposure += (inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0);
+      if (inv.fundingStatus === "purchased") exposure += inv.capitalDue || 0;
+      exposure += inv.pendingTopUpAmount || 0;
+    });
+    return r2(exposure);
+  }
   function getSupplierProgramCascadingCreditHeadroom(inv, programId, excludeInvoiceId) {
     if (!inv || !programId) return { headroom: Infinity, binding: null, parent: null, branch: null };
     var entityId = inv.supplierEntityId || inv.supplierId;
@@ -5972,6 +6051,20 @@ export default function FactoringDashboard() {
     var branchId = _invSupplierBranchOf(inv);
     var sup = SUPPLIERS_DB.find(function(s) { return s.id === parentId; });
     if (!sup) return { headroom: Infinity, binding: null, parent: null, branch: null };
+
+    // Dynamic per-buyer limit supersedes the parent/branch supplier limit when
+    // a materialised value or manual override is in force for this (supplier,
+    // buyer). Falls through to the parent/branch cascade otherwise - including
+    // when the supplier's backfill isn't ready yet (static fallback).
+    var _dlBuyer = inv.buyerEntityId || inv.buyerId;
+    if (_dlBuyer) {
+      var _dlEff = getEffectiveSupplierBuyerLimit(entityId, programId, _dlBuyer);
+      if (_dlEff && (_dlEff.source === "override" || _dlEff.source === "dynamic") && _dlEff.value != null) {
+        var _dlExp = getSupplierBuyerProgramExposure(entityId, _dlBuyer, programId, excludeInvoiceId);
+        var _dlHr = r2(Math.max(0, _dlEff.value - _dlExp));
+        return { headroom: _dlHr, binding: "dynamic", parent: null, branch: null, dynamic: { limit: _dlEff.value, exposure: _dlExp, source: _dlEff.source, buyerEntityId: _dlBuyer } };
+      }
+    }
 
     var result = { headroom: Infinity, binding: null, parent: null, branch: null };
 
@@ -6173,11 +6266,77 @@ export default function FactoringDashboard() {
     });
   }
 
+  // ===== Lifecycle eligibility guards (single source of truth) =====
+  // Each returns a human-readable reason string on FAIL, or null on PASS,
+  // mirroring the checkSupplier/BuyerProgramCascadingSingleInvoiceLimit
+  // convention. Every lifecycle path calls these rather than re-checking
+  // inline, so the gates cannot drift per entry point.
+
+  // 1. Purchase eligibility: gates the pending -> purchased transition.
+  function canPurchase(inv) {
+    if (!inv) return "Invoice not found.";
+    if (inv.doNotFund) return "Invoice is marked Do Not Purchase.";
+    return null;
+  }
+
+  // 2. Funding eligibility: gates advancing capital. Covers pause (hard),
+  // Do Not Advance, cascading supplier/buyer credit headroom, and program
+  // available balance. requestedCapital is the NEW capital being advanced
+  // (delta for top-ups). The credit check counts the invoice's own current
+  // exposure (excl=null below), so a top-up cannot breach the limit.
+  function canAdvance(inv, programId, requestedCapital, opts) {
+    opts = opts || {};
+    if (!inv) return "Invoice not found.";
+    if (!programId) return "No funding program assigned.";
+    if (isEntityPaused(inv.supplierEntityId || inv.supplierId, programId)) return "Supplier is paused on this program - unpause (tick KYC if required) before funding.";
+    if (isBuyerPaused(inv.buyerEntityId || inv.buyerId, programId)) return "Buyer is paused on this program - unpause (tick KYC if required) before funding.";
+    var cap = r2(requestedCapital || 0);
+    if (cap <= 0) return null;
+    if (inv.doNotAdvance) return "Invoice is marked Do Not Advance - capital cannot be advanced against it.";
+    // Exposure-based gates (credit headroom + program balance) are request-time
+    // checks. Skip them at the execution choke (opts.skipExposure): there the
+    // capital is already reserved in exposure/balance, so re-checking would
+    // double-count and could falsely block a legitimate advance.
+    if (opts.skipExposure) return null;
+    // Credit headroom must INCLUDE this invoice's own current exposure (excl =
+    // null, NOT inv.id). Excluding self counts only OTHER invoices and silently
+    // forgives this invoice's existing draw, letting a top-up breach the limit
+    // by up to that draw.
+    var supHr = getSupplierProgramCascadingCreditHeadroom(inv, programId, null).headroom;
+    if (supHr !== Infinity && cap > supHr + 0.01) return "Supplier credit limit reached - only " + money(Math.max(0, supHr), inv.currency) + " of headroom remains on this program.";
+    var buyHr = getBuyerProgramCascadingCreditHeadroom(inv, programId, null).headroom;
+    if (buyHr !== Infinity && cap > buyHr + 0.01) return "Buyer credit limit reached - only " + money(Math.max(0, buyHr), inv.currency) + " of headroom remains on this program.";
+    var avail = getProgramAvailableBalance(programId);
+    if (cap > avail + 0.01) return "Insufficient program balance - only " + money(Math.max(0, avail), inv.currency) + " available on this program.";
+    return null;
+  }
+
+  // 3. Execution-of-funding eligibility: at the purchased -> funded choke,
+  // re-verify that the invoice's assigned program is STILL eligible
+  // (status / dilution / program config may have changed since purchase).
+  // Authoritative decision via getEligiblePrograms; getEligibilityReasons is
+  // used only to enrich the message.
+  function verifyStillEligible(inv) {
+    if (!inv) return "Invoice not found.";
+    if (!inv.fundingProgram) return "Invoice has no assigned funding program.";
+    var eligible = getEligiblePrograms(inv, supDilRates);
+    var ok = eligible.some(function(fp) { return fp.id === inv.fundingProgram; });
+    if (ok) return null;
+    var reasons = getEligibilityReasons(inv, supDilRates);
+    if (reasons.invoiceLevelReason) return "No longer eligible: " + reasons.invoiceLevelReason + ".";
+    var rej = (reasons.rejections || []).find(function(r) { return r.programId === inv.fundingProgram; });
+    var detail = (rej && rej.reasons && rej.reasons.length) ? rej.reasons.join("; ") : "the assigned program's eligibility criteria are no longer met";
+    return "No longer eligible for the assigned program: " + detail + ".";
+  }
+
   function fundInvoice(invId, programId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw || raw.fundingStatus !== "pending") return;
     if (!programId) return;
 
+    // Purchase eligibility gate (Do Not Purchase).
+    var _purGate = canPurchase(raw);
+    if (_purGate) { auditLog("Purchase Blocked - Do Not Purchase", invId + ": " + _purGate, { invoiceId: invId }); alert("Cannot purchase " + invId + ".\n\n" + _purGate); return; }
     // Warning 2: first-time funded (supplier, buyer) pair. Blocking modal.
     // Funding is the irreversible step; the warning is intentionally heavier
     // than Warning 1 at upload time. The check is parent-scoped (branch-level
@@ -6232,6 +6391,14 @@ export default function FactoringDashboard() {
     var isPurchasedFlow = raw.fundingStatus === "purchased";
     var isTopupFlow = (raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue") && r2(raw.pendingTopUpAmount || 0) > 0;
     if (!isPurchasedFlow && !isTopupFlow) return;
+    // Re-verify at the execution choke (the sole purchased -> funded
+    // transition). Hard-abort: refuse to advance, leave the invoice in its
+    // current state, and audit the reason.
+    var _execElg = verifyStillEligible(raw);
+    if (_execElg) { auditLog("Funding Execution Blocked - Ineligible", invId + ": " + _execElg, { invoiceId: invId, fundingProgram: raw.fundingProgram, reason: "eligibility_recheck" }); alert("Cannot execute funding for " + invId + ".\n\n" + _execElg); return; }
+    var _execCap = isPurchasedFlow ? r2(raw.capitalDue || 0) : r2(raw.pendingTopUpAmount || 0);
+    var _execAdv = canAdvance(raw, raw.fundingProgram, _execCap, { skipExposure: true });
+    if (_execAdv) { auditLog("Funding Execution Blocked - Advance Guard", invId + ": " + _execAdv, { invoiceId: invId, fundingProgram: raw.fundingProgram, reason: "advance_guard" }); alert("Cannot execute funding for " + invId + ".\n\n" + _execAdv); return; }
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     var progName = prog ? prog.name : raw.fundingProgram;
     if (isTopupFlow) {
@@ -6386,6 +6553,16 @@ export default function FactoringDashboard() {
     if (newCap > freshHeadroom + 0.01) { alert("Capital exceeds available headroom.\n\nMax cap @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(freshMaxCap, inv.currency) + "\nAlready committed: " + money(freshCommitted, inv.currency) + "\nMax additional advance: " + money(freshHeadroom, inv.currency) + "\nRequested: " + money(newCap, inv.currency)); return; }
     var availBal = getProgramAvailableBalance(prog.id);
     if (newCap > availBal + 0.01) { alert("Insufficient program balance. Available: " + money(availBal, inv.currency) + " in " + prog.name + ". Required: " + money(newCap, inv.currency)); return; }
+    // Funding eligibility guard - single source of truth for DNA, pause,
+    // cascading credit headroom, and program balance, regardless of which
+    // popup-open path (openFundPopupFor / openRowFundPopup) set up this state.
+    var _advGate = canAdvance(raw, prog.id, newCap);
+    if (_advGate) { alert(_advGate); return; }
+    // Purchase eligibility guard for the pending -> purchased transition.
+    if (raw.fundingStatus === "pending") {
+      var _purGate = canPurchase(raw);
+      if (_purGate) { alert("Cannot purchase " + raw.id + ".\n\n" + _purGate); return; }
+    }
     var isPurchased = raw.fundingStatus === "purchased";
     var isFunded = raw.fundingStatus === "funded" || raw.fundingStatus === "at_risk" || raw.fundingStatus === "overdue";
     var isTopup = isPurchased || isFunded;
@@ -6495,15 +6672,17 @@ export default function FactoringDashboard() {
     // branch) the branch's limit both must clear. The cascading function
     // returns a breakdown so we can show parent and branch caps separately
     // when both apply, and surface which bucket is binding.
-    var supBreakdown = getSupplierProgramCascadingCreditHeadroom(raw, prog.id, raw.id);
-    var buyBreakdown = getBuyerProgramCascadingCreditHeadroom(raw, prog.id, raw.id);
+    var supBreakdown = getSupplierProgramCascadingCreditHeadroom(raw, prog.id, null);
+    var buyBreakdown = getBuyerProgramCascadingCreditHeadroom(raw, prog.id, null);
     var creditHeadroom = supBreakdown.headroom;  // binding (min of parent/branch)
     var buyerCreditHeadroom = buyBreakdown.headroom;
     // For the legacy "limit applied" indicator, prefer the binding bucket's
     // limit; fall back to parent's when nothing's binding.
-    var creditLimitApplied = supBreakdown.binding === "branch" && supBreakdown.branch
-      ? supBreakdown.branch.limit
-      : (supBreakdown.parent ? supBreakdown.parent.limit : 0);
+    var creditLimitApplied = supBreakdown.binding === "dynamic" && supBreakdown.dynamic
+      ? supBreakdown.dynamic.limit
+      : (supBreakdown.binding === "branch" && supBreakdown.branch
+        ? supBreakdown.branch.limit
+        : (supBreakdown.parent ? supBreakdown.parent.limit : 0));
     var buyerCreditLimitApplied = buyBreakdown.binding === "branch" && buyBreakdown.branch
       ? buyBreakdown.branch.limit
       : (buyBreakdown.parent ? buyBreakdown.parent.limit : 0);
@@ -7214,6 +7393,38 @@ export default function FactoringDashboard() {
             </div>
           </div>
 
+          {(!isBuyer) && (function() {
+            var _dlFp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+            var _dlCfg = _dlFp && _dlFp.dynamicLimit ? _dlFp.dynamicLimit : null;
+            if (!_dlCfg || !_dlCfg.enabled) return null;
+            var _supEnt = m.entityId || m.supplierId;
+            var _buyers = (_dlFp.eligibleBuyers || []);
+            return <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Dynamic Limit - per buyer <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(blank = use dynamic; a value overrides)</span></div>
+              {_buyers.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>This program has no eligible buyers yet.</div> : _buyers.map(function(bid) {
+                var parsed = parseEntityId(bid);
+                var parentId = parsed.supplierId || bid;
+                var branchId = parsed.branchId || null;
+                var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+                var label = buy ? buy.name : bid;
+                if (buy && branchId) { var br = (buy.branches || []).find(function(b) { return b.branchId === branchId; }); if (br) label = buy.name + " \u2014 " + br.branchName; }
+                var eff = getEffectiveSupplierBuyerLimit(_supEnt, m.programId, bid);
+                var stateVal = (m.dynOverrides && Object.prototype.hasOwnProperty.call(m.dynOverrides, bid)) ? m.dynOverrides[bid] : (eff.overrideValue != null ? String(eff.overrideValue) : "");
+                var hasOv = stateVal !== "" && !isNaN(parseFloat(stateVal));
+                var src = hasOv ? "override" : (eff.dynamicValue != null ? "dynamic" : "static");
+                var badge = src === "override" ? { t: "Manual override", c: "#C08B30", bg: "#C08B3022" } : src === "dynamic" ? { t: "Dynamic", c: "#10B981", bg: "#2E8B5722" } : { t: "Static / not ready", c: "#6B7280", bg: "#6B728022" };
+                var refTxt = eff.dynamicValue != null ? ("Dynamic " + money(eff.dynamicValue, m.programCcy) + (eff.multiple != null ? " (" + eff.multiple + "\u00d7 avg " + money(eff.avg || 0, m.programCcy) + ")" : "")) : (eff.staticValue != null ? ("Static " + money(eff.staticValue, m.programCcy)) : "No dynamic value yet");
+                return <div key={bid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12 }}>{branchId ? "\u2514 " : ""}{label} <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, color: badge.c, background: badge.bg }}>{badge.t}</span></div>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{refTxt}</div>
+                  </div>
+                  <input type="number" step="0.01" value={stateVal} placeholder={eff.dynamicValue != null ? "use dynamic" : "no limit"} onChange={function(e) { var val = e.target.value; setAddToProgramModal(function(mm) { var d = Object.assign({}, mm.dynOverrides || {}); d[bid] = val; return Object.assign({}, mm, { dynOverrides: d }); }); }} onBlur={function(e) { writeDynOverride(m.programId, _supEnt, bid, e.target.value); setDataVer(function(v) { return v + 1; }); }} style={{ width: 120, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box", textAlign: "right" }} />
+                </div>;
+              })}
+            </div>;
+          })()}
+
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
             <button onClick={function() { setAddToProgramModal(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             <button onClick={async function() {
@@ -7569,13 +7780,13 @@ export default function FactoringDashboard() {
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
                 // Re-apply credit-limit gate for new program — cascading
                 // (parent and branch buckets, binding constraint applies).
-                var supBd = getSupplierProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, fundPopup.inv.id);
+                var supBd = getSupplierProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, null);
                 var newCreditHeadroom = supBd.headroom;
                 var newCreditLimitApplied = supBd.binding === "branch" && supBd.branch
                   ? supBd.branch.limit
                   : (supBd.parent ? supBd.parent.limit : 0);
                 if (newCreditLimitApplied > 0 && newCreditHeadroom < newHeadroom) newHeadroom = newCreditHeadroom;
-                var buyBd = getBuyerProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, fundPopup.inv.id);
+                var buyBd = getBuyerProgramCascadingCreditHeadroom(fundPopup.inv, newProgId, null);
                 var newBuyerCreditHeadroom = buyBd.headroom;
                 var newBuyerCreditLimitApplied = buyBd.binding === "branch" && buyBd.branch
                   ? buyBd.branch.limit
@@ -20483,7 +20694,7 @@ export default function FactoringDashboard() {
             if (!selectedBulkOpt || selectedInvs.length === 0) return;
             var fp = selectedBulkOpt.fp;
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
-            var allocated = [], funded = [], creditSkippedSup = [], creditSkippedBuy = [], creditSkippedBoth = [];
+            var allocated = [], funded = [], creditSkippedSup = [], creditSkippedBuy = [], creditSkippedBoth = [], dnpSkipped = [];
             // Stage 1.9: pause gates for the fundAtMax branch. Allocate-only is intentionally
             // not pause-gated (no cash moves; the gate matters only when capital is advanced).
             // Without these, Fund-at-max-from-Unpurchased bypasses the pause gate enforced by
@@ -20498,6 +20709,7 @@ export default function FactoringDashboard() {
             selectedInvs.forEach(function(invProc) {
               var raw = INVOICES_DB.find(function(x) { return x.id === invProc.id; });
               if (!raw || raw.fundingStatus !== "pending") return;
+              if (canPurchase(raw)) { dnpSkipped.push(raw.id); return; }
               if (fundAtMax) {
                 // Pause gate — match the single-invoice fund popup. Skip paused entities.
                 if (isEntityPaused(raw.supplierEntityId || raw.supplierId, fp.id)) { pauseSkippedSup.push(raw.id); return; }
@@ -20586,8 +20798,12 @@ export default function FactoringDashboard() {
             }
             var totalSkipped = creditSkippedSup.length + creditSkippedBuy.length + creditSkippedBoth.length;
             var totalPauseSkipped = pauseSkippedSup.length + pauseSkippedBuy.length;
-            if (totalSkipped > 0 || totalPauseSkipped > 0) {
-              var alertParts = [(totalSkipped + totalPauseSkipped) + " invoice(s) were skipped during Allocate & Fund on " + fp.name + ":\n"];
+            if (dnpSkipped.length > 0) {
+              auditLog("Purchase Skipped - Do Not Purchase", dnpSkipped.length + " invoice(s) skipped during Allocate & Fund on " + fp.name + " (marked Do Not Purchase): " + dnpSkipped.join(", "), { invoiceIds: dnpSkipped, fundingProgram: fp.id, fundingProgramName: fp.name, reason: "do_not_purchase" });
+            }
+            if (totalSkipped > 0 || totalPauseSkipped > 0 || dnpSkipped.length > 0) {
+              var alertParts = [(totalSkipped + totalPauseSkipped + dnpSkipped.length) + " invoice(s) were skipped during Allocate & Fund on " + fp.name + ":\n"];
+              if (dnpSkipped.length > 0) alertParts.push("\nMarked Do Not Purchase (" + dnpSkipped.length + "): " + dnpSkipped.join(", "));
               if (creditSkippedSup.length > 0) alertParts.push("\nSupplier credit limit reached (" + creditSkippedSup.length + "): " + creditSkippedSup.join(", "));
               if (creditSkippedBuy.length > 0) alertParts.push("\nBuyer credit limit reached (" + creditSkippedBuy.length + "): " + creditSkippedBuy.join(", "));
               if (creditSkippedBoth.length > 0) alertParts.push("\nBoth credit limits reached (" + creditSkippedBoth.length + "): " + creditSkippedBoth.join(", "));
@@ -20603,6 +20819,7 @@ export default function FactoringDashboard() {
               creditSkippedBoth.forEach(function(id) { allSkippedSet[id] = true; });
               pauseSkippedSup.forEach(function(id) { allSkippedSet[id] = true; });
               pauseSkippedBuy.forEach(function(id) { allSkippedSet[id] = true; });
+              dnpSkipped.forEach(function(id) { allSkippedSet[id] = true; });
               setLastSkippedIds(Object.keys(allSkippedSet));
               setLastSkippedLabel("Allocate & Fund");
             }
@@ -23212,6 +23429,7 @@ export default function FactoringDashboard() {
                 var prog = {
                   name: pf.name, currency: pf.currency,
                   benchmark: pf.benchmark || null,
+                  dynamicLimit: (function() { var dl = pf.dynamicLimit; if (!dl) return null; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { var n = parseFloat(dl.perBuyer[k]); if (!isNaN(n)) pb[k] = n; }); var def = parseFloat(dl.defaultMultiple); var ceil = parseFloat(dl.ceiling); return { enabled: !!dl.enabled, defaultMultiple: isNaN(def) ? 0 : def, perBuyer: pb, ceiling: isNaN(ceil) ? null : ceil }; })(),
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
@@ -23263,6 +23481,7 @@ export default function FactoringDashboard() {
                 setProgFields({
                   name: p.name, currency: p.currency,
                   benchmark: p.benchmark || null,
+                  dynamicLimit: (function() { var dl = p.dynamicLimit || null; if (!dl) return { enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {} }; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { pb[k] = String(dl.perBuyer[k]); }); return { enabled: !!dl.enabled, defaultMultiple: dl.defaultMultiple != null ? String(dl.defaultMultiple) : "", ceiling: dl.ceiling != null ? String(dl.ceiling) : "", perBuyer: pb }; })(),
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
                   minRateMode: (function() { var h = (p.minRate || []); var l = h.length ? h[h.length - 1] : null; var d = l && l.rateDefinition ? l.rateDefinition.annualRate : null; return (d && d.mode === "benchmark") ? "benchmark" : "fixed"; })(),
@@ -23843,6 +24062,56 @@ export default function FactoringDashboard() {
                             return React.createElement("span", { key: n.id, onClick: function() { openAddBuyer(n); }, style: Object.assign({}, multiSelStyle, { background: "transparent", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: n.isBranch ? 10 : 11, paddingLeft: n.isBranch ? 16 : 8 }) }, (n.isBranch ? "\u2514 " : "") + n.label);
                           })}</div>
                         </div>}
+                      </>;
+                    })()}
+                  </div>
+
+                  {/* Dynamic Credit Limit - per-program / per-buyer multiple of the
+                      trailing-60-day average outstanding receivable. Manual overrides
+                      and the materialised value live elsewhere; this sets the multiple. */}
+                  <div style={{ marginBottom: 18 }}>
+                    {(function() {
+                      var dl = Object.assign({ enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {} }, pf.dynamicLimit || {});
+                      function setDL(patch) { setProgFields(function(p) { var cur = Object.assign({ enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {} }, p.dynamicLimit || {}); return Object.assign({}, p, { dynamicLimit: Object.assign({}, cur, patch) }); }); }
+                      function setDLBuyer(eid, val) { setProgFields(function(p) { var cur = Object.assign({ enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {} }, p.dynamicLimit || {}); var pb = Object.assign({}, cur.perBuyer || {}); if (val === "") { delete pb[eid]; } else { pb[eid] = val; } return Object.assign({}, p, { dynamicLimit: Object.assign({}, cur, { perBuyer: pb }) }); }); }
+                      var elig = pf.eligibleBuyers || [];
+                      return <>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                          <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Dynamic Credit Limit</label>
+                          <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Multiple of the trailing-60-day avg outstanding (Received/Approved, not overdue), per buyer.</span>
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10, cursor: "pointer" }}>
+                          <input type="checkbox" checked={!!dl.enabled} onChange={function(e) { setDL({ enabled: e.target.checked }); }} />
+                          <span>Enable dynamic limits for this program</span>
+                        </label>
+                        {dl.enabled && <>
+                          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "block", marginBottom: 3 }}>Default multiple</label>
+                              <input type="number" step="0.1" min="0" value={dl.defaultMultiple} onChange={function(e) { setDL({ defaultMultiple: e.target.value }); }} placeholder="e.g. 1.5" style={inpS} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "block", marginBottom: 3 }}>Ceiling (optional)</label>
+                              <input type="number" step="1000" min="0" value={dl.ceiling} onChange={function(e) { setDL({ ceiling: e.target.value }); }} placeholder="hard cap" style={inpS} />
+                            </div>
+                          </div>
+                          {elig.length > 0 ? <div>
+                            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 4 }}>Per-buyer multiples <span style={{ fontWeight: 400 }}>(blank = default)</span></div>
+                            {elig.map(function(eid) {
+                              var parsed = parseEntityId(eid);
+                              var parentId = parsed.supplierId || eid;
+                              var branchId = parsed.branchId || null;
+                              var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+                              var label = buy ? buy.name : eid;
+                              if (buy && branchId) { var br = (buy.branches || []).find(function(b) { return b.branchId === branchId; }); if (br) label = buy.name + " \u2014 " + br.branchName; }
+                              var pbv = (dl.perBuyer || {})[eid];
+                              return <div key={eid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                                <span style={{ fontSize: 11 }}>{branchId ? "\u2514 " : ""}{label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{eid}</span></span>
+                                <input type="number" step="0.1" min="0" value={pbv != null ? pbv : ""} onChange={function(e) { setDLBuyer(eid, e.target.value); }} placeholder={dl.defaultMultiple !== "" ? String(dl.defaultMultiple) : "default"} style={Object.assign({}, inpS, { width: 90, textAlign: "right" })} />
+                              </div>;
+                            })}
+                          </div> : <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Add eligible buyers above to set per-buyer multiples.</div>}
+                        </>}
                       </>;
                     })()}
                   </div>
