@@ -598,6 +598,11 @@
         @media (max-width: 860px) { .terms-table-col, .terms-chart-col { max-width: none; min-width: 0; flex-basis: 100%; } }
         .apf-controls { font-size: 12px; color: var(--text-secondary); margin: 2px 0 10px; }
         .apf-controls input { width: 70px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: 12px; font-family: var(--mono); }
+        .apf-layout { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+        .apf-col { flex: 1 1 360px; min-width: 300px; }
+        .apf-subtitle { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin: 0 0 8px; }
+        .apf-panel .apf-total td { font-weight: 700; border-top: 1px solid var(--border); }
+        @media (max-width: 860px) { .apf-col { max-width: none; min-width: 0; flex-basis: 100%; } }
 
         /* Dilution rate cells */
         .dil-cell { font-family: var(--mono); font-weight: 600; }
@@ -7281,7 +7286,7 @@ function renderSectionAtAGlance(c, ccy) {
                 wcCluster('Invoice quality', qualTiles) +
             '</div>' +
             renderTermsPanel(t.paymentTerms, ccy) +
-            renderApFloatPanel(t, ccy) +
+            renderApFloatPanel(c, ccy) +
             '<div class="callout">' +
                 '<div class="callout-eyebrow">Worth noting</div>' +
                 '<div class="callout-text">' + fact + '</div>' +
@@ -7952,7 +7957,8 @@ function renderTermsPanel(pt, ccy) {
             '</div>' +
         '</div>';
 }
-function renderApFloatPanel(t, ccy) {
+function renderApFloatPanel(c, ccy) {
+    var t = c.totals;
     if (t.apOutstandingAvg == null) return '';
     var avg = t.apOutstandingAvg, daily = t.apDailySpend || 0;
     var impliedDays = daily > 0 ? Math.round(avg / daily) : null;
@@ -7965,24 +7971,63 @@ function renderApFloatPanel(t, ccy) {
             '<td class="text-right apf-annual" data-cash="' + freed + '">' + moneyShort(freed * defRate / 100, ccy) + '</td>' +
         '</tr>';
     }).join('');
+    var bucketHtml = renderSupplierOsBuckets(c, ccy);
     return '' +
         '<div class="terms-panel apf-panel">' +
             '<div class="terms-panel-title">Supplier credit &mdash; ' + escHTML(ccy) + ' AP float</div>' +
             '<div class="terms-panel-summary">On average <strong>' + moneyShort(avg, ccy) + '</strong> of supplier credit is financing you' +
                 (impliedDays != null ? ' &mdash; about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
-            '<div class="apf-controls">Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + defRate + '" min="0" max="100" step="0.5"> % per year</div>' +
-            '<div class="table-wrap" style="max-width:520px;">' +
-                '<table class="report-table">' +
-                    '<thead><tr>' +
-                        '<th>Extend terms by</th>' +
-                        '<th class="text-right">Cash freed (one-off)</th>' +
-                        '<th class="text-right">Value / year</th>' +
-                    '</tr></thead>' +
-                    '<tbody>' + rowsHtml + '</tbody>' +
-                '</table>' +
+            '<div class="apf-layout">' +
+                '<div class="apf-col">' +
+                    '<div class="apf-controls">Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + defRate + '" min="0" max="100" step="0.5"> % per year</div>' +
+                    '<div class="table-wrap" style="max-width:520px;">' +
+                        '<table class="report-table">' +
+                            '<thead><tr>' +
+                                '<th>Extend terms by</th>' +
+                                '<th class="text-right">Cash freed (one-off)</th>' +
+                                '<th class="text-right">Value / year</th>' +
+                            '</tr></thead>' +
+                            '<tbody>' + rowsHtml + '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+                    '<div class="terms-foot">Cash freed = average daily spend &times; days extended (a one-off working-capital release). Value/year applies your cost of capital. Assumes suppliers absorb the longer terms without raising prices or factoring costs &mdash; a treasury what-if, not free money.</div>' +
+                '</div>' +
+                (bucketHtml ? '<div class="apf-col">' + bucketHtml + '</div>' : '') +
             '</div>' +
-            '<div class="terms-foot">Cash freed = average daily spend &times; days extended (a one-off working-capital release). Value/year applies your cost of capital. Assumes suppliers absorb the longer terms without raising prices or factoring costs &mdash; a treasury what-if, not free money.</div>' +
         '</div>';
+}
+function renderSupplierOsBuckets(c, ccy) {
+    var sups = (c.suppliers || []).filter(function(s) { return s.avgOutstanding != null; });
+    if (!sups.length) return '';
+    var bnd = [0, 1e4, 1e5, 1e6, 1e7, 1e8, Infinity];
+    var buckets = [];
+    for (var i = 0; i < bnd.length - 1; i++) {
+        var lo = bnd[i], hi = bnd[i + 1];
+        var label = (i === 0) ? '&lt; ' + moneyShort(hi, ccy)
+                  : (hi === Infinity) ? moneyShort(lo, ccy) + '+'
+                  : moneyShort(lo, ccy) + '&ndash;' + moneyShort(hi, ccy);
+        buckets.push({ label: label, lo: lo, hi: hi, n: 0, total: 0 });
+    }
+    var grand = 0, gn = 0;
+    sups.forEach(function(s) {
+        var v = s.avgOutstanding || 0; grand += v; gn++;
+        for (var i = 0; i < buckets.length; i++) {
+            if (v >= buckets[i].lo && v < buckets[i].hi) { buckets[i].n++; buckets[i].total += v; break; }
+        }
+    });
+    var body = buckets.filter(function(b) { return b.n > 0; }).map(function(b) {
+        return '<tr><td>' + b.label + '</td><td class="text-right">' + b.n.toLocaleString() + '</td><td class="text-right">' + moneyShort(b.total, ccy) + '</td></tr>';
+    }).join('');
+    body += '<tr class="apf-total"><td>All suppliers</td><td class="text-right">' + gn.toLocaleString() + '</td><td class="text-right">' + moneyShort(grand, ccy) + '</td></tr>';
+    return '' +
+        '<div class="apf-subtitle">Suppliers by average outstanding</div>' +
+        '<div class="table-wrap" style="max-width:520px;">' +
+            '<table class="report-table">' +
+                '<thead><tr><th>Avg outstanding</th><th class="text-right">Suppliers</th><th class="text-right">Total outstanding</th></tr></thead>' +
+                '<tbody>' + body + '</tbody>' +
+            '</table>' +
+        '</div>' +
+        '<div class="terms-foot">Each supplier bucketed by its time-average outstanding balance; the total reconciles to the AP float on the left.</div>';
 }
 function initApFloat(ccy) {
     var input = document.getElementById('apf-rate-' + ccy);
