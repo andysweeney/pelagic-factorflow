@@ -23571,7 +23571,7 @@ export default function FactoringDashboard() {
                 var prog = {
                   name: pf.name, currency: pf.currency,
                   benchmark: pf.benchmark || null,
-                  dynamicLimit: (function() { var dl = pf.dynamicLimit; if (!dl) return null; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { var n = parseFloat(dl.perBuyer[k]); if (!isNaN(n)) pb[k] = n; }); var def = parseFloat(dl.defaultMultiple); var ceil = parseFloat(dl.ceiling); return { enabled: !!dl.enabled, defaultMultiple: isNaN(def) ? 0 : def, perBuyer: pb, ceiling: isNaN(ceil) ? null : ceil }; })(),
+                  dynamicLimit: (function() { var dl = pf.dynamicLimit; if (!dl) return null; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { var n = parseFloat(dl.perBuyer[k]); if (!isNaN(n)) pb[k] = n; }); var def = parseFloat(dl.defaultMultiple); var ceil = parseFloat(dl.ceiling); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { var n = parseFloat(dl.invoicePerBuyer[k]); if (!isNaN(n)) ipb[k] = n; }); var idef = parseFloat(dl.invoiceDefaultMultiple); var iceil = parseFloat(dl.invoiceCeiling); return { enabled: !!dl.enabled, defaultMultiple: isNaN(def) ? 0 : def, perBuyer: pb, ceiling: isNaN(ceil) ? null : ceil, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: isNaN(idef) ? 0 : idef, invoicePerBuyer: ipb, invoiceCeiling: isNaN(iceil) ? null : iceil }; })(),
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
@@ -23623,7 +23623,7 @@ export default function FactoringDashboard() {
                 setProgFields({
                   name: p.name, currency: p.currency,
                   benchmark: p.benchmark || null,
-                  dynamicLimit: (function() { var dl = p.dynamicLimit || null; if (!dl) return { enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {} }; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { pb[k] = String(dl.perBuyer[k]); }); return { enabled: !!dl.enabled, defaultMultiple: dl.defaultMultiple != null ? String(dl.defaultMultiple) : "", ceiling: dl.ceiling != null ? String(dl.ceiling) : "", perBuyer: pb }; })(),
+                  dynamicLimit: (function() { var dl = p.dynamicLimit || null; if (!dl) return { enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {}, invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {} }; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { pb[k] = String(dl.perBuyer[k]); }); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { ipb[k] = String(dl.invoicePerBuyer[k]); }); return { enabled: !!dl.enabled, defaultMultiple: dl.defaultMultiple != null ? String(dl.defaultMultiple) : "", ceiling: dl.ceiling != null ? String(dl.ceiling) : "", perBuyer: pb, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: dl.invoiceDefaultMultiple != null ? String(dl.invoiceDefaultMultiple) : "", invoiceCeiling: dl.invoiceCeiling != null ? String(dl.invoiceCeiling) : "", invoicePerBuyer: ipb }; })(),
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
                   minRateMode: (function() { var h = (p.minRate || []); var l = h.length ? h[h.length - 1] : null; var d = l && l.rateDefinition ? l.rateDefinition.annualRate : null; return (d && d.mode === "benchmark") ? "benchmark" : "fixed"; })(),
@@ -24250,6 +24250,55 @@ export default function FactoringDashboard() {
                               return <div key={eid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
                                 <span style={{ fontSize: 11 }}>{branchId ? "\u2514 " : ""}{label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{eid}</span></span>
                                 <input type="number" step="0.1" min="0" value={pbv != null ? pbv : ""} onChange={function(e) { setDLBuyer(eid, e.target.value); }} placeholder={dl.defaultMultiple !== "" ? String(dl.defaultMultiple) : "default"} style={Object.assign({}, inpS, { width: 90, textAlign: "right" })} />
+                              </div>;
+                            })}
+                          </div> : <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Add eligible buyers above to set per-buyer multiples.</div>}
+                        </>}
+                      </>;
+                    })()}
+                  </div>
+
+                  {/* Dynamic Single-Invoice Limit - per-program / per-buyer multiple of
+                      the trailing-60-day average invoice size. Caps max invoice size. */}
+                  <div style={{ marginBottom: 18 }}>
+                    {(function() {
+                      var il = Object.assign({ invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {} }, pf.dynamicLimit || {});
+                      function setIL(patch) { setProgFields(function(p) { var cur = Object.assign({ invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {} }, p.dynamicLimit || {}); return Object.assign({}, p, { dynamicLimit: Object.assign({}, cur, patch) }); }); }
+                      function setILBuyer(eid, val) { setProgFields(function(p) { var cur = Object.assign({ invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {} }, p.dynamicLimit || {}); var pb = Object.assign({}, cur.invoicePerBuyer || {}); if (val === "") { delete pb[eid]; } else { pb[eid] = val; } return Object.assign({}, p, { dynamicLimit: Object.assign({}, cur, { invoicePerBuyer: pb }) }); }); }
+                      var elig = pf.eligibleBuyers || [];
+                      return <>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                          <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Dynamic Single-Invoice Limit</label>
+                          <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Multiple of the trailing-60-day avg invoice size (max invoice size), per buyer.</span>
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 10, cursor: "pointer" }}>
+                          <input type="checkbox" checked={!!il.invoiceEnabled} onChange={function(e) { setIL({ invoiceEnabled: e.target.checked }); }} />
+                          <span>Enable dynamic single-invoice limits for this program</span>
+                        </label>
+                        {il.invoiceEnabled && <>
+                          <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "block", marginBottom: 3 }}>Default multiple</label>
+                              <input type="number" step="0.1" min="0" value={il.invoiceDefaultMultiple} onChange={function(e) { setIL({ invoiceDefaultMultiple: e.target.value }); }} placeholder="e.g. 1.5" style={inpS} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "block", marginBottom: 3 }}>Ceiling (optional)</label>
+                              <input type="number" step="1000" min="0" value={il.invoiceCeiling} onChange={function(e) { setIL({ invoiceCeiling: e.target.value }); }} placeholder="hard cap" style={inpS} />
+                            </div>
+                          </div>
+                          {elig.length > 0 ? <div>
+                            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 4 }}>Per-buyer multiples <span style={{ fontWeight: 400 }}>(blank = default)</span></div>
+                            {elig.map(function(eid) {
+                              var parsed = parseEntityId(eid);
+                              var parentId = parsed.supplierId || eid;
+                              var branchId = parsed.branchId || null;
+                              var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+                              var label = buy ? buy.name : eid;
+                              if (buy && branchId) { var br = (buy.branches || []).find(function(b) { return b.branchId === branchId; }); if (br) label = buy.name + " \u2014 " + br.branchName; }
+                              var pbv = (il.invoicePerBuyer || {})[eid];
+                              return <div key={eid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                                <span style={{ fontSize: 11 }}>{branchId ? "\u2514 " : ""}{label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{eid}</span></span>
+                                <input type="number" step="0.1" min="0" value={pbv != null ? pbv : ""} onChange={function(e) { setILBuyer(eid, e.target.value); }} placeholder={il.invoiceDefaultMultiple !== "" ? String(il.invoiceDefaultMultiple) : "default"} style={Object.assign({}, inpS, { width: 90, textAlign: "right" })} />
                               </div>;
                             })}
                           </div> : <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Add eligible buyers above to set per-buyer multiples.</div>}
