@@ -596,6 +596,8 @@
         .terms-chart-col { flex: 1 1 360px; min-width: 300px; }
         .terms-chart-col .chart-canvas-wrap { height: 248px; }
         @media (max-width: 860px) { .terms-table-col, .terms-chart-col { max-width: none; min-width: 0; flex-basis: 100%; } }
+        .apf-controls { font-size: 12px; color: var(--text-secondary); margin: 2px 0 10px; }
+        .apf-controls input { width: 70px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: 12px; font-family: var(--mono); }
 
         /* Dilution rate cells */
         .dil-cell { font-family: var(--mono); font-weight: 600; }
@@ -7194,6 +7196,7 @@ function renderReportBody(ccy) {
     drawConcentrationChart(ccy, c);
     drawPaymentDistributionChart(ccy, c);
     drawPaymentTermsChart(ccy, c);
+    initApFloat(ccy);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -7252,6 +7255,14 @@ function renderSectionAtAGlance(c, ccy) {
     var qualTiles =
         wcTile('Combined dilution', pct(combined), 'CN ' + pct(cnRate) + ' &middot; short-pay ' + pct(spRate), dilRead) +
         wcTile('Short-paid value', moneyShort(spAmt, ccy), spCnt.toLocaleString() + ' invoices paid short', spAmt > 0 ? (spRate >= 0.05 ? 'concern' : 'watch') : 'good');
+    if (t.rejectionRate != null) {
+        var rejRate = t.rejectionRate, rejCnt = t.rejectedCount || 0, rejAmt = t.rejectedAmount || 0, rejCntRate = t.rejectionCountRate || 0;
+        var rejRead = rejCnt === 0 ? 'good' : rejRate >= 0.10 ? 'concern' : rejRate >= 0.03 ? 'watch' : '';
+        qualTiles += wcTile('Rejected / disputed',
+            rejCnt === 0 ? 'None' : pct(rejRate),
+            rejCnt === 0 ? 'no invoices rejected' : rejCnt.toLocaleString() + ' invoices, ' + moneyShort(rejAmt, ccy) + ' (' + pct(rejCntRate) + ' by count)',
+            rejRead);
+    }
 
     return '' +
         '<div class="section">' +
@@ -7270,6 +7281,7 @@ function renderSectionAtAGlance(c, ccy) {
                 wcCluster('Invoice quality', qualTiles) +
             '</div>' +
             renderTermsPanel(t.paymentTerms, ccy) +
+            renderApFloatPanel(t, ccy) +
             '<div class="callout">' +
                 '<div class="callout-eyebrow">Worth noting</div>' +
                 '<div class="callout-text">' + fact + '</div>' +
@@ -7939,6 +7951,51 @@ function renderTermsPanel(pt, ccy) {
             '<div class="terms-chart-col"><div class="chart-canvas-wrap"><canvas id="chart-terms-' + ccy + '"></canvas></div></div>' +
             '</div>' +
         '</div>';
+}
+function renderApFloatPanel(t, ccy) {
+    if (t.apOutstandingAvg == null) return '';
+    var avg = t.apOutstandingAvg, daily = t.apDailySpend || 0;
+    var impliedDays = daily > 0 ? Math.round(avg / daily) : null;
+    var defRate = 8;
+    var rowsHtml = [1, 7, 14, 30].map(function(n) {
+        var freed = daily * n;
+        return '<tr>' +
+            '<td>+' + n + (n === 1 ? ' day' : ' days') + '</td>' +
+            '<td class="text-right">' + moneyShort(freed, ccy) + '</td>' +
+            '<td class="text-right apf-annual" data-cash="' + freed + '">' + moneyShort(freed * defRate / 100, ccy) + '</td>' +
+        '</tr>';
+    }).join('');
+    return '' +
+        '<div class="terms-panel apf-panel">' +
+            '<div class="terms-panel-title">Supplier credit &mdash; ' + escHTML(ccy) + ' AP float</div>' +
+            '<div class="terms-panel-summary">On average <strong>' + moneyShort(avg, ccy) + '</strong> of supplier credit is financing you' +
+                (impliedDays != null ? ' &mdash; about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+            '<div class="apf-controls">Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + defRate + '" min="0" max="100" step="0.5"> % per year</div>' +
+            '<div class="table-wrap" style="max-width:520px;">' +
+                '<table class="report-table">' +
+                    '<thead><tr>' +
+                        '<th>Extend terms by</th>' +
+                        '<th class="text-right">Cash freed (one-off)</th>' +
+                        '<th class="text-right">Value / year</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + rowsHtml + '</tbody>' +
+                '</table>' +
+            '</div>' +
+            '<div class="terms-foot">Cash freed = average daily spend &times; days extended (a one-off working-capital release). Value/year applies your cost of capital. Assumes suppliers absorb the longer terms without raising prices or factoring costs &mdash; a treasury what-if, not free money.</div>' +
+        '</div>';
+}
+function initApFloat(ccy) {
+    var input = document.getElementById('apf-rate-' + ccy);
+    if (!input) return;
+    input.addEventListener('input', function() {
+        var rate = parseFloat(input.value); if (isNaN(rate)) rate = 0;
+        var panel = input.closest('.apf-panel');
+        if (!panel) return;
+        panel.querySelectorAll('.apf-annual').forEach(function(cell) {
+            var cash = parseFloat(cell.getAttribute('data-cash')) || 0;
+            cell.innerHTML = moneyShort(cash * rate / 100, ccy);
+        });
+    });
 }
 function wcTile(label, value, sub, read) {
     return '<div class="wc-tile' + wcReadClass(read) + '">' +
