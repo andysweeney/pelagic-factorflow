@@ -24185,8 +24185,8 @@ export default function FactoringDashboard() {
                               }
                               return <tr key={r.eid}>
                                 <td style={Object.assign({}, tdS, { fontWeight: r.isBranch ? 400 : 600, paddingLeft: r.isBranch ? 24 : 10 })}>{r.isBranch ? "\u2514 " : ""}{r.label}<span style={{ marginLeft: 6, fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{r.eid}</span></td>
-                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : "\u2014"}</td>
-                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : ((r.dynCredit && r.dynCredit.length) ? (r.dynCredit.length === 1 ? <span style={{ color: "#10B981" }}>{money(r.dynCredit[0].value, progCcy)}<span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, opacity: 0.8 }}>DYN</span></span> : <span style={{ color: "#10B981" }}>{"Dynamic (" + r.dynCredit.length + ")"}</span>) : "\u2014")}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : ((r.dynInvoice && r.dynInvoice.length) ? (r.dynInvoice.length === 1 ? <span style={{ color: "#10B981" }}>{money(r.dynInvoice[0].value, progCcy)}<span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, opacity: 0.8 }}>DYN</span></span> : <span style={{ color: "#10B981" }}>{"Dynamic (" + r.dynInvoice.length + ")"}</span>) : "\u2014")}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.exposure != null ? "var(--text-secondary)" : "var(--muted)" })}>{r.exposure != null ? money(r.exposure, progCcy) : "\u2014"}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", fontWeight: 700, color: pctColor(r.pct) })}>{r.headroom != null ? money(r.headroom, progCcy) : "\u2014"}{r.pct != null && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600 }}>({r.pct.toFixed(0)}%)</span>}</td>
                                 <td style={Object.assign({}, tdS, { textAlign: "right" })}>
@@ -24348,12 +24348,21 @@ export default function FactoringDashboard() {
                           headroom = r2(Math.max(0, cl - exposure));
                           pct = (exposure / cl) * 100;
                         }
+                        var _ebs = editingProgramObj ? (editingProgramObj.eligibleBuyers || []) : [];
+                        var dynCredit = [], dynInvoice = [];
+                        if (editingProgramId) { _ebs.forEach(function(beid) {
+                          var _ce = getEffectiveSupplierBuyerLimit(eid, editingProgramId, beid);
+                          if (_ce && (_ce.source === "dynamic" || _ce.source === "override") && _ce.value != null) dynCredit.push({ value: _ce.value });
+                          var _ie = getEffectiveSupplierBuyerInvoiceLimit(eid, editingProgramId, beid);
+                          if (_ie && (_ie.source === "dynamic" || _ie.source === "override") && _ie.value != null) dynInvoice.push({ value: _ie.value });
+                        }); }
                         return {
                           eid: eid, missing: false, isBranch: !!branchId,
                           label: label, parentId: parentId, branchId: branchId,
                           sup: sup, limitsHolder: limitsHolder,
                           cl: cl, sil: sil, rate: rate, overrideCount: overrideCount,
                           exposure: exposure, headroom: headroom, pct: pct,
+                          dynCredit: dynCredit, dynInvoice: dynInvoice,
                           unconfirmed: !!(editingProgramId && (limitsHolder.limitsConfirmed || {})[editingProgramId] === false),
                           paused: !!(editingProgramId && (((limitsHolder.programPaused || {})[editingProgramId] === true) || sup.paused))
                         };
@@ -24460,8 +24469,8 @@ export default function FactoringDashboard() {
                                   <span style={{ color: "#DC2626" }}>{(r.rate.penaltyRate * 100).toFixed(1)}%</span>
                                   {r.overrideCount > 0 && <span style={{ marginLeft: 6, padding: "1px 6px", background: "var(--accent)20", color: "var(--accent)", borderRadius: 3, fontSize: 9, fontWeight: 700 }}>+{r.overrideCount}</span>}
                                 </> : <span style={{ color: "var(--muted)" }}>not set</span>}</td>
-                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : "\u2014"}</td>
-                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : "\u2014"}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.cl != null && r.cl > 0 ? "var(--text)" : "var(--muted)" })}>{r.cl != null && r.cl > 0 ? money(r.cl, progCcy) : ((r.dynCredit && r.dynCredit.length) ? (r.dynCredit.length === 1 ? <span style={{ color: "#10B981" }}>{money(r.dynCredit[0].value, progCcy)}<span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, opacity: 0.8 }}>DYN</span></span> : <span style={{ color: "#10B981" }}>{"Dynamic (" + r.dynCredit.length + ")"}</span>) : "\u2014")}</td>
+                                <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.sil != null && r.sil > 0 ? "var(--text)" : "var(--muted)" })}>{r.sil != null && r.sil > 0 ? money(r.sil, progCcy) : ((r.dynInvoice && r.dynInvoice.length) ? (r.dynInvoice.length === 1 ? <span style={{ color: "#10B981" }}>{money(r.dynInvoice[0].value, progCcy)}<span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, opacity: 0.8 }}>DYN</span></span> : <span style={{ color: "#10B981" }}>{"Dynamic (" + r.dynInvoice.length + ")"}</span>) : "\u2014")}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", color: r.exposure != null ? "var(--text-secondary)" : "var(--muted)" })}>{r.exposure != null ? money(r.exposure, progCcy) : "\u2014"}</td>
                                 <td style={Object.assign({}, tdSM, { textAlign: "right", fontWeight: 700, color: pctColor(r.pct) })}>{r.headroom != null ? money(r.headroom, progCcy) : "\u2014"}{r.pct != null && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 600 }}>({r.pct.toFixed(0)}%)</span>}</td>
                                 <td style={Object.assign({}, tdS, { textAlign: "right" })}>
