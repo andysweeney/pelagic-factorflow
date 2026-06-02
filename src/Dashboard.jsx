@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+    import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -6071,14 +6071,40 @@ export default function FactoringDashboard() {
     var k = dynKey(programId, supEntity, buyerEntity);
     try {
       if (value == null || value === "" || isNaN(parseFloat(value))) {
-        await supabase.from("supplier_program_buyer_override").delete().eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
-        delete DYN_OVERRIDES_DB[k];
+        if (DYN_OVERRIDES_DB[k] && DYN_OVERRIDES_DB[k].invoiceValue != null) {
+          await supabase.from("supplier_program_buyer_override").update({ override_value: null, updated_at: new Date().toISOString() }).eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
+          DYN_OVERRIDES_DB[k] = Object.assign({}, DYN_OVERRIDES_DB[k], { value: null });
+        } else {
+          await supabase.from("supplier_program_buyer_override").delete().eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
+          delete DYN_OVERRIDES_DB[k];
+        }
       } else {
         var v = parseFloat(value);
         await supabase.from("supplier_program_buyer_override").upsert([{ funding_program: programId, supplier_entity_id: supEntity, buyer_entity_id: buyerEntity, override_value: v, updated_at: new Date().toISOString() }], { onConflict: "funding_program,supplier_entity_id,buyer_entity_id" });
         DYN_OVERRIDES_DB[k] = Object.assign({}, DYN_OVERRIDES_DB[k], { value: v, note: "", setBy: null, updatedAt: new Date().toISOString() });
       }
     } catch (e) { console.error("[DynOverride] write error:", e); }
+  }
+  // Manual per-buyer single-invoice-size override. Shares the override row with the
+  // credit override (invoice_override_value column); clearing one keeps the row if the
+  // other is still set, else deletes it.
+  async function writeDynInvoiceOverride(programId, supEntity, buyerEntity, value) {
+    var k = dynKey(programId, supEntity, buyerEntity);
+    try {
+      if (value == null || value === "" || isNaN(parseFloat(value))) {
+        if (DYN_OVERRIDES_DB[k] && DYN_OVERRIDES_DB[k].value != null) {
+          await supabase.from("supplier_program_buyer_override").update({ invoice_override_value: null, updated_at: new Date().toISOString() }).eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
+          DYN_OVERRIDES_DB[k] = Object.assign({}, DYN_OVERRIDES_DB[k], { invoiceValue: null });
+        } else {
+          await supabase.from("supplier_program_buyer_override").delete().eq("funding_program", programId).eq("supplier_entity_id", supEntity).eq("buyer_entity_id", buyerEntity);
+          delete DYN_OVERRIDES_DB[k];
+        }
+      } else {
+        var v = parseFloat(value);
+        await supabase.from("supplier_program_buyer_override").upsert([{ funding_program: programId, supplier_entity_id: supEntity, buyer_entity_id: buyerEntity, invoice_override_value: v, updated_at: new Date().toISOString() }], { onConflict: "funding_program,supplier_entity_id,buyer_entity_id" });
+        DYN_OVERRIDES_DB[k] = Object.assign({}, DYN_OVERRIDES_DB[k], { invoiceValue: v });
+      }
+    } catch (e) { console.error("[DynInvoiceOverride] write error:", e); }
   }
   // Exposure for an exact (supplier entity, buyer entity) on a program - the
   // grain the dynamic per-buyer limit is measured against. Same live-exposure
@@ -7499,6 +7525,38 @@ export default function FactoringDashboard() {
             </div>;
           })()}
 
+          {(!isBuyer) && (function() {
+            var _ilFp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === m.programId; });
+            var _ilCfg = _ilFp && _ilFp.dynamicLimit ? _ilFp.dynamicLimit : null;
+            if (!_ilCfg || !_ilCfg.invoiceEnabled) return null;
+            var _ilSupEnt = m.entityId || m.supplierId;
+            var _ilBuyers = (_ilFp.eligibleBuyers || []);
+            return <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 8, letterSpacing: "0.05em" }}>Dynamic Single-Invoice Limit - per buyer <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(max invoice size; blank = use dynamic; a value overrides)</span></div>
+              {_ilBuyers.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>This program has no eligible buyers yet.</div> : _ilBuyers.map(function(bid) {
+                var parsed = parseEntityId(bid);
+                var parentId = parsed.supplierId || bid;
+                var branchId = parsed.branchId || null;
+                var buy = BUYERS_DB.find(function(b) { return b.id === parentId; });
+                var label = buy ? buy.name : bid;
+                if (buy && branchId) { var br = (buy.branches || []).find(function(b) { return b.branchId === branchId; }); if (br) label = buy.name + " \u2014 " + br.branchName; }
+                var eff = getEffectiveSupplierBuyerInvoiceLimit(_ilSupEnt, m.programId, bid);
+                var stateVal = (m.dynInvoiceOverrides && Object.prototype.hasOwnProperty.call(m.dynInvoiceOverrides, bid)) ? m.dynInvoiceOverrides[bid] : (eff.overrideValue != null ? String(eff.overrideValue) : "");
+                var hasOv = stateVal !== "" && !isNaN(parseFloat(stateVal));
+                var src = hasOv ? "override" : (eff.dynamicValue != null ? "dynamic" : "static");
+                var badge = src === "override" ? { t: "Manual override", c: "#C08B30", bg: "#C08B3022" } : src === "dynamic" ? { t: "Dynamic", c: "#10B981", bg: "#2E8B5722" } : { t: "Static / not ready", c: "#6B7280", bg: "#6B728022" };
+                var refTxt = eff.dynamicValue != null ? ("Dynamic " + money(eff.dynamicValue, m.programCcy) + (eff.multiple != null ? " (" + eff.multiple + "\u00d7 avg " + money(eff.avg || 0, m.programCcy) + ")" : "")) : (eff.staticValue != null ? ("Static " + money(eff.staticValue, m.programCcy)) : "No dynamic value yet");
+                return <div key={bid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 12 }}>{branchId ? "\u2514 " : ""}{label} <span style={{ marginLeft: 4, fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, color: badge.c, background: badge.bg }}>{badge.t}</span></div>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{refTxt}</div>
+                  </div>
+                  <input type="number" step="0.01" value={stateVal} placeholder={eff.dynamicValue != null ? "use dynamic" : "no limit"} onChange={function(e) { var val = e.target.value; setAddToProgramModal(function(mm) { var d = Object.assign({}, mm.dynInvoiceOverrides || {}); d[bid] = val; return Object.assign({}, mm, { dynInvoiceOverrides: d }); }); }} style={{ width: 120, padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box", textAlign: "right" }} />
+                </div>;
+              })}
+            </div>;
+          })()}
+
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
             <button onClick={function() { setAddToProgramModal(null); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             <button onClick={async function() {
@@ -7691,6 +7749,7 @@ export default function FactoringDashboard() {
               // piecemeal blur-saves), mark limits confirmed, and clear ONLY the auto-pause
               // that lightweight-add set (a deliberate manual pause is left untouched).
               if (m.dynOverrides) { Object.keys(m.dynOverrides).forEach(function(_bid) { writeDynOverride(m.programId, entityId, _bid, m.dynOverrides[_bid]); }); }
+              if (m.dynInvoiceOverrides) { Object.keys(m.dynInvoiceOverrides).forEach(function(_bid) { writeDynInvoiceOverride(m.programId, entityId, _bid, m.dynInvoiceOverrides[_bid]); }); }
               var _wasUnconfirmed = !!(limitsTarget.limitsConfirmed && limitsTarget.limitsConfirmed[m.programId] === false);
               limitsTarget.limitsConfirmed = Object.assign({}, limitsTarget.limitsConfirmed || {});
               limitsTarget.limitsConfirmed[m.programId] = true;
@@ -26729,3 +26788,5 @@ export default function FactoringDashboard() {
     </div>
   );
 }
+
+    
