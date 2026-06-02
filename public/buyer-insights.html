@@ -591,6 +591,11 @@
         .terms-panel-summary { font-size: 12px; color: var(--text); margin-bottom: 10px; }
         .terms-panel .terms-nodue td { color: var(--muted); font-style: italic; }
         .terms-foot { font-size: 10px; color: var(--muted); margin-top: 6px; }
+        .terms-layout { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+        .terms-table-col { flex: 1 1 460px; min-width: 320px; max-width: 600px; }
+        .terms-chart-col { flex: 1 1 360px; min-width: 300px; }
+        .terms-chart-col .chart-canvas-wrap { height: 248px; }
+        @media (max-width: 860px) { .terms-table-col, .terms-chart-col { max-width: none; min-width: 0; flex-basis: 100%; } }
 
         /* Dilution rate cells */
         .dil-cell { font-family: var(--mono); font-weight: 600; }
@@ -7188,6 +7193,7 @@ function renderReportBody(ccy) {
     // Charts are drawn *after* the DOM is in place — the canvas elements have to exist.
     drawConcentrationChart(ccy, c);
     drawPaymentDistributionChart(ccy, c);
+    drawPaymentTermsChart(ccy, c);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -7892,6 +7898,7 @@ function renderTermsPanel(pt, ccy) {
             '<td class="text-right">' + pct(invShare) + '</td>' +
             '<td class="text-right">' + moneyShort(r.spend || 0, ccy) + '</td>' +
             '<td class="text-right">' + pct(spShare) + '</td>' +
+            '<td class="text-right">' + (r.daysBeyondTerms == null ? '&mdash;' : (r.daysBeyondTerms >= 0 ? '+' : '') + r.daysBeyondTerms + 'd') + '</td>' +
         '</tr>';
     });
     if (pt.noDueDateCount) {
@@ -7900,6 +7907,7 @@ function renderTermsPanel(pt, ccy) {
             '<td class="text-right">' + pt.noDueDateCount.toLocaleString() + '</td>' +
             '<td class="text-right">&mdash;</td>' +
             '<td class="text-right">' + moneyShort(pt.noDueDateSpend || 0, ccy) + '</td>' +
+            '<td class="text-right">&mdash;</td>' +
             '<td class="text-right">&mdash;</td>' +
         '</tr>';
     }
@@ -7911,6 +7919,8 @@ function renderTermsPanel(pt, ccy) {
         '<div class="terms-panel">' +
             '<div class="terms-panel-title">Payment terms &mdash; ' + escHTML(ccy) + '</div>' +
             '<div class="terms-panel-summary">' + summary + '</div>' +
+            '<div class="terms-layout">' +
+            '<div class="terms-table-col">' +
             '<div class="table-wrap">' +
                 '<table class="report-table">' +
                     '<thead><tr>' +
@@ -7919,11 +7929,15 @@ function renderTermsPanel(pt, ccy) {
                         '<th class="text-right">% inv</th>' +
                         '<th class="text-right">Spend</th>' +
                         '<th class="text-right">% spend</th>' +
+                        '<th class="text-right">Days late</th>' +
                     '</tr></thead>' +
                     '<tbody>' + body + '</tbody>' +
                 '</table>' +
             '</div>' +
-            '<div class="terms-foot">Shares are of invoices with a stated due date; the no-due-date row sits outside the percentages.</div>' +
+            '<div class="terms-foot">Shares are of invoices with a stated due date; the no-due-date row sits outside the percentages. Days late is the spend-weighted average of paid_date &minus; due_date for paid invoices in each band (+ late, &minus; early).</div>' +
+            '</div>' +
+            '<div class="terms-chart-col"><div class="chart-canvas-wrap"><canvas id="chart-terms-' + ccy + '"></canvas></div></div>' +
+            '</div>' +
         '</div>';
 }
 function wcTile(label, value, sub, read) {
@@ -8388,6 +8402,34 @@ function drawTrendsConcentration(labels, ts) {
 // Common chart options factory
 // ────────────────────────────────────────────────────────────────
 
+function drawPaymentTermsChart(ccy, c) {
+    var canvas = document.getElementById('chart-terms-' + ccy);
+    if (!canvas) return;
+    var pt = c.totals && c.totals.paymentTerms;
+    if (!pt || !pt.distribution || !pt.distribution.length) return;
+    var rows = pt.distribution;
+    var labels = rows.map(function(r) { return r.band ? r.band.replace('<=', '\u2264') : ('Net ' + r.termDays); });
+    var spend  = rows.map(function(r) { return r.spend || 0; });
+    var counts = rows.map(function(r) { return r.invoices || 0; });
+    _chartInstances['terms-' + ccy] = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                { type: 'bar',  label: 'Spend (' + ccy + ')', data: spend,
+                  backgroundColor: '#0EA5E950', borderColor: '#0EA5E9', borderWidth: 1, yAxisID: 'y' },
+                { type: 'line', label: 'Invoices', data: counts,
+                  borderColor: '#F59E0B', backgroundColor: '#F59E0B20', borderWidth: 2, pointRadius: 3, tension: 0.3, yAxisID: 'y1' }
+            ]
+        },
+        options: chartCommonOptions({
+            yLeftLabel: 'Spend (' + ccy + ')',
+            yLeftFormat: function(v) { return moneyShort(v, ccy); },
+            yRightLabel: 'Invoices',
+            yRightFormat: function(v) { return Number(v).toLocaleString(); }
+        })
+    });
+}
 function chartCommonOptions(opts) {
     opts = opts || {};
     var options = {
