@@ -8313,6 +8313,13 @@ function renderTrendsBody() {
             '<div class="trends-chart-canvas"><canvas id="trends-chart-payments"></canvas></div>' +
         '</div>' +
 
+        // Chart 3b: Time to pay over time
+        '<div class="trends-chart-block">' +
+            '<div class="chart-box-title">Time to pay over time</div>' +
+            '<div class="chart-box-sub">Average invoice&rarr;payment days vs stated terms, by ' + t.granularity.replace('ly', '') + ' the invoice was paid. The gap between the lines is how far beyond terms you settle.</div>' +
+            '<div class="trends-chart-canvas"><canvas id="trends-chart-timetopay"></canvas></div>' +
+        '</div>' +
+
         // Chart 4: Concentration over time
         '<div class="trends-chart-block">' +
             '<div class="chart-box-title">Concentration over time</div>' +
@@ -8330,6 +8337,7 @@ function renderTrendsBody() {
     drawTrendsVolume(labels, ts, ccy);
     drawTrendsDilution(labels, ts);
     drawTrendsPayments(labels, ts);
+    drawTrendsTimeToPay(labels, ts);
     drawTrendsConcentration(labels, ts);
 }
 
@@ -8529,6 +8537,40 @@ function drawPaymentTermsChart(ccy, c) {
             yLeftFormat: function(v) { return moneyShort(v, ccy); },
             yRightLabel: 'Invoices',
             yRightFormat: function(v) { return Number(v).toLocaleString(); }
+        })
+    });
+}
+function drawTrendsTimeToPay(labels, ts) {
+    var canvas = document.getElementById('trends-chart-timetopay');
+    if (!canvas) return;
+    _chartInstances['trends-timetopay'] = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Time to pay (days)',
+                    data: ts.payments.map(function(p) { return p.avgDaysToPaid; }),
+                    borderColor: '#8B5CF6', backgroundColor: '#8B5CF620',
+                    borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3, spanGaps: true
+                },
+                {
+                    label: 'Stated terms (days)',
+                    data: ts.payments.map(function(p) { return p.avgStatedTerm; }),
+                    borderColor: '#10B981', backgroundColor: '#10B98120',
+                    borderWidth: 2, pointRadius: 2, borderDash: [5, 3], fill: false, tension: 0.3, spanGaps: true
+                }
+            ]
+        },
+        options: chartCommonOptions({
+            yLeftLabel: 'Days',
+            tooltipFormatter: function(ctx) {
+                var p = ts.payments[ctx.dataIndex];
+                var ttp = p.avgDaysToPaid, term = p.avgStatedTerm;
+                if (ctx.datasetIndex === 0) return 'Time to pay: ' + (ttp != null ? ttp + 'd' : 'n/a');
+                var gap = (ttp != null && term != null) ? Math.round((ttp - term) * 10) / 10 : null;
+                return 'Stated terms: ' + (term != null ? term + 'd' : 'n/a') + (gap != null ? '  (gap ' + (gap >= 0 ? '+' : '') + gap + 'd)' : '');
+            }
         })
     });
 }
