@@ -7205,6 +7205,16 @@ function renderReportBody(ccy) {
 // produces the same headline (operators rehearsing a pitch don't want surprises).
 // ────────────────────────────────────────────────────────────────
 
+// Maps the active period-filter key to a natural lede clause (Section 1).
+function periodLedeClause(key) {
+    if (!key || key === 'all') return 'Across all available data,';
+    if (key === '12m') return 'In the last 12 months,';
+    if (key === '6m') return 'In the last 6 months,';
+    if (key === '3m') return 'In the last 3 months,';
+    if (key === '1m') return 'In the last month,';
+    if (key.indexOf('year:') === 0) return 'In ' + key.split(':')[1] + ',';
+    return 'In the selected period,';
+}
 function renderSectionAtAGlance(c, ccy) {
     var t = c.totals;
     var fact = chooseSurprisingFact(c, ccy);
@@ -7244,7 +7254,7 @@ function renderSectionAtAGlance(c, ccy) {
     var tailCount = (c.suppliers || []).filter(function(s) { return (s.sharePct || 0) < 0.005; }).length;
     var concTiles =
         wcTile('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend', top1Read) +
-        wcTile('HHI', conc.hhi.toFixed(3), hhiBand, hhiRead) +
+        wcTile('HHI <span style="cursor:help; opacity:0.55;" title="Herfindahl-Hirschman Index: sum of squared supplier shares of spend, scaled 0 to 1. Higher means more concentrated. Below 0.15 is diversified, 0.15-0.25 moderately concentrated, above 0.25 highly concentrated.">&#9432;</span>', conc.hhi.toFixed(3), hhiBand, hhiRead) +
         wcTile('Long tail', tailCount.toLocaleString(), 'suppliers under 0.5% each', tailCount >= 50 ? 'watch' : '');
 
     // ── Invoice quality cluster ───────────────────────────────────
@@ -7263,11 +7273,21 @@ function renderSectionAtAGlance(c, ccy) {
             rejRead);
     }
 
+    var _periodKey = (window.__upload && window.__upload.currentPeriodKey) || 'all';
+    var _ptL = t.paymentTerms || null;
+    var _wTermsDays = (_ptL && _ptL.countWeightedAvgDays != null) ? _ptL.countWeightedAvgDays : t.avgStatedTermDays;
+    var _ledeTail = tailCount.toLocaleString() + ' supplier' + (tailCount === 1 ? '' : 's') + ' represent' + (tailCount === 1 ? 's' : '') + ' less than 0.5% of your spend over the period.';
+    var _lede;
+    if (hasTerms && _wTermsDays != null) {
+        _lede = periodLedeClause(_periodKey) + ' you dealt with ' + (t.supplierCount || 0).toLocaleString() + ' different suppliers and spent a total of ' + moneyShort(t.totalSpend, ccy) + '. Your weighted average payment terms were Net ' + Math.round(_wTermsDays) + ' days and your weighted average time to pay was ' + t.avgDaysToPaid + ' days. ' + _ledeTail;
+    } else {
+        _lede = periodLedeClause(_periodKey) + ' you dealt with ' + (t.supplierCount || 0).toLocaleString() + ' different suppliers and spent a total of ' + moneyShort(t.totalSpend, ccy) + '. ' + _ledeTail;
+    }
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 1</div>' +
-            '<div class="section-title">Your ' + ccy + ' supply chain at a glance</div>' +
-            '<div class="section-lede">A point-in-time read on the period covered &mdash; working capital, concentration, and invoice quality. The Trends tab shows how each is moving.</div>' +
+            '<div class="section-title">Strategic Supply Chain Overview</div>' +
+            '<div class="section-lede">' + _lede + '</div>' +
             '<div class="stat-grid">' +
                 statCard('Suppliers', (t.supplierCount || 0).toLocaleString(), '') +
                 statCard('Invoices', (t.invoiceCount || 0).toLocaleString(), '') +
@@ -11504,11 +11524,22 @@ function renderPrintSectionAtAGlance(c, ccy) {
             rejCnt === 0 ? 'none rejected' : rejCnt.toLocaleString() + ' / ' + moneyShort(rejAmt, ccy) + ' (' + pct(rejCntRate) + ' by count)');
     }
 
+    var _periodKeyP = (window.__upload && window.__upload.currentPeriodKey) || 'all';
+    var _ptLP = t.paymentTerms || null;
+    var _wTermsDaysP = (_ptLP && _ptLP.countWeightedAvgDays != null) ? _ptLP.countWeightedAvgDays : t.avgStatedTermDays;
+    var _hasTermsP = (t.avgStatedTermDays != null && t.avgDaysToPaid != null);
+    var _ledeTailP = tailCount.toLocaleString() + ' supplier' + (tailCount === 1 ? '' : 's') + ' represent' + (tailCount === 1 ? 's' : '') + ' less than 0.5% of your spend over the period.';
+    var _ledeP;
+    if (_hasTermsP && _wTermsDaysP != null) {
+        _ledeP = periodLedeClause(_periodKeyP) + ' you dealt with ' + (t.supplierCount || 0).toLocaleString() + ' different suppliers and spent a total of ' + moneyShort(t.totalSpend, ccy) + '. Your weighted average payment terms were Net ' + Math.round(_wTermsDaysP) + ' days and your weighted average time to pay was ' + t.avgDaysToPaid + ' days. ' + _ledeTailP;
+    } else {
+        _ledeP = periodLedeClause(_periodKeyP) + ' you dealt with ' + (t.supplierCount || 0).toLocaleString() + ' different suppliers and spent a total of ' + moneyShort(t.totalSpend, ccy) + '. ' + _ledeTailP;
+    }
     return '' +
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 1</div>' +
-            '<div class="print-section-title">Your ' + ccy + ' supply chain at a glance</div>' +
-            '<div class="print-section-lede">A point-in-time read on the period covered &mdash; working capital, concentration, and invoice quality. The Trends tab shows how each is moving.</div>' +
+            '<div class="print-section-title">Strategic Supply Chain Overview</div>' +
+            '<div class="print-section-lede">' + _ledeP + '</div>' +
             '<div class="print-stat-grid">' + headline + '</div>' +
             '<div class="print-subhead">Working capital</div>' +
             '<div class="print-stat-grid">' + wc + '</div>' +
