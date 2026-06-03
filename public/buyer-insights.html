@@ -4030,9 +4030,9 @@ function renderProspectsForUpload(upload, visibleUploads) {
     // and the whole load stalls. The buyer's snapshot already contains the
     // distinct supplier list per currency (computed server-side), so read it
     // from there instead of re-deriving it from raw invoices.
-    ensureProspectSnapshotsLoaded([upload.buyer_id], function() {
+    ensureProspectSnapshotsLoaded(upload, function() {
         var snapData = state._prospectSnapData || {};
-        var snap = snapData[upload.buyer_id];
+        var snap = snapData[upload.id];
         var distinct = [];
         var seen = {};
         if (snap && snap.stats && snap.stats.perPeriod) {
@@ -4227,9 +4227,9 @@ function enrichAndRender(upload, distinct, prevApp) {
     // stats. Snapshot is keyed per buyer (not per upload) but the stats
     // inside aggregate "all" period — close enough for the per-upload
     // view since most operators only have one or two uploads per buyer.
-    ensureProspectSnapshotsLoaded([upload.buyer_id], function() {
+    ensureProspectSnapshotsLoaded(upload, function() {
         var snapData = state._prospectSnapData || {};
-        var snap = snapData[upload.buyer_id];
+        var snap = snapData[upload.id];
         // Honour the global PERIOD selector (top-right). window.__upload
         // is set when an upload is opened; its currentPeriodKey reflects
         // the chosen period (e.g. '2025', '12m', 'all'). Fall back to the
@@ -4415,49 +4415,34 @@ function renderGroupsSubtabTable(visibleGroupIds) {
 // Lazy-load 'all'-period supplier blocks per buyer (one snapshot per buyer).
 // Caches in state._prospectSnapData. Re-fetches on each renderProspects call
 // only if the buyer's latest upload has changed (cheap: 1 row metadata query).
-function ensureProspectSnapshotsLoaded(buyerIds, done) {
+function ensureProspectSnapshotsLoaded(upload, done) {
     if (!state._prospectSnapData) state._prospectSnapData = {};
-
-    if (buyerIds.length === 0) { done(); return; }
-
-    // Find the latest upload_id per buyer from state.uploads.
-    var latestUpload = {};
-    state.uploads.forEach(function(u) {
-        if (!u.buyer_id) return;
-        if (!latestUpload[u.buyer_id] || u.created_at > latestUpload[u.buyer_id].created_at) {
-            latestUpload[u.buyer_id] = u;
-        }
-    });
-
-    var toFetch = [];
-    buyerIds.forEach(function(bid) {
-        var u = latestUpload[bid];
-        if (!u || u.snapshot_status !== 'ready') return;
-        var cached = state._prospectSnapData[bid];
-        if (cached && cached.uploadId === u.id) return; // already cached
-        toFetch.push({ buyerId: bid, uploadId: u.id, uploadCreatedAt: u.created_at });
-    });
-
-    if (toFetch.length === 0) { done(); return; }
-
-    var pending = toFetch.length;
-    toFetch.forEach(function(t) {
-        sbClient.from('buyer_upload_snapshots')
-            .select('stats')
-            .eq('upload_id', t.uploadId)
-            .maybeSingle()
-            .then(function(snapRes) {
-                if (snapRes.data) {
-                    state._prospectSnapData[t.buyerId] = {
-                        uploadId: t.uploadId,
-                        uploadCreatedAt: t.uploadCreatedAt,
-                        stats: snapRes.data.stats
-                    };
-                }
-                pending--;
-                if (pending === 0) done();
-            });
-    });
+    // Load the snapshot for THIS specific upload (the active sub-tab), keyed by
+    // upload id. A buyer can have several uploads; the previous version keyed by
+    // buyer and always fetched the buyer's LATEST upload, so opening an older
+    // upload's sub-tab rendered the newest upload's suppliers instead. Keying by
+    // upload id fixes that. We also mirror the entry under the buyer id so the
+    // Groups sub-tab's per-constituent stat lookup (keyed by buyer) keeps working.
+    if (!upload || !upload.id) { done(); return; }
+    if (upload.snapshot_status !== 'ready') { done(); return; }
+    if (state._prospectSnapData[upload.id]) { done(); return; } // already cached for this upload
+    sbClient.from('buyer_upload_snapshots')
+        .select('stats')
+        .eq('upload_id', upload.id)
+        .maybeSingle()
+        .then(function(snapRes) {
+            if (snapRes.data) {
+                var entry = {
+                    uploadId: upload.id,
+                    buyerId: upload.buyer_id,
+                    uploadCreatedAt: upload.created_at,
+                    stats: snapRes.data.stats
+                };
+                state._prospectSnapData[upload.id] = entry;
+                state._prospectSnapData[upload.buyer_id] = entry;
+            }
+            done();
+        });
 }
 
 function wireProspectsFilters() {
