@@ -7392,8 +7392,8 @@ function renderSectionConcentration(c, ccy) {
     return '' +
         '<div class="section">' +
             '<div class="section-eyebrow">Section 2</div>' +
-            '<div class="section-title">Suppliers you depend on more than you realise</div>' +
-            '<div class="section-lede">The share of your invoicing concentrated in your top suppliers. Pelagic\'s perspective — the dependency runs both ways: if you\'re a large share of a supplier\'s book, you carry mutual fragility.</div>' +
+            '<div class="section-title">Supplier Dependencies</div>' +
+            '<div class="section-lede">Your largest supplier represents ' + pct(conc.top1Pct) + ' of your spend, with the top 10 contributing ' + pct(conc.top10Pct) + ' of your total spend. High concentrations represent significant business continuity risk to your company. Our analysis, using the Herfindahl-Hirschman Index, scores you as being ' + hhiLabel + '. This table provides an analysis of your largest relationships.</div>' +
 
             '<div class="stat-grid stat-grid-6col">' +
                 statCard('Top supplier', pct(conc.top1Pct), 'of total ' + ccy + ' spend') +
@@ -7440,7 +7440,11 @@ function drawConcentrationChart(ccy, c) {
         data.push(rest.reduce(function(a, b) { return a + b.totalSpend; }, 0));
     }
     var palette = ['#0EA5E9', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#34D399', '#60A5FA', '#F97316', '#94A3B8'];
-    _chartInstances['conc-' + ccy] = new Chart(canvas.getContext('2d'), {
+    if (typeof Chart !== 'undefined' && Chart.getChart) {
+        var _existing = Chart.getChart(canvas);
+        if (_existing) { try { _existing.destroy(); } catch (e) {} }
+    }
+    var _inst = new Chart(canvas.getContext('2d'), {
         type: 'doughnut',
         data: {
             labels: labels,
@@ -7454,6 +7458,10 @@ function drawConcentrationChart(ccy, c) {
             }
         }
     });
+    _chartInstances['conc-' + ccy] = _inst;
+    // Chart.js caches canvas size at construction; the Reports tab starts hidden,
+    // so the doughnut can paint at 0x0 and never recover. Re-measure next frame.
+    requestAnimationFrame(function() { try { _inst.resize(); } catch (e) {} });
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -11635,8 +11643,8 @@ function renderPrintSectionConcentration(c, ccy) {
     return '' +
         '<div class="print-section">' +
             '<div class="print-section-eyebrow">Section 2</div>' +
-            '<div class="print-section-title">Suppliers you depend on more than you realise</div>' +
-            '<div class="print-section-lede">The share of your invoicing concentrated in your top suppliers. The dependency runs both ways — if you are a large share of a supplier\'s book, you carry mutual fragility.</div>' +
+            '<div class="print-section-title">Supplier Dependencies</div>' +
+            '<div class="print-section-lede">Your largest supplier represents ' + pct(conc.top1Pct) + ' of your spend, with the top 10 contributing ' + pct(conc.top10Pct) + ' of your total spend. High concentrations represent significant business continuity risk to your company. Our analysis, using the Herfindahl-Hirschman Index, scores you as being ' + hhiLabel + '. This table provides an analysis of your largest relationships.</div>' +
 
             '<div class="print-stat-grid">' +
                 printStatCard('Top supplier', pct(conc.top1Pct), 'of ' + ccy + ' spend') +
