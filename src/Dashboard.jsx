@@ -1,4 +1,4 @@
-    import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -423,6 +423,57 @@ function getEffectiveSupplierBuyerInvoiceLimit(supEntityId, programId, buyerEnti
 // Check whether an invoice's amount fits under the cascading single-invoice
 // limit (parent's cap AND, if applicable, branch's cap). Returns null if
 // the invoice clears, or a string reason if it doesn't.
+// Trailing-90-day count of Settled invoices for a (supplier entity, buyer entity)
+// pair, across the whole ledger (factored or not). Entity-grained, exact match.
+function getSettledCountForSupplierBuyer(supEntityId, buyerEntityId) {
+  if (!supEntityId || !buyerEntityId) return 0;
+  var cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  var n = 0;
+  for (var i = 0; i < INVOICES_DB.length; i++) {
+    var inv = INVOICES_DB[i];
+    if (inv.currentInvoiceStatus !== "Settled") continue;
+    if ((inv.supplierEntityId || inv.supplierId) !== supEntityId) continue;
+    if ((inv.buyerEntityId || inv.buyerId) !== buyerEntityId) continue;
+    if (!inv.settledDate) continue;
+    var t = new Date(inv.settledDate).getTime();
+    if (isNaN(t) || t < cutoff) continue;
+    n++;
+  }
+  return n;
+}
+
+// Minimum-settled-invoices eligibility threshold for a (supplier, program): a
+// per-supplier override (per program, parent-level) supersedes the program
+// default held on dynamic_limit.minSettled. 0 (or absent) = gate off.
+function getMinSettledThreshold(supEntityId, programId) {
+  if (!supEntityId || !programId) return 0;
+  var sup = getSupplierById(supEntityId);
+  if (sup && sup.minSettledOverrides && sup.minSettledOverrides[programId] != null) {
+    var ov = Number(sup.minSettledOverrides[programId]);
+    if (!isNaN(ov)) return ov;
+  }
+  var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === programId; });
+  var def = prog && prog.dynamicLimit ? prog.dynamicLimit.minSettled : null;
+  var d = Number(def);
+  return isNaN(d) ? 0 : d;
+}
+
+// Eligibility gate: the (supplier entity, buyer entity) pair must have at least
+// `threshold` Settled invoices in the trailing 90 days. null = pass, string =
+// ineligibility reason. Mirrors the single-invoice gate; enforced at eligibility
+// and (via getEligiblePrograms/getEligibilityReasons) at execution.
+function checkSupplierBuyerSettledHistory(inv, programId) {
+  if (!inv || !programId) return null;
+  var supEnt = inv.supplierEntityId || inv.supplierId;
+  var buyerEnt = inv.buyerEntityId || inv.buyerId;
+  if (!supEnt || !buyerEnt) return null;
+  var threshold = getMinSettledThreshold(supEnt, programId);
+  if (!threshold || threshold <= 0) return null;
+  var count = getSettledCountForSupplierBuyer(supEnt, buyerEnt);
+  if (count >= threshold) return null;
+  return "Insufficient settled-invoice history with this buyer (" + count + " of " + threshold + " required in last 90 days)";
+}
+
 function checkSupplierProgramCascadingSingleInvoiceLimit(inv, programId) {
   if (!inv || !programId) return null;
   var entityId = inv.supplierEntityId || inv.supplierId;
@@ -1403,6 +1454,7 @@ function getEligiblePrograms(inv, supDilRates) {
     // about pass/fail here — getEligibilityReasons surfaces the message.
     if (checkSupplierProgramCascadingSingleInvoiceLimit(inv, fp.id)) return false;
     if (checkBuyerProgramCascadingSingleInvoiceLimit(inv, fp.id)) return false;
+    if (checkSupplierBuyerSettledHistory(inv, fp.id)) return false;
     return true;
   });
 }
@@ -1474,6 +1526,8 @@ function getEligibilityReasons(inv, supDilRates) {
     if (supSilReason) reasons.push(supSilReason);
     var buySilReason = checkBuyerProgramCascadingSingleInvoiceLimit(inv, fp.id);
     if (buySilReason) reasons.push(buySilReason);
+    var settledReason = checkSupplierBuyerSettledHistory(inv, fp.id);
+    if (settledReason) reasons.push(settledReason);
     if (reasons.length === 0) {
       eligibleCount += 1;
     } else {
@@ -1925,7 +1979,7 @@ async function saveSupplier(supId) {
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false,
       program_paused: s.programPaused || {},
-      limits_confirmed: s.limitsConfirmed || {},
+      limits_confirmed: s.limitsConfirmed || {}, min_settled_overrides: s.minSettledOverrides || {},
       // Companies House persistence fields (added in stage 1.6)
       entity_source: s.entitySource || "manual",
       verification_source: s.verificationSource || null,
@@ -2417,6 +2471,7 @@ async function loadPersistedData() {
           paused: row.paused || false,
           programPaused: row.program_paused || {},
           limitsConfirmed: row.limits_confirmed || {},
+          minSettledOverrides: row.min_settled_overrides || {},
           // Companies House persistence (stage 1.6)
           entitySource: row.entity_source || "manual",
           directors: row.directors || [],
@@ -3008,7 +3063,8 @@ async function reloadSuppliers() {
           kyc: row.kyc || { passed: false },
           paused: row.paused || false,
           programPaused: row.program_paused || {},
-          limitsConfirmed: row.limits_confirmed || {}
+          limitsConfirmed: row.limits_confirmed || {},
+          minSettledOverrides: row.min_settled_overrides || {}
         });
       });
     }
@@ -3121,7 +3177,7 @@ async function savePersistedData() {
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
         paused: s.paused || false,
-        limits_confirmed: s.limitsConfirmed || {},
+        limits_confirmed: s.limitsConfirmed || {}, min_settled_overrides: s.minSettledOverrides || {},
         // Companies House persistence fields (added in stage 1.6)
         entity_source: s.entitySource || "manual",
       verification_source: s.verificationSource || null,
@@ -23571,7 +23627,7 @@ export default function FactoringDashboard() {
                 var prog = {
                   name: pf.name, currency: pf.currency,
                   benchmark: pf.benchmark || null,
-                  dynamicLimit: (function() { var dl = pf.dynamicLimit; if (!dl) return null; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { var n = parseFloat(dl.perBuyer[k]); if (!isNaN(n)) pb[k] = n; }); var def = parseFloat(dl.defaultMultiple); var ceil = parseFloat(dl.ceiling); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { var n = parseFloat(dl.invoicePerBuyer[k]); if (!isNaN(n)) ipb[k] = n; }); var idef = parseFloat(dl.invoiceDefaultMultiple); var iceil = parseFloat(dl.invoiceCeiling); return { enabled: !!dl.enabled, defaultMultiple: isNaN(def) ? 0 : def, perBuyer: pb, ceiling: isNaN(ceil) ? null : ceil, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: isNaN(idef) ? 0 : idef, invoicePerBuyer: ipb, invoiceCeiling: isNaN(iceil) ? null : iceil }; })(),
+                  dynamicLimit: (function() { var dl = pf.dynamicLimit; if (!dl) return null; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { var n = parseFloat(dl.perBuyer[k]); if (!isNaN(n)) pb[k] = n; }); var def = parseFloat(dl.defaultMultiple); var ceil = parseFloat(dl.ceiling); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { var n = parseFloat(dl.invoicePerBuyer[k]); if (!isNaN(n)) ipb[k] = n; }); var idef = parseFloat(dl.invoiceDefaultMultiple); var iceil = parseFloat(dl.invoiceCeiling); var ms = parseInt(dl.minSettled, 10); return { enabled: !!dl.enabled, defaultMultiple: isNaN(def) ? 0 : def, perBuyer: pb, ceiling: isNaN(ceil) ? null : ceil, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: isNaN(idef) ? 0 : idef, invoicePerBuyer: ipb, invoiceCeiling: isNaN(iceil) ? null : iceil, minSettled: isNaN(ms) ? 0 : ms }; })(),
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
@@ -23623,7 +23679,7 @@ export default function FactoringDashboard() {
                 setProgFields({
                   name: p.name, currency: p.currency,
                   benchmark: p.benchmark || null,
-                  dynamicLimit: (function() { var dl = p.dynamicLimit || null; if (!dl) return { enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {}, invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {} }; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { pb[k] = String(dl.perBuyer[k]); }); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { ipb[k] = String(dl.invoicePerBuyer[k]); }); return { enabled: !!dl.enabled, defaultMultiple: dl.defaultMultiple != null ? String(dl.defaultMultiple) : "", ceiling: dl.ceiling != null ? String(dl.ceiling) : "", perBuyer: pb, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: dl.invoiceDefaultMultiple != null ? String(dl.invoiceDefaultMultiple) : "", invoiceCeiling: dl.invoiceCeiling != null ? String(dl.invoiceCeiling) : "", invoicePerBuyer: ipb }; })(),
+                  dynamicLimit: (function() { var dl = p.dynamicLimit || null; if (!dl) return { enabled: false, defaultMultiple: "", ceiling: "", perBuyer: {}, invoiceEnabled: false, invoiceDefaultMultiple: "", invoiceCeiling: "", invoicePerBuyer: {}, minSettled: "" }; var pb = {}; Object.keys(dl.perBuyer || {}).forEach(function(k) { pb[k] = String(dl.perBuyer[k]); }); var ipb = {}; Object.keys(dl.invoicePerBuyer || {}).forEach(function(k) { ipb[k] = String(dl.invoicePerBuyer[k]); }); return { enabled: !!dl.enabled, defaultMultiple: dl.defaultMultiple != null ? String(dl.defaultMultiple) : "", ceiling: dl.ceiling != null ? String(dl.ceiling) : "", perBuyer: pb, invoiceEnabled: !!dl.invoiceEnabled, invoiceDefaultMultiple: dl.invoiceDefaultMultiple != null ? String(dl.invoiceDefaultMultiple) : "", invoiceCeiling: dl.invoiceCeiling != null ? String(dl.invoiceCeiling) : "", invoicePerBuyer: ipb, minSettled: dl.minSettled != null ? String(dl.minSettled) : "" }; })(),
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
                   minRateMode: (function() { var h = (p.minRate || []); var l = h.length ? h[h.length - 1] : null; var d = l && l.rateDefinition ? l.rateDefinition.annualRate : null; return (d && d.mode === "benchmark") ? "benchmark" : "fixed"; })(),
@@ -24303,6 +24359,26 @@ export default function FactoringDashboard() {
                             })}
                           </div> : <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>Add eligible buyers above to set per-buyer multiples.</div>}
                         </>}
+                      </>;
+                    })()}
+                  </div>
+
+                  {/* Settled-Invoice History Gate - program-level eligibility floor:
+                      the supplier-buyer pair must have >= N Settled invoices in the
+                      last 90 days. Per-supplier override set in the supplier editor. */}
+                  <div style={{ marginBottom: 18 }}>
+                    {(function() {
+                      var dl = Object.assign({ minSettled: "" }, pf.dynamicLimit || {});
+                      function setMS(val) { setProgFields(function(p) { var cur = Object.assign({ minSettled: "" }, p.dynamicLimit || {}); return Object.assign({}, p, { dynamicLimit: Object.assign({}, cur, { minSettled: val }) }); }); }
+                      return <>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
+                          <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em" }}>Settled-Invoice History Gate</label>
+                          <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>Min. Settled invoices for the supplier-buyer pair in the last 90 days. 0 = off.</span>
+                        </div>
+                        <div style={{ width: 220 }}>
+                          <label style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", letterSpacing: "0.05em", display: "block", marginBottom: 3 }}>Minimum settled invoices</label>
+                          <input type="number" step="1" min="0" value={dl.minSettled} onChange={function(e) { setMS(e.target.value); }} placeholder="default 0 (off)" style={inpS} />
+                        </div>
                       </>;
                     })()}
                   </div>
@@ -26846,5 +26922,3 @@ export default function FactoringDashboard() {
     </div>
   );
 }
-
-    
