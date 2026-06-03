@@ -3748,7 +3748,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       rawInv.fullyRepaidDate = lastPayDate;
       // If prior status was recovery_mode, log the legal repurchase event
       if (rawInv.fundingStatus === "recovery_mode" || rawInv.priorFundingStatus === "recovery_mode") {
-        auditLog("Repurchased by Supplier", rawInv.id + " (recovery_mode) reached full repayment \u2014 legally repurchased by supplier " + rawInv.supplierName + " on " + lastPayDate, { invoiceId: rawInv.id, amount: rawInv.amount, currency: rawInv.currency, supplierId: rawInv.supplierId, supplier: rawInv.supplierName, buyerId: rawInv.buyerId, buyer: rawInv.buyerName, fullyRepaidDate: lastPayDate, fundingProgram: rawInv.fundingProgram, priorStatus: "recovery_mode" });
+        _auditLog("Repurchased by Supplier", rawInv.id + " (recovery_mode) reached full repayment \u2014 legally repurchased by supplier " + rawInv.supplierName + " on " + lastPayDate, { invoiceId: rawInv.id, amount: rawInv.amount, currency: rawInv.currency, supplierId: rawInv.supplierId, supplier: rawInv.supplierName, buyerId: rawInv.buyerId, buyer: rawInv.buyerName, fullyRepaidDate: lastPayDate, fundingProgram: rawInv.fundingProgram, priorStatus: "recovery_mode" });
       }
     } else if (fs !== "fully_repaid" && rawInv.fullyRepaidDate) {
       // Clear if no longer fully repaid (e.g. payment unallocated)
@@ -3802,7 +3802,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         });
         var settledKind = settledPassThrough > 0.01 ? (settledFunded > 0.01 ? "mixed" : "pass_through") : "funded_recovery";
         var dilNote = (cnDilutionByInvoice.get(rawInv.id) || 0) > 0.01 ? " (settle threshold reduced by " + r2(cnDilutionByInvoice.get(rawInv.id)) + " in credit notes)" : "";
-        auditLog("Invoice Settled", rawInv.id + " marked Settled on " + settlePayDate + " — buyer paid " + r2(totalBuyerPaid) + " " + rawInv.currency + " against threshold " + r2(settleThreshold) + dilNote, {
+        _auditLog("Invoice Settled", rawInv.id + " marked Settled on " + settlePayDate + " — buyer paid " + r2(totalBuyerPaid) + " " + rawInv.currency + " against threshold " + r2(settleThreshold) + dilNote, {
           invoiceId: rawInv.id, supplierId: rawInv.supplierId, supplierName: rawInv.supplierName,
           buyerId: rawInv.buyerId, buyerName: rawInv.buyerName,
           amount: rawInv.amount, currency: rawInv.currency,
