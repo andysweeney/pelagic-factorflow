@@ -8018,6 +8018,7 @@ function renderApFloatPanel(c, ccy) {
                 (bucketHtml ? '<div class="apf-col">' + bucketHtml + '</div>' : '') +
             '</div>' +
             renderSmeAccelSection(c, ccy) +
+            renderFairPaymentPanel(ccy) +
         '</div>';
 }
 function renderSmeAccelSection(c, ccy) {
@@ -8103,6 +8104,71 @@ function smeAccelInnerHTML(ccy, pctv) {
                 '<thead><tr><th>Target</th><th class="text-right">Acceleration</th><th class="text-right">Cash outlay (one-off)</th><th class="text-right">Interest / year</th></tr></thead>' +
                 '<tbody>' + rows + '</tbody>' +
             '</table>' +
+        '</div>';
+}
+function renderFairPaymentPanel(ccy) {
+    var stats = (window.__upload && window.__upload.snapshot && window.__upload.snapshot.stats) || null;
+    var fp = (stats && stats.fairPayment && stats.fairPayment[ccy]) || null;
+    if (!fp || !fp.all) return '';
+    function bk(scope, k) { var sc = fp[scope] || {}; return sc[k] || { n: 0, amt: 0, amtDays: 0 }; }
+    var a30 = bk('all', 'd30'), a60 = bk('all', 'd60'), a61 = bk('all', 'd61');
+    var allN = a30.n + a60.n + a61.n;
+    if (allN === 0) return '';
+    var within30 = a30.n, within60 = a30.n + a60.n;
+    var pct30 = within30 / allN, pct60 = within60 / allN;
+    var s30 = bk('small', 'd30'), s60 = bk('small', 'd60'), s61 = bk('small', 'd61');
+    var smallN = s30.n + s60.n + s61.n;
+    var smallPct30 = smallN > 0 ? (s30.n / smallN) : null;
+    var gold = pct30 >= 0.95;
+    var bronze = pct60 >= 0.95;
+    var silver = bronze && smallPct30 != null && smallPct30 >= 0.95;
+    var tier = gold ? 'Gold' : (silver ? 'Silver' : (bronze ? 'Bronze' : null));
+    var tierColor = gold ? '#FBBF24' : (silver ? '#CBD5E1' : '#D97706');
+    var windowDays = fp.windowDays || 183;
+    var rateEl = document.getElementById('apf-rate-' + ccy);
+    var rate = rateEl ? (parseFloat(rateEl.value) || 0) : 8;
+    function reachCost(threshold, withinCount, overBuckets) {
+        var need = Math.ceil(0.95 * allN) - withinCount;
+        if (need <= 0) return null;
+        var overN = 0, overRdays = 0;
+        overBuckets.forEach(function(b) { overN += b.n; overRdays += (b.amtDays - threshold * b.amt); });
+        if (overN <= 0) return null;
+        var k = Math.min(need, overN);
+        var Rdays = k * (overRdays / overN);
+        return { need: k, X: (windowDays > 0 ? Rdays / windowDays : 0) };
+    }
+    var chaseName = null, chaseCost = null;
+    if (!bronze) { chaseName = 'Bronze (95% of invoices within 60 days)'; chaseCost = reachCost(60, within60, [a61]); }
+    else if (!gold) { chaseName = 'Gold (95% of invoices within 30 days)'; chaseCost = reachCost(30, within30, [a60, a61]); }
+    function trow(label, val, met) {
+        return '<tr><td>' + label + '</td>' +
+            '<td class="text-right" style="font-family:var(--mono);">' + pct(val) + '</td>' +
+            '<td class="text-right">' + (met ? '<span style="color:var(--success);">&#10003;</span>' : '<span style="color:var(--muted);">&mdash;</span>') + '</td></tr>';
+    }
+    var rows = trow('Invoices paid within 30 days', pct30, gold) +
+               trow('Invoices paid within 60 days', pct60, bronze) +
+               (smallPct30 != null ? trow('Small-supplier invoices within 30 days', smallPct30, smallPct30 >= 0.95) : '');
+    var badge = tier
+        ? '<span style="display:inline-block; padding:2px 10px; border-radius:99px; background:' + tierColor + '22; color:' + tierColor + '; border:1px solid ' + tierColor + '; font-weight:700; font-size:11px; vertical-align:middle;">' + tier + '</span>'
+        : '<span style="display:inline-block; padding:2px 10px; border-radius:99px; background:var(--card-hover); color:var(--muted); font-size:11px; vertical-align:middle;">Not yet at Bronze</span>';
+    var chaseHtml = '';
+    if (chaseName && chaseCost) {
+        var Y = chaseCost.X * rate / 100;
+        chaseHtml = '<div class="terms-panel-summary" style="margin-top:12px;">To reach <strong>' + chaseName + '</strong>: pay about ' + chaseCost.need.toLocaleString() + ' more invoices on time &mdash; roughly <strong>' + moneyShort(chaseCost.X, ccy) + '</strong> of working capital and <strong class="apf-annual" data-cash="' + chaseCost.X + '">' + moneyShort(Y, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.</div>';
+    } else if (gold) {
+        chaseHtml = '<div class="terms-panel-summary" style="margin-top:12px; color:var(--success);">You already meet the Gold standard.</div>';
+    }
+    return '<div class="apf-sme" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">' +
+            '<div class="terms-panel-title">Fair Payment Code scorecard &nbsp;&nbsp;' + badge + '</div>' +
+            '<div class="terms-panel-summary" style="margin-bottom:12px;">Where you stand against the Small Business Commissioner Fair Payment Code, measured over invoices paid in the last 6 months.</div>' +
+            '<div class="table-wrap" style="max-width:560px;">' +
+                '<table class="report-table">' +
+                    '<thead><tr><th>Measure</th><th class="text-right">Result</th><th class="text-right">95%?</th></tr></thead>' +
+                    '<tbody>' + rows + '</tbody>' +
+                '</table>' +
+            '</div>' +
+            chaseHtml +
+            '<div class="terms-foot">Gold = 95% of all invoices paid within 30 days; Bronze = within 60 days; Silver = Bronze plus 95% of small-supplier invoices within 30 days. Small supplier = bottom 50% of active suppliers by 6-month spend (proxy for headcount). Measured invoice date to paid date.</div>' +
         '</div>';
 }
 function renderSupplierOsBuckets(c, ccy) {
