@@ -11547,10 +11547,12 @@ window.addEventListener('beforeprint', function() {
         // both views are active (operator who's currently looking at Trends
         // and hits Ctrl+P expects Trends output).
         var hasUpload = !!(window.__upload && window.__upload.uploadId);
+        var trendsTabActive = !document.getElementById('tab-trends').classList.contains('hidden');
+        var reportTabActive = !document.getElementById('tab-reports').classList.contains('hidden');
         var trendsOpen = hasUpload && window.__trends && window.__trends.activeCcy
-            && !document.getElementById('trendsView').classList.contains('hidden');
+            && trendsTabActive && !document.getElementById('trendsView').classList.contains('hidden');
         var reportOpen = hasUpload && window.__report && window.__report.activeCcy
-            && !document.getElementById('reportView').classList.contains('hidden');
+            && reportTabActive && !document.getElementById('reportView').classList.contains('hidden');
 
         if (trendsOpen) {
             buildTrendsPrintTree();
@@ -12250,10 +12252,11 @@ function renderPrintSectionWhatThisMeans(c, ccy, meta) {
 
 function renderReportPrintCharts() {
     _printChartInstances = [];
-    var stats = window.__upload.filteredStats || window.__upload.stats;
-    stats.overall.currencies.forEach(function(ccy) {
+    var stats = getCurrentStats();   // same source as buildReportPrintTree
+    var ccys = (stats.__source === 'snapshot') ? Object.keys(stats.perCurrency) : stats.overall.currencies;
+    ccys.forEach(function(ccy) {
         var c = stats.perCurrency[ccy];
-        drawPrintConcentration(ccy, c);
+        if (c) drawPrintConcentration(ccy, c);
     });
 }
 
@@ -12467,8 +12470,8 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
 
 function renderTrendsPrintCharts() {
     _printChartInstances = [];
-    var stats = window.__trends._stats;
-    var ccys = stats.overall.currencies;
+    var stats = getCurrentStats();   // was window.__trends._stats, which can be null -> blank charts
+    var ccys = (stats.__source === 'snapshot') ? Object.keys(stats.perCurrency) : stats.overall.currencies;
 
     // Pre-size every print canvas before Chart.js touches them. Without this,
     // Chart.js can measure the parent at the moment of construction and find
