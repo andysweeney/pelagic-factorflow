@@ -8021,23 +8021,46 @@ function renderApFloatPanel(c, ccy) {
         '</div>';
 }
 function renderSmeAccelSection(c, ccy) {
-    var t = c.totals;
-    var sups = (c.suppliers || [])
-        .filter(function(s) { return (s.totalSpend || 0) > 0; })
-        .map(function(s) { return { spend: s.totalSpend, term: (s.avgStatedTermDays != null ? s.avgStatedTermDays : null) }; })
-        .sort(function(a, b) { return a.spend - b.spend; });
+    var meta = (window.__upload && window.__upload.meta) || {};
+    var horizonStr = meta.date_range_max || null;
+    var hY, hM;
+    if (horizonStr) { var hp = horizonStr.split('-'); hY = parseInt(hp[0], 10); hM = parseInt(hp[1], 10) - 1; }
+    else {
+        var maxYm = '';
+        (c.suppliers || []).forEach(function(s) { var mz = s.monthlyInvoiceAmount || {}; Object.keys(mz).forEach(function(k) { if (k > maxYm) maxYm = k; }); });
+        if (!maxYm) return '';
+        var mp = maxYm.split('-'); hY = parseInt(mp[0], 10); hM = parseInt(mp[1], 10) - 1;
+    }
+    var target = {}, yy = hY, mo = hM;
+    for (var i = 0; i < 6; i++) {
+        target[yy + '-' + (mo + 1 < 10 ? '0' + (mo + 1) : '' + (mo + 1))] = true;
+        mo--; if (mo < 0) { mo = 11; yy--; }
+    }
+    var horizon = horizonStr ? new Date(horizonStr + 'T00:00:00') : new Date(hY, hM + 1, 0);
+    var earliest = new Date(hY, hM - 5, 1);
+    var windowDays = Math.round((horizon - earliest) / 86400000) + 1;
+    if (windowDays < 1) windowDays = 1;
+    var span = (c.totals && c.totals.apSpanDays) || windowDays;
+    if (windowDays > span) windowDays = span;
+    var sups = [], totalRecent = 0;
+    (c.suppliers || []).forEach(function(s) {
+        var ma = s.monthlyInvoiceAmount || {}, recent = 0;
+        Object.keys(ma).forEach(function(k) { if (target[k]) recent += (ma[k] || 0); });
+        if (recent > 0) { sups.push({ spend: recent, term: (s.avgStatedTermDays != null ? s.avgStatedTermDays : null) }); totalRecent += recent; }
+    });
     if (!sups.length) return '';
+    sups.sort(function(a, b) { return a.spend - b.spend; });
     if (!window.__smeData) window.__smeData = {};
-    window.__smeData[ccy] = { suppliers: sups, spanDays: (t.apSpanDays || 365), totalSpend: (t.totalSpend || 0) };
+    window.__smeData[ccy] = { suppliers: sups, windowDays: windowDays, totalSpend: totalRecent };
     return '<div class="apf-sme" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">' +
             '<div class="terms-panel-title">Cost of paying your long tail faster</div>' +
-            '<div class="terms-panel-summary" style="margin-bottom:12px;">An easy CSR win: your smallest suppliers are a large share of your supplier count but a tiny share of spend, so paying them quickly costs comparatively little. Pick a slice of the tail to see what accelerating their payment would cost.</div>' +
+            '<div class="terms-panel-summary" style="margin-bottom:12px;">An easy CSR win: your smallest active suppliers are a large share of your supplier count but a tiny share of spend, so paying them quickly costs comparatively little. Figures use the last 6 months of activity. Pick a slice of the tail to see what accelerating their payment would cost.</div>' +
             '<div class="gran-toggle" id="sme-toggle-' + ccy + '" style="margin-bottom:14px;">' +
                 '<button data-sme-pct="10" data-sme-ccy="' + ccy + '" class="active">Smallest 10%</button>' +
                 '<button data-sme-pct="25" data-sme-ccy="' + ccy + '">Smallest 25%</button>' +
             '</div>' +
             '<div id="sme-body-' + ccy + '">' + smeAccelInnerHTML(ccy, 10) + '</div>' +
-            '<div class="terms-foot">Smallest suppliers by spend, by count. Cash outlay = their average daily spend &times; days accelerated from their weighted-average stated terms. Interest/year applies the cost of capital set above. A treasury what-if; assumes no price concession for faster payment.</div>' +
+            '<div class="terms-foot">Suppliers active in the last 6 months, ranked by their spend over that window, by count. Cash outlay = their average daily spend over the window &times; days accelerated from their weighted-average stated terms. Interest/year applies the cost of capital set above. A treasury what-if; assumes no price concession for faster payment.</div>' +
         '</div>';
 }
 function smeAccelCompute(ccy, pctv) {
@@ -8049,7 +8072,7 @@ function smeAccelCompute(ccy, pctv) {
     subset.forEach(function(s) { spend += s.spend; if (s.term != null) { wNum += s.term * s.spend; wDen += s.spend; } });
     return {
         n: n, total: total, spend: spend,
-        daily: (d.spanDays > 0 ? spend / d.spanDays : 0),
+        daily: (d.windowDays > 0 ? spend / d.windowDays : 0),
         weightedTerm: (wDen > 0 ? wNum / wDen : null),
         spendShare: (d.totalSpend > 0 ? spend / d.totalSpend : 0)
     };
@@ -8059,11 +8082,11 @@ function smeAccelInnerHTML(ccy, pctv) {
     var rateEl = document.getElementById('apf-rate-' + ccy);
     var rate = rateEl ? (parseFloat(rateEl.value) || 0) : 8;
     if (r.weightedTerm == null) {
-        return '<div class="terms-panel-summary">The smallest ' + pctv + '% of suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ') have no stated payment terms on record, so the acceleration cost cannot be estimated.</div>';
+        return '<div class="terms-panel-summary">The smallest ' + pctv + '% of active suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ') have no stated payment terms on record, so the acceleration cost cannot be estimated.</div>';
     }
     var accel14 = Math.max(0, r.weightedTerm - 14);
     var x14 = r.daily * accel14, y14 = x14 * rate / 100;
-    var sentence = 'If you paid the smallest ' + pctv + '% of your suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ' &mdash; ' + pct(r.spendShare) + ' of spend) in 14 days instead of Net ' + Math.round(r.weightedTerm) + ' days, it would tie up <strong>' + moneyShort(x14, ccy) + '</strong> in working capital and cost <strong>' + moneyShort(y14, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.';
+    var sentence = 'If you paid the smallest ' + pctv + '% of your suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ' active &mdash; ' + pct(r.spendShare) + ' of recent spend) in 14 days instead of Net ' + Math.round(r.weightedTerm) + ' days, it would tie up <strong>' + moneyShort(x14, ccy) + '</strong> in working capital and cost <strong>' + moneyShort(y14, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.';
     var rows = [7, 14, 30].map(function(td) {
         var accel = Math.max(0, r.weightedTerm - td);
         var x = r.daily * accel;
