@@ -8017,6 +8017,69 @@ function renderApFloatPanel(c, ccy) {
                 '</div>' +
                 (bucketHtml ? '<div class="apf-col">' + bucketHtml + '</div>' : '') +
             '</div>' +
+            renderSmeAccelSection(c, ccy) +
+        '</div>';
+}
+function renderSmeAccelSection(c, ccy) {
+    var t = c.totals;
+    var sups = (c.suppliers || [])
+        .filter(function(s) { return (s.totalSpend || 0) > 0; })
+        .map(function(s) { return { spend: s.totalSpend, term: (s.avgStatedTermDays != null ? s.avgStatedTermDays : null) }; })
+        .sort(function(a, b) { return a.spend - b.spend; });
+    if (!sups.length) return '';
+    if (!window.__smeData) window.__smeData = {};
+    window.__smeData[ccy] = { suppliers: sups, spanDays: (t.apSpanDays || 365), totalSpend: (t.totalSpend || 0) };
+    return '<div class="apf-sme" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">' +
+            '<div class="terms-panel-title">Cost of paying your long tail faster</div>' +
+            '<div class="terms-panel-summary" style="margin-bottom:12px;">An easy CSR win: your smallest suppliers are a large share of your supplier count but a tiny share of spend, so paying them quickly costs comparatively little. Pick a slice of the tail to see what accelerating their payment would cost.</div>' +
+            '<div class="gran-toggle" id="sme-toggle-' + ccy + '" style="margin-bottom:14px;">' +
+                '<button data-sme-pct="10" data-sme-ccy="' + ccy + '" class="active">Smallest 10%</button>' +
+                '<button data-sme-pct="25" data-sme-ccy="' + ccy + '">Smallest 25%</button>' +
+            '</div>' +
+            '<div id="sme-body-' + ccy + '">' + smeAccelInnerHTML(ccy, 10) + '</div>' +
+            '<div class="terms-foot">Smallest suppliers by spend, by count. Cash outlay = their average daily spend &times; days accelerated from their weighted-average stated terms. Interest/year applies the cost of capital set above. A treasury what-if; assumes no price concession for faster payment.</div>' +
+        '</div>';
+}
+function smeAccelCompute(ccy, pctv) {
+    var d = (window.__smeData && window.__smeData[ccy]); if (!d) return null;
+    var sups = d.suppliers, total = sups.length;
+    var n = Math.max(1, Math.round(total * pctv / 100));
+    var subset = sups.slice(0, n);
+    var spend = 0, wNum = 0, wDen = 0;
+    subset.forEach(function(s) { spend += s.spend; if (s.term != null) { wNum += s.term * s.spend; wDen += s.spend; } });
+    return {
+        n: n, total: total, spend: spend,
+        daily: (d.spanDays > 0 ? spend / d.spanDays : 0),
+        weightedTerm: (wDen > 0 ? wNum / wDen : null),
+        spendShare: (d.totalSpend > 0 ? spend / d.totalSpend : 0)
+    };
+}
+function smeAccelInnerHTML(ccy, pctv) {
+    var r = smeAccelCompute(ccy, pctv); if (!r) return '';
+    var rateEl = document.getElementById('apf-rate-' + ccy);
+    var rate = rateEl ? (parseFloat(rateEl.value) || 0) : 8;
+    if (r.weightedTerm == null) {
+        return '<div class="terms-panel-summary">The smallest ' + pctv + '% of suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ') have no stated payment terms on record, so the acceleration cost cannot be estimated.</div>';
+    }
+    var accel14 = Math.max(0, r.weightedTerm - 14);
+    var x14 = r.daily * accel14, y14 = x14 * rate / 100;
+    var sentence = 'If you paid the smallest ' + pctv + '% of your suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ' &mdash; ' + pct(r.spendShare) + ' of spend) in 14 days instead of Net ' + Math.round(r.weightedTerm) + ' days, it would tie up <strong>' + moneyShort(x14, ccy) + '</strong> in working capital and cost <strong>' + moneyShort(y14, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.';
+    var rows = [7, 14, 30].map(function(td) {
+        var accel = Math.max(0, r.weightedTerm - td);
+        var x = r.daily * accel;
+        return '<tr>' +
+            '<td>Pay within ' + td + ' days</td>' +
+            '<td class="text-right">' + (accel > 0 ? '&minus;' + Math.round(accel) + ' days' : 'already within') + '</td>' +
+            '<td class="text-right">' + moneyShort(x, ccy) + '</td>' +
+            '<td class="text-right apf-annual" data-cash="' + x + '">' + moneyShort(x * rate / 100, ccy) + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="terms-panel-summary" style="margin-bottom:10px;">' + sentence + '</div>' +
+        '<div class="table-wrap" style="max-width:560px;">' +
+            '<table class="report-table">' +
+                '<thead><tr><th>Target</th><th class="text-right">Acceleration</th><th class="text-right">Cash outlay (one-off)</th><th class="text-right">Interest / year</th></tr></thead>' +
+                '<tbody>' + rows + '</tbody>' +
+            '</table>' +
         '</div>';
 }
 function renderSupplierOsBuckets(c, ccy) {
@@ -9093,6 +9156,17 @@ document.addEventListener('click', function(e) {
         if (el.getAttribute && el.getAttribute('data-flagged-expand')) {
             e.preventDefault();
             openFlaggedView(el.getAttribute('data-flagged-expand'));
+            return;
+        }
+        // SME acceleration subset toggle (AP float)
+        if (el.getAttribute && el.getAttribute('data-sme-pct')) {
+            e.preventDefault();
+            var smePct = parseInt(el.getAttribute('data-sme-pct'), 10);
+            var smeCcy = el.getAttribute('data-sme-ccy');
+            var smeBody = document.getElementById('sme-body-' + smeCcy);
+            if (smeBody) smeBody.innerHTML = smeAccelInnerHTML(smeCcy, smePct);
+            var tg = document.getElementById('sme-toggle-' + smeCcy);
+            if (tg) tg.querySelectorAll('button').forEach(function(b) { b.classList.toggle('active', b === el); });
             return;
         }
         // "View all in All Suppliers" jump links from Report sections
