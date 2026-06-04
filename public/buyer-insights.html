@@ -8085,9 +8085,7 @@ function smeAccelInnerHTML(ccy, pctv) {
     if (r.weightedTerm == null) {
         return '<div class="terms-panel-summary">The smallest ' + pctv + '% of active suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ') have no stated payment terms on record, so the acceleration cost cannot be estimated.</div>';
     }
-    var accel14 = Math.max(0, r.weightedTerm - 14);
-    var x14 = r.daily * accel14, y14 = x14 * rate / 100;
-    var sentence = 'If you paid the smallest ' + pctv + '% of your suppliers (' + r.n.toLocaleString() + ' of ' + r.total.toLocaleString() + ' active &mdash; ' + pct(r.spendShare) + ' of recent spend) in 14 days instead of Net ' + Math.round(r.weightedTerm) + ' days, it would tie up <strong>' + moneyShort(x14, ccy) + '</strong> in working capital and cost <strong>' + moneyShort(y14, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.';
+    var sentence = 'If you paid the ' + pctv + '% of your suppliers who represented the smallest part of your spend over the last six months (some ' + r.n.toLocaleString() + ' of them), it would cost a comparatively small amount in terms of working capital but potentially be a large CSR win.';
     var rows = [7, 14, 30].map(function(td) {
         var accel = Math.max(0, r.weightedTerm - td);
         var x = r.daily * accel;
@@ -8154,7 +8152,7 @@ function renderFairPaymentPanel(ccy) {
     var chaseHtml = '';
     if (chaseName && chaseCost) {
         var Y = chaseCost.X * rate / 100;
-        chaseHtml = '<div class="terms-panel-summary" style="margin-top:12px;">To reach <strong>' + chaseName + '</strong>: pay about ' + chaseCost.need.toLocaleString() + ' more invoices on time &mdash; roughly <strong>' + moneyShort(chaseCost.X, ccy) + '</strong> of working capital and <strong class="apf-annual" data-cash="' + chaseCost.X + '">' + moneyShort(Y, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.</div>';
+        chaseHtml = '<div class="terms-panel-summary" style="margin-top:12px;">To reach <strong>' + chaseName + '</strong>: would require roughly <strong>' + moneyShort(chaseCost.X, ccy) + '</strong> of working capital and <strong class="apf-annual" data-cash="' + chaseCost.X + '">' + moneyShort(Y, ccy) + '</strong> a year in interest at ' + rate + '% cost of capital.</div>';
     } else if (gold) {
         chaseHtml = '<div class="terms-panel-summary" style="margin-top:12px; color:var(--success);">You already meet the Gold standard.</div>';
     }
@@ -8662,6 +8660,7 @@ function drawTrendsConcentration(labels, ts) {
     });
     datasets.push({
         label: 'Other suppliers',
+        hidden: true,
         data: ts.concentration.series.map(function(s) { return s.otherPct; }),
         backgroundColor: otherColor + '60',
         borderColor: otherColor,
@@ -8671,6 +8670,19 @@ function drawTrendsConcentration(labels, ts) {
         pointRadius: 0
     });
 
+    // Default view hides "Other", so scale the axis to the top-supplier stack
+    // (with headroom) instead of a fixed 0-100%. Re-enabling "Other" pushes the
+    // stack to 100%, and Chart.js expands the axis to suit since it uses the
+    // larger of the data max and the suggested max.
+    var topMax = 0;
+    ts.concentration.series.forEach(function(s) {
+        var sum = 0;
+        ts.concentration.topNames.forEach(function(name) { sum += (s.shares[name] || 0); });
+        if (sum > topMax) topMax = sum;
+    });
+    var sMax = Math.min(1, Math.ceil((topMax * 1.15) / 0.05) * 0.05);
+    if (sMax <= 0) sMax = 0.05;
+
     _chartInstances['trends-conc'] = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: { labels: labels, datasets: datasets },
@@ -8678,7 +8690,7 @@ function drawTrendsConcentration(labels, ts) {
             stacked: true,
             yLeftLabel: 'Share',
             yLeftFormat: function(v) { return (v * 100).toFixed(0) + '%'; },
-            suggestedMaxLeft: 1
+            suggestedMaxLeft: sMax
         })
     });
 }
@@ -11800,6 +11812,8 @@ function renderPrintSectionAtAGlance(c, ccy) {
             '<div class="print-stat-grid">' + qual + '</div>' +
             renderPrintTermsTable(t.paymentTerms, ccy) +
             renderPrintApFloat(c, ccy) +
+            renderPrintSmeAccel(c, ccy) +
+            renderPrintFairPayment(c, ccy) +
             '<div class="print-callout">' +
                 '<div class="print-callout-eyebrow">Worth noting</div>' +
                 '<div class="print-callout-text">' + fact + '</div>' +
@@ -11861,6 +11875,93 @@ function renderPrintApFloat(c, ccy) {
             '<tbody>' + rows + '</tbody>' +
         '</table>' +
         '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">Cash freed = average daily spend &times; days extended. Value/year applies an 8% cost of capital. A treasury what-if, not free money.</div>' +
+    '</div>';
+}
+
+function renderPrintSmeAccel(c, ccy) {
+    if (!c.totals || c.totals.apOutstandingAvg == null) return '';
+    renderSmeAccelSection(c, ccy);
+    var r = smeAccelCompute(ccy, 25);
+    if (!r || r.weightedTerm == null) return '';
+    var defRate = 8;
+    var rows = [7, 14, 30].map(function(td) {
+        var accel = Math.max(0, r.weightedTerm - td);
+        var x = r.daily * accel;
+        return '<tr>' +
+            '<td>Pay within ' + td + ' days</td>' +
+            '<td class="text-right mono">' + (accel > 0 ? '&minus;' + Math.round(accel) + ' days' : 'already within') + '</td>' +
+            '<td class="text-right mono">' + moneyShort(x, ccy) + '</td>' +
+            '<td class="text-right mono">' + moneyShort(x * defRate / 100, ccy) + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="print-chart-box">' +
+        '<div class="print-chart-box-title">Cost of paying your long tail faster</div>' +
+        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">If you paid the 25% of your suppliers who represented the smallest part of your spend over the last six months (some ' + r.n.toLocaleString() + ' of them), it would cost a comparatively small amount in working capital but potentially be a large CSR win.</div>' +
+        '<table class="print-table">' +
+            '<thead><tr><th>Target</th><th class="text-right">Acceleration</th><th class="text-right">Cash outlay (one-off)</th><th class="text-right">Interest / yr @ ' + defRate + '%</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">Smallest 25% of suppliers active in the last 6 months, by count. Cash outlay = average daily spend over the window &times; days accelerated from weighted-average stated terms.</div>' +
+    '</div>';
+}
+
+function renderPrintFairPayment(c, ccy) {
+    if (!c.totals || c.totals.apOutstandingAvg == null) return '';
+    var stats = (window.__upload && window.__upload.snapshot && window.__upload.snapshot.stats) || null;
+    var fp = (stats && stats.fairPayment && stats.fairPayment[ccy]) || null;
+    if (!fp || !fp.all) return '';
+    function bk(scope, k) { var sc = fp[scope] || {}; return sc[k] || { n: 0, amt: 0, amtDays: 0 }; }
+    var a30 = bk('all', 'd30'), a60 = bk('all', 'd60'), a61 = bk('all', 'd61');
+    var allN = a30.n + a60.n + a61.n;
+    if (allN === 0) return '';
+    var within30 = a30.n, within60 = a30.n + a60.n;
+    var pct30 = within30 / allN, pct60 = within60 / allN;
+    var s30 = bk('small', 'd30'), s60 = bk('small', 'd60'), s61 = bk('small', 'd61');
+    var smallN = s30.n + s60.n + s61.n;
+    var smallPct30 = smallN > 0 ? (s30.n / smallN) : null;
+    var gold = pct30 >= 0.95;
+    var bronze = pct60 >= 0.95;
+    var silver = bronze && smallPct30 != null && smallPct30 >= 0.95;
+    var tier = gold ? 'Gold' : (silver ? 'Silver' : (bronze ? 'Bronze' : 'Not yet at Bronze'));
+    var windowDays = fp.windowDays || 183;
+    var defRate = 8;
+    function reachCost(threshold, withinCount, overBuckets) {
+        var need = Math.ceil(0.95 * allN) - withinCount;
+        if (need <= 0) return null;
+        var overN = 0, overRdays = 0;
+        overBuckets.forEach(function(b) { overN += b.n; overRdays += (b.amtDays - threshold * b.amt); });
+        if (overN <= 0) return null;
+        var k = Math.min(need, overN);
+        var Rdays = k * (overRdays / overN);
+        return { need: k, X: (windowDays > 0 ? Rdays / windowDays : 0) };
+    }
+    var chaseName = null, chaseCost = null;
+    if (!bronze) { chaseName = 'Bronze (95% of invoices within 60 days)'; chaseCost = reachCost(60, within60, [a61]); }
+    else if (!gold) { chaseName = 'Gold (95% of invoices within 30 days)'; chaseCost = reachCost(30, within30, [a60, a61]); }
+    function prow(label, val, met) {
+        return '<tr><td>' + label + '</td>' +
+            '<td class="text-right mono">' + pct(val) + '</td>' +
+            '<td class="text-right">' + (met ? '&#10003;' : '&mdash;') + '</td></tr>';
+    }
+    var rows = prow('Invoices paid within 30 days', pct30, gold) +
+               prow('Invoices paid within 60 days', pct60, bronze) +
+               (smallPct30 != null ? prow('Small-supplier invoices within 30 days', smallPct30, smallPct30 >= 0.95) : '');
+    var chaseTxt = '';
+    if (chaseName && chaseCost) {
+        var Y = chaseCost.X * defRate / 100;
+        chaseTxt = '<div style="font-size:8pt; color:#475569; margin-top:2mm;">To reach ' + chaseName + ': would require roughly ' + moneyShort(chaseCost.X, ccy) + ' of working capital and ' + moneyShort(Y, ccy) + ' a year in interest at ' + defRate + '% cost of capital.</div>';
+    } else if (gold) {
+        chaseTxt = '<div style="font-size:8pt; color:#475569; margin-top:2mm;">You already meet the Gold standard.</div>';
+    }
+    return '<div class="print-chart-box">' +
+        '<div class="print-chart-box-title">Fair Payment Code scorecard &mdash; ' + tier + '</div>' +
+        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">Where you stand against the Small Business Commissioner Fair Payment Code, over invoices paid in the last 6 months.</div>' +
+        '<table class="print-table">' +
+            '<thead><tr><th>Measure</th><th class="text-right">Result</th><th class="text-right">95%?</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        chaseTxt +
+        '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">Gold = 95% of all invoices within 30 days; Bronze = within 60 days; Silver = Bronze plus 95% of small-supplier invoices within 30 days. Small supplier = bottom 50% of active suppliers by 6-month spend. Measured invoice date to paid date.</div>' +
     '</div>';
 }
 
@@ -12514,11 +12615,19 @@ function drawTrendsPrintConcentration(ccy, ts) {
     var datasets = ts.concentration.topNames.map(function(name, i) {
         return { label: name, data: ts.concentration.series.map(function(s) { return s.shares[name] || 0; }), backgroundColor: palette[i % palette.length] + '80', borderColor: palette[i % palette.length], borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 };
     });
-    datasets.push({ label: 'Other', data: ts.concentration.series.map(function(s) { return s.otherPct; }), backgroundColor: otherColor + '60', borderColor: otherColor, borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 });
+    datasets.push({ label: 'Other', hidden: true, data: ts.concentration.series.map(function(s) { return s.otherPct; }), backgroundColor: otherColor + '60', borderColor: otherColor, borderWidth: 1, fill: true, tension: 0.2, pointRadius: 0 });
+    var topMax = 0;
+    ts.concentration.series.forEach(function(s) {
+        var sum = 0;
+        ts.concentration.topNames.forEach(function(name) { sum += (s.shares[name] || 0); });
+        if (sum > topMax) topMax = sum;
+    });
+    var sMax = Math.min(1, Math.ceil((topMax * 1.15) / 0.05) * 0.05);
+    if (sMax <= 0) sMax = 0.05;
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'line',
         data: { labels: ts.buckets, datasets: datasets },
-        options: trendsPrintChartOptions({ legend: true, stacked: true, yLeftFormat: function(v) { return (v * 100).toFixed(0) + '%'; }, suggestedMaxLeft: 1 })
+        options: trendsPrintChartOptions({ legend: true, stacked: true, yLeftFormat: function(v) { return (v * 100).toFixed(0) + '%'; }, suggestedMaxLeft: sMax })
     });
     _printChartInstances.push(inst);
 }
