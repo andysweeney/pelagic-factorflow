@@ -1247,13 +1247,6 @@
 .pdk .mono{font-family:'PlexMono',monospace;}
 .pdk .page{position:relative;width:297mm;height:210mm;background:var(--white);overflow:hidden;page-break-after:always;padding:13mm 16mm 12mm;}
 .pdk .page:last-child{page-break-after:auto;}
-/* screen reflow: deck pages as responsive cards (not fixed A4 sheets) */
-.pdk-screen .page{width:auto;max-width:1080px;height:auto;min-height:0;overflow:visible;page-break-after:auto;padding:30px 34px;margin:0 auto 26px;border:1px solid var(--hair);border-radius:14px;box-shadow:0 1px 3px rgba(8,42,58,.07);}
-.pdk-screen .foot{display:none;}
-.pdk-screen .page svg{max-width:100%;}
-.pdk-screen-ctrl{max-width:1080px;margin:0 auto 18px;font-size:13px;color:#4A5A62;font-family:'IBM Plex Sans','Segoe UI',sans-serif;}
-.pdk-screen-ctrl input{width:64px;padding:4px 6px;border:1px solid #E7EDEF;border-radius:6px;font-size:13px;margin:0 4px;}
-@media (max-width:760px){.pdk-screen .page [style*="grid-template-columns"]{grid-template-columns:1fr !important;}}
 .pdk .head{display:flex;align-items:center;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--hair);margin-bottom:20px;}
 .pdk .brand{display:flex;align-items:center;gap:9px;}
 .pdk .brand .nm{font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--ink);}
@@ -7222,8 +7215,14 @@ function renderReportBody(ccy) {
     }
     window.__report.activeCcy = ccy;
 
-    buildDeckScreenTree(ccy);
-    return;
+    var body = document.getElementById('reportBody');
+    body.innerHTML =
+        renderSectionAtAGlance(c, ccy) +
+        renderSectionConcentration(c, ccy) +
+        renderSectionDilution(c, ccy) +
+        renderSectionPaymentBehaviour(c, ccy) +
+        renderSectionStressSignals(c, ccy) +
+        renderSectionWhatThisMeans(c, ccy);
 
     // Charts are drawn *after* the DOM is in place — the canvas elements have to exist.
     drawConcentrationChart(ccy, c);
@@ -8055,7 +8054,7 @@ function renderApFloatPanel(c, ccy) {
             renderFairPaymentPanel(ccy) +
         '</div>';
 }
-function ensureSmeData(c, ccy) {
+function renderSmeAccelSection(c, ccy) {
     var meta = (window.__upload && window.__upload.meta) || {};
     var horizonStr = meta.date_range_max || null;
     var hY, hM;
@@ -8063,7 +8062,7 @@ function ensureSmeData(c, ccy) {
     else {
         var maxYm = '';
         (c.suppliers || []).forEach(function(s) { var mz = s.monthlyInvoiceAmount || {}; Object.keys(mz).forEach(function(k) { if (k > maxYm) maxYm = k; }); });
-        if (!maxYm) return false;
+        if (!maxYm) return '';
         var mp = maxYm.split('-'); hY = parseInt(mp[0], 10); hM = parseInt(mp[1], 10) - 1;
     }
     var target = {}, yy = hY, mo = hM;
@@ -8083,14 +8082,10 @@ function ensureSmeData(c, ccy) {
         Object.keys(ma).forEach(function(k) { if (target[k]) recent += (ma[k] || 0); });
         if (recent > 0) { sups.push({ spend: recent, term: (s.avgStatedTermDays != null ? s.avgStatedTermDays : null) }); totalRecent += recent; }
     });
-    if (!sups.length) return false;
+    if (!sups.length) return '';
     sups.sort(function(a, b) { return a.spend - b.spend; });
     if (!window.__smeData) window.__smeData = {};
     window.__smeData[ccy] = { suppliers: sups, windowDays: windowDays, totalSpend: totalRecent };
-    return true;
-}
-function renderSmeAccelSection(c, ccy) {
-    if (!ensureSmeData(c, ccy)) return '';
     return '<div class="apf-sme" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">' +
             '<div class="terms-panel-title">Cost of paying your long tail faster</div>' +
             '<div class="terms-panel-summary" style="margin-bottom:12px;">An easy CSR win: your smallest active suppliers are a large share of your supplier count but a tiny share of spend, so paying them quickly costs comparatively little. Figures use the last 6 months of activity. Pick a slice of the tail to see what accelerating their payment would cost.</div>' +
@@ -11911,7 +11906,7 @@ function deckConcentrationCurve(pts, nTotal, w, h) {
         var r = p[0], s = p[1];
         if (labelmap[r]) {
             svg.push('<circle cx="' + X(r).toFixed(1) + '" cy="' + Y(s).toFixed(1) + '" r="4" fill="var(--white)" stroke="var(--brand)" stroke-width="2.5"/>');
-            svg.push('<text x="' + X(r).toFixed(1) + '" y="' + (Y(s) - 10).toFixed(1) + '" text-anchor="middle" style="font-family:Plex;font-weight:600;font-size:10.5px;fill:var(--brand-d);">' + s + '%</text>');
+            svg.push('<text x="' + X(r).toFixed(1) + '" y="' + (Y(s) - 10).toFixed(1) + '" text-anchor="middle" style="font-family:Plex;font-weight:600;font-size:10.5px;fill:var(--brand-d);">' + s.toFixed(1) + '%</text>');
             svg.push('<text x="' + X(r).toFixed(1) + '" y="' + (h - 10) + '" text-anchor="middle" style="font-family:Plex;font-size:10px;fill:var(--muted);">' + labelmap[r] + '</text>');
         }
     });
@@ -12313,7 +12308,6 @@ function buildDeckPrintTree() {
     });
     var ccy = currencies[0];
     var c = stats.perCurrency[ccy] || {};
-    ensureSmeData(c, ccy);
     var wrap = document.createElement('div');
     wrap.className = 'pdk';
     wrap.appendChild(buildDeckCover(meta, stats, ccy));
@@ -12322,30 +12316,6 @@ function buildDeckPrintTree() {
         if (node) wrap.appendChild(node);
     });
     root.appendChild(wrap);
-}
-
-function buildDeckScreenTree(ccy) {
-    var u = window.__upload;
-    var stats = getCurrentStats();
-    var meta = u.meta;
-    var c = (stats.perCurrency && stats.perCurrency[ccy]) || {};
-    ensureSmeData(c, ccy);
-    var rate = deckCostOfCapital(ccy);
-    var body = document.getElementById('reportBody');
-    body.innerHTML = '';
-    var ctrl = document.createElement('div');
-    ctrl.className = 'pdk-screen-ctrl';
-    ctrl.innerHTML = 'Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + rate + '" min="0" max="100" step="0.5"> % per year';
-    body.appendChild(ctrl);
-    var wrap = document.createElement('div');
-    wrap.className = 'pdk pdk-screen';
-    [buildDeckExecSummary, buildDeckOverview, buildDeckWorkingCapital, buildDeckDependencies, buildDeckQuality, buildDeckPerception, buildDeckStress, buildDeckCreditConcentration].forEach(function (fn) {
-        var node = fn(c, ccy, meta);
-        if (node) wrap.appendChild(node);
-    });
-    body.appendChild(wrap);
-    var input = document.getElementById('apf-rate-' + ccy);
-    if (input) input.addEventListener('change', function () { buildDeckScreenTree(ccy); });
 }
 
 
@@ -13049,7 +13019,7 @@ function drawPrintConcentration(ccy, c) {
 //   Page C — Supplier table (top 30 with sparklines)
 // Granularity honours the on-screen toggle selection.
 
-function buildTrendsPrintTree() {
+function buildTrendsPrintTree_legacy() {
     var t = window.__trends;
     var u = window.__upload;
     var meta = u.meta;
@@ -13218,7 +13188,7 @@ function buildTrendsSupplierPage(ccy, c, ts, granularity) {
 
 // ── Trends chart renderers for print ──────────────────────────
 
-function renderTrendsPrintCharts() {
+function renderTrendsPrintCharts_legacy() {
     _printChartInstances = [];
     var stats = getCurrentStats();   // was window.__trends._stats, which can be null -> blank charts
     var ccys = (stats.__source === 'snapshot') ? Object.keys(stats.perCurrency) : stats.overall.currencies;
@@ -13384,6 +13354,624 @@ function drawTrendsPrintConcentration(ccy, ts) {
     });
     _printChartInstances.push(inst);
 }
+
+
+// ====================== INJECTABLE BLOCK START ======================
+// Trends deck (new PDF design). Inline-SVG charts; no Chart.js canvases.
+// Engine (f1/deckLineChart/deckComboChart/deckStackedArea/deckSparkline)
+// is a faithful port of build_trends.py, verified byte-identical.
+
+function f1(x) {
+    var n = Number(x);
+    var neg = n < 0;
+    var a = Math.abs(n);
+    var scaled = a * 10;
+    var fl = Math.floor(scaled);
+    var diff = scaled - fl;
+    var r;
+    if (diff > 0.5) r = fl + 1;
+    else if (diff < 0.5) r = fl;
+    else r = (fl % 2 === 0) ? fl : fl + 1;
+    var val = r / 10;
+    if (neg && val !== 0) val = -val;
+    return val.toFixed(1);
+}
+
+function deckLineChart(series, ymin, ymax, yticks, opts) {
+    opts = opts || {};
+    var height = opts.height != null ? opts.height : 230;
+    var x_every = opts.x_every != null ? opts.x_every : 2;
+    var zero = (opts.zero != null) ? opts.zero : null;
+    var legend = (opts.legend != null) ? opts.legend : true;
+    var w = opts.w != null ? opts.w : 1000;
+    var MONTHS = opts.months;
+    var N = MONTHS.length;
+    var ml = 50, mr = 16, mt = (legend ? 34 : 16), mb = 24;
+    var pw = w - ml - mr, ph = height - mt - mb;
+    var X = function (i) { return ml + (i / (N - 1)) * pw; };
+    var Y = function (v) { return mt + (1 - (v - ymin) / (ymax - ymin)) * ph; };
+    var s = ['<svg viewBox="0 0 ' + w + ' ' + height + '" style="width:100%;height:' + height + 'px;display:block;">'];
+    yticks.forEach(function (t) {
+        var yy = Y(t[0]);
+        s.push('<line x1="' + ml + '" y1="' + f1(yy) + '" x2="' + (w - mr) + '" y2="' + f1(yy) + '" stroke="var(--hair)"/>');
+        s.push('<text x="' + (ml - 7) + '" y="' + f1(yy + 3) + '" text-anchor="end" style="font-family:Plex;font-size:9.5px;fill:var(--muted);">' + t[1] + '</text>');
+    });
+    if (zero != null) {
+        s.push('<line x1="' + ml + '" y1="' + f1(Y(zero)) + '" x2="' + (w - mr) + '" y2="' + f1(Y(zero)) + '" stroke="var(--faint)" stroke-width="1.3"/>');
+    }
+    for (var i = 0; i < N; i++) {
+        if (i % x_every === 0) {
+            s.push('<text x="' + f1(X(i)) + '" y="' + (height - 8) + '" text-anchor="middle" style="font-family:Plex;font-size:8.5px;fill:var(--muted);">' + MONTHS[i] + '</text>');
+        }
+    }
+    series.forEach(function (sr) {
+        var v = sr.values, col = sr.color;
+        var dash = sr.dashed ? ' stroke-dasharray="6 5"' : '';
+        var pts = v.map(function (val, i) { return f1(X(i)) + ',' + f1(Y(val)); }).join(' ');
+        if (sr.fill) {
+            var base = Y(zero != null ? zero : ymin);
+            s.push('<polygon points="' + f1(X(0)) + ',' + f1(base) + ' ' + pts + ' ' + f1(X(N - 1)) + ',' + f1(base) + '" fill="' + col + '" opacity="0.14"/>');
+        }
+        s.push('<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="2.3"' + dash + ' stroke-linejoin="round" stroke-linecap="round"/>');
+        if (sr.markers) {
+            v.forEach(function (val, i) {
+                s.push('<circle cx="' + f1(X(i)) + '" cy="' + f1(Y(val)) + '" r="2" fill="' + col + '"/>');
+            });
+        }
+    });
+    if (legend) {
+        var lx = ml;
+        series.forEach(function (sr) {
+            s.push('<rect x="' + lx + '" y="6" width="11" height="11" rx="2.5" fill="' + sr.color + '"/>');
+            s.push('<text x="' + (lx + 16) + '" y="15" style="font-family:Plex;font-size:10px;fill:var(--body);">' + sr.name + '</text>');
+            lx += 16 + 10 + sr.name.length * 6.1 + 18;
+        });
+    }
+    s.push('</svg>');
+    return s.join('');
+}
+
+function deckComboChart(counts, spend, opts) {
+    opts = opts || {};
+    var height = opts.height != null ? opts.height : 300;
+    var w = opts.w != null ? opts.w : 1000;
+    var MONTHS = opts.months;
+    var N = MONTHS.length;
+    var cmax = opts.cmax != null ? opts.cmax : 4000;
+    var smax = opts.smax != null ? opts.smax : 70;
+    var countTicks = opts.countTicks || [[0, '0'], [1000, '1k'], [2000, '2k'], [3000, '3k'], [4000, '4k']];
+    var spendTicks = opts.spendTicks || [[0, '\u00a30M'], [20, '\u00a320M'], [40, '\u00a340M'], [60, '\u00a360M']];
+    var ml = 50, mr = 52, mt = 34, mb = 24;
+    var pw = w - ml - mr, ph = height - mt - mb;
+    var band = pw / N;
+    var Xc = function (i) { return ml + band * (i + 0.5); };
+    var Yc = function (v) { return mt + (1 - v / cmax) * ph; };
+    var Ys = function (v) { return mt + (1 - v / smax) * ph; };
+    var s = ['<svg viewBox="0 0 ' + w + ' ' + height + '" style="width:100%;height:' + height + 'px;display:block;">'];
+    countTicks.forEach(function (t) {
+        var yy = Yc(t[0]);
+        s.push('<line x1="' + ml + '" y1="' + f1(yy) + '" x2="' + (w - mr) + '" y2="' + f1(yy) + '" stroke="var(--hair)"/>');
+        s.push('<text x="' + (ml - 7) + '" y="' + f1(yy + 3) + '" text-anchor="end" style="font-family:Plex;font-size:9.5px;fill:var(--muted);">' + t[1] + '</text>');
+    });
+    spendTicks.forEach(function (t) {
+        var yy = Ys(t[0]);
+        s.push('<text x="' + (w - mr + 7) + '" y="' + f1(yy + 3) + '" text-anchor="start" style="font-family:Plex;font-size:9.5px;fill:var(--brand-d);">' + t[1] + '</text>');
+    });
+    var bw = band * 0.58;
+    counts.forEach(function (c, i) {
+        var x = Xc(i) - bw / 2, y = Yc(c);
+        s.push('<rect x="' + f1(x) + '" y="' + f1(y) + '" width="' + f1(bw) + '" height="' + f1(ph + mt - y) + '" rx="1.5" fill="#BFE6F4"/>');
+    });
+    var pts = spend.map(function (v, i) { return f1(Xc(i)) + ',' + f1(Ys(v)); }).join(' ');
+    s.push('<polyline points="' + pts + '" fill="none" stroke="var(--navy)" stroke-width="2.4" stroke-linejoin="round"/>');
+    spend.forEach(function (v, i) {
+        s.push('<circle cx="' + f1(Xc(i)) + '" cy="' + f1(Ys(v)) + '" r="2.2" fill="var(--navy)"/>');
+    });
+    for (var i = 0; i < N; i++) {
+        if (i % 2 === 0) {
+            s.push('<text x="' + f1(Xc(i)) + '" y="' + (height - 8) + '" text-anchor="middle" style="font-family:Plex;font-size:8.5px;fill:var(--muted);">' + MONTHS[i] + '</text>');
+        }
+    }
+    s.push('<rect x="' + ml + '" y="6" width="11" height="11" rx="2.5" fill="#BFE6F4"/><text x="' + (ml + 16) + '" y="15" style="font-family:Plex;font-size:10px;fill:var(--body);">Invoice count (left)</text>');
+    var lx2 = ml + 150;
+    s.push('<rect x="' + lx2 + '" y="6" width="11" height="11" rx="2.5" fill="var(--navy)"/><text x="' + (lx2 + 16) + '" y="15" style="font-family:Plex;font-size:10px;fill:var(--body);">Total spend, ' + opts.ccy + ' (right)</text>');
+    s.push('</svg>');
+    return s.join('');
+}
+
+function deckStackedArea(series, opts) {
+    opts = opts || {};
+    var height = opts.height != null ? opts.height : 300;
+    var ymax = opts.ymax != null ? opts.ymax : 18;
+    var w = opts.w != null ? opts.w : 1000;
+    var ystep = opts.ystep != null ? opts.ystep : 3;
+    var MONTHS = opts.months;
+    var N = MONTHS.length;
+    var ml = 46, mr = 16, mt = 34, mb = 24;
+    var pw = w - ml - mr, ph = height - mt - mb;
+    var X = function (i) { return ml + (i / (N - 1)) * pw; };
+    var Y = function (v) { return mt + (1 - v / ymax) * ph; };
+    var s = ['<svg viewBox="0 0 ' + w + ' ' + height + '" style="width:100%;height:' + height + 'px;display:block;">'];
+    for (var tv = 0; tv <= ymax + 1e-9; tv += ystep) {
+        var yy = Y(tv);
+        var lbl = (Math.round(tv) === tv) ? tv : (+tv.toFixed(1));
+        s.push('<line x1="' + ml + '" y1="' + f1(yy) + '" x2="' + (w - mr) + '" y2="' + f1(yy) + '" stroke="var(--hair)"/>');
+        s.push('<text x="' + (ml - 7) + '" y="' + f1(yy + 3) + '" text-anchor="end" style="font-family:Plex;font-size:9.5px;fill:var(--muted);">' + lbl + '%</text>');
+    }
+    var lower = []; for (var i = 0; i < N; i++) lower.push(0.0);
+    series.forEach(function (sr) {
+        var upper = []; for (var j = 0; j < N; j++) upper.push(lower[j] + sr.values[j]);
+        var up = [];
+        for (var a = 0; a < N; a++) up.push(f1(X(a)) + ',' + f1(Y(upper[a])));
+        var lo = [];
+        for (var b = N - 1; b >= 0; b--) lo.push(f1(X(b)) + ',' + f1(Y(lower[b])));
+        s.push('<polygon points="' + up.join(' ') + ' ' + lo.join(' ') + '" fill="' + sr.color + '" opacity="0.9"/>');
+        lower = upper;
+    });
+    for (var k = 0; k < N; k++) {
+        if (k % 2 === 0) {
+            s.push('<text x="' + f1(X(k)) + '" y="' + (height - 8) + '" text-anchor="middle" style="font-family:Plex;font-size:8.5px;fill:var(--muted);">' + MONTHS[k] + '</text>');
+        }
+    }
+    var lx = ml;
+    series.forEach(function (sr) {
+        s.push('<rect x="' + lx + '" y="6" width="11" height="11" rx="2.5" fill="' + sr.color + '"/>');
+        s.push('<text x="' + (lx + 16) + '" y="15" style="font-family:Plex;font-size:10px;fill:var(--body);">' + sr.name + '</text>');
+        lx += 16 + 10 + sr.name.length * 6.1 + 16;
+    });
+    s.push('</svg>');
+    return s.join('');
+}
+
+function deckSparkline(vals, opts) {
+    opts = opts || {};
+    var color = opts.color || 'var(--brand)';
+    var w = opts.w != null ? opts.w : 66;
+    var h = opts.h != null ? opts.h : 18;
+    if (!vals || vals.length < 2) return '<svg width="' + w + '" height="' + h + '"></svg>';
+    var vmin = Math.min.apply(null, vals), vmax = Math.max.apply(null, vals);
+    var rng = (vmax - vmin) || 1;
+    var X = function (i) { return 1 + (i / (vals.length - 1)) * (w - 2); };
+    var Y = function (v) { return 2 + (1 - (v - vmin) / rng) * (h - 4); };
+    var pts = vals.map(function (v, i) { return f1(X(i)) + ',' + f1(Y(v)); }).join(' ');
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="vertical-align:middle;"><polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
+// ---- derivation helpers (per-upload axes & summary stats) ----
+function _tMedian(arr) {
+    var a = arr.filter(function (x) { return x != null && !isNaN(x); }).slice().sort(function (p, q) { return p - q; });
+    if (!a.length) return null;
+    var m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+function _tMean(arr) {
+    var a = arr.filter(function (x) { return x != null && !isNaN(x); });
+    if (!a.length) return null;
+    return a.reduce(function (s, x) { return s + x; }, 0) / a.length;
+}
+function _niceNum(x, round) {
+    if (!(x > 0)) return 1;
+    var exp = Math.floor(Math.log10(x));
+    var f = x / Math.pow(10, exp);
+    var nf;
+    if (round) { nf = f < 1.5 ? 1 : (f < 3 ? 2 : (f < 7 ? 5 : 10)); }
+    else { nf = f <= 1 ? 1 : (f <= 2 ? 2 : (f <= 5 ? 5 : 10)); }
+    return nf * Math.pow(10, exp);
+}
+function _niceAxis(min, max, ticks) {
+    ticks = ticks || 4;
+    if (min === max) { max = min + 1; }
+    var step = _niceNum((max - min) / Math.max(1, ticks), true);
+    var nmin = Math.floor(min / step) * step;
+    var nmax = Math.ceil(max / step) * step;
+    return { min: nmin, max: nmax, step: step };
+}
+function _axisTicks(ax, fmt) {
+    var out = [];
+    var steps = Math.round((ax.max - ax.min) / ax.step);
+    for (var i = 0; i <= steps; i++) {
+        var v = ax.min + i * ax.step;
+        // snap tiny float drift
+        if (Math.abs(v) < ax.step * 1e-6) v = 0;
+        out.push([v, fmt(v)]);
+    }
+    return out;
+}
+function _axisMoney(v, ccy) {
+    var sym = { GBP: '\u00a3', EUR: '\u20ac', USD: '$' }[ccy] || (ccy + ' ');
+    var a = Math.abs(v);
+    if (a >= 1e9) return sym + (+(v / 1e9).toFixed(1)) + 'B';
+    if (a >= 1e6) return sym + (+(v / 1e6).toFixed(1)) + 'M';
+    if (a >= 1e3) return sym + (+(v / 1e3).toFixed(1)) + 'k';
+    return sym + Math.round(v);
+}
+function _countLbl(tv) {
+    if (tv >= 1000) return (+(tv / 1000).toFixed((tv % 1000 === 0) ? 0 : 1)) + 'k';
+    return String(Math.round(tv));
+}
+function _signDays(v, approx) {
+    var r = Math.round(v);
+    var pre = approx ? '~' : '';
+    if (r > 0) return pre + '+' + r + 'd';
+    if (r < 0) return pre + '\u2212' + Math.abs(r) + 'd';
+    return pre + '0d';
+}
+
+// ---- Trends footer / page wrappers ----
+function deckFootTrends(meta, ccy, pageno, buckets) {
+    var range = (buckets && buckets.length) ? (buckets[0] + ' \u2192 ' + buckets[buckets.length - 1]) : '? \u2192 ?';
+    return '<div class="foot"><div><b>Pelagic Solutions Limited</b> \u00b7 andy@pelagicsolutions.co.uk</div><div>' +
+        escHTML(buyerHeading(meta)) + ' \u00b7 ' + escHTML(ccy) + ' \u00b7 monthly \u00b7 ' + escHTML(range) + ' \u00b7 ' + escHTML(pageno) + '</div></div>';
+}
+function deckPageTrends(inner, kick, pageno, meta, ccy, buckets) {
+    var sec = document.createElement('section');
+    sec.className = 'page';
+    sec.innerHTML = (kick ? deckHead(kick) : '') + inner + (pageno ? deckFootTrends(meta, ccy, pageno, buckets) : '');
+    return sec;
+}
+
+// Five-supplier concentration palette (matches build_trends.py conc_means)
+var TRENDS_CONC_COLORS = ['#0CA4DC', '#12B5A0', '#E0902A', '#0A6E96', '#8FA9B8'];
+
+// ---- PAGE 1: COVER ----
+function buildTrendsDeckCover(meta, c, ts, ccy) {
+    var t = c.totals || {};
+    var buckets = ts.buckets || [];
+    var nMonths = buckets.length;
+    var genStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    var period = fmtDateLong(meta && meta.date_range_min) + ' \u2014 ' + fmtDateLong(meta && meta.date_range_max);
+    var invs = (t.invoiceCount != null) ? t.invoiceCount : 0;
+    var sups = (t.supplierCount != null) ? t.supplierCount : ((c.suppliers && c.suppliers.length) || 0);
+
+    var ttpTxt = (t.avgDaysToPaid != null) ? (t.avgDaysToPaid.toFixed(1) + 'd') : '\u2014';
+    var termTxt = (t.avgStatedTermDays != null) ? ('vs Net ' + Math.round(t.avgStatedTermDays) + ' stated') : 'stated terms';
+    var dpdArr = (ts.payments || []).map(function (p) { return p.avgDpd; }).filter(function (x) { return x != null && !isNaN(x); });
+    var peakLate = dpdArr.length ? Math.max.apply(null, dpdArr) : null;
+    var peakIdx = (peakLate != null) ? (ts.payments || []).findIndex(function (p) { return p.avgDpd === peakLate; }) : -1;
+    var peakTxt = (peakLate != null) ? _signDays(peakLate, false) : '\u2014';
+    var peakSub = (peakIdx >= 0 && buckets[peakIdx]) ? ('peak ' + buckets[peakIdx]) : 'highest monthly';
+    var dilArr = (ts.dilution || []).map(function (d) { return (d.combinedRate != null ? d.combinedRate : d.rate) || 0; });
+    var avgDil = _tMean(dilArr);
+    var dilTxt = (avgDil != null) ? ((avgDil * 100).toFixed(1) + '%') : '\u2014';
+
+    var tiles = [
+        ['Total spend', moneyShort(t.totalSpend || 0, ccy), 'across ' + nMonths + ' months', '#fff'],
+        ['Avg time to pay', ttpTxt, termTxt, '#23C0F0'],
+        ['Peak lateness', peakTxt, peakSub, '#FF7B6B'],
+        ['Avg dilution', dilTxt, 'of invoiced value', '#fff']
+    ];
+    var strip = tiles.map(function (m) {
+        return '<div style="background:var(--navy);padding:20px 22px;">' +
+            '<div style="font-size:10px;font-weight:600;letter-spacing:.12em;color:#6E96AB;text-transform:uppercase;">' + escHTML(m[0]) + '</div>' +
+            '<div style="font-size:32px;font-weight:600;margin-top:8px;color:' + m[3] + ';">' + escHTML(m[1]) + '</div>' +
+            '<div style="font-size:10.5px;color:#7FA3B5;margin-top:3px;">' + escHTML(m[2]) + '</div></div>';
+    }).join('');
+
+    var sec = document.createElement('section');
+    sec.className = 'page';
+    sec.setAttribute('style', 'background:var(--navy);color:#fff;padding:0;');
+    sec.innerHTML =
+        '<svg viewBox="0 0 1122 793" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;opacity:.55;">' +
+         '<defs><linearGradient id="pdkTrendsG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0CA4DC" stop-opacity="0.22"/><stop offset="1" stop-color="#0CA4DC" stop-opacity="0"/></linearGradient></defs>' +
+         '<polygon points="0,470 90,440 180,455 270,420 360,430 450,400 540,418 630,372 720,430 810,360 900,400 990,350 1122,372 1122,793 0,793" fill="url(#pdkTrendsG)"/>' +
+         '<polyline points="0,470 90,440 180,455 270,420 360,430 450,400 540,418 630,372 720,430 810,360 900,400 990,350 1122,372" fill="none" stroke="#23C0F0" stroke-width="2" stroke-opacity=".5"/>' +
+        '</svg>' +
+        '<div style="position:relative;height:100%;padding:48px 56px;display:flex;flex-direction:column;box-sizing:border-box;">' +
+         '<div class="brand" style="gap:11px;">' + deckLogoSvg() + '<div style="font-size:16px;font-weight:600;"><span style="color:var(--brand);">Pelagic</span> Solutions</div></div>' +
+         '<div style="margin-top:auto;">' +
+           '<div style="font-size:13px;font-weight:600;letter-spacing:.24em;color:var(--brand);text-transform:uppercase;">Buyer Insights \u00b7 Trends</div>' +
+           '<div style="font-size:62px;font-weight:600;letter-spacing:-.02em;line-height:1.02;margin-top:14px;">' + escHTML(buyerHeading(meta)) + '<br>Spend &amp; payment trends</div>' +
+           '<div style="font-size:19px;color:#9FC4D6;margin-top:14px;">Monthly view \u00b7 volume, dilution, payment behaviour &amp; concentration \u00b7 ' + escHTML(ccy) + '</div>' +
+           '<div style="font-size:13px;color:#6E96AB;margin-top:6px;letter-spacing:.04em;">' + nMonths + ' months \u00b7 ' + escHTML(period) + ' \u00b7 ' + invs.toLocaleString() + ' invoices \u00b7 ' + sups.toLocaleString() + ' suppliers</div>' +
+         '</div>' +
+         '<div style="margin-top:40px;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.12);border-radius:12px;overflow:hidden;">' + strip + '</div>' +
+         '<div style="margin-top:34px;display:flex;justify-content:space-between;font-size:10.5px;color:#5E869A;"><span>Prepared for the Office of the CFO \u00b7 Private &amp; confidential</span><span>Generated ' + escHTML(genStr) + '</span></div>' +
+        '</div>';
+    return sec;
+}
+
+// ---- PAGE 2: VOLUME & VALUE ----
+function buildTrendsVolume(meta, c, ts, ccy) {
+    var buckets = ts.buckets || [];
+    var vol = ts.volume || [];
+    var counts = vol.map(function (v) { return v.invoiceCount || 0; });
+    var spendAbs = vol.map(function (v) { return v.totalSpend || 0; });
+    var maxCount = counts.length ? Math.max.apply(null, counts) : 0;
+    var maxSpendAbs = spendAbs.length ? Math.max.apply(null, spendAbs) : 0;
+    var cAx = _niceAxis(0, maxCount, 4); cAx.min = 0;
+    var sAx = _niceAxis(0, maxSpendAbs, 4); sAx.min = 0;
+    var countTicks = _axisTicks(cAx, _countLbl);
+    // One unit across the whole spend axis (picked from the axis max).
+    var sym = { GBP: '\u00a3', EUR: '\u20ac', USD: '$' }[ccy] || (ccy + ' ');
+    var div = 1, suf = '';
+    if (sAx.max >= 1e9) { div = 1e9; suf = 'B'; }
+    else if (sAx.max >= 1e6) { div = 1e6; suf = 'M'; }
+    else if (sAx.max >= 1e3) { div = 1e3; suf = 'k'; }
+    var spendTicks = _axisTicks(sAx, function (v) { var u = v / div; return sym + (+(u.toFixed(u % 1 ? 1 : 0))) + suf; });
+
+    var chart = deckComboChart(counts, spendAbs, {
+        height: 312, months: buckets, ccy: ccy,
+        cmax: cAx.max, smax: sAx.max, countTicks: countTicks, spendTicks: spendTicks
+    });
+
+    var avgInv = _tMean(counts) || 0;
+    var invVal = counts.length ? ('~' + (Math.round(avgInv / 50) * 50).toLocaleString()) : '\u2014';
+    var minC = counts.length ? Math.min.apply(null, counts) : 0;
+    var maxC = maxCount;
+    var avgSpend = _tMean(spendAbs) || 0;
+    var minS = spendAbs.length ? Math.min.apply(null, spendAbs) : 0;
+    var maxS = maxSpendAbs;
+    var softIdx = spendAbs.indexOf(minS), strongIdx = spendAbs.indexOf(maxS);
+
+    var inner =
+        '<div class="sec-kick">Section A \u00b7 volume &amp; value</div>' +
+        '<div class="sec-title">Invoice volume &amp; spend</div>' +
+        '<div class="sec-lead">Monthly invoice count (bars) against total ' + escHTML(ccy) + ' spend (line), across the period.</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-top:16px;">' +
+          '<div class="panel">' + deckMetric('Monthly invoices', invVal, minC.toLocaleString() + '\u2013' + maxC.toLocaleString() + ' range') + '</div>' +
+          '<div class="panel">' + deckMetric('Monthly spend', '~' + moneyShort(avgSpend, ccy), moneyShort(minS, ccy) + '\u2013' + moneyShort(maxS, ccy) + ' range') + '</div>' +
+          '<div class="panel">' + deckMetric('Softest month', (buckets[softIdx] || '\u2014'), (counts[softIdx] != null ? counts[softIdx].toLocaleString() + ' inv \u00b7 ' + moneyShort(spendAbs[softIdx], ccy) : '')) + '</div>' +
+          '<div class="panel">' + deckMetric('Strongest month', (buckets[strongIdx] || '\u2014'), (counts[strongIdx] != null ? counts[strongIdx].toLocaleString() + ' inv \u00b7 ' + moneyShort(spendAbs[strongIdx], ccy) : '')) + '</div>' +
+        '</div>' +
+        '<div class="panel" style="margin-top:13px;">' +
+          '<div class="p-kick">Invoice volume &amp; spend \u2014 monthly</div>' + chart +
+        '</div>';
+    return deckPageTrends(inner, 'Section A \u00b7 volume', '2 / 7', meta, ccy, buckets);
+}
+
+// ---- PAGE 3: DILUTION ----
+function buildTrendsDilution(meta, c, ts, ccy) {
+    var buckets = ts.buckets || [];
+    var dil = ts.dilution || [];
+    var combined = dil.map(function (d) { return ((d.combinedRate != null ? d.combinedRate : d.rate) || 0) * 100; });
+    var cn = dil.map(function (d) { return (d.rate || 0) * 100; });
+    var sp = dil.map(function (d) { return (d.shortPayRate || 0) * 100; });
+    var maxV = Math.max.apply(null, [0.1].concat(combined, cn, sp));
+    var dAx = _niceAxis(0, maxV, 4); dAx.min = 0;
+    var dp = dAx.step < 1 ? 1 : 0;
+    var yticks = _axisTicks(dAx, function (v) { return (+v.toFixed(dp)) + '%'; });
+
+    var chart = deckLineChart([
+        { name: 'Total dilution', values: combined, color: 'var(--brand-d)', dashed: true, markers: true },
+        { name: 'Credit notes', values: cn, color: 'var(--amber)' },
+        { name: 'Short-pay', values: sp, color: 'var(--red)' }
+    ], 0, dAx.max, yticks, { height: 300, months: buckets });
+
+    var avg = _tMean(combined);
+    var maxC = combined.length ? Math.max.apply(null, combined) : null;
+    var minC = combined.length ? Math.min.apply(null, combined) : null;
+    var peakIdx = (maxC != null) ? combined.indexOf(maxC) : -1;
+    var troughIdx = (minC != null) ? combined.indexOf(minC) : -1;
+
+    var inner =
+        '<div class="sec-kick">Section A \u00b7 quality</div>' +
+        '<div class="sec-title">Dilution rate over time</div>' +
+        '<div class="sec-lead">Credit notes and short-payments as a share of invoiced value. The dashed line is total dilution; credit notes are typically the larger component.</div>' +
+        '<div class="panel" style="margin-top:18px;">' +
+          '<div class="p-kick">Dilution \u2014 % of invoiced value, monthly</div>' + chart +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-top:13px;">' +
+          '<div class="panel line">' + deckMetric('Average total dilution', (avg != null ? avg.toFixed(1) + '%' : '\u2014'), 'of invoiced value') + '</div>' +
+          '<div class="panel line" style="border-left:4px solid var(--red);border-radius:0 8px 8px 0;">' + deckMetric('Peak', (maxC != null ? maxC.toFixed(2) + '%' : '\u2014'), (buckets[peakIdx] || '')) + '</div>' +
+          '<div class="panel line" style="border-left:4px solid var(--teal);border-radius:0 8px 8px 0;">' + deckMetric('Trough', (minC != null ? minC.toFixed(2) + '%' : '\u2014'), (buckets[troughIdx] || '')) + '</div>' +
+        '</div>';
+    return deckPageTrends(inner, 'Section A \u00b7 dilution', '3 / 7', meta, ccy, buckets);
+}
+
+// ---- PAGE 4: PAYMENT BEHAVIOUR ----
+function buildTrendsPayment(meta, c, ts, ccy) {
+    var buckets = ts.buckets || [];
+    var pay = ts.payments || [];
+    var dpd = pay.map(function (p) { return p.avgDpd; });
+    var ttp = pay.map(function (p) { return p.avgDaysToPaid; });
+    var terms = pay.map(function (p) { return p.avgStatedTerm; });
+    var dpdC = dpd.filter(function (x) { return x != null && !isNaN(x); });
+    var dMin = dpdC.length ? Math.min.apply(null, dpdC) : 0;
+    var dMax = dpdC.length ? Math.max.apply(null, dpdC) : 1;
+    var pAx = _niceAxis(dMin, dMax, 5);
+    var hasZero = pAx.min < 0 && pAx.max > 0;
+    var dpdTicks = _axisTicks(pAx, function (v) { return _signDays(v, false); });
+    var dpdChart = deckLineChart(
+        [{ name: 'Avg days past due', values: dpd, color: 'var(--red)', fill: 'var(--red)', markers: true }],
+        pAx.min, pAx.max, dpdTicks, { height: 256, legend: false, zero: hasZero ? 0 : null, months: buckets });
+
+    var allT = ttp.concat(terms).filter(function (x) { return x != null && !isNaN(x); });
+    var tMin = allT.length ? Math.min.apply(null, allT) : 0;
+    var tMax = allT.length ? Math.max.apply(null, allT) : 1;
+    var tAx = _niceAxis(tMin, tMax, 4);
+    var ttpTicks = _axisTicks(tAx, function (v) { return Math.round(v) + 'd'; });
+    var ttpChart = deckLineChart([
+        { name: 'Time to pay', values: ttp, color: 'var(--brand-d)', markers: true },
+        { name: 'Stated terms', values: terms, color: 'var(--teal)', dashed: true, markers: true }
+    ], tAx.min, tAx.max, ttpTicks, { height: 256, months: buckets });
+
+    var medDpd = _tMedian(dpd);
+    var medTtp = _tMedian(ttp);
+    var gaps = []; for (var i = 0; i < pay.length; i++) { if (ttp[i] != null && terms[i] != null) gaps.push(ttp[i] - terms[i]); }
+    var medGap = _tMedian(gaps);
+
+    var inner =
+        '<div class="sec-kick">Section B \u00b7 payment behaviour</div>' +
+        '<div class="sec-title">Lateness &amp; time to pay</div>' +
+        '<div class="sec-lead">Average days past due (left) and time-to-pay against stated terms (right), by month paid. A sharp drop in the final month reflects recent invoices not yet late, not a real improvement.</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:16px;">' +
+          '<div class="panel"><div class="p-kick">Payment lateness \u2014 avg days past due, by month paid</div>' + dpdChart + '</div>' +
+          '<div class="panel"><div class="p-kick">Time to pay vs stated terms \u2014 days</div>' + ttpChart + '</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-top:13px;">' +
+          '<div class="panel line" style="border-left:4px solid var(--red);border-radius:0 8px 8px 0;">' + deckMetric('Steady-state lateness', (medDpd != null ? _signDays(medDpd, false) : '\u2014'), 'median monthly') + '</div>' +
+          '<div class="panel line">' + deckMetric('Time to pay', (medTtp != null ? '~' + Math.round(medTtp) + 'd' : '\u2014'), 'median monthly') + '</div>' +
+          '<div class="panel line">' + deckMetric('Terms gap', (medGap != null ? _signDays(medGap, true) : '\u2014'), 'beyond stated terms') + '</div>' +
+        '</div>';
+    return deckPageTrends(inner, 'Section B \u00b7 payment', '4 / 7', meta, ccy, buckets);
+}
+
+// ---- PAGE 5: CONCENTRATION ----
+function buildTrendsConcentration(meta, c, ts, ccy) {
+    var buckets = ts.buckets || [];
+    var conc = ts.concentration || { topNames: [], series: [] };
+    var names = (conc.topNames || []).slice(0, 5);
+    var series = names.map(function (nm, i) {
+        return {
+            name: nm, color: TRENDS_CONC_COLORS[i % TRENDS_CONC_COLORS.length],
+            values: (conc.series || []).map(function (s) { return ((s.shares && s.shares[nm]) || 0) * 100; })
+        };
+    });
+    var maxStack = 0;
+    (conc.series || []).forEach(function (s) {
+        var sum = 0; names.forEach(function (nm) { sum += ((s.shares && s.shares[nm]) || 0) * 100; });
+        if (sum > maxStack) maxStack = sum;
+    });
+    var step = _niceNum(Math.max(maxStack, 1) / 4, true);
+    var ymax = Math.ceil(maxStack / step) * step;
+    if (ymax <= maxStack) ymax += step;
+    if (ymax <= 0) ymax = step;
+
+    var chart = series.length
+        ? deckStackedArea(series, { height: 320, ymax: ymax, ystep: step, months: buckets })
+        : '<div style="font-size:11px;color:var(--muted);padding:40px 0;">No concentration series available for this currency.</div>';
+
+    var top5 = (c.concentration && c.concentration.top5Pct != null) ? c.concentration.top5Pct : null;
+    var hhi = (c.concentration && c.concentration.hhi != null) ? c.concentration.hhi : null;
+    var lead = 'Combined share of spend held by the five largest ' + escHTML(ccy) + ' suppliers, month by month.';
+    if (top5 != null) lead += ' The five together hold about <b style="color:var(--ink);">' + pct(top5) + '</b> of spend';
+    if (hhi != null) lead += (top5 != null ? ' (HHI ' + hhi.toFixed(3) + ')' : ' The portfolio HHI is ' + hhi.toFixed(3));
+    lead += '.';
+
+    var inner =
+        '<div class="sec-kick">Section C \u00b7 concentration</div>' +
+        '<div class="sec-title">Concentration over time</div>' +
+        '<div class="sec-lead">' + lead + '</div>' +
+        '<div class="panel" style="margin-top:18px;">' +
+          '<div class="p-kick">Share of ' + escHTML(ccy) + ' spend \u2014 five largest suppliers, monthly</div>' + chart +
+        '</div>' +
+        '<div style="font-size:10.5px;color:var(--muted);margin-top:12px;line-height:1.5;">Each band is one supplier\u2019s monthly share of ' + escHTML(ccy) + ' spend; the stack is their combined share. The remaining suppliers (not shown) make up the balance to 100%.</div>';
+    return deckPageTrends(inner, 'Section C \u00b7 concentration', '5 / 7', meta, ccy, buckets);
+}
+
+// ---- PAGE 6: SUPPLIER TABLE ----
+function _trendPill(slope) {
+    if (slope == null) return '<span class="pill"><svg width="14" height="6"><line x1="1" y1="3" x2="13" y2="3" stroke="var(--teal)" stroke-width="1.6"/></svg>flat</span>';
+    if (slope > 0.10) return '<span class="pill"><svg width="14" height="6"><line x1="1" y1="5" x2="13" y2="1" stroke="var(--teal)" stroke-width="1.6"/></svg>rising</span>';
+    if (slope < -0.10) return '<span class="pill"><svg width="14" height="6"><line x1="1" y1="1" x2="13" y2="5" stroke="var(--muted)" stroke-width="1.6"/></svg>easing</span>';
+    return '<span class="pill"><svg width="14" height="6"><line x1="1" y1="3" x2="13" y2="3" stroke="var(--teal)" stroke-width="1.6"/></svg>flat</span>';
+}
+function buildTrendsSuppliers(meta, c, ts, ccy) {
+    var buckets = ts.buckets || [];
+    var all = (c.suppliers || []).slice().sort(function (a, b) { return (b.totalSpend || 0) - (a.totalSpend || 0); });
+    var top = all.slice(0, 15);
+    var topShare = (top[0] && top[0].sharePct) ? top[0].sharePct : 1;
+    var spark = ts.sparklines || {};
+
+    var rows = top.map(function (s) {
+        var barw = Math.max(0, Math.min(100, (s.sharePct || 0) / topShare * 100));
+        var dilRate = (s.combinedDilutionRate != null ? s.combinedDilutionRate : s.dilutionRate) || 0;
+        var dilPct = dilRate * 100;
+        var dilCol = dilPct >= 2.0 ? 'var(--red-d)' : (dilPct >= 1.6 ? 'var(--amber-d)' : 'var(--body)');
+        var dilWeight = dilPct >= 1.6 ? '600' : '400';
+        var vols = (spark[s.identifier] && spark[s.identifier].volume) ? spark[s.identifier].volume : [];
+        var spk = deckSparkline(vols, {});
+        var dpdCell = (s.avgDaysPastDue != null) ? ((s.avgDaysPastDue >= 0 ? '+' : '\u2212') + Math.abs(s.avgDaysPastDue).toFixed(1) + 'd') : '\u2014';
+        return '<tr>' +
+            '<td>' + escHTML(s.name) + '</td>' +
+            '<td>' + moneyShort(s.totalSpend || 0, ccy) + '</td>' +
+            '<td><div style="display:flex;align-items:center;gap:7px;justify-content:flex-end;"><div style="width:46px;height:8px;background:var(--surf2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + barw.toFixed(0) + '%;background:var(--brand);"></div></div><b style="color:var(--ink);width:34px;text-align:right;">' + pct(s.sharePct || 0) + '</b></div></td>' +
+            '<td style="text-align:center;">' + spk + '</td>' +
+            '<td style="color:' + dilCol + ';font-weight:' + dilWeight + ';">' + pct(dilRate) + '</td>' +
+            '<td>' + dpdCell + '</td>' +
+            '<td style="text-align:right;">' + _trendPill(s.trendSlopeNormalised != null ? s.trendSlopeNormalised : null) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var moreTxt = all.length > 15
+        ? '+ ' + (all.length - 15) + ' more suppliers not shown. Sparklines are monthly invoice volume at a shared per-row scale; trend classified over the window.'
+        : 'Sparklines are monthly invoice volume at a shared per-row scale; trend classified over the window.';
+
+    var inner =
+        '<div class="sec-kick">Section C \u00b7 suppliers</div>' +
+        '<div class="sec-title">Supplier trend detail</div>' +
+        '<div class="sec-lead">The 15 largest ' + escHTML(ccy) + ' suppliers by spend, with monthly volume sparklines. Dilution above 1.6% is highlighted.</div>' +
+        '<div class="panel line" style="margin-top:16px;">' +
+          '<table class="tb"><thead><tr><th>Supplier</th><th>Spend</th><th>Share of spend</th><th style="text-align:center;">Volume (' + buckets.length + 'mo)</th><th>Dilution</th><th>Avg DPD</th><th style="text-align:right;">Trend</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody></table>' +
+          '<div style="font-size:10px;color:var(--muted);margin-top:10px;">' + escHTML(moreTxt) + '</div>' +
+        '</div>';
+    return deckPageTrends(inner, 'Section C \u00b7 suppliers', '6 / 7', meta, ccy, buckets);
+}
+
+// ---- PAGE 7: BACK ----
+function buildTrendsBack(meta, c, ts, ccy) {
+    var pay = ts.payments || [];
+    var medTtp = _tMedian(pay.map(function (p) { return p.avgDaysToPaid; }));
+    var gaps = []; pay.forEach(function (p) { if (p.avgDaysToPaid != null && p.avgStatedTerm != null) gaps.push(p.avgDaysToPaid - p.avgStatedTerm); });
+    var medGap = _tMedian(gaps);
+    var genStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    var headline = 'Across the period, the clearest signal is payment behaviour';
+    if (medTtp != null) {
+        headline += ': a median of about ' + Math.round(medTtp) + ' days to pay';
+        if (medGap != null) headline += ', roughly ' + Math.abs(Math.round(medGap)) + ' days ' + (medGap >= 0 ? 'beyond' : 'inside') + ' stated terms';
+    }
+    headline += '. Volume, spend and supplier concentration are summarised in the preceding sections.';
+
+    var sec = document.createElement('section');
+    sec.className = 'page';
+    sec.setAttribute('style', 'background:var(--navy);color:#fff;padding:0;');
+    sec.innerHTML =
+        '<div style="position:relative;height:100%;padding:48px 56px;display:flex;flex-direction:column;box-sizing:border-box;">' +
+         '<div class="brand" style="gap:11px;">' + deckLogoSvg() + '<div style="font-size:16px;font-weight:600;"><span style="color:var(--brand);">Pelagic</span> Solutions</div></div>' +
+         '<div style="margin-top:auto;max-width:70ch;">' +
+          '<div style="font-size:13px;font-weight:600;letter-spacing:.2em;color:var(--brand);text-transform:uppercase;">What the trends say</div>' +
+          '<div style="font-size:27px;font-weight:600;line-height:1.3;margin-top:14px;">' + escHTML(headline) + '</div>' +
+          '<div style="font-size:13px;color:#9FC4D6;margin-top:18px;">Read alongside the Buyer Insights review: these trends give the month-by-month context behind the headline payment and concentration findings.</div>' +
+         '</div>' +
+         '<div style="margin-top:36px;padding-top:18px;border-top:1px solid rgba(255,255,255,.14);font-size:9.5px;color:#5E869A;line-height:1.6;max-width:120ch;">' +
+          '<b style="color:#9FC4D6;">Disclaimer.</b> Pelagic Solutions Limited is registered in England and Wales under Company Number 16145375. This document is for informational purposes only. It is not intended as and should not be construed as financial, investment, tax, legal, regulatory or other advice. None of its contents is an offer to sell or the solicitation of any offer to buy securities. It is not an offer or sale of securities in the United States or to, or for the account or benefit of, any US person (as defined in relevant US securities laws). Monthly series are derived from invoice-level ' + escHTML(ccy) + ' data; the final month is partial.</div>' +
+         '<div style="margin-top:16px;display:flex;justify-content:space-between;font-size:10.5px;color:#6E96AB;"><span>andy@pelagicsolutions.co.uk</span><span>' + escHTML(buyerHeading(meta)) + ' \u00b7 Spend &amp; payment trends \u00b7 Generated ' + escHTML(genStr) + '</span></div>' +
+        '</div>';
+    return sec;
+}
+
+// ---- ENTRY POINTS (repointed from beforeprint dispatch) ----
+function buildTrendsPrintTree() {
+    var u = window.__upload;
+    var meta = u.meta;
+    var stats = getCurrentStats();
+    var root = document.getElementById('printRoot');
+    root.innerHTML = '';
+
+    // Single currency: the active Trends tab, else the top-spend currency.
+    var ccy = (window.__trends && window.__trends.activeCcy) || null;
+    if (!ccy || !stats.perCurrency[ccy]) {
+        var ccys = (stats.__source === 'snapshot') ? Object.keys(stats.perCurrency) : stats.overall.currencies.slice();
+        ccys.sort(function (a, b) {
+            var sa = (stats.perCurrency[a] && stats.perCurrency[a].totals.totalSpend) || 0;
+            var sb = (stats.perCurrency[b] && stats.perCurrency[b].totals.totalSpend) || 0;
+            if (sb !== sa) return sb - sa;
+            return a < b ? -1 : 1;
+        });
+        ccy = ccys[0];
+    }
+    var c = stats.perCurrency[ccy] || {};
+    var granularity = (window.__trends && window.__trends.granularity) || 'monthly';
+    var ts = getCurrentTimeSeries(ccy, granularity);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'pdk';
+    wrap.appendChild(buildTrendsDeckCover(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsVolume(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsDilution(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsPayment(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsConcentration(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsSuppliers(meta, c, ts, ccy));
+    wrap.appendChild(buildTrendsBack(meta, c, ts, ccy));
+    root.appendChild(wrap);
+}
+
+// Deck charts are inline SVG built synchronously in buildTrendsPrintTree;
+// there are no post-DOM canvases to draw, so this is a safe no-op.
+function renderTrendsPrintCharts() { _printChartInstances = []; }
+// ======================= INJECTABLE BLOCK END =======================
 
 function teardownPrintTree() {
     // Destroy print chart instances first to free canvases
