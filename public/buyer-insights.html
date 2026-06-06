@@ -1247,6 +1247,13 @@
 .pdk .mono{font-family:'PlexMono',monospace;}
 .pdk .page{position:relative;width:297mm;height:210mm;background:var(--white);overflow:hidden;page-break-after:always;padding:13mm 16mm 12mm;}
 .pdk .page:last-child{page-break-after:auto;}
+/* screen reflow: deck pages as responsive cards (not fixed A4 sheets) */
+.pdk-screen .page{width:auto;max-width:1080px;height:auto;min-height:0;overflow:visible;page-break-after:auto;padding:30px 34px;margin:0 auto 26px;border:1px solid var(--hair);border-radius:14px;box-shadow:0 1px 3px rgba(8,42,58,.07);}
+.pdk-screen .foot{display:none;}
+.pdk-screen .page svg{max-width:100%;}
+.pdk-screen-ctrl{max-width:1080px;margin:0 auto 18px;font-size:13px;color:#4A5A62;font-family:'IBM Plex Sans','Segoe UI',sans-serif;}
+.pdk-screen-ctrl input{width:64px;padding:4px 6px;border:1px solid #E7EDEF;border-radius:6px;font-size:13px;margin:0 4px;}
+@media (max-width:760px){.pdk-screen .page [style*="grid-template-columns"]{grid-template-columns:1fr !important;}}
 .pdk .head{display:flex;align-items:center;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--hair);margin-bottom:20px;}
 .pdk .brand{display:flex;align-items:center;gap:9px;}
 .pdk .brand .nm{font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--ink);}
@@ -7215,14 +7222,8 @@ function renderReportBody(ccy) {
     }
     window.__report.activeCcy = ccy;
 
-    var body = document.getElementById('reportBody');
-    body.innerHTML =
-        renderSectionAtAGlance(c, ccy) +
-        renderSectionConcentration(c, ccy) +
-        renderSectionDilution(c, ccy) +
-        renderSectionPaymentBehaviour(c, ccy) +
-        renderSectionStressSignals(c, ccy) +
-        renderSectionWhatThisMeans(c, ccy);
+    buildDeckScreenTree(ccy);
+    return;
 
     // Charts are drawn *after* the DOM is in place — the canvas elements have to exist.
     drawConcentrationChart(ccy, c);
@@ -8054,7 +8055,7 @@ function renderApFloatPanel(c, ccy) {
             renderFairPaymentPanel(ccy) +
         '</div>';
 }
-function renderSmeAccelSection(c, ccy) {
+function ensureSmeData(c, ccy) {
     var meta = (window.__upload && window.__upload.meta) || {};
     var horizonStr = meta.date_range_max || null;
     var hY, hM;
@@ -8062,7 +8063,7 @@ function renderSmeAccelSection(c, ccy) {
     else {
         var maxYm = '';
         (c.suppliers || []).forEach(function(s) { var mz = s.monthlyInvoiceAmount || {}; Object.keys(mz).forEach(function(k) { if (k > maxYm) maxYm = k; }); });
-        if (!maxYm) return '';
+        if (!maxYm) return false;
         var mp = maxYm.split('-'); hY = parseInt(mp[0], 10); hM = parseInt(mp[1], 10) - 1;
     }
     var target = {}, yy = hY, mo = hM;
@@ -8082,10 +8083,14 @@ function renderSmeAccelSection(c, ccy) {
         Object.keys(ma).forEach(function(k) { if (target[k]) recent += (ma[k] || 0); });
         if (recent > 0) { sups.push({ spend: recent, term: (s.avgStatedTermDays != null ? s.avgStatedTermDays : null) }); totalRecent += recent; }
     });
-    if (!sups.length) return '';
+    if (!sups.length) return false;
     sups.sort(function(a, b) { return a.spend - b.spend; });
     if (!window.__smeData) window.__smeData = {};
     window.__smeData[ccy] = { suppliers: sups, windowDays: windowDays, totalSpend: totalRecent };
+    return true;
+}
+function renderSmeAccelSection(c, ccy) {
+    if (!ensureSmeData(c, ccy)) return '';
     return '<div class="apf-sme" style="margin-top:20px; padding-top:18px; border-top:1px solid var(--border);">' +
             '<div class="terms-panel-title">Cost of paying your long tail faster</div>' +
             '<div class="terms-panel-summary" style="margin-bottom:12px;">An easy CSR win: your smallest active suppliers are a large share of your supplier count but a tiny share of spend, so paying them quickly costs comparatively little. Figures use the last 6 months of activity. Pick a slice of the tail to see what accelerating their payment would cost.</div>' +
@@ -12308,6 +12313,7 @@ function buildDeckPrintTree() {
     });
     var ccy = currencies[0];
     var c = stats.perCurrency[ccy] || {};
+    ensureSmeData(c, ccy);
     var wrap = document.createElement('div');
     wrap.className = 'pdk';
     wrap.appendChild(buildDeckCover(meta, stats, ccy));
@@ -12316,6 +12322,30 @@ function buildDeckPrintTree() {
         if (node) wrap.appendChild(node);
     });
     root.appendChild(wrap);
+}
+
+function buildDeckScreenTree(ccy) {
+    var u = window.__upload;
+    var stats = getCurrentStats();
+    var meta = u.meta;
+    var c = (stats.perCurrency && stats.perCurrency[ccy]) || {};
+    ensureSmeData(c, ccy);
+    var rate = deckCostOfCapital(ccy);
+    var body = document.getElementById('reportBody');
+    body.innerHTML = '';
+    var ctrl = document.createElement('div');
+    ctrl.className = 'pdk-screen-ctrl';
+    ctrl.innerHTML = 'Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + rate + '" min="0" max="100" step="0.5"> % per year';
+    body.appendChild(ctrl);
+    var wrap = document.createElement('div');
+    wrap.className = 'pdk pdk-screen';
+    [buildDeckExecSummary, buildDeckOverview, buildDeckWorkingCapital, buildDeckDependencies, buildDeckQuality, buildDeckPerception, buildDeckStress, buildDeckCreditConcentration].forEach(function (fn) {
+        var node = fn(c, ccy, meta);
+        if (node) wrap.appendChild(node);
+    });
+    body.appendChild(wrap);
+    var input = document.getElementById('apf-rate-' + ccy);
+    if (input) input.addEventListener('change', function () { buildDeckScreenTree(ccy); });
 }
 
 
