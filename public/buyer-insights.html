@@ -11753,7 +11753,7 @@ function deckHead(kick) {
 }
 function deckFoot(meta, ccy, pageno) {
     var range = (((meta && meta.date_range_min) || '?')) + ' \u2192 ' + (((meta && meta.date_range_max) || '?'));
-    return '<div class="foot"><div><b>Pelagic Solutions Limited</b> \u00b7 andy@pelagicsolutions.co.uk</div><div>' + escHTML(buyerHeading(meta)) + ' \u00b7 ' + escHTML(ccy) + ' \u00b7 ' + escHTML(range) + ' \u00b7 ' + escHTML(pageno) + '</div></div>';
+    return '<div class="foot"><div style="display:flex;align-items:center;">' + deckLogoImg(false, 12) + '<span style="margin-left:8px;">andy@pelagicsolutions.co.uk</span></div><div>' + escHTML(buyerHeading(meta)) + ' \u00b7 ' + escHTML(ccy) + ' \u00b7 ' + escHTML(range) + ' \u00b7 ' + escHTML(pageno) + '</div></div>';
 }
 function deckPage(inner, kick, pageno, meta, ccy, cls) {
     var sec = document.createElement('section');
@@ -13605,7 +13605,7 @@ function _signDays(v, approx) {
 // ---- Trends footer / page wrappers ----
 function deckFootTrends(meta, ccy, pageno, buckets) {
     var range = (buckets && buckets.length) ? (buckets[0] + ' \u2192 ' + buckets[buckets.length - 1]) : '? \u2192 ?';
-    return '<div class="foot"><div><b>Pelagic Solutions Limited</b> \u00b7 andy@pelagicsolutions.co.uk</div><div>' +
+    return '<div class="foot"><div style="display:flex;align-items:center;">' + deckLogoImg(false, 12) + '<span style="margin-left:8px;">andy@pelagicsolutions.co.uk</span></div><div>' +
         escHTML(buyerHeading(meta)) + ' \u00b7 ' + escHTML(ccy) + ' \u00b7 ' + escHTML(_periodWords(_trendsGran).adj) + ' \u00b7 ' + escHTML(range) + ' \u00b7 ' + escHTML(pageno) + '</div></div>';
 }
 function deckPageTrends(inner, kick, pageno, meta, ccy, buckets) {
