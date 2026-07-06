@@ -20485,7 +20485,7 @@ export default function FactoringDashboard() {
             if (!programId) return;
             setView("program"); setSelectedProgram(programId); setProgTab("overview");
           }
-          function createInvoice() {
+          async function createInvoice() {
             if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
             var newId = nextId("INV-", INVOICES_DB, "id");
             var hist = [{ status: "Received", date: nf.invoiceDate }];
@@ -20516,10 +20516,17 @@ export default function FactoringDashboard() {
               approvedDate: null, fundedDate: null, payments: [], notes: [],
               doNotFund: nf.doNotFund || false
             });
-            auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: buyParentId, buyerEntityId: buyEntityId, dueDate: nf.dueDate });
-            saveInvoice(newId);
+            // Reset the form and show the new invoice (from memory) immediately.
             setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
             setInvlShowCreate(false);
+            setDataVer(function(v) { return v + 1; });
+            // Persist the invoice, then write the audit entry. The audit call is
+            // wrapped so that a logging failure can never abort invoice creation or
+            // interrupt the Realtime broadcast that saveInvoice triggers.
+            await saveInvoice(newId);
+            try {
+              auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: buyParentId, buyerEntityId: buyEntityId, dueDate: nf.dueDate });
+            } catch (e) { console.error("[createInvoice] audit log failed (non-fatal):", e); }
             setDataVer(function(v) { return v + 1; });
           }
           // Build filtered list
