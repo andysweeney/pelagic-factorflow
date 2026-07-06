@@ -4660,7 +4660,17 @@ export default function FactoringDashboard() {
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_notes" }, function() {
         if (!_isSaving) reloadCreditNotes().then(scheduleRender);
       })
-      .subscribe();
+      .subscribe(function(status, err) {
+        // Surface connection problems instead of failing silently. If this logs
+        // anything other than "SUBSCRIBED", live updates will NOT arrive and a
+        // manual refresh will be required. The most common cause is that Realtime
+        // replication is not enabled for these tables in Supabase (see notes).
+        if (status !== "SUBSCRIBED") {
+          console.warn("[Realtime] channel status: " + status + (err ? " — " + err.message : "") + ". Live updates may be unavailable; check that Realtime replication is enabled for the invoices/payments/etc. tables in Supabase.");
+        } else {
+          console.log("[Realtime] subscribed — live updates active.");
+        }
+      });
 
     return function() {
       if (renderTimer) clearTimeout(renderTimer);
@@ -8263,7 +8273,7 @@ export default function FactoringDashboard() {
 
         // Auto-select first program if none selected. On Funding Balance tab, _all and _unassigned
         // aren't valid selections; fall back to the first real program in that case.
-        var rawProgFilter = spProgFilter || (spPrograms.length > 0 ? spPrograms[0].id : "");
+        var rawProgFilter = spProgFilter || (spPrograms.length > 0 ? "_all" : "");
         var isFundingBalanceTab = spPortalTab === "statement";
         var firstRealProg = spPrograms.find(function(fp) { return !fp._synthetic; });
         var activeProgId = rawProgFilter;
