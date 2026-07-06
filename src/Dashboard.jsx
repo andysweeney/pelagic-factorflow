@@ -4570,6 +4570,10 @@ export default function FactoringDashboard() {
 
     var channel = supabase.channel("realtime-updates")
       .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, function(payload) {
+        // [RT-DEBUG] fires for EVERY invoice event actually delivered to this client,
+        // before any filtering. If you insert an invoice and see nothing here, events
+        // are being filtered by RLS on the Realtime stream (a DB-side issue).
+        console.log("[RT-DEBUG] invoices event:", payload.eventType, "id=", (payload.new && payload.new.id) || (payload.old && payload.old.id), "supplier_id=", (payload.new && payload.new.supplier_id), "entity=", (payload.new && payload.new.supplier_entity_id), "_supplierFilter=", _supplierFilter && { supplierId: _supplierFilter.supplierId, parentId: _supplierFilter.parentId });
         if (_isSaving) return; // Skip during CSV batch save
         // If running as a supplier, drop invoice events that are not relevant to this supplier.
         // Prevents supplier portal from re-rendering for every invoice during admin CSV imports.
@@ -4583,7 +4587,7 @@ export default function FactoringDashboard() {
             var matchesSup =
               (rowEntity && rowEntity === sf.supplierId) ||
               (rowParent && rowParent === sf.parentId);
-            if (!matchesSup) return;
+            if (!matchesSup) { console.log("[RT-DEBUG] invoices event DROPPED by supplier scope filter. rowEntity=", rowEntity, "rowParent=", rowParent); return; }
             // Keep supplier invoice-id set in sync so later audit-log realtime
             // relevance checks find invoices that arrived after the initial load
             if (sf.invIds) {
@@ -4690,6 +4694,59 @@ export default function FactoringDashboard() {
       supabase.removeChannel(channel);
     };
   }, [_rtUserId]);
+
+  // --- Supplier live updates via Broadcast ----------------------------------
+  // postgres_changes cannot evaluate our claim-based RLS on the Realtime stream,
+  // so supplier sessions never received invoice events that way. Instead a DB
+  // trigger broadcasts each invoice change onto per-supplier private channels
+  // (supplier:<id> / supplier_entity:<entity>); we subscribe to the ones that
+  // match this user's JWT claims and apply the change in place.
+  var _rtClaims = null;
+  try {
+    if (session && session.access_token) {
+      _rtClaims = JSON.parse(atob(session.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    }
+  } catch (e) { _rtClaims = null; }
+  var _rtMeta = (_rtClaims && _rtClaims.app_metadata) || {};
+  var _rtSupplierId = _rtMeta.supplier_id || null;
+  var _rtBranchId = _rtMeta.branch_id || null;
+  var _rtEntityId = _rtSupplierId ? (_rtBranchId ? _rtSupplierId + ":" + _rtBranchId : _rtSupplierId) : null;
+
+  useEffect(function() {
+    if (!_rtUserId || !_rtSupplierId) return; // supplier sessions only
+
+    function applyInvoiceBroadcast(msg) {
+      var p = (msg && msg.payload) ? msg.payload : msg;
+      if (!p) return;
+      var rec = p.record || p.old_record;
+      if (!rec || !rec.id) return;
+      var idx = INVOICES_DB.findIndex(function(x) { return x.id === rec.id; });
+      if (p.operation === "delete") {
+        if (idx >= 0) INVOICES_DB.splice(idx, 1);
+      } else {
+        var mapped = unpackInvoiceRow(rec);
+        if (idx >= 0) INVOICES_DB[idx] = mapped; else INVOICES_DB.push(mapped);
+        if (_supplierFilter && _supplierFilter.invIds) _supplierFilter.invIds[rec.id] = true;
+      }
+      console.log("[RT-BCAST] applied invoice " + p.operation + " id=" + rec.id);
+      _realtimeUpdate++;
+      setDataVer(function(v) { return v + 1; });
+    }
+
+    var topics = ["supplier:" + _rtSupplierId];
+    if (_rtEntityId && _rtEntityId !== _rtSupplierId) topics.push("supplier_entity:" + _rtEntityId);
+
+    var channels = topics.map(function(topic) {
+      var ch = supabase.channel(topic, { config: { private: true } });
+      ch.on("broadcast", { event: "invoice_change" }, applyInvoiceBroadcast)
+        .subscribe(function(status) { console.log("[RT-BCAST] " + topic + " status: " + status); });
+      return ch;
+    });
+
+    return function() {
+      channels.forEach(function(ch) { supabase.removeChannel(ch); });
+    };
+  }, [_rtUserId, _rtSupplierId, _rtEntityId]);
 
   // Inject tooltip CSS once
   useEffect(function() {
