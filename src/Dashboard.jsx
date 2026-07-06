@@ -4239,11 +4239,20 @@ export default function FactoringDashboard() {
   useEffect(function() {
     supabase.auth.getSession().then(function(result) {
       setSession(result.data.session);
+      // Keep the Realtime socket's JWT current so RLS-protected postgres_changes
+      // keep flowing. Without this the socket keeps presenting a stale/expired token
+      // after the ~1h token lifetime; Postgres rejects it (InvalidJWTToken) and live
+      // updates die silently until a full page refresh mints a new token.
+      if (result.data.session && result.data.session.access_token) supabase.realtime.setAuth(result.data.session.access_token);
       if (result.data.session) loadUserProfile(result.data.session.user.id);
       setAuthLoading(false);
     });
     var sub = supabase.auth.onAuthStateChange(function(_event, sess) {
       setSession(sess);
+      // Push refreshed tokens (TOKEN_REFRESHED / SIGNED_IN) to Realtime in place,
+      // without remounting the channel (the channel effect deliberately depends on
+      // the stable user id, not the session, so it never sees these refreshes).
+      if (sess && sess.access_token) supabase.realtime.setAuth(sess.access_token);
       if (sess) loadUserProfile(sess.user.id);
       else { setUserProfile(null); }
     });
@@ -4512,6 +4521,10 @@ export default function FactoringDashboard() {
   var _rtUserId = session && session.user ? session.user.id : null;
   useEffect(function() {
     if (!_rtUserId) return;
+
+    // Make sure the socket carries the current access token before subscribing,
+    // so the very first join authenticates as the signed-in user (not anon).
+    if (session && session.access_token) supabase.realtime.setAuth(session.access_token);
 
     // Apply a single row change to an in-memory array
     function applyRowChange(payload, db, idField, mapper) {
