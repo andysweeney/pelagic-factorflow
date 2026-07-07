@@ -2606,6 +2606,7 @@ async function loadPersistedData() {
         });
       });
     }
+    dedupePaymentsDb();
     // Process holdback payments + group their allocations in memory
     if (hbRes.data && hbRes.data.length > 0) {
       HOLDBACK_PAYMENTS_DB.length = 0;
@@ -2822,6 +2823,27 @@ function supabaseErrorToast(res, context) {
 }
 
 
+// Defensive: collapse duplicate payment rows (same paymentId) and identical
+// allocations so a stray duplicate can never double-count in statements / the
+// supplier portal. Called after each loader populates PAYMENTS_DB.
+function dedupePaymentsDb() {
+  var seenPay = {}, out = [];
+  PAYMENTS_DB.forEach(function(p) {
+    if (seenPay[p.paymentId]) return;
+    seenPay[p.paymentId] = true;
+    if (p.allocations && p.allocations.length) {
+      var sa = {};
+      p.allocations = p.allocations.filter(function(a) {
+        var k = a.invoiceId + "|" + a.amount + "|" + a.allocDate + "|" + a.kind;
+        if (sa[k]) return false; sa[k] = true; return true;
+      });
+    }
+    out.push(p);
+  });
+  PAYMENTS_DB.length = 0;
+  Array.prototype.push.apply(PAYMENTS_DB, out);
+}
+
 async function reloadForSupplier(supplierId) {
   if (_supplierLoaded) return;
   _supplierLoaded = true;
@@ -2885,6 +2907,7 @@ async function reloadForSupplier(supplierId) {
       });
     }
   }
+  dedupePaymentsDb();
   console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
 
   // Load holdback payments for this supplier's invoices
@@ -2972,6 +2995,7 @@ async function reloadPayments() {
         // Swap atomically after all data is gathered
         PAYMENTS_DB.length = 0;
         newList.forEach(function(p) { PAYMENTS_DB.push(p); });
+        dedupePaymentsDb();
       }
     } catch (e) { console.error("Realtime reload payments error:", e); }
   })();
@@ -9081,6 +9105,7 @@ export default function FactoringDashboard() {
                     ),
                     React.createElement("thead", null,
                       React.createElement("tr", null,
+                        React.createElement("th", { style: Object.assign({}, portalTh, { position: "sticky", left: 0, background: "var(--card)", zIndex: 2, width: 40 }) }),
                         ["Invoice Number", "Buyer", "Funding Program", "Invoice Amount", "Advance Provided", "Due Date", "Funding Amount O/S", "Funding Status", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
@@ -9098,6 +9123,7 @@ export default function FactoringDashboard() {
                         var fundingOS = r2((inv.capitalOutstanding || 0) + (inv.interestOutstanding || 0) + (inv.penaltyInterest || 0));
                         return React.createElement("tbody", { key: inv.id },
                           React.createElement("tr", { style: { cursor: "pointer", borderBottom: isExpanded ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isExpanded ? null : "sp-" + inv.id); } },
+                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center", position: "sticky", left: 0, background: isExpanded ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 } }, React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpanded ? "\u25BE" : "\u25B8")),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, inv.id),
                             React.createElement("td", { style: portalTd }, inv.buyerName),
                             (function() {
@@ -9114,12 +9140,9 @@ export default function FactoringDashboard() {
                             React.createElement("td", { style: portalTd },
                               React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: fst.bg, color: fst.color, border: "1px solid " + fst.border, fontFamily: spMono } }, fst.label)
                             ),
-                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
-                              React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpanded ? "\u25BE" : "\u25B8")
-                            )
                           ),
                           isExpanded ? React.createElement("tr", null,
-                            React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { colSpan: 10, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 React.createElement(InvoiceStatusTimeline, { inv: inv }),
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
@@ -9178,6 +9201,7 @@ export default function FactoringDashboard() {
                                       }
                                     });
                                   });
+                                  var _ipSeen = {}; invPayments = invPayments.filter(function(ip) { var k = ip.paymentId + "|" + ip.amount + "|" + ip.date + "|" + ip.reference; if (_ipSeen[k]) return false; _ipSeen[k] = true; return true; });
                                   if (invPayments.length === 0) return null;
                                   invPayments.sort(function(a, b) { return a.date > b.date ? -1 : 1; });
                                   return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -9415,6 +9439,7 @@ export default function FactoringDashboard() {
                     React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                       React.createElement("thead", null,
                         React.createElement("tr", null,
+                          React.createElement("th", { style: Object.assign({}, portalTh, { position: "sticky", left: 0, background: "var(--card)", zIndex: 2, width: 40 }) }),
                           ["CN Number", "Buyer", "CN Amount", "Received Date", "Allocation Status", ""].map(function(h) {
                             return React.createElement("th", { key: h, style: portalTh }, h);
                           })
@@ -9428,6 +9453,7 @@ export default function FactoringDashboard() {
                         var isCnExp = exp === "cn-" + cn.creditNoteId;
                         return React.createElement("tbody", { key: cn.creditNoteId },
                           React.createElement("tr", { style: { cursor: "pointer", borderBottom: isCnExp ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isCnExp ? null : "cn-" + cn.creditNoteId); } },
+                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center", position: "sticky", left: 0, background: isCnExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 } }, React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isCnExp ? "\u25BE" : "\u25B8")),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, cn.creditNoteId),
                             React.createElement("td", { style: portalTd }, cn.buyerName),
                             React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(cnAmt, cn.currency)),
@@ -9435,12 +9461,9 @@ export default function FactoringDashboard() {
                             React.createElement("td", { style: portalTd },
                               React.createElement("span", { style: { fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: allocColor + "14", color: allocColor, border: "1px solid " + allocColor + "30", fontFamily: spMono } }, allocStatus)
                             ),
-                            React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
-                              React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isCnExp ? "\u25BE" : "\u25B8")
-                            )
                           ),
                           isCnExp ? React.createElement("tr", null,
-                            React.createElement("td", { colSpan: 6, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                            React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
                                 /* CN Details */
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 16 } },
@@ -9556,6 +9579,7 @@ export default function FactoringDashboard() {
                   React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" }, className: "sp-table" },
                     React.createElement("thead", null,
                       React.createElement("tr", null,
+                        React.createElement("th", { style: Object.assign({}, portalTh, { position: "sticky", left: 0, background: "var(--card)", zIndex: 2, width: 40 }) }),
                         ["Payment ID", "Date", "Total Amount", "CCY", "Allocated", "Invoices", ""].map(function(h) {
                           return React.createElement("th", { key: h, style: portalTh }, h);
                         })
@@ -9566,18 +9590,16 @@ export default function FactoringDashboard() {
                       var isExpPTP = exp === "ptp-" + ep.pay.paymentId;
                       return React.createElement("tbody", { key: ep.pay.paymentId },
                         React.createElement("tr", { style: { cursor: "pointer", borderBottom: isExpPTP ? "none" : "1px solid " + spBorder }, onClick: function() { setExp(isExpPTP ? null : "ptp-" + ep.pay.paymentId); } },
+                          React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center", position: "sticky", left: 0, background: isExpPTP ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 } }, React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpPTP ? "\u25BE" : "\u25B8")),
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spAccent, fontWeight: 600 }) }, ep.pay.paymentId),
                           React.createElement("td", { style: portalTd }, fmt(ep.pay.date)),
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { fontWeight: 600 }) }, money(ep.pay.amount, ep.pay.currency)),
                           React.createElement("td", { style: Object.assign({}, portalTd, { color: spMuted }) }, ep.pay.currency),
                           React.createElement("td", { style: Object.assign({}, portalTdMono, { color: spGreen, fontWeight: 600 }) }, money(r2(totalAlloc), ep.pay.currency)),
                           React.createElement("td", { style: Object.assign({}, portalTd, { fontSize: 11, color: spMuted }) }, ep.isPassThrough ? "Pass-through" : ep.allocs.length + " invoice" + (ep.allocs.length !== 1 ? "s" : "")),
-                          React.createElement("td", { style: { padding: "8px 8px", borderBottom: "1px solid " + spBorder, textAlign: "center" } },
-                            React.createElement("span", { style: { fontSize: 12, color: spMuted } }, isExpPTP ? "\u25BE" : "\u25B8")
-                          )
                         ),
                         isExpPTP ? React.createElement("tr", null,
-                          React.createElement("td", { colSpan: 7, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
+                          React.createElement("td", { colSpan: 8, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                             React.createElement("div", { style: { padding: "16px 24px", background: "#F1F5F9" } },
                               React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 10 } }, "Allocations"),
                               React.createElement("table", { style: { width: "100%", borderCollapse: "collapse" } },
@@ -13215,7 +13237,7 @@ export default function FactoringDashboard() {
               {supPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>No payments match filters.</div>}
               {supPays.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{saCols.map(function(col) {
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{saCols.map(function(col) {
                     var isSort = col.sortable && saSort === col.key;
                     return <th key={col.key} onClick={function() { if (col.sortable) doSaSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (saDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                   })}</tr></thead>
@@ -13227,7 +13249,8 @@ export default function FactoringDashboard() {
                     var holdbacks = SUPPLIER_PAYMENT_QUEUE.filter(function(spq) { return spq.sourcePaymentId === ep.pay.paymentId && spq.type === "holdback"; });
                     var hasPassthrough = passthroughs.length > 0;
                     return <tbody key={ep.pay.paymentId}>
-                      <tr style={{ borderBottom: isExpSA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpSA ? "var(--card-hover)" : "transparent" }} onClick={function() { setSaExp(isExpSA ? null : ep.pay.paymentId); }}>
+                      <tr onClick={function() { setSaExp(isExpSA ? null : ep.pay.paymentId); }} style={{ cursor: "pointer", borderBottom: isExpSA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpSA ? "var(--card-hover)" : "transparent" }} onClick={function() { setSaExp(isExpSA ? null : ep.pay.paymentId); }}>
+                        <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpSA ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setSaExp(isExpSA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpSA ? "var(--accent)" : "var(--card-hover)", color: isExpSA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpSA ? "\u25BE" : "\u25B8"}</button></td>
                         <td style={Object.assign({}, samc, { color: "var(--accent)", fontWeight: 600 })}>
                           {ep.pay.paymentId}
                           {hasPassthrough && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", letterSpacing: "0.04em", textTransform: "uppercase" }} title={"Includes " + passthroughs.length + " pass-through"}>PT</span>}
@@ -13242,9 +13265,8 @@ export default function FactoringDashboard() {
                           {holdbacks.length > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{holdbacks.length} hb</span>}
                           {ep.allocs.length === 0 && passthroughs.length === 0 && holdbacks.length === 0 && <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>no allocations</span>}
                         </td>
-                        <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setSaExp(isExpSA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpSA ? "var(--accent)" : "var(--card-hover)", color: isExpSA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpSA ? "\u25BE" : "\u25B8"}</button></td>
                       </tr>
-                      {isExpSA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                      {isExpSA && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations</div>
                         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Type", "Reference", "Date", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>
                           {ep.allocs.map(function(a, ai) {
@@ -13471,7 +13493,7 @@ export default function FactoringDashboard() {
               {supHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{hbpHasActive ? "No HBPs match filters." : "No holdback payments for this supplier."}</div>}
               {supHbps.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{hbpCols.map(function(col) {
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{hbpCols.map(function(col) {
                     var isSort = col.sortable && shSort === col.key;
                     return <th key={col.key} onClick={function() { if (col.sortable) doShSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (shDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                   })}</tr></thead>
@@ -13481,7 +13503,8 @@ export default function FactoringDashboard() {
                     var supCount = hbp.allocations.filter(function(a) { return a.type === "disbursement"; }).length;
                     var invCount = hbp.allocations.filter(function(a) { return a.type !== "disbursement"; }).length;
                     return <tbody key={hbp.hbPaymentId}>
-                      <tr style={{ borderBottom: isExpSH ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpSH ? "var(--card-hover)" : "transparent" }} onClick={function() { setShExp(isExpSH ? null : hbp.hbPaymentId); }}>
+                      <tr onClick={function() { setShExp(isExpSH ? null : hbp.hbPaymentId); }} style={{ cursor: "pointer", borderBottom: isExpSH ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpSH ? "var(--card-hover)" : "transparent" }} onClick={function() { setShExp(isExpSH ? null : hbp.hbPaymentId); }}>
+                        <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpSH ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setShExp(isExpSH ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpSH ? "var(--accent)" : "var(--card-hover)", color: isExpSH ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpSH ? "\u25BE" : "\u25B8"}</button></td>
                         <td style={Object.assign({}, shmc, { color: "#A78BFA", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
                         <td style={Object.assign({}, shmc, {})} onClick={function(e) { e.stopPropagation(); drillToInvoice(hbp.sourceInvoiceId); }} title="Drill into invoice"><span style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{hbp.sourceInvoiceId}</span></td>
@@ -13492,9 +13515,8 @@ export default function FactoringDashboard() {
                           {invCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{invCount} INV</span>}
                           {supCount === 0 && invCount === 0 && <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>none</span>}
                         </td>
-                        <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setShExp(isExpSH ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpSH ? "var(--accent)" : "var(--card-hover)", color: isExpSH ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpSH ? "\u25BE" : "\u25B8"}</button></td>
                       </tr>
-                      {isExpSH && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                      {isExpSH && <tr><td colSpan={8} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({hbp.allocations.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) {
                           var isSup = a.type === "disbursement";
@@ -13690,7 +13712,7 @@ export default function FactoringDashboard() {
               {supFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{fpHasActive ? "No funding payments match filters." : "No funding payments for this supplier."}</div>}
               {supFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{fpCols.map(function(col) {
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{fpCols.map(function(col) {
                     var isSort = col.sortable && sfSort === col.key;
                     return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doSfSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (sfDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                   })}</tr></thead>
@@ -13703,7 +13725,8 @@ export default function FactoringDashboard() {
                     var whenIsFallback = !fp.executedDisplay && !!fp.createdDisplay;
                     return (
                       <tbody key={fp.id}>
-                        <tr style={{ borderBottom: isFpExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isFpExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isFpExp ? null : "sf-" + fp.id); }}>
+                        <tr onClick={function() { setFundPayExp(isFpExp ? null : "sf-" + fp.id); }} style={{ cursor: "pointer", borderBottom: isFpExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isFpExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isFpExp ? null : "sf-" + fp.id); }}>
+                          <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isFpExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isFpExp ? null : "sf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isFpExp ? "var(--accent)" : "var(--card-hover)", color: isFpExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isFpExp ? "\u25BE" : "\u25B8"}</button></td>
                           <td style={Object.assign({}, sfmc, { color: "var(--accent)", fontWeight: 600 })}>
                             {fp.id}
                             {isBundle && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", letterSpacing: "0.04em", textTransform: "uppercase" }} title={fp.invoiceIds ? "Bundle covering " + fp.invoiceIds.length + " invoices" : "Bundle payment"}>Bundle</span>}
@@ -13718,9 +13741,8 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
                           <td style={{ padding: "8px 8px" }}>{sfStatusBadge(fp.status)}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: whenIsFallback ? "var(--muted)" : "var(--text-secondary)", fontStyle: whenIsFallback ? "italic" : "normal" }} title={whenIsFallback ? "Not yet executed \u2014 showing created date" : undefined}>{whenDisplay}{whenIsFallback && <span style={{ marginLeft: 4, fontSize: 8, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>(created)</span>}</td>
-                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isFpExp ? null : "sf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isFpExp ? "var(--accent)" : "var(--card-hover)", color: isFpExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isFpExp ? "\u25BE" : "\u25B8"}</button></td>
                         </tr>
-                        {isFpExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                        {isFpExp && <tr><td colSpan={10} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                           <div style={{ padding: "16px 22px" }}>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                               {(function() {
@@ -14617,7 +14639,7 @@ export default function FactoringDashboard() {
               {buyInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{biHasActive ? "No invoices match filters." : "No invoices for this buyer."}</div>}
               {buyInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
-                  <thead><tr>{biCols.map(function(col) {
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{biCols.map(function(col) {
                     var isSort = col.sortable && biSort === col.key;
                     return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doBiSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (biDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                   })}</tr></thead>
@@ -14628,7 +14650,8 @@ export default function FactoringDashboard() {
                     var dp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
                     var bmc = { padding: "8px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", whiteSpace: "nowrap" };
                     return <React.Fragment key={inv.id}>
-                    <tr style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
+                    <tr onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
+                      <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isBuyExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBuyExp ? "var(--accent)" : "var(--card-hover)", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBuyExp ? "\u25BE" : "\u25B8"}</button></td>
                       <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                       <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
                       <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
@@ -14639,9 +14662,8 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                       <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
                       <td style={Object.assign({}, bmc, { color: "#D97706" })}>{inv.fundedDate && inv.annualRate ? (inv.annualRate * 100).toFixed(1) + "%" : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isBuyExp ? null : "buy-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isBuyExp ? "var(--accent)" : "var(--card-hover)", color: isBuyExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isBuyExp ? "\u25BE" : "\u25B8"}</button></td>
                     </tr>
-                    {isBuyExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                    {isBuyExp && <tr><td colSpan={12} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                       <div style={{ padding: "16px 22px" }}>
                         <InvoiceStatusTimeline inv={inv} />
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
@@ -14813,7 +14835,7 @@ export default function FactoringDashboard() {
               {buyPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{baHasActive ? "No payments match filters." : "No payments from this buyer."}</div>}
               {buyPays.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{baCols.map(function(col) {
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{baCols.map(function(col) {
                     var isSort = col.sortable && baSort === col.key;
                     return <th key={col.key} onClick={function() { if (col.sortable) doBaSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (baDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                   })}</tr></thead>
@@ -14821,15 +14843,15 @@ export default function FactoringDashboard() {
                     var isExpBA = baExp === ep.pay.paymentId;
                     var totalAlloc = ep.allocs.reduce(function(s, a) { return s + a.amount; }, 0);
                     return <tbody key={ep.pay.paymentId}>
-                      <tr style={{ borderBottom: isExpBA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBA ? "var(--card-hover)" : "transparent" }} onClick={function() { setBaExp(isExpBA ? null : ep.pay.paymentId); }}>
+                      <tr onClick={function() { setBaExp(isExpBA ? null : ep.pay.paymentId); }} style={{ cursor: "pointer", borderBottom: isExpBA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBA ? "var(--card-hover)" : "transparent" }} onClick={function() { setBaExp(isExpBA ? null : ep.pay.paymentId); }}>
+                        <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpBA ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setBaExp(isExpBA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpBA ? "var(--accent)" : "var(--card-hover)", color: isExpBA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBA ? "\u25BE" : "\u25B8"}</button></td>
                         <td style={Object.assign({}, bamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
                         <td style={Object.assign({}, bamc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{ep.pay.currency}</td>
                         <td style={{ padding: "8px 8px", fontSize: 12 }}><span style={{ color: "#059669", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalAlloc), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ep.allocs.length} inv)</span></td>
-                        <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setBaExp(isExpBA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpBA ? "var(--accent)" : "var(--card-hover)", color: isExpBA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBA ? "\u25BE" : "\u25B8"}</button></td>
                       </tr>
-                      {isExpBA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                      {isExpBA && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
                           var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
@@ -15892,7 +15914,7 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ overflowX: "auto" }}>
                       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1100 }}>
-                        <thead><tr>{["", "Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h, hi) { return <th key={"h-" + hi} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, width: hi === 0 ? 30 : undefined }}>{hi === 0 ? (function() {
+                        <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{["", "Invoice", "Supplier", "Buyer", "Amount", "CCY", "Capital", "Interest", "Term", "Due", "Inv Status", ""].map(function(h, hi) { return <th key={"h-" + hi} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, width: hi === 0 ? 30 : undefined }}>{hi === 0 ? (function() {
                           // Select-all toggle (only checks rows that are eligible to toggle)
                           var allSelected = approvedInvs.length > 0 && approvedInvs.every(function(inv) { return progPurchSelected[inv.id]; });
                           var someSelected = approvedInvs.some(function(inv) { return progPurchSelected[inv.id]; });
@@ -15914,7 +15936,8 @@ export default function FactoringDashboard() {
                           var aDp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
                           return (
                             <tbody key={"appr-" + inv.id}>
-                              <tr style={{ borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : (progPurchSelected[inv.id] ? "#15AEC014" : "#567EBB04") }}>
+                              <tr onClick={function() { setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ cursor: "pointer", borderBottom: aIsExp ? "none" : "1px solid var(--border)", background: aIsExp ? "#567EBB08" : (progPurchSelected[inv.id] ? "#15AEC014" : "#567EBB04") }}>
+                                <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: aIsExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: aIsExp ? "var(--accent)" : "var(--card-hover)", color: aIsExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{aIsExp ? "\u25BE" : "\u25B8"}</button></td>
                                 <td style={{ padding: "8px 8px", width: 30 }}>
                                   <div onClick={function(e) {
                                     e.stopPropagation();
@@ -15936,15 +15959,14 @@ export default function FactoringDashboard() {
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: aDp ? "#EF4444" : "var(--text-secondary)", fontWeight: aDp ? 600 : 400 }}>{fmt(inv.dueDate)}</td>
                                 <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus} bg={aIst.bg} color={aIst.color} border={aIst.border} icon={aIst.icon} /></td>
                                 <td style={{ padding: "8px 8px" }}>
-                                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  <div onClick={function(e) { e.stopPropagation(); }} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                                     {inv.doNotAdvance && <span style={{ padding: "2px 7px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: "#94A3B8", background: "#6B728020", border: "1px solid #6B728040", letterSpacing: "0.06em" }} title="Do Not Advance \u2014 capital will not be advanced against this invoice">DNA</span>}
                                     {!inv.doNotAdvance && (inv.capitalDue || 0) > 0.01 && <button onClick={function(e) { e.stopPropagation(); setView("payments"); setPayTab("outbound_queue"); setOqSearch(inv.id); setOqPage(0); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #5FC6D2", background: "#5FC6D210", color: "#5FC6D2", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Execute funding via Outbound Queue">Execute {"\u2192"}</button>}
                                     {!inv.doNotAdvance && ((inv.fundingHeadroom || 0) > 0.01) && <button onClick={function(e) { e.stopPropagation(); openFundPopupFor(inv); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #8B5CF6", background: "#7B5EA710", color: "#8B5CF6", fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title={"Advance capital. Headroom: " + money(inv.fundingHeadroom || 0, inv.currency)}>{(inv.capitalDue || 0) < 0.01 ? "Fund" : "Top Up"}</button>}
-                                    <button onClick={function() { setExp(aIsExp ? null : "appr-" + inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: aIsExp ? "var(--accent)" : "var(--card-hover)", color: aIsExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{aIsExp ? "\u25BE" : "\u25B8"}</button>
                                   </div>
                                 </td>
                               </tr>
-                              {aIsExp && <tr><td colSpan={12} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                              {aIsExp && <tr><td colSpan={13} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
                                   <InvoiceStatusTimeline inv={inv} />
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
@@ -16080,7 +16102,7 @@ export default function FactoringDashboard() {
                   {fInvs.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{piHasActive ? "No invoices match filters." : "No invoices in this program."}</div>}
                   {fInvs.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 850 }}>
-                      <thead><tr>{piColDefs.map(function(col) {
+                      <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{piColDefs.map(function(col) {
                         var isSort = col.sortable && piSort === col.key;
                         return <th key={col.key} title={col.tooltip || undefined} onClick={function() { if (col.sortable) doPiSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.tooltip && <span style={{ marginLeft: 3, fontSize: 9, color: "var(--muted)", cursor: "help" }}>{"\u24d8"}</span>}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (piDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                       })}</tr></thead>
@@ -16091,7 +16113,8 @@ export default function FactoringDashboard() {
                         var dp = inv.dueDate < viewDate && inv.invoiceStatus !== "Settled" && inv.invoiceStatus !== "Declined";
                         return (
                           <tbody key={inv.id}>
-                            <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
+                            <tr onClick={function() { setExp(isExp ? null : inv.id); }} style={{ cursor: "pointer", borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
+                              <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25BE" : "\u25B8"}</button></td>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerId || inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
@@ -16101,12 +16124,11 @@ export default function FactoringDashboard() {
                               <td style={Object.assign({}, pimc, { color: "#D97706" })}>{money(inv.interestCharged, inv.currency)}</td>
                               <td style={Object.assign({}, pimc, { color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" })}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: dp ? "#EF4444" : "var(--text-secondary)", fontWeight: dp ? 600 : 400 }}>{fmt(inv.dueDate)}</td>
-                              <td style={{ padding: "8px 8px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase",  cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
+                              <td onClick={function(e) { e.stopPropagation(); }} style={{ padding: "8px 8px" }}><select value={inv.invoiceStatus} onChange={function(e) { changeInvoiceStatus(inv.id, e.target.value); }} style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid " + ist.border, background: ist.bg, color: ist.color, fontSize: 10, fontWeight: 600, textTransform: "uppercase",  cursor: "pointer", outline: "none", appearance: "none", WebkitAppearance: "none", paddingRight: 18, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}>{INV_STATUSES.map(function(s) { return <option key={s} value={s} style={{ color: "#333", background: "#fff" }}>{s}</option>; })}</select></td>
                               <td style={{ padding: "8px 8px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} />{inv.doNotFund && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#6B7280", textTransform: "uppercase" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase" }}>DNA</span>}</td>
                               <td style={Object.assign({}, pimc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
-                              <td style={{ padding: "8px 8px" }}><button onClick={function() { setExp(isExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25BE" : "\u25B8"}</button></td>
                             </tr>
-                            {isExp && <tr><td colSpan={piColDefs.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                            {isExp && <tr><td colSpan={piColDefs.length + 1} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
                                   <InvoiceStatusTimeline inv={inv} />
                                   {editInv === inv.id && <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(21, 174, 192,0.15)" }}>
@@ -16576,7 +16598,7 @@ export default function FactoringDashboard() {
                   {progPays.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{paHasActive ? "No payments match filters." : "No payments allocated or routed through this program yet."}</div>}
                   {progPays.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{paCols.map(function(col) {
+                      <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{paCols.map(function(col) {
                         var isSort = col.sortable && paSort === col.key;
                         return <th key={col.key} onClick={function() { if (col.sortable) doPaSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (paDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                       })}</tr></thead>
@@ -16588,7 +16610,8 @@ export default function FactoringDashboard() {
                         var hasPt = ptRoutings.length > 0;
                         var hasAlloc = ep.allocs.length > 0;
                         return <tbody key={ep.pay.paymentId}>
-                          <tr style={{ borderBottom: isExpPA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpPA ? "var(--card-hover)" : "transparent" }} onClick={function() { setPaExp(isExpPA ? null : ep.pay.paymentId); }}>
+                          <tr onClick={function() { setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ cursor: "pointer", borderBottom: isExpPA ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpPA ? "var(--card-hover)" : "transparent" }} onClick={function() { setPaExp(isExpPA ? null : ep.pay.paymentId); }}>
+                            <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpPA ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpPA ? "var(--accent)" : "var(--card-hover)", color: isExpPA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpPA ? "\u25BE" : "\u25B8"}</button></td>
                             <td style={Object.assign({}, pamc, { color: "var(--accent)", fontWeight: 600 })}>{ep.pay.paymentId}{hasPt && !hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Routed through this program via pass-through; no on-program-invoice allocation.">PASS-THROUGH</span>}{hasPt && hasAlloc && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#8B5CF614", color: "#8B5CF6", border: "1px solid #8B5CF630", letterSpacing: "0.04em" }} title="Has both direct allocations and pass-through routings on this program.">MIXED</span>}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(ep.pay.date)}</td>
                             <td style={Object.assign({}, pamc, { fontWeight: 600 })}>{money(ep.pay.amount, ep.pay.currency)}</td>
@@ -16598,9 +16621,8 @@ export default function FactoringDashboard() {
                               {hasPt && <div><span style={{ color: "#8B5CF6", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{money(r2(totalPt), ep.pay.currency)}</span> <span style={{ fontSize: 10, color: "var(--muted)" }}>({ptRoutings.length} routed)</span></div>}
                               {!hasAlloc && !hasPt && <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}
                             </td>
-                            <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPaExp(isExpPA ? null : ep.pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpPA ? "var(--accent)" : "var(--card-hover)", color: isExpPA ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpPA ? "\u25BE" : "\u25B8"}</button></td>
                           </tr>
-                          {isExpPA && <tr><td colSpan={6} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                          {isExpPA && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                             {hasAlloc && <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({ep.allocs.length})</div>}
                             {hasAlloc && <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Invoice", "Supplier", "Buyer", "Alloc Date", "Allocated"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{ep.allocs.map(function(a, ai) {
                               var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
@@ -16745,7 +16767,7 @@ export default function FactoringDashboard() {
                   {progHbps.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{phHasActive ? "No holdback payments match filters." : "No holdback payments for this program."}</div>}
                   {progHbps.length > 0 && <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                      <thead><tr>{phCols.map(function(col) {
+                      <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{phCols.map(function(col) {
                         var isSort = col.sortable && phSort === col.key;
                         return <th key={col.key} onClick={function() { if (col.sortable) doPhSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (phDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                       })}</tr></thead>
@@ -16755,7 +16777,8 @@ export default function FactoringDashboard() {
                         var supCount = hbp.allocations.filter(function(a) { return a.type === "disbursement"; }).length;
                         var invCount = hbp.allocations.filter(function(a) { return a.type !== "disbursement"; }).length;
                         return <tbody key={hbp.hbPaymentId}>
-                          <tr style={{ borderBottom: isExpHB ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpHB ? "var(--card-hover)" : "transparent" }} onClick={function() { setPhExp(isExpHB ? null : hbp.hbPaymentId); }}>
+                          <tr onClick={function() { setPhExp(isExpHB ? null : hbp.hbPaymentId); }} style={{ cursor: "pointer", borderBottom: isExpHB ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpHB ? "var(--card-hover)" : "transparent" }} onClick={function() { setPhExp(isExpHB ? null : hbp.hbPaymentId); }}>
+                            <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpHB ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setPhExp(isExpHB ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpHB ? "var(--accent)" : "var(--card-hover)", color: isExpHB ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpHB ? "\u25BE" : "\u25B8"}</button></td>
                             <td style={Object.assign({}, hmc, { color: "#A78BFA", fontWeight: 600 })}>{hbp.hbPaymentId}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(hbp.date)}</td>
                             <td style={Object.assign({}, hmc, {})} onClick={function(e) { e.stopPropagation(); drillToInvoice(hbp.sourceInvoiceId); }} title="Drill into invoice"><span style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{hbp.sourceInvoiceId}</span></td>
@@ -16766,9 +16789,8 @@ export default function FactoringDashboard() {
                               {invCount > 0 && <span style={{ display: "inline-block", padding: "1px 6px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, marginRight: 4, letterSpacing: "0.04em", textTransform: "uppercase" }}>{invCount} INV</span>}
                               {supCount === 0 && invCount === 0 && <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>none</span>}
                             </td>
-                            <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setPhExp(isExpHB ? null : hbp.hbPaymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpHB ? "var(--accent)" : "var(--card-hover)", color: isExpHB ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpHB ? "\u25BE" : "\u25B8"}</button></td>
                           </tr>
-                          {isExpHB && <tr><td colSpan={7} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                          {isExpHB && <tr><td colSpan={8} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8 }}>Allocations ({hbp.allocations.length})</div>
                             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}><thead><tr>{["Type", "Target", "Amount"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead><tbody>{hbp.allocations.map(function(a, ai) {
                               var isSup = a.type === "disbursement";
@@ -16987,7 +17009,7 @@ export default function FactoringDashboard() {
                 {filteredFunding.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{pfHasActive ? "No funding payments match filters." : "No funding payments in this program."}</div>}
                 {filteredFunding.length > 0 && <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{pfCols.map(function(col) {
+                    <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{pfCols.map(function(col) {
                       var isSort = col.sortable && pfSort === col.key;
                       return <th key={col.key} onClick={function() { if (col.sortable) doPfSort(col.key); }} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: isSort ? "var(--accent)" : "var(--muted)", borderBottom: "1px solid var(--border)", cursor: col.sortable ? "pointer" : "default", whiteSpace: "nowrap", position: "sticky", top: 0, background: "var(--card)", zIndex: 2, userSelect: "none" }}>{col.label}{col.sortable && <span style={{ marginLeft: 4, fontSize: 10, color: isSort ? "var(--accent)" : "transparent", transition: "color 0.15s" }}>{isSort ? (pfDir === "asc" ? "\u25b4" : "\u25be") : "\u25be"}</span>}</th>;
                     })}</tr></thead>
@@ -17000,7 +17022,8 @@ export default function FactoringDashboard() {
                       var executedFallback = !fp.executedDisplay && fp.createdDisplay;
                       return (
                         <tbody key={fp.id}>
-                          <tr style={{ borderBottom: isPfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isPfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isPfExp ? null : "pf-" + fp.id); }}>
+                          <tr onClick={function() { setFundPayExp(isPfExp ? null : "pf-" + fp.id); }} style={{ cursor: "pointer", borderBottom: isPfExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isPfExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setFundPayExp(isPfExp ? null : "pf-" + fp.id); }}>
+                            <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isPfExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isPfExp ? null : "pf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPfExp ? "var(--accent)" : "var(--card-hover)", color: isPfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPfExp ? "\u25BE" : "\u25B8"}</button></td>
                             <td style={Object.assign({}, pfmc, { color: "var(--accent)", fontWeight: 600 })}>
                               {fp.id}
                               {fp.isBundle && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", letterSpacing: "0.04em", textTransform: "uppercase" }} title="Bundled payment">Bundle</span>}
@@ -17017,9 +17040,8 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fp.bankName || "\u2014"}</td>
                             <td style={{ padding: "8px 8px" }}><Badge label={fp.status} bg={stMeta.bg} color={stMeta.color} border={stMeta.border} /></td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: executedFallback ? "var(--muted)" : "var(--text-secondary)", fontStyle: executedFallback ? "italic" : "normal" }} title={executedFallback ? "Created timestamp (not yet executed)" : undefined}>{executedText}</td>
-                            <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setFundPayExp(isPfExp ? null : "pf-" + fp.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPfExp ? "var(--accent)" : "var(--card-hover)", color: isPfExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPfExp ? "\u25BE" : "\u25B8"}</button></td>
                           </tr>
-                          {isPfExp && <tr><td colSpan={9} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                          {isPfExp && <tr><td colSpan={10} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                             <div style={{ padding: "16px 22px" }}>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                                 {(function() { var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }; var val = { fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }; var row = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: "1px solid var(--border)", gap: 8 }; return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Payment Details</div><div style={row}><span style={lbl}>Payment Ref</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.id}</span></div><div style={row}><span style={lbl}>Invoice</span><span style={Object.assign({}, val, { color: "var(--accent)" })}>{fp.invoiceId || (fp.invoiceIds ? fp.invoiceIds.join(", ") : "\u2014")}</span></div><div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700, color: "#059669" })}>{money(fp.amount, fp.currency)}</span></div>{fp.grossAmount && fp.grossAmount !== fp.amount && <div style={row}><span style={lbl}>Gross Amount</span><span style={val}>{money(fp.grossAmount, fp.currency)}</span></div>}{fp.deductionTotal > 0 && <div style={row}><span style={lbl}>Deductions</span><span style={Object.assign({}, val, { color: "#DC2626" })}>{money(fp.deductionTotal, fp.currency)}</span></div>}<div style={row}><span style={lbl}>Currency</span><span style={val}>{fp.currency}</span></div><div style={row}><span style={lbl}>Program</span><span style={val}>{fp.programName || prog.name}</span></div><div style={row}><span style={lbl}>Supplier</span><span style={val}>{fp.supplierName || "\u2014"}</span></div></div>; })()}
@@ -17352,7 +17374,7 @@ export default function FactoringDashboard() {
                 {bsFiltered.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{bsHasActive ? "No transactions match your filters." : "No transactions recorded for this program."}</div> :
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{["Date", "Type", "Reference", "Counterparty", "Credit", "Debit", "Balance", ""].map(function(h) { return <th key={h} style={{ textAlign: h === "Credit" || h === "Debit" || h === "Balance" ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
+                    <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{["Date", "Type", "Reference", "Counterparty", "Credit", "Debit", "Balance", ""].map(function(h) { return <th key={h} style={{ textAlign: h === "Credit" || h === "Debit" || h === "Balance" ? "right" : "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap" }}>{h}</th>; })}</tr></thead>
                     <tbody>{bsPageItems.map(function(e, ei) {
                       var m = typeMeta[e.baseType] || { bg: "#64748B20", color: "#94A3B8", border: "#64748B40" };
                       var isExpBs = bsExp === e.id;
@@ -17379,7 +17401,8 @@ export default function FactoringDashboard() {
                         return false;
                       });
                       return <React.Fragment key={e.id}>
-                        <tr style={{ borderBottom: isExpBs ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBs ? "var(--card-hover)" : "transparent" }} onClick={function() { setBsExp(isExpBs ? null : e.id); }}>
+                        <tr onClick={function() { setBsExp(isExpBs ? null : e.id); }} style={{ cursor: "pointer", borderBottom: isExpBs ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExpBs ? "var(--card-hover)" : "transparent" }} onClick={function() { setBsExp(isExpBs ? null : e.id); }}>
+                          <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExpBs ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setBsExp(isExpBs ? null : e.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExpBs ? "var(--accent)" : "var(--card-hover)", color: isExpBs ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBs ? "\u25BE" : "\u25B8"}</button></td>
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(e.date)}</td>
                           <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>
                             <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 4, background: m.bg, color: m.color, border: "1px solid " + m.border, fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{e.baseType}</span>
@@ -17390,9 +17413,8 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#10B981", fontWeight: 600, textAlign: "right" }}>{e.credit > 0 ? money(e.credit, e.currency) : ""}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600, textAlign: "right" }}>{e.debit > 0 ? money(e.debit, e.currency) : ""}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, textAlign: "right", color: e.balance >= 0 ? "var(--text)" : "#DC2626" }}>{money(e.balance, e.currency)}</td>
-                          <td style={{ padding: "8px 8px", width: 36 }}><button onClick={function(ev) { ev.stopPropagation(); setBsExp(isExpBs ? null : e.id); }} style={{ width: 26, height: 26, borderRadius: 5, border: "none", background: isExpBs ? "var(--accent)" : "var(--card-hover)", color: isExpBs ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExpBs ? "\u25BE" : "\u25B8"}</button></td>
                         </tr>
-                        {isExpBs && <tr><td colSpan={8} style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                        {isExpBs && <tr><td colSpan={9} style={{ padding: "14px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: relatedLogs.length > 0 ? 14 : 0 }}>
                             <div style={{ background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "12px 14px" }}>
                               <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid var(--border)" }}>Transaction Details</div>
@@ -18461,7 +18483,7 @@ export default function FactoringDashboard() {
                 </div>
                 {filteredOC.length === 0 ? <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>{ocHasActive ? "No completed payments match your filters." : "No completed outbound payments yet."}</div> :
                 <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{[{ k: "id", l: "ID" }, { k: "type", l: "Type" }, { k: "supplier", l: "Supplier" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "date", l: "Date" }, { k: null, l: "Invoice(s)" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"och-" + hi} onClick={h.k ? ocSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ocArr(h.k) : ""}</th>; })}</tr></thead>
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{[{ k: "id", l: "ID" }, { k: "type", l: "Type" }, { k: "supplier", l: "Supplier" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "date", l: "Date" }, { k: null, l: "Invoice(s)" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"och-" + hi} onClick={h.k ? ocSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ocArr(h.k) : ""}</th>; })}</tr></thead>
                   {ocPageItems.map(function(item) {
                     var typeColor = item.type === "funding" ? "#15AEC0" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "#059669" : item.type === "remittance" ? "#8B5CF6" : "#D97706";
                     var typeLabel = item.type === "funding" ? "Funding" : (item.type === "holdback_disbursement" || item.type === "holdback") ? "Holdback" : item.type === "remittance" ? "Pass-through" : (item.type || "Other");
@@ -18470,7 +18492,8 @@ export default function FactoringDashboard() {
                     var progId = itemProgramId(item);
                     return (
                       <tbody key={item.id}>
-                        <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
+                        <tr onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }} style={{ cursor: "pointer", borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
+                          <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isOcExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExp(isOcExp ? null : "oc-" + item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isOcExp ? "\u25BE" : "\u25B8"}</button></td>
                           <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
                           <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierId || item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{item.supplierName}</span> : "\u2014"}</td>
@@ -18478,9 +18501,8 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || "\u2014"}</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace" }}>{invoiceRefList.length === 0 ? "\u2014" : invoiceRefList.length === 1 ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(invoiceRefList[0]); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + invoiceRefList[0]}>{invoiceRefList[0]}</span> : <span title={invoiceRefList.join(", ")}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(invoiceRefList[0]); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }}>{invoiceRefList[0]}</span> <span style={{ color: "var(--muted)" }}>+{invoiceRefList.length - 1} more</span></span>}</td>
-                          <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExp(isOcExp ? null : "oc-" + item.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isOcExp ? "var(--accent)" : "var(--card-hover)", color: isOcExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>{isOcExp ? "\u25BE" : "\u25B8"}</button></td>
                         </tr>
-                        {isOcExp && <tr><td colSpan={8} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+                        {isOcExp && <tr><td colSpan={9} style={{ padding: "16px 22px", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                             <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Program</span>{" "}{progId && item.programName ? <span onClick={function(e) { e.stopPropagation(); drillToProgram(progId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View program " + item.programName}>{item.programName}</span> : (item.programName || "\u2014")}</div>
                             <div style={{ fontSize: 12, color: "var(--text-secondary)" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Bank</span> {item.bankName || "No bank on file"} {item.bankDetails || ""}</div>
@@ -18676,13 +18698,14 @@ export default function FactoringDashboard() {
                 <div style={{ maxHeight: 400, overflowY: "auto" }}>
                   {filteredOutgoing.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{ogHasActive ? "No outgoing payments match your filters." : "No outgoing payments yet. Click \"+ New Outgoing Payment\" to create one."}</div>}
                   {filteredOutgoing.length > 0 && <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr>{[{ k: "paymentId", l: "Payment ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "reference", l: "Reference" }, { k: "status", l: "Status" }, { k: null, l: "Routings" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"ogh-" + hi} onClick={h.k ? ogSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ogArr(h.k) : ""}</th>; })}</tr></thead>
+                    <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{[{ k: "paymentId", l: "Payment ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "reference", l: "Reference" }, { k: "status", l: "Status" }, { k: null, l: "Routings" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"ogh-" + hi} onClick={h.k ? ogSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? ogArr(h.k) : ""}</th>; })}</tr></thead>
                     <tbody>{outPageItems.map(function(pay) {
                       var st = getOutboundStatus(pay);
                       var isExp = expPay === pay.paymentId;
                       var totalRoutings = st.linkedSPQs.length + st.linkedFlows.length;
                       return <React.Fragment key={pay.paymentId}>
                         <tr data-payment-row={pay.paymentId} style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isExp ? "#7C3AED08" : "transparent" }} onClick={function() { setExpPay(isExp ? null : pay.paymentId); }}>
+                          <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isExp ? "var(--accent)" : "var(--card-hover)", color: isExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isExp ? "\u25BE" : "\u25B8"}</button></td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#7C3AED", fontWeight: 600 }}>{pay.paymentId}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
                           <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
@@ -18690,9 +18713,8 @@ export default function FactoringDashboard() {
                           <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{pay.reference || "\u2014"}</td>
                           <td style={{ padding: "8px 12px" }}><Badge label={st.label} bg={st.color + "14"} color={st.color} border={st.color + "30"} /></td>
                           <td style={{ padding: "8px 12px", fontSize: 11, color: "var(--muted)" }}>{totalRoutings} {totalRoutings === 1 ? "routing" : "routings"}</td>
-                          <td style={{ padding: "8px 12px", textAlign: "center", color: "var(--muted)", fontSize: 11 }}>{isExp ? "\u25BE" : "\u25B8"}</td>
                         </tr>
-                        {isExp && <tr><td colSpan={8} style={{ padding: "0 0 12px 0", borderBottom: "1px solid var(--border)", background: "#7C3AED04" }}>
+                        {isExp && <tr><td colSpan={9} style={{ padding: "0 0 12px 0", borderBottom: "1px solid var(--border)", background: "#7C3AED04" }}>
                           <div style={{ padding: "12px 22px" }}>
                             <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Routings ({totalRoutings})</div>
                             {totalRoutings === 0 && <div style={{ fontSize: 12, color: "#EF4444", fontStyle: "italic" }}>No routings found. This payment was created but never routed.</div>}
@@ -18852,13 +18874,14 @@ export default function FactoringDashboard() {
                 return <div>
               <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{[{ k: "paymentId", l: "ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"inh-" + hi} onClick={h.k ? inSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? inArr(h.k) : ""}</th>; })}</tr></thead>
+                <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{[{ k: "paymentId", l: "ID" }, { k: "date", l: "Date" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"inh-" + hi} onClick={h.k ? inSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", whiteSpace: "nowrap", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? inArr(h.k) : ""}</th>; })}</tr></thead>
                 {pageItems.map(function(pay) {
                   var status = getPayStatus(pay), rem = getPayRemaining(pay), al = r2(pay.amount - rem);
                   var sc = status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "#64748B";
                   var isPayExp = expPay === pay.paymentId;
                   return <tbody key={pay.paymentId}>
                     <tr data-payment-row={pay.paymentId} style={{ borderBottom: isPayExp ? "none" : "1px solid var(--border)", background: isPayExp ? "var(--card-hover)" : "transparent", cursor: "pointer" }} onClick={function() { setExpPay(isPayExp ? null : pay.paymentId); }}>
+                    <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isPayExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25BE" : "\u25B8"}</button></td>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{pay.paymentId}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(pay.date)}</td>
                     <td style={{ padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(pay.amount, pay.currency)}</td>
@@ -18967,9 +18990,8 @@ export default function FactoringDashboard() {
                         setRouteProgV(""); setRouteSupV(""); setRouteAmtV("");
                       }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{status === "unallocated" ? "Allocate" : "Edit Allocations"}</button>
                     </div></td>
-                    <td style={{ padding: "8px 8px" }}><button onClick={function(e) { e.stopPropagation(); setExpPay(isPayExp ? null : pay.paymentId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isPayExp ? "var(--accent)" : "var(--card-hover)", color: isPayExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isPayExp ? "\u25BE" : "\u25B8"}</button></td>
                   </tr>
-                  {isPayExp && <tr><td colSpan={9} style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", background: "var(--card-hover)" }}>
+                  {isPayExp && <tr><td colSpan={10} style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", background: "var(--card-hover)" }}>
                     {pay.reference && <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 10 }}><span style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Ref: </span>{pay.reference}</div>}
                     {pay.allocations.length > 0 && <div style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 8 }}>Allocations for {pay.paymentId}</div>
@@ -19074,13 +19096,14 @@ export default function FactoringDashboard() {
             {filteredHb.length === 0 && <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13, fontStyle: "italic" }}>{hbFilter === "all" ? "No invoices with holdback received yet." : hbFilter === "disbursed" ? "No fully disbursed holdback invoices." : "No invoices needing attention."}</div>}
             {filteredHb.length > 0 && <div style={{ maxHeight: 500, overflowY: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>{["Invoice", "Buyer", "CCY", "Holdback Recd", "Disbursed", "Available", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
+                <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{["Invoice", "Buyer", "CCY", "Holdback Recd", "Disbursed", "Available", "Status", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase",  color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                 {filteredHb.map(function(d) {
                   var inv = d.inv, hbps = d.hbps;
                   var isHbExp = expHbPay === inv.id;
                   var sc = d.status === "disbursed" ? "#059669" : "#D97706";
                   return <tbody key={inv.id}>
-                    <tr style={{ borderBottom: isHbExp ? "none" : "1px solid var(--border)", background: isHbExp ? "var(--card-hover)" : "transparent" }}>
+                    <tr onClick={function() { setExpHbPay(isHbExp ? null : inv.id); }} style={{ cursor: "pointer", borderBottom: isHbExp ? "none" : "1px solid var(--border)", background: isHbExp ? "var(--card-hover)" : "transparent" }}>
+                      <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: isHbExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExpHbPay(isHbExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isHbExp ? "var(--accent)" : "var(--card-hover)", color: isHbExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isHbExp ? "\u25BE" : "\u25B8"}</button></td>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function() { setExpHbPay(isHbExp ? null : inv.id); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 3 }}>{inv.id}</span></td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
@@ -19088,12 +19111,11 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: inv.holdbackDisbursed > 0 ? "#C9D9E8" : "var(--muted)" }}>{inv.holdbackDisbursed > 0 ? money(inv.holdbackDisbursed, inv.currency) : "\u2014"}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: inv.holdbackAvailable > 0.01 ? "#059669" : "var(--muted)", fontWeight: inv.holdbackAvailable > 0.01 ? 600 : 400 }}>{inv.holdbackAvailable > 0.01 ? money(inv.holdbackAvailable, inv.currency) : "\u2014"}</td>
                       <td style={{ padding: "9px 12px" }}><span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: sc }}>{d.status === "disbursed" ? "Disbursed" : "Attention Needed"}</span></td>
-                      <td style={{ padding: "9px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <td style={{ padding: "9px 12px" }}><div onClick={function(e) { e.stopPropagation(); }} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         {d.status === "attention" && <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #2E8B57", background: "#2E8B5710", color: "#059669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Disburse</button>}
-                        <button onClick={function() { setExpHbPay(isHbExp ? null : inv.id); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: isHbExp ? "#059669" : "var(--card-hover)", color: isHbExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{isHbExp ? "\u25BE" : "\u25B8"}</button>
                       </div></td>
                     </tr>
-                    {isHbExp && <tr><td colSpan={8} style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", background: "var(--card-hover)" }}>
+                    {isHbExp && <tr><td colSpan={9} style={{ padding: "12px 22px", borderBottom: "1px solid var(--border)", background: "var(--card-hover)" }}>
                       {inv.holdbackAvailable > 0.01 && <div style={{ marginBottom: hbps.length > 0 ? 14 : 0, padding: "12px 16px", borderRadius: 10, background: "#2E8B5708", border: "1px solid #2E8B5730", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ fontSize: 12 }}><span style={{ color: "var(--muted)" }}>Available for disbursement: </span><span style={{ color: "#059669", fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.holdbackAvailable, inv.currency)}</span></div>
                         <button onClick={function(e) { e.stopPropagation(); startHbDisburse(inv); setTimeout(function() { var el = document.getElementById("hb-disburse-panel"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100); }} style={{ padding: "6px 16px", borderRadius: 7, border: "none", background: "#059669", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Disburse Holdback</button>
@@ -20184,7 +20206,7 @@ export default function FactoringDashboard() {
               {CREDIT_NOTES_DB.length > 0 && filteredCn.length === 0 && <div style={{ padding: "28px 22px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No credit notes match your filters.</div>}
               {filteredCn.length > 0 && <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr>{[{ k: "creditNoteId", l: "CN ID" }, { k: "date", l: "Date" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "reference", l: "Reference" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"cnh-" + hi} onClick={h.k ? cnSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? cnArr(h.k) : ""}</th>; })}</tr></thead>
+                  <thead><tr><th style={{ padding: "8px 8px", width: 40, position: "sticky", left: 0, background: "var(--card)", zIndex: 1, borderBottom: "1px solid var(--border)" }}></th>{[{ k: "creditNoteId", l: "CN ID" }, { k: "date", l: "Date" }, { k: "supplier", l: "Supplier" }, { k: "buyer", l: "Buyer" }, { k: "reference", l: "Reference" }, { k: "amount", l: "Amount" }, { k: "currency", l: "CCY" }, { k: "allocated", l: "Allocated" }, { k: "remaining", l: "Remaining" }, { k: "status", l: "Status" }, { k: null, l: "" }].map(function(h, hi) { return <th key={"cnh-" + hi} onClick={h.k ? cnSortH(h.k) : undefined} style={{ textAlign: "left", padding: "8px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)", cursor: h.k ? "pointer" : "default", userSelect: "none" }}>{h.l}{h.k ? cnArr(h.k) : ""}</th>; })}</tr></thead>
                   {cnlPageItems.map(function(cn) {
                     var allocated = cn.allocations.reduce(function(s, a) { return s + a.amount; }, 0);
                     var remaining = r2(cn.amount - allocated);
@@ -20194,6 +20216,7 @@ export default function FactoringDashboard() {
                     var cnAudit = AUDIT_LOG.filter(function(log) { var c = log.context || {}; return c.creditNoteId === cn.creditNoteId || (log.details || "").indexOf(cn.creditNoteId) >= 0; }).slice().reverse();
                     return <tbody key={cn.creditNoteId}>
                       <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent", opacity: cn.voided ? 0.5 : 1, textDecoration: cn.voided ? "line-through" : "none" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
+                        <td style={{ padding: "8px 8px", position: "sticky", left: 0, background: cnExp ? "var(--card-hover)" : "var(--card)", zIndex: 1, width: 40 }}><button onClick={function(e) { e.stopPropagation(); setExp(cnExp ? null : "cn-" + cn.creditNoteId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: cnExp ? "var(--accent)" : "var(--card-hover)", color: cnExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{cnExp ? "\u25BE" : "\u25B8"}</button></td>
                       <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}{cn.voided && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728025", color: "#94A3B8", border: "1px solid #6B728045", letterSpacing: "0.06em", textDecoration: "none" }} title={"VOIDED " + (cn.voidedAt ? "on " + new Date(cn.voidedAt).toLocaleString("en-GB") : "") + (cn.voidedBy ? " by " + cn.voidedBy : "") + (cn.voidReason ? "\nReason: " + cn.voidReason : "")}>VOIDED</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierId || cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
@@ -20204,11 +20227,8 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, cnmc, { color: "#059669" })}>{money(r2(allocated), cn.currency)}</td>
                       <td style={Object.assign({}, cnmc, { color: remaining > 0 ? "#D97706" : "#059669" })}>{money(remaining, cn.currency)}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={status === "allocated" ? "Allocated" : status === "partial" ? "Partial" : "Unallocated"} bg={status === "allocated" ? "#2E8B5720" : status === "partial" ? "#C08B3018" : "#8C9AB514"} color={status === "allocated" ? "#059669" : status === "partial" ? "#D97706" : "#94A3B8"} border={status === "allocated" ? "#2E8B5740" : status === "partial" ? "#C08B3030" : "#8C9AB530"} /></td>
-                      <td style={{ padding: "8px 8px" }}>
-                        <button onClick={function(e) { e.stopPropagation(); setExp(cnExp ? null : "cn-" + cn.creditNoteId); }} style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: cnExp ? "var(--accent)" : "var(--card-hover)", color: cnExp ? "#fff" : "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, transition: "all 0.15s ease" }}>{cnExp ? "\u25BE" : "\u25B8"}</button>
-                      </td>
                     </tr>
-                    {cnExp && <tr><td colSpan={11} style={{ padding: 0, borderBottom: "1px solid var(--border)", background: "var(--bg)" }} onClick={function(e) { e.stopPropagation(); }}>
+                    {cnExp && <tr><td colSpan={12} style={{ padding: 0, borderBottom: "1px solid var(--border)", background: "var(--bg)" }} onClick={function(e) { e.stopPropagation(); }}>
                       <div style={{ padding: "20px 28px" }}>
                         {/* Credit Note Details */}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
