@@ -4141,6 +4141,51 @@ function IneligibilityIndicator(p) {
   </span>;
 }
 
+function InvoiceStatusTimeline(p) {
+  var inv = p.inv || {};
+  var events = [];
+  (inv.invoiceStatusHistory || []).forEach(function(h) { if (h && h.status) events.push({ lane: "invoice", status: h.status, date: h.date }); });
+  if (inv.approvedDate) events.push({ lane: "funding", status: "Funding Approved", date: inv.approvedDate });
+  if (inv.fundedDate) events.push({ lane: "funding", status: "Funding Released", date: inv.fundedDate });
+  if (inv.fullyRepaidDate) events.push({ lane: "funding", status: "Repaid", date: inv.fullyRepaidDate });
+  if (events.length === 0) return null;
+  events.sort(function(a, b) { return (a.date || "") < (b.date || "") ? -1 : (a.date || "") > (b.date || "") ? 1 : 0; });
+  function evColor(s) {
+    var t = (s || "").toLowerCase();
+    if (t.indexOf("dispute") > -1 || t.indexOf("declin") > -1 || t.indexOf("void") > -1) return "#DC2626";
+    if (t.indexOf("part") > -1) return "#D97706";
+    if (t.indexOf("receiv") > -1) return "#345B86";
+    if (t.indexOf("fund") > -1 && t.indexOf("approv") > -1) return "#15AEC0";
+    return "#059669";
+  }
+  var COLW = 160, H = 210, mono = "'JetBrains Mono', monospace";
+  return <div style={{ marginTop: 16, background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "18px 20px" }}>
+    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 4 }}>Status Timeline</div>
+    <div style={{ display: "flex", alignItems: "stretch" }}>
+      <div style={{ position: "relative", width: 78, flexShrink: 0, height: H }}>
+        <div style={{ position: "absolute", top: 0, bottom: "50%", right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", textAlign: "right", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Invoice</div>
+        <div style={{ position: "absolute", top: "50%", bottom: 0, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", textAlign: "right", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Funding</div>
+      </div>
+      <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}>
+        <div style={{ position: "relative", height: H, minWidth: events.length * COLW, display: "flex" }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 2, background: "var(--border)", transform: "translateY(-50%)" }} />
+          {events.map(function(ev, i) {
+            var c = evColor(ev.status);
+            var isTop = ev.lane === "invoice";
+            var chip = <div key="chip" style={{ padding: "5px 10px", borderRadius: 6, background: c + "1A", border: "1px solid " + c + "55", color: c, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{ev.status}</div>;
+            var dateEl = <div key="date" style={{ fontSize: 10, color: "var(--muted)", fontFamily: mono, whiteSpace: "nowrap" }}>{fmt(ev.date)}</div>;
+            return <div key={i} style={{ position: "relative", width: COLW, flexShrink: 0, height: H, display: "flex", flexDirection: "column" }}>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 4, paddingBottom: 42 }}>{isTop ? [dateEl, chip] : null}</div>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", gap: 4, paddingTop: 42 }}>{isTop ? null : [chip, dateEl]}</div>
+              <div style={{ position: "absolute", left: "50%", width: 2, height: 34, background: c, transform: "translateX(-50%)", top: isTop ? "calc(50% - 34px)" : "50%" }} />
+              <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, borderRadius: "50%", background: c, border: "2px solid var(--card)", transform: "translate(-50%,-50%)", zIndex: 2 }} />
+            </div>;
+          })}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
 function StatCard(p) { return (<div style={{ background: "var(--card)", borderRadius: 12, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 8, borderLeft: "3px solid " + p.accent, minWidth: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "box-shadow 0.2s ease" }}><div style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>{p.label}</div><div style={{ fontSize: 28,  color: "var(--text)", fontFamily: "'JetBrains Mono', monospace", lineHeight: 1, letterSpacing: "-0.02em" }}>{p.value}</div>{p.sub && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{p.sub}</div>}</div>); }
 function MiniChart(p) { if (!p.data || !p.data.length) return null; var chartData = p.data.map(function(d) { return { name: d.l || "", value: d.v }; }); return (<div style={{ width: "100%", height: 120 }}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 4 }}><defs><linearGradient id="mcGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#15AEC0" stopOpacity={0.2} /><stop offset="100%" stopColor="#15AEC0" stopOpacity={0.02} /></linearGradient></defs><Area type="monotone" dataKey="value" stroke="#15AEC0" strokeWidth={2} fill="url(#mcGrad)" dot={false} /><Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #C9D9E8", borderRadius: 8, fontSize: 12, color: "#0F172A", fontFamily: "'JetBrains Mono', monospace", boxShadow: "0 4px 12px rgba(15,23,42,0.08)" }} labelStyle={{ color: "#64748B" }} /></AreaChart></ResponsiveContainer></div>); }
 
@@ -9105,18 +9150,8 @@ export default function FactoringDashboard() {
                                     inv.writeOffTotal > 0 ? React.createElement("div", { style: { marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#78716c10", border: "1px solid #78716c30" } }, React.createElement("span", { style: { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: spMuted } }, "Written Off: "), React.createElement("span", { style: { fontSize: 10, fontFamily: spMono, color: spMuted } }, "Pen " + money(inv.writeOffPenalty, inv.currency) + " | Int " + money(inv.writeOffInterest, inv.currency) + " | Cap " + money(inv.writeOffCapital, inv.currency) + " = " + money(inv.writeOffTotal, inv.currency))) : null
                                   ) : null
                                 ),
-                                /* Status History */
-                                inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 ? React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
-                                  React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Status History"),
-                                  React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
-                                    inv.invoiceStatusHistory.map(function(h, hi) {
-                                      return React.createElement("div", { key: hi, style: { padding: "6px 12px", borderRadius: 6, background: "#F8FAFC", border: "1px solid " + spBorder, fontSize: 11, fontFamily: spFont } },
-                                        React.createElement("span", { style: { color: spMuted, marginRight: 6 } }, fmt(h.date)),
-                                        React.createElement("span", { style: { color: spText, fontWeight: 600 } }, h.status)
-                                      );
-                                    })
-                                  )
-                                ) : null,
+                                /* Status Timeline (shared component) */
+                                React.createElement(InvoiceStatusTimeline, { inv: inv }),
                                 /* Payments Applied to this Invoice */
                                 (function() {
                                   var invPayments = [];
@@ -9320,10 +9355,13 @@ export default function FactoringDashboard() {
                                     var c = e.context || {};
                                     return c.invoiceId === inv.id || (c.allocations && c.allocations.some(function(a) { return a.invoiceId === inv.id; })) || c.sourceInvoiceId === inv.id || (e.details || "").indexOf(inv.id) > -1;
                                   }).slice().reverse();
-                                  if (invAudit.length === 0) return null;
+                                  // Always render the section (with an empty state) so a pending
+                                  // invoice never appears to simply have no audit log.
                                   return React.createElement("div", { style: { marginTop: 16, background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
                                     React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: spMuted, marginBottom: 12 } }, "Audit Log (" + invAudit.length + " entries)"),
-                                    React.createElement("div", { style: { maxHeight: 400, overflowY: "auto" } },
+                                    invAudit.length === 0
+                                      ? React.createElement("div", { style: { fontSize: 11, color: spMuted, fontStyle: "italic" } }, "No audit entries recorded for this invoice yet.")
+                                      : React.createElement("div", { style: { maxHeight: 400, overflowY: "auto" } },
                                       invAudit.map(function(e, ei) {
                                         return React.createElement("div", { key: ei, style: { padding: "8px 0", borderBottom: ei < invAudit.length - 1 ? "1px solid " + spBorder + "60" : "none", fontSize: 11 } },
                                           React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 2 } },
@@ -14627,9 +14665,7 @@ export default function FactoringDashboard() {
                               <div style={row}><span style={lbl}>Interest O/S</span><span style={val}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Total O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</span></div>
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                                {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
-                              </div>
+                              <InvoiceStatusTimeline inv={inv} />
                             </div>;
                           })()}
                         </div>
@@ -15928,12 +15964,7 @@ export default function FactoringDashboard() {
                                     {inv.doNotAdvance ? <button onClick={function() { toggleDoNotAdvance(inv.id, false); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Clear Do Not Advance</button> : (r2(inv.capitalDue || 0) < 0.01 && <button onClick={function() { toggleDoNotAdvance(inv.id, true); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 11,  cursor: "pointer" }} title="Mark this invoice as collateral only \u2014 capital will not be advanced">Mark Do Not Advance</button>)}
                                     <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>{inv.doNotAdvance ? "Collateral only \u2014 no capital will be advanced" : ((inv.capitalDue || 0) > 0.01 ? "Capital queued \u2014 execute funding payment via Outbound Queue" : "Purchased at zero capital \u2014 fund or reject")}</span>
                                   </div>
-                                  {inv.invoiceStatusHistory && inv.invoiceStatusHistory.length > 0 && <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "12px 16px" }}>
-                                    <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 6 }}>Status History</div>
-                                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                                      {inv.invoiceStatusHistory.map(function(h, hi) { var hs = IST[h.status] || IST["Received"]; return <div key={hi} style={{ display: "flex", alignItems: "center", gap: 4 }}><Badge label={h.status} bg={hs.bg} color={hs.color} border={hs.border} /><span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "'JetBrains Mono', monospace" }}>{fmt(h.date)}</span>{hi < inv.invoiceStatusHistory.length - 1 && <span style={{ color: "var(--border)", fontSize: 10 }}>{"\u2192"}</span>}</div>; })}
-                                    </div>
-                                  </div>}
+                                  <InvoiceStatusTimeline inv={inv} />
                                 </div>
                               </td></tr>}
                             </tbody>
