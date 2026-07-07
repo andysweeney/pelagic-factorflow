@@ -4171,6 +4171,10 @@ function InvoiceStatusTimeline(p) {
   (inv.invoiceStatusHistory || []).forEach(function(h) { if (h && h.status) events.push({ lane: "invoice", status: h.status, date: h.date }); });
   if (inv.approvedDate) events.push({ lane: "funding", status: "Funding Approved", date: inv.approvedDate });
   if (inv.fundedDate) events.push({ lane: "funding", status: "Funding Released", date: inv.fundedDate });
+  (inv.payments || []).forEach(function(pmt) {
+    var applied = (pmt.appliedToCapital || 0) + (pmt.appliedToInterest || 0) + (pmt.appliedToPenalty || 0) + (pmt.appliedToHoldback || 0);
+    if (applied > 0.005 && pmt.date) events.push({ lane: "funding", status: "Paid " + money(applied, inv.currency), date: pmt.date });
+  });
   if (inv.fullyRepaidDate) events.push({ lane: "funding", status: "Repaid", date: inv.fullyRepaidDate });
   if (events.length === 0) return null;
   events.sort(function(a, b) { return (a.date || "") < (b.date || "") ? -1 : (a.date || "") > (b.date || "") ? 1 : 0; });
