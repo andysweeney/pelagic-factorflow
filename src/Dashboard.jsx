@@ -4158,7 +4158,24 @@ function InvoiceStatusTimeline(p) {
     if (t.indexOf("fund") > -1 && t.indexOf("approv") > -1) return "#15AEC0";
     return "#059669";
   }
-  var COLW = 160, H = 210, mono = "'JetBrains Mono', monospace";
+  var mono = "'JetBrains Mono', monospace";
+  // Group events by day so same-day milestones share one axis point and their
+  // pills stack together in-lane, instead of reading as separate moments in time.
+  var byDate = {}, order = [];
+  events.forEach(function(ev) {
+    var k = ev.date || "";
+    if (!byDate[k]) { byDate[k] = { date: ev.date, invoice: [], funding: [] }; order.push(k); }
+    byDate[k][ev.lane].push(ev);
+  });
+  var cols = order.map(function(k) { return byDate[k]; });
+  var maxLane = 1;
+  cols.forEach(function(col) { maxLane = Math.max(maxLane, col.invoice.length, col.funding.length); });
+  var COLW = 178, half = 64 + maxLane * 32, H = half * 2;
+  function pill(ev, key) {
+    var c = evColor(ev.status);
+    return <div key={key} style={{ padding: "5px 10px", borderRadius: 6, background: c + "1A", border: "1px solid " + c + "55", color: c, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{ev.status}</div>;
+  }
+  function dateLabel(col) { return <div key="d" style={{ fontSize: 10, color: "var(--muted)", fontFamily: mono, whiteSpace: "nowrap" }}>{fmt(col.date)}</div>; }
   return <div style={{ marginTop: 16, background: "var(--card)", borderRadius: 8, border: "1px solid var(--border)", padding: "18px 20px" }}>
     <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 4 }}>Status Timeline</div>
     <div style={{ display: "flex", alignItems: "stretch" }}>
@@ -4167,18 +4184,18 @@ function InvoiceStatusTimeline(p) {
         <div style={{ position: "absolute", top: "50%", bottom: 0, right: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", textAlign: "right", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--muted)" }}>Funding</div>
       </div>
       <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}>
-        <div style={{ position: "relative", height: H, minWidth: events.length * COLW, display: "flex" }}>
+        <div style={{ position: "relative", height: H, minWidth: cols.length * COLW, display: "flex" }}>
           <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: 2, background: "var(--border)", transform: "translateY(-50%)" }} />
-          {events.map(function(ev, i) {
-            var c = evColor(ev.status);
-            var isTop = ev.lane === "invoice";
-            var chip = <div key="chip" style={{ padding: "5px 10px", borderRadius: 6, background: c + "1A", border: "1px solid " + c + "55", color: c, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{ev.status}</div>;
-            var dateEl = <div key="date" style={{ fontSize: 10, color: "var(--muted)", fontFamily: mono, whiteSpace: "nowrap" }}>{fmt(ev.date)}</div>;
+          {cols.map(function(col, i) {
+            var hasTop = col.invoice.length > 0, hasBot = col.funding.length > 0;
+            var topColor = hasTop ? evColor(col.invoice[0].status) : null;
+            var botColor = hasBot ? evColor(col.funding[0].status) : null;
             return <div key={i} style={{ position: "relative", width: COLW, flexShrink: 0, height: H, display: "flex", flexDirection: "column" }}>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 4, paddingBottom: 42 }}>{isTop ? [dateEl, chip] : null}</div>
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", gap: 4, paddingTop: 42 }}>{isTop ? null : [chip, dateEl]}</div>
-              <div style={{ position: "absolute", left: "50%", width: 2, height: 34, background: c, transform: "translateX(-50%)", top: isTop ? "calc(50% - 34px)" : "50%" }} />
-              <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, borderRadius: "50%", background: c, border: "2px solid var(--card)", transform: "translate(-50%,-50%)", zIndex: 2 }} />
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 4, paddingBottom: 42 }}>{hasTop ? [dateLabel(col)].concat(col.invoice.map(function(ev, j) { return pill(ev, "t" + j); })) : null}</div>
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", alignItems: "center", gap: 4, paddingTop: 42 }}>{hasBot ? col.funding.map(function(ev, j) { return pill(ev, "b" + j); }).concat([dateLabel(col)]) : null}</div>
+              {hasTop ? <div style={{ position: "absolute", left: "50%", width: 2, height: 34, background: topColor, transform: "translateX(-50%)", top: "calc(50% - 34px)" }} /> : null}
+              {hasBot ? <div style={{ position: "absolute", left: "50%", width: 2, height: 34, background: botColor, transform: "translateX(-50%)", top: "50%" }} /> : null}
+              <div style={{ position: "absolute", left: "50%", top: "50%", width: 10, height: 10, borderRadius: "50%", background: hasTop ? topColor : botColor, border: "2px solid var(--card)", transform: "translate(-50%,-50%)", zIndex: 2 }} />
             </div>;
           })}
         </div>
@@ -21839,6 +21856,7 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>{pInv.holdbackAvailable < -0.01 ? "Holdback Overdrawn: " : "Holdback Available: "}</span><span style={{ color: pInv.holdbackAvailable < -0.01 ? "#DC2626" : pInv.holdbackAvailable > 0 ? "#059669" : "var(--text-secondary)" }}>{pInv.holdbackAvailable < -0.01 ? money(Math.abs(pInv.holdbackAvailable), pInv.currency) : money(pInv.holdbackAvailable, pInv.currency)}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Total O/S: </span><strong style={{ color: pInv.totalOutstanding > 0 ? "#D97706" : "#059669" }}>{money(pInv.totalOutstanding, pInv.currency)}</strong></div>
                       </div>
+                      <InvoiceStatusTimeline inv={pInv} />
                       {pInv.payments.length > 0 && <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Buyer Payments ({pInv.payments.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
