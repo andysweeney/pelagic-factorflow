@@ -9121,6 +9121,7 @@ export default function FactoringDashboard() {
                           isExpanded ? React.createElement("tr", null,
                             React.createElement("td", { colSpan: 9, style: { padding: 0, borderBottom: "1px solid " + spBorder } },
                               React.createElement("div", { style: { padding: "20px 24px", background: "#F1F5F9" } },
+                                React.createElement(InvoiceStatusTimeline, { inv: inv }),
                                 React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } },
                                   /* Invoice Details */
                                   React.createElement("div", { style: { background: spCard, borderRadius: 8, border: "1px solid " + spBorder, padding: "18px 20px" } },
@@ -9167,8 +9168,6 @@ export default function FactoringDashboard() {
                                     inv.writeOffTotal > 0 ? React.createElement("div", { style: { marginTop: 4, padding: "6px 8px", borderRadius: 6, background: "#78716c10", border: "1px solid #78716c30" } }, React.createElement("span", { style: { fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: spMuted } }, "Written Off: "), React.createElement("span", { style: { fontSize: 10, fontFamily: spMono, color: spMuted } }, "Pen " + money(inv.writeOffPenalty, inv.currency) + " | Int " + money(inv.writeOffInterest, inv.currency) + " | Cap " + money(inv.writeOffCapital, inv.currency) + " = " + money(inv.writeOffTotal, inv.currency))) : null
                                   ) : null
                                 ),
-                                /* Status Timeline (shared component) */
-                                React.createElement(InvoiceStatusTimeline, { inv: inv }),
                                 /* Payments Applied to this Invoice */
                                 (function() {
                                   var invPayments = [];
@@ -11348,6 +11347,7 @@ export default function FactoringDashboard() {
                     </tr>
                     {isExp && <tr><td colSpan={cols.length + (isS ? 1 : 0)} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
+                                  <InvoiceStatusTimeline inv={inv} />
                                   {/* Floating edit-mode bar */}
                                   {editInv === inv.id && <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(21, 174, 192,0.15)" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -14642,6 +14642,7 @@ export default function FactoringDashboard() {
                     </tr>
                     {isBuyExp && <tr><td colSpan={11} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                       <div style={{ padding: "16px 22px" }}>
+                        <InvoiceStatusTimeline inv={inv} />
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                           {(function() {
                             var lbl = { fontSize: 10, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" };
@@ -14682,7 +14683,6 @@ export default function FactoringDashboard() {
                               <div style={row}><span style={lbl}>Interest O/S</span><span style={val}>{money(inv.interestOutstanding, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Holdback O/S</span><span style={Object.assign({}, val, { color: inv.holdbackOutstanding > 0 ? "#D97706" : "#059669" })}>{money(inv.holdbackOutstanding, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Total O/S</span><span style={Object.assign({}, val, { fontWeight: 700, color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</span></div>
-                              <InvoiceStatusTimeline inv={inv} />
                             </div>;
                           })()}
                         </div>
@@ -15945,6 +15945,7 @@ export default function FactoringDashboard() {
                               </tr>
                               {aIsExp && <tr><td colSpan={12} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
+                                  <InvoiceStatusTimeline inv={inv} />
                                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
                                       <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 600, color: "#5FC6D2", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #567EBB" }}>Invoice Information</div>
@@ -15981,7 +15982,6 @@ export default function FactoringDashboard() {
                                     {inv.doNotAdvance ? <button onClick={function() { toggleDoNotAdvance(inv.id, false); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Clear Do Not Advance</button> : (r2(inv.capitalDue || 0) < 0.01 && <button onClick={function() { toggleDoNotAdvance(inv.id, true); }} style={{ padding: "6px 16px", borderRadius: 7, border: "1px solid #6B7280", background: "#6B728010", color: "#94A3B8", fontSize: 11,  cursor: "pointer" }} title="Mark this invoice as collateral only \u2014 capital will not be advanced">Mark Do Not Advance</button>)}
                                     <span style={{ fontSize: 10, color: "var(--muted)", fontStyle: "italic" }}>{inv.doNotAdvance ? "Collateral only \u2014 no capital will be advanced" : ((inv.capitalDue || 0) > 0.01 ? "Capital queued \u2014 execute funding payment via Outbound Queue" : "Purchased at zero capital \u2014 fund or reject")}</span>
                                   </div>
-                                  <InvoiceStatusTimeline inv={inv} />
                                 </div>
                               </td></tr>}
                             </tbody>
@@ -16107,6 +16107,7 @@ export default function FactoringDashboard() {
                             </tr>
                             {isExp && <tr><td colSpan={piColDefs.length} style={{ padding: "0", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
                                 <div style={{ padding: "16px 22px" }}>
+                                  <InvoiceStatusTimeline inv={inv} />
                                   {editInv === inv.id && <div style={{ background: "var(--card)", border: "1px solid var(--accent)", borderRadius: 10, padding: "10px 16px", marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, position: "sticky", top: 0, zIndex: 3, boxShadow: "0 2px 12px rgba(21, 174, 192,0.15)" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                       <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "#fff", background: "var(--accent)", padding: "3px 8px", borderRadius: 4, letterSpacing: "0.06em" }}>Editing</span>
@@ -21837,6 +21838,7 @@ export default function FactoringDashboard() {
                     var pInvHbps = [];
                     HOLDBACK_PAYMENTS_DB.forEach(function(hbp) { hbp.allocations.forEach(function(a) { if (a.type === "invoice" && a.targetId === pInv.id) pInvHbps.push({ hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: hbp.sourceInvoiceId, date: hbp.date, currency: hbp.currency, amount: a.amount }); }); });
                     popContent = <div>
+                      <InvoiceStatusTimeline inv={pInv} />
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", marginBottom: 16 }}>
                         <div><span style={{ color: "var(--muted)" }}>Invoice: </span><span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{pInv.id}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Face Value: </span><strong>{money(pInv.amount, pInv.currency)}</strong></div>
@@ -21856,7 +21858,6 @@ export default function FactoringDashboard() {
                         <div><span style={{ color: "var(--muted)" }}>{pInv.holdbackAvailable < -0.01 ? "Holdback Overdrawn: " : "Holdback Available: "}</span><span style={{ color: pInv.holdbackAvailable < -0.01 ? "#DC2626" : pInv.holdbackAvailable > 0 ? "#059669" : "var(--text-secondary)" }}>{pInv.holdbackAvailable < -0.01 ? money(Math.abs(pInv.holdbackAvailable), pInv.currency) : money(pInv.holdbackAvailable, pInv.currency)}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Total O/S: </span><strong style={{ color: pInv.totalOutstanding > 0 ? "#D97706" : "#059669" }}>{money(pInv.totalOutstanding, pInv.currency)}</strong></div>
                       </div>
-                      <InvoiceStatusTimeline inv={pInv} />
                       {pInv.payments.length > 0 && <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Buyer Payments ({pInv.payments.length})</div>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["ID", "Date", "Amt", "\u2192Pen", "\u2192Int", "\u2192Cap", "\u2192Hold"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
