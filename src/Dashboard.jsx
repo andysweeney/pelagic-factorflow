@@ -4796,6 +4796,7 @@ export default function FactoringDashboard() {
   useEffect(function() {
     if (!_rtUserId || !_rtSupplierId) return; // supplier sessions only
 
+    // Invoices: patch the changed row in place.
     function applyInvoiceBroadcast(msg) {
       var p = (msg && msg.payload) ? msg.payload : msg;
       if (!p) return;
@@ -4813,12 +4814,31 @@ export default function FactoringDashboard() {
       setDataVer(function(v) { return v + 1; });
     }
 
+    // Payments / holdbacks / outbound queue: debounced, scoped reload.
+    // reloadForSupplier() re-fetches invoices, SPQ, payments (+allocations) and
+    // holdbacks for this supplier, so one call refreshes every non-invoice view.
+    // It early-returns while _supplierLoaded === true, so clear that guard first.
+    var reloadTimer = null;
+    function scheduleSupplierReload() {
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(function() {
+        _supplierLoaded = false;
+        reloadForSupplier(_rtEntityId || _rtSupplierId).then(function() {
+          _realtimeUpdate++;
+          setDataVer(function(v) { return v + 1; });
+        });
+      }, 600);
+    }
+
     var topics = ["supplier:" + _rtSupplierId];
     if (_rtEntityId && _rtEntityId !== _rtSupplierId) topics.push("supplier_entity:" + _rtEntityId);
 
     var channels = topics.map(function(topic) {
       var ch = supabase.channel(topic, { config: { private: true } });
-      ch.on("broadcast", { event: "invoice_change" }, applyInvoiceBroadcast)
+      ch.on("broadcast", { event: "invoice_change" },  applyInvoiceBroadcast)
+        .on("broadcast", { event: "payment_change" },  scheduleSupplierReload)
+        .on("broadcast", { event: "holdback_change" }, scheduleSupplierReload)
+        .on("broadcast", { event: "spq_change" },      scheduleSupplierReload)
         .subscribe(function(status) {
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
             console.warn("[Realtime] broadcast channel " + topic + " status: " + status + " — live updates may be unavailable for this supplier.");
@@ -4828,6 +4848,7 @@ export default function FactoringDashboard() {
     });
 
     return function() {
+      if (reloadTimer) clearTimeout(reloadTimer);
       channels.forEach(function(ch) { supabase.removeChannel(ch); });
     };
   }, [_rtUserId, _rtSupplierId, _rtEntityId]);
