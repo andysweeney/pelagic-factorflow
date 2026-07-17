@@ -1374,7 +1374,7 @@
              Disregard. Saved per-buyer; blocks Save until all resolved. -->
         <div id="doctypeAliasSection" class="card hidden" style="border-left:4px solid #7C3AED;">
             <div class="card-title">Step 2c — Reconcile Document Types</div>
-            <div class="card-subtitle">This file mixes document types. Map each value to Invoice, Credit Note, or Disregard. Credit-note rows route to the credit-notes table (their Date column becomes the CN date). Disregarded rows aren\u2019t saved. Mappings are remembered for this buyer.</div>
+            <div class="card-subtitle">This file contains document types or sign conventions not yet mapped for this buyer. Classify each value separately for positive and negative amounts — the same code often means an invoice when positive and a credit when negative. Optionally tag a reason. Disregarded rows are saved but excluded from analytics. Mappings are remembered for this buyer.</div>
             <div id="doctypeAliasGrid" style="display:flex; flex-direction:column; gap:10px; margin-top:8px;"></div>
             <div id="doctypeAliasNote" style="font-size:11px; color:var(--text-secondary); font-style:italic; margin-top:10px;"></div>
         </div>
@@ -1845,33 +1845,83 @@ function canonicaliseInvoiceStatus(raw, buyerId) {
     return null;
 }
 
-// Canonical document types for mixed-file routing.
+// Canonical routing targets. Subtype (the reason label) is separate.
 var CANONICAL_DOCTYPES = ['invoice', 'credit_note', 'disregard'];
 
-// Canonicalise a raw document_type string. Per-buyer aliases first, then
-// hardcoded recognisers, then null (→ surfaced in the reconciliation UI).
-function canonicaliseDocType(raw, buyerId) {
-    if (raw == null) return null;
-    var s = String(raw).trim().toLowerCase();
-    if (s === '') return null;
-    // Per-buyer + pending aliases
-    if (buyerId && state.doctypeAliases && state.doctypeAliases[buyerId]) {
-        var bm = state.doctypeAliases[buyerId];
-        var keys = Object.keys(bm);
-        for (var i = 0; i < keys.length; i++) {
-            if (keys[i].toLowerCase() === s) return bm[keys[i]];
-        }
+// Sentinel raw value used when a file has NO document_type column but DOES
+// contain negative amounts — i.e. the buyer's ERP encodes credits by sign
+// alone. Reconciled on sign only.
+var NO_DOCTYPE_SENTINEL = '__bi_no_doctype__';
+
+// Sign bucket. Positive is defined as >= 0 (zero counted as positive).
+function signBucket(amt) { return amt < 0 ? 'negative' : 'positive'; }
+
+// Composite alias key: (raw value, sign bucket). Raw value is lowercased and
+// trimmed so lookups are case-insensitive. The two parts are joined by a NUL
+// which cannot appear in a CSV cell.
+function doctypeKey(rawValue, bucket) {
+    return String(rawValue == null ? '' : rawValue).trim().toLowerCase() + '\u0000' + bucket;
+}
+function doctypeKeyParts(key) {
+    var i = key.lastIndexOf('\u0000');
+    return { raw: key.slice(0, i), bucket: key.slice(i + 1) };
+}
+function doctypeDisplayLabel(raw) {
+    if (raw === NO_DOCTYPE_SENTINEL) return '(no document-type column)';
+    if (raw === '' || raw == null)   return '(blank)';
+    return raw;
+}
+
+// Optional reason label carried on each row. Does NOT affect routing or
+// arithmetic — it drives the dilution-by-reason breakdown in the report.
+var DOC_SUBTYPES = {
+    credit_note: [
+        ['return', 'Return / RTV'], ['dispute_credit', 'Quality / dispute credit'],
+        ['pricing_adjustment', 'Pricing adjustment'], ['rebate', 'Volume / retro rebate'],
+        ['settlement_discount', 'Settlement discount'], ['chargeback', 'Chargeback / deduction'],
+        ['debit_memo', 'Debit memo'], ['marketing_contribution', 'Marketing contribution'],
+        ['shrinkage_allowance', 'Shrinkage / damages'], ['contra', 'Contra / offset'],
+        ['reversal', 'Reversal / cancellation'], ['prepayment_recovery', 'Prepayment recovery'],
+        ['write_off', 'Write-off'], ['other_credit', 'Other credit']
+    ],
+    invoice: [
+        ['standard', 'Standard invoice'], ['progress_application', 'Progress / interim application'],
+        ['self_billed', 'Self-billed'], ['consignment', 'Consignment'],
+        ['recurring', 'Recurring / subscription'], ['freight_surcharge', 'Freight / surcharge'],
+        ['expense_claim', 'Expense claim'], ['other_invoice', 'Other invoice']
+    ],
+    disregard: [
+        ['payment_line', 'Payment / remittance line'], ['journal', 'Journal entry'],
+        ['opening_balance', 'Opening balance'], ['statement_line', 'Statement line'],
+        ['tax_adjustment', 'Tax-only adjustment'], ['duplicate', 'Duplicate'],
+        ['voided', 'Voided'], ['zero_value', 'Zero-value placeholder'],
+        ['intercompany', 'Intercompany'], ['other_ignore', 'Other — ignore']
+    ]
+};
+
+// Resolve a (raw document type, sign bucket) pair to a routing decision.
+// Returns { target, subtype } or null when unreconciled.
+//
+// Precedence: per-buyer saved aliases → pending choices this session →
+// hardcoded recognisers → null (surfaced in the reconciliation UI).
+//
+// A NEGATIVE amount labelled "invoice" is a contradiction, not a fact — it is
+// NOT auto-routed; it goes to reconciliation. 'debit' is deliberately NOT a
+// recogniser: a buyer-issued debit memo reduces the supplier's receivable.
+function canonicaliseDocType(raw, bucket, buyerId) {
+    var key = doctypeKey(raw, bucket);
+    var saved = buyerId && state.doctypeAliases && state.doctypeAliases[buyerId];
+    if (saved && saved[key]) return saved[key];
+    if (state.pendingDoctypeAliases && state.pendingDoctypeAliases[key]) {
+        return state.pendingDoctypeAliases[key];
     }
-    if (state.pendingDoctypeAliases) {
-        var pkeys = Object.keys(state.pendingDoctypeAliases);
-        for (var j = 0; j < pkeys.length; j++) {
-            if (pkeys[j].toLowerCase() === s) return state.pendingDoctypeAliases[pkeys[j]];
-        }
-    }
-    // Hardcoded recognisers
-    if (['invoice', 'inv', 'i', 'debit', 'sales invoice'].indexOf(s) !== -1) return 'invoice';
-    if (['credit_note', 'credit note', 'creditnote', 'cn', 'credit', 'c', 'crn'].indexOf(s) !== -1) return 'credit_note';
-    return null;  // unrecognised — reconciliation UI handles it (no auto-disregard)
+    var s = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (s === '' || s === NO_DOCTYPE_SENTINEL) return null;  // always reconcile
+    var isInvoiceWord = ['invoice', 'inv', 'i', 'sales invoice'].indexOf(s) !== -1;
+    var isCreditWord  = ['credit_note', 'credit note', 'creditnote', 'cn', 'credit', 'c', 'crn'].indexOf(s) !== -1;
+    if (isInvoiceWord && bucket === 'positive') return { target: 'invoice', subtype: 'standard' };
+    if (isCreditWord) return { target: 'credit_note', subtype: null };
+    return null;
 }
 
 // Infer the canonical status for a single invoice row, given the raw
@@ -2740,21 +2790,47 @@ function refreshStatusAliasSection() {
 // ─── DOCUMENT TYPE RECONCILIATION ────────────────────────────────────────
 // Same pattern as status aliases, three canonical buckets. The chosen type
 // routes each row at ingest time: invoice / credit_note / disregard.
-function scanUnrecognisedDoctypes() {
+// Every (raw value, sign bucket) group in the staged file, resolved or not.
+function scanAllDoctypeGroups() {
     var col = state.invoiceMapping && state.invoiceMapping.document_type;
-    if (!col || state.invoiceData.length === 0) return [];
-    var buyerId = (document.getElementById('buyerSelect') || {}).value || null;
-    var seen = {};
-    state.invoiceData.forEach(function(raw) {
-        var v = raw[col];
-        if (v == null) return;
-        var s = String(v).trim();
-        if (s === '') return;
-        if (seen[s]) { seen[s].count++; return; }
-        if (canonicaliseDocType(s, buyerId)) return;
-        seen[s] = { raw: s, count: 1 };
+    var groups = {};
+    (state.invoiceData || []).forEach(function(row) {
+        var amt = parseFloat(getMappedValue(row, 'amount', state.invoiceMapping));
+        if (isNaN(amt)) return;
+        var bucket = signBucket(amt);
+        var raw = col ? (row[col] == null ? '' : String(row[col]).trim()) : NO_DOCTYPE_SENTINEL;
+        var key = doctypeKey(raw, bucket);
+        if (!groups[key]) {
+            groups[key] = { raw: raw, bucket: bucket, count: 0, zeroCount: 0,
+                            magnitude: 0, display: doctypeDisplayLabel(raw) };
+        }
+        groups[key].count++;
+        groups[key].magnitude += Math.abs(amt);
+        if (amt === 0) groups[key].zeroCount++;
     });
-    return Object.keys(seen).map(function(k) { return seen[k]; });
+    return groups;
+}
+
+// Unreconciled (raw value, sign bucket) pairs needing operator classification.
+// Handles: (a) mapped column → bucket every value by sign, blanks included;
+// (b) no column, all amounts >= 0 → legacy, everything an invoice, no prompt;
+// (c) no column, negatives present → sign-only reconciliation on a sentinel.
+function scanUnrecognisedDoctypes() {
+    if (!state.invoiceData || state.invoiceData.length === 0) return [];
+    var col     = state.invoiceMapping && state.invoiceMapping.document_type;
+    var buyerId = (document.getElementById('buyerSelect') || {}).value || null;
+    var groups  = scanAllDoctypeGroups();
+
+    var sawNegative = Object.keys(groups).some(function(k) { return groups[k].bucket === 'negative'; });
+    // Case (b): no column and nothing negative → legacy path, silent.
+    if (!col && !sawNegative) return [];
+
+    return Object.keys(groups)
+        .filter(function(k) {
+            var g = groups[k];
+            return !canonicaliseDocType(g.raw, g.bucket, buyerId);
+        })
+        .map(function(k) { return groups[k]; });
 }
 
 function refreshDoctypeAliasSection() {
@@ -2762,56 +2838,133 @@ function refreshDoctypeAliasSection() {
     var grid    = document.getElementById('doctypeAliasGrid');
     var note    = document.getElementById('doctypeAliasNote');
     if (!section || !grid) return;
-    var unrecognised = scanUnrecognisedDoctypes();
-    if (unrecognised.length === 0) { section.classList.add('hidden'); return; }
-    section.classList.remove('hidden');
-    unrecognised.sort(function(a, b) { return b.count - a.count; });
 
-    grid.innerHTML = '';
-    unrecognised.forEach(function(item) {
-        var row = document.createElement('div');
-        row.style.cssText = 'display:flex; align-items:center; gap:12px; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:6px;';
-        var raw = document.createElement('div');
-        raw.style.cssText = 'flex:1; min-width:0;';
-        raw.innerHTML =
-            '<div style="font-family:var(--mono); font-size:13px; font-weight:600; color:var(--text);">' + escHTML(item.raw) + '</div>' +
-            '<div style="font-size:10px; color:var(--text-secondary); margin-top:2px;">' + item.count.toLocaleString() + ' row' + (item.count === 1 ? '' : 's') + '</div>';
-        var arrow = document.createElement('div');
-        arrow.style.cssText = 'color:var(--muted); font-size:14px;';
-        arrow.textContent = '\u2192';
-        var sel = document.createElement('select');
-        sel.style.cssText = 'min-width:160px; padding:6px 8px; background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px;';
-        sel.innerHTML =
-            '<option value="">\u2014 Pick type \u2014</option>' +
-            '<option value="invoice">Invoice</option>' +
-            '<option value="credit_note">Credit Note</option>' +
-            '<option value="disregard">Disregard (don\u2019t save)</option>';
-        if (state.pendingDoctypeAliases && state.pendingDoctypeAliases[item.raw]) {
-            sel.value = state.pendingDoctypeAliases[item.raw];
-        }
-        sel.addEventListener('change', function() {
-            if (!state.pendingDoctypeAliases) state.pendingDoctypeAliases = {};
-            if (sel.value) state.pendingDoctypeAliases[item.raw] = sel.value;
-            else delete state.pendingDoctypeAliases[item.raw];
-            refreshSaveSection();
-        });
-        row.appendChild(raw);
-        row.appendChild(arrow);
-        row.appendChild(sel);
-        grid.appendChild(row);
+    var unresolved = scanUnrecognisedDoctypes();
+    if (unresolved.length === 0) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
+
+    var buyerId = (document.getElementById('buyerSelect') || {}).value || null;
+    var all = scanAllDoctypeGroups();
+
+    // Group by raw value so both sign buckets sit under one heading.
+    var byRaw = {};
+    Object.keys(all).forEach(function(k) {
+        var g = all[k];
+        if (!byRaw[g.raw]) byRaw[g.raw] = { raw: g.raw, display: g.display, total: 0, buckets: {} };
+        byRaw[g.raw].buckets[g.bucket] = g;
+        byRaw[g.raw].total += g.count;
     });
 
-    var resolved = unrecognised.filter(function(it) {
-        return state.pendingDoctypeAliases && state.pendingDoctypeAliases[it.raw];
-    }).length;
-    note.textContent = resolved + ' of ' + unrecognised.length + ' resolved. The Save button unlocks when all are mapped.';
+    var unresolvedRaws = {};
+    unresolved.forEach(function(u) { unresolvedRaws[u.raw] = true; });
+
+    var raws = Object.keys(byRaw)
+        .filter(function(r) { return unresolvedRaws[r]; })
+        .sort(function(a, b) { return byRaw[b].total - byRaw[a].total; });
+
+    grid.innerHTML = '';
+
+    raws.forEach(function(rawVal) {
+        var entry = byRaw[rawVal];
+        var card = document.createElement('div');
+        card.style.cssText = 'border:1px solid var(--border); border-radius:6px; background:var(--bg); padding:10px 12px;';
+
+        var isSpecial = (rawVal === '' || rawVal === NO_DOCTYPE_SENTINEL);
+        var head = document.createElement('div');
+        head.style.cssText = 'display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px;';
+        head.innerHTML =
+            '<span style="font-family:var(--mono); font-size:13px; font-weight:700; color:' +
+              (isSpecial ? 'var(--danger)' : 'var(--text)') + ';">' + escHTML(entry.display) + '</span>' +
+            '<span style="font-size:10px; color:var(--text-secondary);">' + entry.total.toLocaleString() + ' rows</span>';
+        card.appendChild(head);
+
+        ['positive', 'negative'].forEach(function(bucket) {
+            var g = entry.buckets[bucket];
+            if (!g) return;
+
+            var resolved = canonicaliseDocType(rawVal, bucket, buyerId);
+            var key = doctypeKey(rawVal, bucket);
+            var current = (state.pendingDoctypeAliases && state.pendingDoctypeAliases[key]) || resolved || null;
+
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--border);';
+
+            var label = document.createElement('div');
+            label.style.cssText = 'flex:1; min-width:0;';
+            var zeroNote = g.zeroCount > 0 ? ' \u00B7 ' + g.zeroCount.toLocaleString() + ' zero-value' : '';
+            label.innerHTML =
+                '<div style="font-size:12px; font-weight:600; color:' +
+                  (bucket === 'negative' ? '#7C3AED' : 'var(--text)') + ';">' +
+                  (bucket === 'negative' ? 'Negative' : 'Positive (\u22650)') + '</div>' +
+                '<div style="font-size:10px; color:var(--text-secondary); font-family:var(--mono);">' +
+                  g.count.toLocaleString() + ' rows \u00B7 ' +
+                  g.magnitude.toLocaleString(undefined, { maximumFractionDigits: 0 }) + zeroNote + '</div>';
+            row.appendChild(label);
+
+            var tgt = document.createElement('select');
+            tgt.style.cssText = 'min-width:150px; padding:6px 8px; background:var(--card); border:1px solid var(--border); border-radius:4px; color:var(--text); font-size:12px;';
+            tgt.innerHTML =
+                '<option value="">\u2014 Pick type \u2014</option>' +
+                '<option value="invoice">Invoice</option>' +
+                '<option value="credit_note">Credit Note</option>' +
+                '<option value="disregard">Disregard (don\u2019t save)</option>';
+
+            var sub = document.createElement('select');
+            sub.style.cssText = tgt.style.cssText + ' min-width:170px;';
+
+            function fillSubtypes(target, selected) {
+                if (!target || target === 'disregard') {
+                    sub.innerHTML = '<option value="">\u2014</option>';
+                    sub.disabled = true;
+                    if (target === 'disregard') {
+                        sub.disabled = false;
+                        var o = '<option value="">\u2014 Reason (optional) \u2014</option>';
+                        (DOC_SUBTYPES.disregard || []).forEach(function(p) {
+                            o += '<option value="' + p[0] + '"' + (p[0] === selected ? ' selected' : '') + '>' + escHTML(p[1]) + '</option>';
+                        });
+                        sub.innerHTML = o;
+                    }
+                    return;
+                }
+                sub.disabled = false;
+                var opts = '<option value="">\u2014 Reason (optional) \u2014</option>';
+                (DOC_SUBTYPES[target] || []).forEach(function(p) {
+                    opts += '<option value="' + p[0] + '"' + (p[0] === selected ? ' selected' : '') + '>' + escHTML(p[1]) + '</option>';
+                });
+                sub.innerHTML = opts;
+            }
+
+            tgt.value = current ? current.target : '';
+            fillSubtypes(current ? current.target : '', current ? current.subtype : null);
+
+            function commit() {
+                if (!state.pendingDoctypeAliases) state.pendingDoctypeAliases = {};
+                if (tgt.value) state.pendingDoctypeAliases[key] = { target: tgt.value, subtype: sub.value || null };
+                else delete state.pendingDoctypeAliases[key];
+                refreshSaveSection();
+            }
+            tgt.addEventListener('change', function() { fillSubtypes(tgt.value, null); commit(); });
+            sub.addEventListener('change', commit);
+
+            row.appendChild(tgt);
+            row.appendChild(sub);
+            card.appendChild(row);
+        });
+
+        grid.appendChild(card);
+    });
+
+    var stillOpen = scanUnrecognisedDoctypes().length;
+    var totalBuckets = raws.reduce(function(a, r) { return a + Object.keys(byRaw[r].buckets).length; }, 0);
+    note.textContent = (totalBuckets - stillOpen) + ' of ' + totalBuckets +
+        ' resolved. Save unlocks when every value \u00D7 sign combination is mapped.';
 }
 
 function loadBuyerDoctypeAliases(buyerId, done) {
     if (!sbClient || !buyerId) { if (done) done(); return; }
     if (state.doctypeAliases[buyerId]) { if (done) done(); return; }
     sbClient.from('buyer_doctype_aliases')
-        .select('raw_value, canonical_value')
+        .select('raw_value, sign_bucket, canonical_value, doc_subtype')
         .eq('buyer_id', buyerId)
         .then(function(res) {
             if (res.error) {
@@ -2821,7 +2974,11 @@ function loadBuyerDoctypeAliases(buyerId, done) {
                 return;
             }
             var map = {};
-            (res.data || []).forEach(function(r) { map[r.raw_value] = r.canonical_value; });
+            (res.data || []).forEach(function(r) {
+                map[doctypeKey(r.raw_value, r.sign_bucket || 'positive')] = {
+                    target: r.canonical_value, subtype: r.doc_subtype || null
+                };
+            });
             state.doctypeAliases[buyerId] = map;
             if (done) done();
         });
@@ -2833,10 +2990,13 @@ function persistPendingDoctypeAliases(buyerId, done) {
     if (keys.length === 0) { done(); return; }
     var actorId = (window.__currentUser && window.__currentUser.id) || null;
     var rows = keys.map(function(k) {
-        return { buyer_id: buyerId, raw_value: k, canonical_value: state.pendingDoctypeAliases[k], created_by: actorId };
+        var p = doctypeKeyParts(k);
+        var v = state.pendingDoctypeAliases[k];
+        return { buyer_id: buyerId, raw_value: p.raw, sign_bucket: p.bucket,
+                 canonical_value: v.target, doc_subtype: v.subtype || null, created_by: actorId };
     });
     sbClient.from('buyer_doctype_aliases')
-        .upsert(rows, { onConflict: 'buyer_id,raw_value' })
+        .upsert(rows, { onConflict: 'buyer_id,raw_value,sign_bucket' })
         .then(function(res) {
             if (res.error) { done(res.error.message); return; }
             if (!state.doctypeAliases[buyerId]) state.doctypeAliases[buyerId] = {};
@@ -2875,12 +3035,13 @@ function refreshSavedAliasesSection() {
     function pill(text, color, bg, border) {
         return '<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:' + bg + '; color:' + color + '; border:1px solid ' + border + '; font-size:11px; font-weight:600;">' + escHTML(text) + '</span>';
     }
-    function aliasRow(rawVal, canonLabel, kind) {
+    function aliasRow(rawLabel, canonLabel, kind, rawVal, bucket) {
         return '<div style="display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid var(--border);">' +
-            '<span style="font-family:var(--mono); font-size:12px; flex:1; min-width:0;">' + escHTML(rawVal) + '</span>' +
+            '<span style="font-family:var(--mono); font-size:12px; flex:1; min-width:0;">' + escHTML(rawLabel) + '</span>' +
             '<span style="color:var(--muted); font-size:12px;">\u2192</span>' +
             '<span style="min-width:120px;">' + canonLabel + '</span>' +
-            '<button class="btn btn-xs" data-alias-kind="' + kind + '" data-alias-raw="' + escHTML(rawVal) + '" style="background:transparent; color:var(--danger); border:1px solid var(--border); padding:2px 8px;">Delete</button>' +
+            '<button class="btn btn-xs" data-alias-kind="' + kind + '" data-alias-raw="' + escHTML(rawVal) +
+              '" data-alias-bucket="' + escHTML(bucket || '') + '" style="background:transparent; color:var(--danger); border:1px solid var(--border); padding:2px 8px;">Delete</button>' +
             '</div>';
     }
 
@@ -2888,9 +3049,16 @@ function refreshSavedAliasesSection() {
     if (doctypeKeys.length > 0) {
         html += '<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin:6px 0 4px;">Document types</div>';
         doctypeKeys.sort().forEach(function(k) {
-            var cv = doctypeMap[k];
+            var parts = doctypeKeyParts(k);
+            var v = doctypeMap[k];
+            var cv = (v && v.target) || v;               // tolerate legacy string values
+            var subtype = (v && v.subtype) || null;
             var col = cv === 'disregard' ? 'var(--muted)' : (cv === 'credit_note' ? '#7C3AED' : '#0369A1');
-            html += aliasRow(k, pill(DOCTYPE_LABEL[cv] || cv, col, 'transparent', 'var(--border)'), 'doctype');
+            var signLabel = parts.bucket === 'negative' ? 'Negative' : 'Positive';
+            var rawLabel = doctypeDisplayLabel(parts.raw) + ' \u00B7 ' + signLabel;
+            var canon = pill(DOCTYPE_LABEL[cv] || cv, col, 'transparent', 'var(--border)') +
+                        (subtype ? ' <span style="font-size:10px; color:var(--text-secondary);">' + escHTML(subtype) + '</span>' : '');
+            html += aliasRow(rawLabel, canon, 'doctype', parts.raw, parts.bucket);
         });
     }
     if (statusKeys.length > 0) {
@@ -2905,26 +3073,25 @@ function refreshSavedAliasesSection() {
         btn.addEventListener('click', function() {
             var kind = btn.getAttribute('data-alias-kind');
             var rawVal = btn.getAttribute('data-alias-raw');
-            deleteAlias(bid, kind, rawVal);
+            var bucket = btn.getAttribute('data-alias-bucket') || null;
+            deleteAlias(bid, kind, rawVal, bucket);
         });
     });
 }
 
-function deleteAlias(buyerId, kind, rawValue) {
+function deleteAlias(buyerId, kind, rawValue, bucket) {
     if (!sbClient || !buyerId) return;
     var table = (kind === 'doctype') ? 'buyer_doctype_aliases' : 'buyer_status_aliases';
-    sbClient.from(table)
-        .delete()
-        .eq('buyer_id', buyerId)
-        .eq('raw_value', rawValue)
-        .then(function(res) {
+    var q = sbClient.from(table).delete().eq('buyer_id', buyerId).eq('raw_value', rawValue);
+    if (kind === 'doctype' && bucket) q = q.eq('sign_bucket', bucket);
+    q.then(function(res) {
             if (res.error) { alert('Failed to delete mapping: ' + res.error.message); return; }
             // Drop from the in-memory cache and re-render.
             var cache = (kind === 'doctype') ? state.doctypeAliases : state.statusAliases;
             if (cache && cache[buyerId]) {
-                // raw_value stored case-preserved; delete the matching key
+                var target = (kind === 'doctype') ? doctypeKey(rawValue, bucket) : rawValue;
                 Object.keys(cache[buyerId]).forEach(function(k) {
-                    if (k === rawValue) delete cache[buyerId][k];
+                    if (k === target) delete cache[buyerId][k];
                 });
             }
             refreshSavedAliasesSection();
@@ -3126,131 +3293,109 @@ function processAndSave() {
 function finishProcessAndSave(selectedBuyerId) {
     showProcessing(5, 'Normalising invoice rows…');
 
-    // Normalise invoice rows
-    var invRows = [];
-    var mixedCnRows = [];   // CN rows split out of a mixed invoice file
+    // Normalise into ONE array. doc_class routes each row; buyer_invoices and
+    // buyer_credit_notes are now VIEWS over buyer_documents, so every row is
+    // written to the single table with its class, magnitude, and provenance.
+    var docRows = [];
     var currencies = {};
     var allDates = [];
     var unrecognisedStatuses = {};
     var doctypeCol = state.invoiceMapping && state.invoiceMapping.document_type;
+
+    // Drop counts for the pre-save routing summary. Every row that is NOT
+    // saved is tallied so a silent drop can never shrink the file unnoticed.
+    var drops = { unroutable: 0, noSupplier: 0, badAmount: 0, noCurrency: 0, noDate: 0, noDueDate: 0 };
+
+    // Hoisted once — never call the scan per row on a large file.
+    var legacyMode = !doctypeCol && scanUnrecognisedDoctypes().length === 0;
+
     state.invoiceData.forEach(function(raw) {
-        // Document-type routing. When a document_type column is mapped,
-        // each row is routed by its (canonicalised) type:
-        //   disregard   → skipped entirely
-        //   credit_note → built as a CN row (Date col → cn_date, etc.)
-        //   invoice     → normal invoice path below
-        // When no document_type column is mapped, every row is an invoice
-        // (legacy behaviour) — docType stays null and the invoice path runs.
-        var docType = null;
-        if (doctypeCol) {
-            var rawDt = raw[doctypeCol];
-            docType = canonicaliseDocType(rawDt, selectedBuyerId);
-            // Unrecognised values shouldn't reach here (Save is gated), but
-            // guard anyway: treat unknown as disregard rather than mis-file.
-            if (!docType) return;
-            if (docType === 'disregard') return;
-        }
+        // Amount first — its sign is half the routing key.
+        var signedAmt = parseFloat(getMappedValue(raw, 'amount', state.invoiceMapping));
+        if (isNaN(signedAmt)) { drops.badAmount++; return; }
+        var bucket = signBucket(signedAmt);
+        var magnitude = Math.abs(signedAmt);
+
+        var rawDt = doctypeCol ? (raw[doctypeCol] == null ? '' : String(raw[doctypeCol]).trim()) : NO_DOCTYPE_SENTINEL;
+        var decision = canonicaliseDocType(rawDt, bucket, selectedBuyerId);
+        // Legacy: no doc-type column, no negatives, nothing reconciled → invoice.
+        if (!decision && legacyMode && bucket === 'positive') decision = { target: 'invoice', subtype: 'standard' };
+        if (!decision) { drops.unroutable++; return; }   // Save is gated; belt-and-braces
 
         var sid = getMappedValue(raw, 'supplier_identifier', state.invoiceMapping);
-        if (!sid || String(sid).trim() === '') return; // skip rows with no supplier
-        var amt = parseFloat(getMappedValue(raw, 'amount', state.invoiceMapping));
-        if (isNaN(amt)) return;
+        if (!sid || String(sid).trim() === '') { drops.noSupplier++; return; }
         var ccy = (getMappedValue(raw, 'currency', state.invoiceMapping) || '').toString().trim().toUpperCase();
-        if (!ccy) return;
-        var invDate = parseDate(getMappedValue(raw, 'invoice_date', state.invoiceMapping));
+        if (!ccy) { drops.noCurrency++; return; }
 
-        // ── Credit-note branch (mixed file) ────────────────────────────
-        // A CN's effective date is its issue date — the same physical
-        // "Date" column the operator mapped as invoice_date. CNs have no
-        // due date and no status lifecycle (see design discussion). The
-        // four-ID columns map across to the CN equivalents.
-        if (docType === 'credit_note') {
-            if (!invDate) return;  // CN needs a date
-            currencies[ccy] = true;
-            allDates.push(invDate);
-            mixedCnRows.push({
-                supplier_identifier: String(sid).trim(),
-                supplier_name:       nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
-                buyer_cn_id:         nullableStr(getMappedValue(raw, 'buyer_invoice_id', state.invoiceMapping)),
-                supplier_cn_id:      nullableStr(getMappedValue(raw, 'supplier_invoice_id', state.invoiceMapping)),
-                partner_cn_id:       nullableStr(getMappedValue(raw, 'partner_invoice_id', state.invoiceMapping)),
-                primary_id_field:    (state.primaryIdField === 'supplier_invoice_id' ? 'supplier_cn_id'
-                                      : state.primaryIdField === 'partner_invoice_id' ? 'partner_cn_id'
-                                      : 'buyer_cn_id'),
-                cn_date:             invDate,
-                paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
-                amount:              Math.abs(amt),  // CNs stored positive; sign is implied by the table
-                currency:            ccy,
-                excluded:            false
-            });
-            return;
-        }
+        // One physical date column — issue date for both classes.
+        var docDate = parseDate(getMappedValue(raw, 'invoice_date', state.invoiceMapping));
+        if (!docDate) { drops.noDate++; return; }
 
-        // ── Invoice branch ─────────────────────────────────────────────
-        // due_date is required for invoices only (CN rows already returned).
-        var dueDate = parseDate(getMappedValue(raw, 'due_date', state.invoiceMapping));
-        if (!invDate || !dueDate) return;
+        var isInvoice = (decision.target === 'invoice');
+        var dueDate = isInvoice ? parseDate(getMappedValue(raw, 'due_date', state.invoiceMapping)) : null;
+        if (isInvoice && !dueDate) { drops.noDueDate++; return; }
 
-        currencies[ccy] = true;
-        allDates.push(invDate);
-        if (dueDate) allDates.push(dueDate);
-
-        // Paid amount — optional. If mapped column gave a non-numeric or
-        // empty value, store null. Negative values (some systems use neg
-        // for credits) → flip to absolute. paid_amount > amount is left
-        // as-is (could be overpayment + future credit; analytics handles
-        // by clamping in the dilution calc, not here).
-        var rawPaidAmt = getMappedValue(raw, 'paid_amount', state.invoiceMapping);
+        // paid_amount: SIGN PRESERVED. Negative = refund / clawback, the
+        // opposite of a payment — Layer 2 excludes it from short-pay analysis.
         var paidAmt = null;
+        var rawPaidAmt = getMappedValue(raw, 'paid_amount', state.invoiceMapping);
         if (rawPaidAmt !== null && rawPaidAmt !== undefined && String(rawPaidAmt).trim() !== '') {
             var parsedPaid = parseFloat(rawPaidAmt);
-            if (!isNaN(parsedPaid)) paidAmt = Math.abs(parsedPaid);
+            if (!isNaN(parsedPaid)) paidAmt = parsedPaid;
         }
 
-        // Status inference — five-state canonical with precedence rules.
-        // Raw status strings that didn't canonicalise (after consulting
-        // per-buyer aliases) are collected for the reconciliation panel.
-        var rawStatusVal = getMappedValue(raw, 'invoice_status', state.invoiceMapping);
-        if (rawStatusVal != null && String(rawStatusVal).trim() !== '') {
-            if (!canonicaliseInvoiceStatus(rawStatusVal, selectedBuyerId)) {
-                unrecognisedStatuses[String(rawStatusVal).trim()] = (unrecognisedStatuses[String(rawStatusVal).trim()] || 0) + 1;
+        // Status lifecycle is invoice-only.
+        var statusInfo = { status: null, statusChangeDate: null };
+        if (isInvoice) {
+            var rawStatusVal = getMappedValue(raw, 'invoice_status', state.invoiceMapping);
+            if (rawStatusVal != null && String(rawStatusVal).trim() !== '') {
+                if (!canonicaliseInvoiceStatus(rawStatusVal, selectedBuyerId)) {
+                    unrecognisedStatuses[String(rawStatusVal).trim()] = (unrecognisedStatuses[String(rawStatusVal).trim()] || 0) + 1;
+                }
             }
+            statusInfo = inferInvoiceStatus({
+                invoice_date:    docDate,
+                paid_date:       parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+                paid_amount:     paidAmt,
+                invoice_status:  rawStatusVal,
+                cancelled_flag:  getMappedValue(raw, 'cancelled_flag', state.invoiceMapping),
+                cancelled_date:  parseDate(getMappedValue(raw, 'cancelled_date', state.invoiceMapping)),
+                rejected_flag:   getMappedValue(raw, 'rejected_flag', state.invoiceMapping),
+                rejected_date:   parseDate(getMappedValue(raw, 'rejected_date', state.invoiceMapping)),
+                approved_flag:   getMappedValue(raw, 'approved_flag', state.invoiceMapping),
+                approved_date:   parseDate(getMappedValue(raw, 'approved_date', state.invoiceMapping))
+            }, selectedBuyerId);
         }
-        var statusInfo = inferInvoiceStatus({
-            invoice_date:    invDate,
-            paid_date:       parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
-            paid_amount:     paidAmt,
-            invoice_status:  rawStatusVal,
-            cancelled_flag:  getMappedValue(raw, 'cancelled_flag', state.invoiceMapping),
-            cancelled_date:  parseDate(getMappedValue(raw, 'cancelled_date', state.invoiceMapping)),
-            rejected_flag:   getMappedValue(raw, 'rejected_flag', state.invoiceMapping),
-            rejected_date:   parseDate(getMappedValue(raw, 'rejected_date', state.invoiceMapping)),
-            approved_flag:   getMappedValue(raw, 'approved_flag', state.invoiceMapping),
-            approved_date:   parseDate(getMappedValue(raw, 'approved_date', state.invoiceMapping))
-        }, selectedBuyerId);
 
-        invRows.push({
-            supplier_identifier:  String(sid).trim(),
-            supplier_name:        nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
-            // Four-ID model. Our internal PK is generated by Postgres on insert.
-            buyer_invoice_id:     nullableStr(getMappedValue(raw, 'buyer_invoice_id', state.invoiceMapping)),
-            supplier_invoice_id:  nullableStr(getMappedValue(raw, 'supplier_invoice_id', state.invoiceMapping)),
-            partner_invoice_id:   nullableStr(getMappedValue(raw, 'partner_invoice_id', state.invoiceMapping)),
-            // Captures which of the three is the upload's canonical
-            // identifier so dedup logic doesn't need to re-derive it.
-            primary_id_field:     state.primaryIdField || 'buyer_invoice_id',
-            invoice_date:         invDate,
-            due_date:             dueDate,
-            paid_date:            parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
-            amount:               amt,
-            paid_amount:          paidAmt,
-            currency:             ccy,
-            invoice_status:       statusInfo.status,
-            status_change_date:   statusInfo.statusChangeDate,
-            cost_centre:          nullableStr(getMappedValue(raw, 'cost_centre', state.invoiceMapping)),
-            po_number:            nullableStr(getMappedValue(raw, 'po_number', state.invoiceMapping)),
-            gl_code:              nullableStr(getMappedValue(raw, 'gl_code', state.invoiceMapping)),
-            excluded:             false
+        if (decision.target !== 'disregard') {
+            currencies[ccy] = true;
+            allDates.push(docDate);
+            if (dueDate) allDates.push(dueDate);
+        }
+
+        docRows.push({
+            doc_class:           decision.target,
+            doc_subtype:         decision.subtype || (isInvoice ? 'standard' : null),
+            raw_document_type:   (rawDt === NO_DOCTYPE_SENTINEL ? null : rawDt),
+            raw_amount:          signedAmt,          // signed provenance
+            amount:              magnitude,          // magnitude — sign is in the class
+            supplier_identifier: String(sid).trim(),
+            supplier_name:       nullableStr(getMappedValue(raw, 'supplier_name', state.invoiceMapping)),
+            buyer_doc_id:        nullableStr(getMappedValue(raw, 'buyer_invoice_id', state.invoiceMapping)),
+            supplier_doc_id:     nullableStr(getMappedValue(raw, 'supplier_invoice_id', state.invoiceMapping)),
+            partner_doc_id:      nullableStr(getMappedValue(raw, 'partner_invoice_id', state.invoiceMapping)),
+            primary_id_field:    ({ supplier_invoice_id: 'supplier_doc_id', partner_invoice_id: 'partner_doc_id' }[state.primaryIdField] || 'buyer_doc_id'),
+            doc_date:            docDate,
+            due_date:            dueDate,
+            paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+            paid_amount:         paidAmt,
+            currency:            ccy,
+            invoice_status:      statusInfo.status,
+            status_change_date:  statusInfo.statusChangeDate,
+            cost_centre:         nullableStr(getMappedValue(raw, 'cost_centre', state.invoiceMapping)),
+            po_number:           nullableStr(getMappedValue(raw, 'po_number', state.invoiceMapping)),
+            gl_code:             nullableStr(getMappedValue(raw, 'gl_code', state.invoiceMapping)),
+            excluded:            false
         });
     });
 
@@ -3259,55 +3404,85 @@ function finishProcessAndSave(selectedBuyerId) {
     // (the default fallback in inferInvoiceStatus).
     state.unrecognisedStatuses = unrecognisedStatuses;
 
-    // Normalise CN rows
-    var cnRows = [];
+    // Separate CN file → same docRows array, class hardcoded to credit_note.
+    // amount is a magnitude; raw_amount keeps the original sign.
     state.cnData.forEach(function(raw) {
         var sid = getMappedValue(raw, 'supplier_identifier', state.cnMapping);
-        if (!sid || String(sid).trim() === '') return;
-        var amt = parseFloat(getMappedValue(raw, 'amount', state.cnMapping));
-        if (isNaN(amt)) return;
+        if (!sid || String(sid).trim() === '') { drops.noSupplier++; return; }
+        var signedAmt = parseFloat(getMappedValue(raw, 'amount', state.cnMapping));
+        if (isNaN(signedAmt)) { drops.badAmount++; return; }
         var ccy = (getMappedValue(raw, 'currency', state.cnMapping) || '').toString().trim().toUpperCase();
-        if (!ccy) return;
+        if (!ccy) { drops.noCurrency++; return; }
         var cnDate = parseDate(getMappedValue(raw, 'cn_date', state.cnMapping));
-        if (!cnDate) return;
+        if (!cnDate) { drops.noDate++; return; }
 
         currencies[ccy] = true;
         allDates.push(cnDate);
 
-        cnRows.push({
+        docRows.push({
+            doc_class:           'credit_note',
+            doc_subtype:         null,
+            raw_document_type:   null,
+            raw_amount:          signedAmt,
+            amount:              Math.abs(signedAmt),
             supplier_identifier: String(sid).trim(),
             supplier_name:       nullableStr(getMappedValue(raw, 'supplier_name', state.cnMapping)),
-            buyer_cn_id:         nullableStr(getMappedValue(raw, 'buyer_cn_id', state.cnMapping)),
-            supplier_cn_id:      nullableStr(getMappedValue(raw, 'supplier_cn_id', state.cnMapping)),
-            partner_cn_id:       nullableStr(getMappedValue(raw, 'partner_cn_id', state.cnMapping)),
-            primary_id_field:    state.primaryCnIdField || 'buyer_cn_id',
-            cn_date:             cnDate,
+            buyer_doc_id:        nullableStr(getMappedValue(raw, 'buyer_cn_id', state.cnMapping)),
+            supplier_doc_id:     nullableStr(getMappedValue(raw, 'supplier_cn_id', state.cnMapping)),
+            partner_doc_id:      nullableStr(getMappedValue(raw, 'partner_cn_id', state.cnMapping)),
+            primary_id_field:    ({ supplier_cn_id: 'supplier_doc_id', partner_cn_id: 'partner_doc_id' }[state.primaryCnIdField] || 'buyer_doc_id'),
+            doc_date:            cnDate,
+            due_date:            null,
             paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.cnMapping)),
-            amount:              amt,
+            paid_amount:         null,
             currency:            ccy,
+            invoice_status:      null,
+            status_change_date:  null,
+            cost_centre:         null,
+            po_number:           null,
+            gl_code:             null,
             excluded:            false
         });
     });
 
-    // Merge any CN rows split out of a mixed invoice file into the CN set.
-    if (mixedCnRows.length > 0) {
-        cnRows = cnRows.concat(mixedCnRows);
-    }
-
-    // Guard: need at least SOME data. A mixed file might be all credit
-    // notes (invRows empty but cnRows populated) — that's valid. Only
-    // abort when both are empty.
-    if (invRows.length === 0 && cnRows.length === 0) {
+    // Guard: need at least SOME saveable data.
+    if (docRows.length === 0) {
         hideProcessing();
         alert('No valid rows after normalisation. Check column mappings, date formats, and document-type routing.');
         return;
     }
 
+    // ── Routing summary — the operator sees exactly what will be saved and
+    // what was dropped, before committing. This is the screen that catches a
+    // shrunk file. ──
+    var savedInv = docRows.filter(function(r){ return r.doc_class === 'invoice'; }).length;
+    var savedCn  = docRows.filter(function(r){ return r.doc_class === 'credit_note'; }).length;
+    var savedDis = docRows.filter(function(r){ return r.doc_class === 'disregard'; }).length;
+    var dropped  = drops.noSupplier + drops.badAmount + drops.noCurrency + drops.noDate + drops.noDueDate + drops.unroutable;
+    var summary = 'Routing summary\n\n' +
+        '  Invoices        ' + savedInv.toLocaleString() + '\n' +
+        '  Credit notes    ' + savedCn.toLocaleString() + '\n' +
+        '  Disregarded     ' + savedDis.toLocaleString() + ' (saved, excluded from analytics)\n';
+    if (dropped > 0) {
+        summary += '\n  Not saved       ' + dropped.toLocaleString() + '\n';
+        if (drops.noSupplier) summary += '    no supplier ID     ' + drops.noSupplier.toLocaleString() + '\n';
+        if (drops.badAmount)  summary += '    unreadable amount  ' + drops.badAmount.toLocaleString() + '\n';
+        if (drops.noCurrency) summary += '    no currency        ' + drops.noCurrency.toLocaleString() + '\n';
+        if (drops.noDate)     summary += '    no date            ' + drops.noDate.toLocaleString() + '\n';
+        if (drops.noDueDate)  summary += '    no due date        ' + drops.noDueDate.toLocaleString() + '\n';
+        if (drops.unroutable) summary += '    unroutable         ' + drops.unroutable.toLocaleString() + '\n';
+    }
+    summary += '\n  ' + state.invoiceData.length.toLocaleString() + ' rows read from the invoice file.\n\nSave these rows?';
+    if (!confirm(summary)) { hideProcessing(); return; }
+
     allDates.sort();
     var minDate = allDates[0] || null;
     var maxDate = allDates[allDates.length - 1] || null;
     var distinctSuppliers = {};
-    invRows.forEach(function(r) { distinctSuppliers[r.supplier_identifier] = true; });
+    docRows.forEach(function(r) { if (r.doc_class === 'invoice') distinctSuppliers[r.supplier_identifier] = true; });
+
+    var invoiceCount = docRows.filter(function(r){ return r.doc_class === 'invoice'; }).length;
+    var cnCount      = docRows.filter(function(r){ return r.doc_class === 'credit_note'; }).length;
 
     var uploadRecord = {
         buyer_label: document.getElementById('buyerLabel').value.trim(),
@@ -3315,8 +3490,8 @@ function finishProcessAndSave(selectedBuyerId) {
         invoice_file_name: state.invoiceFile ? state.invoiceFile.name : null,
         cn_file_name: state.cnFile ? state.cnFile.name : null,
         currencies_seen: Object.keys(currencies),
-        invoice_count: invRows.length,
-        cn_count: cnRows.length,
+        invoice_count: invoiceCount,
+        cn_count: cnCount,
         supplier_count: Object.keys(distinctSuppliers).length,
         date_range_min: minDate,
         date_range_max: maxDate,
@@ -3346,37 +3521,25 @@ function finishProcessAndSave(selectedBuyerId) {
         var uploadId = res.data[0].id;
         var uploadBuyerId = res.data[0].buyer_id;
 
-        // Attach upload_id and buyer_id to each row. buyer_id is denormalised
-        // onto child rows so the buyer-scoped RLS policies can filter without
-        // a join back to buyer_uploads.
-        invRows.forEach(function(r) {
-            r.upload_id = uploadId;
-            r.buyer_id  = uploadBuyerId;
-        });
-        cnRows.forEach(function(r) {
+        // Attach upload_id and buyer_id to every row. buyer_id is denormalised
+        // so the buyer-scoped RLS policies filter without a join back.
+        docRows.forEach(function(r) {
             r.upload_id = uploadId;
             r.buyer_id  = uploadBuyerId;
         });
 
-        updateProcessing(25, 'Saving ' + invRows.length.toLocaleString() + ' invoice rows…');
+        updateProcessing(25, 'Saving ' + docRows.length.toLocaleString() + ' document rows…');
 
-        batchInsert('buyer_invoices', invRows, 500, function(invErr) {
-            if (invErr) {
+        // Single table now (buyer_invoices / buyer_credit_notes are views).
+        batchInsert('buyer_documents', docRows, 500, function(docErr) {
+            if (docErr) {
                 hideProcessing();
-                alert('Error saving invoices: ' + invErr);
+                alert('Error saving documents: ' + docErr);
                 // Cascade-clean the parent upload so we don't leave a dangling header.
                 sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
                 return;
             }
-            updateProcessing(70, 'Saving ' + cnRows.length.toLocaleString() + ' credit-note rows…');
-            batchInsert('buyer_credit_notes', cnRows, 500, function(cnErr) {
-                if (cnErr) {
-                    hideProcessing();
-                    alert('Error saving credit notes: ' + cnErr);
-                    sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function() {});
-                    return;
-                }
-
+            {
                 // PHASE: All rows committed. Flip to 'pending' to enqueue the
                 // background worker. Worker will populate aggregates and compute
                 // snapshot — no synchronous wait. Browser is free to dismiss.
@@ -3406,7 +3569,7 @@ function finishProcessAndSave(selectedBuyerId) {
                                 hideProcessing();
                                 resetUploadForm();
                                 loadAllData();
-                                alert('Upload saved: ' + invRows.length.toLocaleString() + ' invoices, ' + cnRows.length.toLocaleString() + ' credit notes.\n\nAnalytics are now computing in the background. This typically takes 30 seconds for 100k rows, 1-2 minutes for 500k rows. Refresh Upload History to see status.');
+                                alert('Upload saved: ' + invoiceCount.toLocaleString() + ' invoices, ' + cnCount.toLocaleString() + ' credit notes.\n\nAnalytics are now computing in the background. This typically takes 30 seconds for 100k rows, 1-2 minutes for 500k rows. Refresh Upload History to see status.');
                                 var histBtn = document.querySelector('.tab-btn[data-tab="uploads-history"]');
                                 if (histBtn) histBtn.click();
                             }, 500);
@@ -3428,7 +3591,7 @@ function finishProcessAndSave(selectedBuyerId) {
                             finishUploadFlow();
                         }
                     });
-            });
+            }
         });
     });
 }
@@ -3446,8 +3609,7 @@ function batchInsert(table, records, batchSize, cb) {
             if (res.error) { cb(res.error.message); return; }
             idx++;
             // Smoothly fill the progress bar across the batches in this stage.
-            var pct = 25 + Math.round(45 * (idx / batches.length));
-            if (table === 'buyer_credit_notes') pct = 70 + Math.round(25 * (idx / batches.length));
+            var pct = 25 + Math.round(70 * (idx / batches.length));
             updateProcessing(pct, 'Saved batch ' + idx + '/' + batches.length + ' of ' + table + '…');
             next();
         });
