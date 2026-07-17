@@ -1322,6 +1322,7 @@
         <button class="tab-btn" data-tab="reports">Reports</button>
         <button class="tab-btn" data-tab="all-suppliers">All Suppliers</button>
         <button class="tab-btn" data-tab="trends">Trends</button>
+        <button class="tab-btn" data-tab="doctypes">Doc Types</button>
         <button class="tab-btn operator-only" data-tab="prospects">Prospects</button>
         <button class="tab-btn" data-tab="uploads-history">Upload History</button>
     </div>
@@ -1464,6 +1465,23 @@
 
             <!-- Report body — re-rendered when a currency tab is clicked -->
             <div id="reportBody"></div>
+        </div>
+    </div>
+
+    <!-- ── DOC TYPES TAB ── -->
+    <div id="tab-doctypes" class="tab-content hidden">
+        <div style="padding:4px 2px 12px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+                <div>
+                    <div style="font-size:18px; font-weight:700; color:var(--text);">Document Types</div>
+                    <div id="doctypesSubtitle" style="font-size:12px; color:var(--text-secondary); margin-top:2px;">How every raw document-type code was classified, split by sign.</div>
+                </div>
+                <div id="doctypesScopeToggle" style="display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+                    <button id="doctypesScopeUpload" class="btn btn-xs" style="border:none; border-radius:0; padding:6px 12px;">This upload</button>
+                    <button id="doctypesScopeBuyer" class="btn btn-xs" style="border:none; border-radius:0; padding:6px 12px;">All uploads for this buyer</button>
+                </div>
+            </div>
+            <div id="doctypesLedgerBody"></div>
         </div>
     </div>
 
@@ -2432,6 +2450,12 @@ function setupTabs() {
                     } else {
                         showTrendsView(window.__upload);
                     }
+                }
+            }
+            if (tab === 'doctypes') {
+                if (window.__upload) {
+                    if (!window.__doctypesScope) window.__doctypesScope = 'upload';
+                    renderDoctypeLedger();
                 }
             }
             if (tab === 'all-suppliers') {
@@ -7150,7 +7174,7 @@ function getCurrentTimeSeries(ccy, granularity) {
 // once it exists). When disabled, click is a no-op and the tooltip
 // explains why.
 function setViewTabsEnabled(enabled) {
-    ['reports', 'all-suppliers', 'trends'].forEach(function(tab) {
+    ['reports', 'all-suppliers', 'trends', 'doctypes'].forEach(function(tab) {
         var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
         if (!btn) return;
         if (enabled) {
@@ -8523,6 +8547,174 @@ function renderTrendsPicker() {
 function openTrends(uploadId) {
     loadUpload(uploadId, function(upload) {
         showTrendsView(upload);
+    });
+}
+
+// ── Document-type ledger (Doc Types tab) ──────────────────────────────────
+// Reads buyer_doctype_ledger for the current upload or the whole buyer, shows
+// each raw code split by sign with counts/values and how it was classified,
+// and lets an operator reclassify a (code, sign) combination in place.
+var DOCTYPE_CLASS_LABEL = { invoice: 'Invoice', credit_note: 'Credit Note', disregard: 'Disregard' };
+var DOCTYPE_CLASS_COLOUR = { invoice: '#0369A1', credit_note: '#7C3AED', disregard: 'var(--muted)' };
+
+function setDoctypesScope(scope) {
+    window.__doctypesScope = scope;
+    renderDoctypeLedger();
+}
+
+function renderDoctypeLedger() {
+    var body = document.getElementById('doctypesLedgerBody');
+    var sub  = document.getElementById('doctypesSubtitle');
+    if (!body) return;
+    if (!window.__upload || !window.__upload.meta) {
+        body.innerHTML = '<div style="color:var(--text-secondary); font-size:13px;">Open an upload first.</div>';
+        return;
+    }
+    var scope   = window.__doctypesScope || 'upload';
+    var buyerId = window.__upload.meta.buyer_id;
+    var uploadId = window.__upload.uploadId;
+
+    // Scope toggle active state
+    var bU = document.getElementById('doctypesScopeUpload');
+    var bB = document.getElementById('doctypesScopeBuyer');
+    if (bU && bB) {
+        bU.style.background = scope === 'upload' ? 'var(--accent)' : 'transparent';
+        bU.style.color      = scope === 'upload' ? '#fff' : 'var(--text)';
+        bB.style.background = scope === 'buyer'  ? 'var(--accent)' : 'transparent';
+        bB.style.color      = scope === 'buyer'  ? '#fff' : 'var(--text)';
+        bU.onclick = function() { setDoctypesScope('upload'); };
+        bB.onclick = function() { setDoctypesScope('buyer'); };
+    }
+    if (sub) {
+        sub.textContent = scope === 'buyer'
+            ? 'Every raw code across all uploads for ' + (window.__upload.meta.buyer && window.__upload.meta.buyer.name ? window.__upload.meta.buyer.name : 'this buyer') + ', split by sign.'
+            : 'Every raw code in this upload, split by sign, and how it was classified.';
+    }
+
+    body.innerHTML = '<div style="color:var(--text-secondary); font-size:13px;">Loading…</div>';
+
+    var q = sbClient.from('buyer_doctype_ledger')
+        .select('raw_document_type, sign_bucket, doc_class, doc_subtype, row_count, total_value, zero_count')
+        .eq('buyer_id', buyerId);
+    if (scope === 'upload') q = q.eq('upload_id', uploadId);
+
+    q.then(function(res) {
+        if (res.error) {
+            body.innerHTML = '<div style="color:var(--danger); font-size:13px;">Could not load ledger: ' + escHTML(res.error.message) + '</div>';
+            return;
+        }
+        // When scope = buyer, one raw/sign can span multiple uploads → merge.
+        var merged = {};
+        (res.data || []).forEach(function(r) {
+            var key = (r.raw_document_type || '') + '\u0000' + r.sign_bucket + '\u0000' + r.doc_class + '\u0000' + (r.doc_subtype || '');
+            if (!merged[key]) {
+                merged[key] = { raw: r.raw_document_type || '', sign: r.sign_bucket, cls: r.doc_class,
+                                subtype: r.doc_subtype || null, rows: 0, value: 0, zero: 0 };
+            }
+            merged[key].rows  += Number(r.row_count) || 0;
+            merged[key].value += Number(r.total_value) || 0;
+            merged[key].zero  += Number(r.zero_count) || 0;
+        });
+        var items = Object.keys(merged).map(function(k) { return merged[k]; });
+        if (items.length === 0) {
+            body.innerHTML = '<div style="color:var(--text-secondary); font-size:13px;">No document rows found for this ' + (scope === 'buyer' ? 'buyer' : 'upload') + '.</div>';
+            return;
+        }
+        items.sort(function(a, b) {
+            if (a.raw !== b.raw) return a.raw < b.raw ? -1 : 1;
+            return a.sign === b.sign ? 0 : (a.sign === 'positive' ? -1 : 1);
+        });
+
+        var rowsHtml = items.map(function(it, i) {
+            var label = it.raw === '' ? '(blank / no code)' : escHTML(it.raw);
+            var signColour = it.sign === 'negative' ? '#7C3AED' : 'var(--text)';
+            var signText = it.sign === 'negative' ? 'Negative' : 'Positive';
+            var zeroNote = it.zero > 0 ? ' <span style="color:var(--text-secondary);">(' + it.zero.toLocaleString() + ' zero-value)</span>' : '';
+            var clsPill = '<span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; color:' +
+                          (DOCTYPE_CLASS_COLOUR[it.cls] || 'var(--text)') + '; border:1px solid var(--border);">' +
+                          (DOCTYPE_CLASS_LABEL[it.cls] || it.cls) + '</span>';
+            var subLabel = it.subtype ? '<span style="font-size:11px; color:var(--text-secondary); margin-left:6px;">' + escHTML(it.subtype) + '</span>' : '';
+            var flag = (it.sign === 'negative' && it.cls === 'invoice')
+                ? ' <span title="A negative amount classified as an invoice is unusual — check this." style="color:var(--danger); font-weight:700;">&#9888;</span>' : '';
+            return '<tr style="border-top:1px solid var(--border);">' +
+                '<td style="padding:8px 10px; font-family:var(--mono); font-weight:600;">' + label + '</td>' +
+                '<td style="padding:8px 10px; color:' + signColour + ';">' + signText + flag + '</td>' +
+                '<td style="padding:8px 10px; text-align:right; font-variant-numeric:tabular-nums;">' + it.rows.toLocaleString() + zeroNote + '</td>' +
+                '<td style="padding:8px 10px; text-align:right; font-variant-numeric:tabular-nums;">' + it.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
+                '<td style="padding:8px 10px;">' + clsPill + subLabel + '</td>' +
+                '<td style="padding:8px 10px; text-align:right;"><button class="btn btn-xs dt-reclass" data-raw="' + escHTML(it.raw) + '" data-sign="' + it.sign + '" data-cls="' + it.cls + '" data-subtype="' + escHTML(it.subtype || '') + '" style="padding:3px 10px;">Reclassify</button></td>' +
+                '</tr>';
+        }).join('');
+
+        body.innerHTML =
+            '<div style="overflow-x:auto; border:1px solid var(--border); border-radius:8px;">' +
+            '<table style="width:100%; border-collapse:collapse; font-size:13px;">' +
+            '<thead><tr style="background:var(--bg); text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">' +
+            '<th style="padding:8px 10px;">Raw code</th><th style="padding:8px 10px;">Sign</th>' +
+            '<th style="padding:8px 10px; text-align:right;">Rows</th><th style="padding:8px 10px; text-align:right;">Value</th>' +
+            '<th style="padding:8px 10px;">Classified as</th><th style="padding:8px 10px;"></th></tr></thead>' +
+            '<tbody>' + rowsHtml + '</tbody></table></div>' +
+            (scope === 'buyer'
+                ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">Reclassifying here updates this code across every upload for the buyer and re-runs their analytics.</div>'
+                : '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">Reclassify applies buyer-wide (the classification rule is per buyer) and re-runs affected analytics.</div>');
+
+        body.querySelectorAll('.dt-reclass').forEach(function(btn) {
+            btn.addEventListener('click', function() { openReclassifyDialog(buyerId, btn); });
+        });
+    });
+}
+
+function openReclassifyDialog(buyerId, btn) {
+    var raw     = btn.getAttribute('data-raw');
+    var sign    = btn.getAttribute('data-sign');
+    var curCls  = btn.getAttribute('data-cls');
+    var label   = raw === '' ? '(blank / no code)' : raw;
+
+    var newCls = window.prompt(
+        'Reclassify "' + label + '" (' + sign + ') for this buyer.\n\n' +
+        'Currently: ' + (DOCTYPE_CLASS_LABEL[curCls] || curCls) + '\n\n' +
+        'Type one of:  invoice  |  credit_note  |  disregard', curCls);
+    if (newCls === null) return;
+    newCls = newCls.trim().toLowerCase();
+    if (['invoice', 'credit_note', 'disregard'].indexOf(newCls) === -1) {
+        alert('Not a valid class. Use invoice, credit_note, or disregard.');
+        return;
+    }
+
+    var subtype = null;
+    var subs = DOC_SUBTYPES[newCls] || [];
+    if (subs.length > 0) {
+        var subInput = window.prompt(
+            'Optional reason label for ' + (DOCTYPE_CLASS_LABEL[newCls] || newCls) + '.\n\n' +
+            'Type one of:\n' + subs.map(function(p) { return '  ' + p[0]; }).join('\n') +
+            '\n\nor leave blank for none.', '');
+        if (subInput === null) return;
+        subtype = subInput.trim() || null;
+    }
+
+    if (!confirm('Reclassify "' + label + '" (' + sign + ') to ' + (DOCTYPE_CLASS_LABEL[newCls] || newCls) +
+                 (subtype ? ' / ' + subtype : '') + ' for this buyer?\n\n' +
+                 'This updates every matching row and re-runs the affected analytics.')) return;
+
+    var body = document.getElementById('doctypesLedgerBody');
+    if (body) body.innerHTML = '<div style="color:var(--text-secondary); font-size:13px;">Reclassifying and re-queuing analytics…</div>';
+
+    sbClient.rpc('reclassify_buyer_doctype', {
+        p_buyer_id: buyerId,
+        p_raw_document_type: raw,
+        p_sign_bucket: sign,
+        p_new_class: newCls,
+        p_new_subtype: subtype,
+        p_scope_upload_id: null
+    }).then(function(res) {
+        if (res.error) {
+            alert('Reclassify failed: ' + res.error.message);
+            renderDoctypeLedger();
+            return;
+        }
+        alert('Reclassified ' + (res.data != null ? res.data.toLocaleString() : '') +
+              ' row(s). Analytics for affected uploads are recomputing in the background — refresh the report in a minute to see updated numbers.');
+        renderDoctypeLedger();
     });
 }
 
