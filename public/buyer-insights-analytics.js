@@ -44,6 +44,24 @@
             warnings.push("No non-excluded invoice rows; analysis will be empty.");
         }
 
+        // Layer 1 stores magnitudes; sign is implied by the class. A negative
+        // reaching Layer 2 means something upstream is wrong and the dilution
+        // rate is understated. Warn loudly rather than compute quietly.
+        var negCn  = cnRows.filter(function(r) { return numericAmount(r.amount) < 0; });
+        var negInv = invoiceRows.filter(function(r) { return numericAmount(r.amount) < 0; });
+        if (negCn.length > 0) {
+            warnings.push(negCn.length + " credit note(s) have negative amounts. Dilution is understated — check the upload's sign handling.");
+        }
+        if (negInv.length > 0) {
+            warnings.push(negInv.length + " invoice(s) have negative amounts. These are almost certainly credits booked as invoices: they reduce total spend AND are missing from dilution. Reclassify before relying on this report.");
+        }
+        var clawbacks = invoiceRows.filter(function(r) {
+            return r.paid_amount != null && numericAmount(r.paid_amount) < 0;
+        });
+        if (clawbacks.length > 0) {
+            warnings.push(clawbacks.length + " invoice(s) have a negative paid amount (refund or clawback). Excluded from short-pay analysis.");
+        }
+
         // Bucket by currency. Each currency report is independent — Pelagic agreed
         // up-front that buyer reports are per-currency rather than FX-converted.
         var byCcy = {};
@@ -148,7 +166,7 @@
             suppliers:        suppliers,
             concentration:    computeConcentration(suppliers, totalSpend),
             paymentBehaviour: computePaymentBehaviour(invoices, suppliers),
-            dilution:         computeDilution(suppliers, totalSpend, totalCNs),
+            dilution:         computeDilution(suppliers, totalSpend, totalCNs, cns),
             volumeOverTime:   computeVolumeOverTime(invoices)
         };
     }
@@ -165,7 +183,9 @@
         var amount = 0, count = 0;
         (invs || []).forEach(function(inv) {
             if (inv.paid_amount == null) return;
-            var shortfall = numericAmount(inv.amount) - numericAmount(inv.paid_amount);
+            var paid = numericAmount(inv.paid_amount);
+            if (paid < 0) return;   // refund / clawback, not a short payment
+            var shortfall = numericAmount(inv.amount) - paid;
             if (shortfall > 0.005) { amount += shortfall; count += 1; }
         });
         return { amount: amount, count: count };
@@ -415,8 +435,22 @@
 
     // ── Dilution ───────────────────────────────────────────────────
 
-    function computeDilution(suppliers, totalSpend, totalCNs) {
+    function computeDilution(suppliers, totalSpend, totalCNs, cns) {
         var totalShortPay = suppliers.reduce(function(a, s) { return a + (s.shortPayAmount || 0); }, 0);
+
+        // Same rate, split by reason. A dilution rate made of contractual volume
+        // rebates is a different risk from one made of ad-hoc dispute credits.
+        var byReason = {};
+        (cns || []).forEach(function(cn) {
+            var k = cn.doc_subtype || 'unspecified';
+            if (!byReason[k]) byReason[k] = { amount: 0, count: 0 };
+            byReason[k].amount += numericAmount(cn.amount);
+            byReason[k].count++;
+        });
+        Object.keys(byReason).forEach(function(k) {
+            byReason[k].rate = totalSpend > 0 ? byReason[k].amount / totalSpend : 0;
+            byReason[k].amount = round2(byReason[k].amount);
+        });
         // League: suppliers ranked by dilution rate, but only those with enough
         // invoice base to be meaningful (>=3 invoices and non-zero spend).
         // A single invoice with one CN gives 100% dilution but isn't a signal.
@@ -447,7 +481,8 @@
             combinedRate:   totalSpend > 0 ? (totalCNs + totalShortPay) / totalSpend : 0,
             totalCNs:       round2(totalCNs),
             cnInvoiceRatio: totalSpend > 0 ? totalCNs / totalSpend : 0,
-            league:         league
+            league:         league,
+            byReason:       byReason
         };
     }
 
