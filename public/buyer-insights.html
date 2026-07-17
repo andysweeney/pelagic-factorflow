@@ -3335,13 +3335,15 @@ function finishProcessAndSave(selectedBuyerId) {
         var dueDate = isInvoice ? parseDate(getMappedValue(raw, 'due_date', state.invoiceMapping)) : null;
         if (isInvoice && !dueDate) { drops.noDueDate++; return; }
 
-        // paid_amount: SIGN PRESERVED. Negative = refund / clawback, the
-        // opposite of a payment — Layer 2 excludes it from short-pay analysis.
+        // paid_amount: a negative value is a refund / clawback, not a payment.
+        // Store it as null ("no payment recorded") so the server short-pay
+        // formula (paid_amount < amount) and Layer 2 stay consistent — neither
+        // treats a clawback as a partial payment.
         var paidAmt = null;
         var rawPaidAmt = getMappedValue(raw, 'paid_amount', state.invoiceMapping);
         if (rawPaidAmt !== null && rawPaidAmt !== undefined && String(rawPaidAmt).trim() !== '') {
             var parsedPaid = parseFloat(rawPaidAmt);
-            if (!isNaN(parsedPaid)) paidAmt = parsedPaid;
+            if (!isNaN(parsedPaid) && parsedPaid >= 0) paidAmt = parsedPaid;
         }
 
         // Status lifecycle is invoice-only.
