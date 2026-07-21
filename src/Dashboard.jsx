@@ -1638,7 +1638,7 @@ async function loadBuyerDoctypeAliases(buyerId, force) {
 
   var res = await supabase
     .from("buyer_doctype_aliases")
-    .select("raw_value, sign_bucket, canonical_value, doc_subtype")
+    .select("raw_value, sign_bucket, canonical_value, doc_subtype, learned_under_provider, last_seen_provider")
     .eq("buyer_id", buyerId);
 
   if (res && res.error) {
@@ -1650,7 +1650,9 @@ async function loadBuyerDoctypeAliases(buyerId, force) {
   (res.data || []).forEach(function(r) {
     map[doctypeKey(r.raw_value, r.sign_bucket || "positive")] = {
       target: r.canonical_value,
-      subtype: r.doc_subtype || null
+      subtype: r.doc_subtype || null,
+      learnedUnder: r.learned_under_provider || null,
+      lastSeen: r.last_seen_provider || null
     };
   });
   DOCTYPE_ALIASES[buyerId] = map;
@@ -1803,6 +1805,79 @@ function doctypeGateOpen(scan) {
 // signed value. Returns null when the row does not resolve — the caller counts
 // it rather than guessing.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// PROVIDER RE-CONFIRMATION (Phase 3)
+//
+// The residual risk the (buyer, code, sign) key does NOT catch: a new or
+// changed provider reuses an existing code, at an existing sign, with a
+// different meaning. Adding provider to the key was rejected — it would permit
+// two contradictory rules per buyer with no mechanism to notice, and would
+// break cross-seeding with Buyer Insights (writeup 4.1).
+//
+// Adopted instead: provider as provenance plus a re-confirmation event.
+//
+// This is a SOFT gate. Import proceeds and rows are created, because a hard
+// block would stop all ingestion until someone worked through every code for
+// every buyer, and would create pressure to rubber-stamp. What waits is the
+// single operation that would make a mistake permanent: purchase. Rows
+// imported under an unconfirmed rule carry pendingDoctypeConfirmation, which
+// purchaseHolds() already recognises and both consumers already honour.
+// ----------------------------------------------------------------------------
+
+// Combinations confirmed this session, keyed buyerId \u0001 key.
+var CONFIRMED_DOCTYPE_COMBOS = {};
+function confirmDoctypeCombo(buyerId, raw, bucket) {
+  CONFIRMED_DOCTYPE_COMBOS[buyerId + "\u0001" + doctypeKey(raw, bucket)] = true;
+}
+function isDoctypeComboConfirmed(buyerId, raw, bucket) {
+  return !!CONFIRMED_DOCTYPE_COMBOS[buyerId + "\u0001" + doctypeKey(raw, bucket)];
+}
+function clearDoctypeConfirmations() { CONFIRMED_DOCTYPE_COMBOS = {}; }
+
+// Does this combination need re-confirming under the current provider?
+// Only ever true for a combination that ALREADY resolves — an unresolved one
+// goes through the hard reconciliation gate instead and never reaches here.
+function needsProviderReconfirmation(buyerId, raw, bucket, providerId) {
+  if (!providerId) return false;                       // no provider selected
+  var saved = DOCTYPE_ALIASES[buyerId];
+  var rule = saved && saved[doctypeKey(raw, bucket)];
+  if (!rule) return false;                             // unresolved, not this
+  var learned = rule.lastSeen || rule.learnedUnder;
+  if (!learned) return false;                          // pre-dates provenance
+  if (learned === providerId) return false;
+  return !isDoctypeComboConfirmed(buyerId, raw, bucket);
+}
+
+// Combinations in this file that resolve, but were learned elsewhere.
+function reconfirmationCombinations(scan, providerId) {
+  var out = [];
+  if (!scan || !providerId) return out;
+  Object.keys(scan.groups).forEach(function(k) {
+    var g = scan.groups[k];
+    if (!canonicaliseDocType(g.raw, g.bucket, g.buyerId)) return;   // hard gate
+    if (!needsProviderReconfirmation(g.buyerId, g.raw, g.bucket, providerId)) return;
+    var rule = DOCTYPE_ALIASES[g.buyerId][doctypeKey(g.raw, g.bucket)];
+    out.push(Object.assign({}, g, {
+      currentTarget: rule.target, currentSubtype: rule.subtype || null,
+      learnedUnder: rule.lastSeen || rule.learnedUnder
+    }));
+  });
+  out.sort(function(a, b) { return b.magnitude - a.magnitude; });
+  return out;
+}
+
+// Record the confirmation against the alias so it does not re-ask next time.
+async function persistProviderConfirmation(buyerId, raw, bucket, providerId, actorId) {
+  var res = await supabase
+    .from("buyer_doctype_aliases")
+    .update({ last_seen_provider: providerId, updated_at: new Date().toISOString(), updated_by: actorId || null })
+    .eq("buyer_id", buyerId).eq("raw_value", String(raw == null ? "" : raw).trim().toLowerCase()).eq("sign_bucket", bucket);
+  if (res && res.error) throw new Error(res.error.message);
+  var m = DOCTYPE_ALIASES[buyerId];
+  if (m && m[doctypeKey(raw, bucket)]) m[doctypeKey(raw, bucket)].lastSeen = providerId;
+  confirmDoctypeCombo(buyerId, raw, bucket);
+}
+
 function routeDoctypeRow(buyerId, rawDocType, amount) {
   var amt = parseFloat(amount);
   if (isNaN(amt)) return null;
@@ -5790,6 +5865,10 @@ export default function FactoringDashboard() {
   var dtl7 = useState({}), doctypeExpanded = dtl7[0], setDoctypeExpanded = dtl7[1];
   // { combo, target, subtype, uploads:{batch:bool}, updateRule, running, result }
   var dtl8 = useState(null), doctypeReclassify = dtl8[0], setDoctypeReclassify = dtl8[1];
+  // Buyer-record disregard counts (writeup 3.6). Keyed by buyer id so switching
+  // entity does not show the previous buyer's figures while loading.
+  var dtl9 = useState({}), buyerDisregards = dtl9[0], setBuyerDisregards = dtl9[1];
+  var dtl10 = useState(null), doctypeConfirming = dtl10[0], setDoctypeConfirming = dtl10[1];
   // Selected provider for this CSV import. null = no provider selected (the BI-style
   // direct-Pelagic-ID flow stays available for back-compat). When set, external string
   // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
@@ -11562,6 +11641,35 @@ export default function FactoringDashboard() {
                 </div>}
               </div>
             </div>
+
+            {/* Attention card — Unconfirmed document types (writeup 4.4).
+                 The failure mode of a soft gate is silent accumulation: flagged
+                 rows piling up unfunded while nobody looks. The held-from-
+                 funding VALUE is the number that makes someone act, so it leads.
+                 Deliberately absent when zero — a permanently non-zero card
+                 trains people to ignore it. */}
+            {(function() {
+              var heldInvs = viewData.invoices.filter(function(inv) { return inv.pendingDoctypeConfirmation && !inv.voided; });
+              if (heldInvs.length === 0) return null;
+              var buyers = {}, byCcy = {};
+              heldInvs.forEach(function(inv) {
+                buyers[inv.buyerId || inv.buyerName] = true;
+                byCcy[inv.currency] = (byCcy[inv.currency] || 0) + (inv.amount || 0);
+              });
+              var nBuyers = Object.keys(buyers).length;
+              var valLabel = Object.keys(byCcy).map(function(c) { return money(r2(byCcy[c]), c); }).join(" \u00b7 ");
+              return <div style={{ marginBottom: 14 }}>
+                <div style={Object.assign({}, sectionLabel, { marginBottom: 8 })}>Unconfirmed document types</div>
+                <div style={{ padding: "14px 18px", borderRadius: 10, background: "#F59E0B0A", border: "1px solid #F59E0B45", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#D97706" }}>{valLabel}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                    held from funding &middot; {heldInvs.length.toLocaleString()} row{heldInvs.length === 1 ? "" : "s"} across {nBuyers} buyer{nBuyers === 1 ? "" : "s"}
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>Imported under a rule learned from a different provider. Allocation is blocked until the classification is confirmed.</div>
+                  </div>
+                  <button onClick={function() { setView("manage"); setManageTab("doctypes"); }} style={{ marginLeft: "auto", padding: "8px 16px", borderRadius: 7, border: "none", background: "#D97706", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Review {"\u2192"}</button>
+                </div>
+              </div>;
+            })()}
 
             {/* ============ ROW 3: Eligible for Purchase (full width) ============ */}
             <div style={{ marginBottom: 14 }}>
@@ -23469,7 +23577,83 @@ export default function FactoringDashboard() {
                   </div>;
                 })()}
 
+                {/* Disregarded rows for this buyer (writeup 3.6).
+                     "Is this buyer's file shrinking?" A separate table makes
+                     disregards easy to exclude, which is the point and also the
+                     risk: rows nobody ever sees again are rows nobody notices
+                     are wrong. Shown as a SHARE of rows received as well as an
+                     absolute — 17 of 459 is unremarkable, 17 of 30 is not.
+                     Deliberately not an attention card: disregards are expected
+                     and ongoing, so a permanent non-zero badge would train
+                     people to ignore it. */}
+                {manageDetailTab === "overview" && !isSup && !isSp && (function() {
+                  var bid = det.id;
+                  if (!bid) return null;
+                  var stat = buyerDisregards[bid];
+
+                  async function loadBuyerDisregards() {
+                    setBuyerDisregards(function(prev) { var n = Object.assign({}, prev); n[bid] = { loading: true }; return n; });
+                    try {
+                      var res = await supabase
+                        .from("disregarded_documents")
+                        .select("amount, currency, raw_document_type, import_batch")
+                        .eq("buyer_id", bid);
+                      if (res && res.error) throw new Error(res.error.message);
+                      var rows = res.data || [];
+                      var byCode = {};
+                      rows.forEach(function(r) {
+                        var k = r.raw_document_type || "(blank)";
+                        if (!byCode[k]) byCode[k] = { count: 0, value: 0, currency: r.currency };
+                        byCode[k].count++; byCode[k].value += Number(r.amount || 0);
+                      });
+                      // Denominator: everything this buyer's files produced.
+                      var invCount = INVOICES_DB.filter(function(i) { return i.buyerId === bid; }).length;
+                      var cnCount = CREDIT_NOTES_DB.filter(function(c) { return c.buyerId === bid; }).length;
+                      setBuyerDisregards(function(prev) {
+                        var n = Object.assign({}, prev);
+                        n[bid] = { loading: false, rows: rows.length, byCode: byCode, received: rows.length + invCount + cnCount };
+                        return n;
+                      });
+                    } catch (e) {
+                      setBuyerDisregards(function(prev) { var n = Object.assign({}, prev); n[bid] = { loading: false, error: e.message || String(e) }; return n; });
+                    }
+                  }
+
+                  return <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: stat && !stat.loading ? 10 : 0 }}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 700, color: "var(--muted)", letterSpacing: "0.05em" }}>Disregarded rows</div>
+                      <button onClick={loadBuyerDisregards} disabled={stat && stat.loading} style={{ padding: "4px 12px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {stat && stat.loading ? "Loading..." : (stat ? "Refresh" : "Check")}
+                      </button>
+                    </div>
+                    {stat && stat.error && <div style={{ fontSize: 11.5, color: "#EF4444", lineHeight: 1.5 }}>{stat.error}</div>}
+                    {stat && !stat.loading && !stat.error && (stat.rows === 0
+                      ? <div style={{ fontSize: 12, color: "var(--muted)" }}>Nothing disregarded for this buyer.</div>
+                      : <div>
+                          <div style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.6 }}>
+                            <strong>{stat.rows.toLocaleString()}</strong> row{stat.rows === 1 ? "" : "s"} disregarded
+                            {stat.received > 0 && <span style={{ color: (stat.rows / stat.received) > 0.2 ? "#D97706" : "var(--muted)" }}>
+                              {" \u2014 " + Math.round((stat.rows / stat.received) * 100) + "% of the " + stat.received.toLocaleString() + " received"}
+                            </span>}
+                          </div>
+                          <table style={{ fontSize: 11.5, borderCollapse: "collapse" }}><tbody>
+                            {Object.keys(stat.byCode).sort(function(a, b) { return stat.byCode[b].value - stat.byCode[a].value; }).map(function(k) {
+                              return <tr key={k}>
+                                <td style={{ padding: "2px 18px 2px 0", fontFamily: "monospace" }}>{k}</td>
+                                <td style={{ padding: "2px 18px 2px 0", color: "var(--muted)" }}>{stat.byCode[k].count.toLocaleString()}</td>
+                                <td style={{ padding: "2px 0", fontFamily: "'JetBrains Mono', monospace" }}>{money(stat.byCode[k].value, stat.byCode[k].currency || "GBP")}</td>
+                              </tr>;
+                            })}
+                          </tbody></table>
+                          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
+                            A rising share is how a provider change that starts emitting a newly-disregarded code shows up &mdash; as a number rather than as silence.
+                          </div>
+                        </div>)}
+                  </div>;
+                })()}
+
                 {/* Tab 4: Companies House Information */}
+
                 {manageDetailTab === "ch" && <div>
                 {det.companyNumber ? (function() {
                   var coNum = det.companyNumber;
@@ -25760,7 +25944,7 @@ export default function FactoringDashboard() {
                 // are reported separately from `skipped`, which counts failures.
                 // Conflating them would hide a misclassification behind a number
                 // that already looks like noise.
-                var routedCN = 0, routedDisregard = 0, unroutable = 0;
+                var routedCN = 0, routedDisregard = 0, unroutable = 0, heldForDoctype = 0;
                 var cnQueue = [], disregardQueue = [];
                 var doctypeColMapped = !!csvImportMapping["document_type"];
                 // The legacy path: no document-type column anywhere and no
@@ -25859,6 +26043,7 @@ export default function FactoringDashboard() {
                   var rawDocTypeCell = doctypeColMapped ? row[csvImportMapping["document_type"]] : undefined;
                   if (doctypeColMapped && rawDocTypeCell == null) rawDocTypeCell = "";
                   var dtRoute = null;
+                  var dtNeedsConfirm = false;
                   if (doctypeRoutingActive) {
                     dtRoute = routeDoctypeRow(buyParentId, rawDocTypeCell, amount);
                     if (!dtRoute) {
@@ -25894,6 +26079,13 @@ export default function FactoringDashboard() {
                     }
                     // Invoice: carry the magnitude forward, keep the original.
                     amount = dtRoute.amount;
+                    // Soft gate (Phase 3): the row is created, but it must not
+                    // reach a Funding Program until a human has confirmed the
+                    // rule still means what it did under the previous provider.
+                    dtNeedsConfirm = needsProviderReconfirmation(
+                      buyParentId, rawDocTypeCell, dtRoute.signBucket,
+                      csvProvider ? csvProvider.id : null);
+                    if (dtNeedsConfirm) heldForDoctype++;
                   }
 
                   // Find existing invoice by reference
@@ -25978,6 +26170,7 @@ export default function FactoringDashboard() {
                       rawAmount: dtRoute ? dtRoute.rawAmount : null,
                       sourceProvider: csvProvider ? csvProvider.id : null,
                       importBatch: uploadId,
+                      pendingDoctypeConfirmation: dtNeedsConfirm,
                       csvAmountPaid: amountPaid,
                       notes: csvNotes.map(function(t) { return { text: t, display: nowDisplay }; })
                     });
@@ -26214,7 +26407,7 @@ export default function FactoringDashboard() {
                   });
                 }
                 var envelopeDetails = "CSV import: " + created + " created, " + updated + " updated, " + reviewItems.length + " queued for review, " + skipped + " skipped, " + errors.length + " errors (of " + csvImportData.length + " rows)";
-                if (doctypeRoutingActive) envelopeDetails += " — routed: " + routedCN + " credit notes, " + routedDisregard + " disregarded" + (unroutable > 0 ? ", " + unroutable + " unclassified" : "");
+                if (doctypeRoutingActive) envelopeDetails += " — routed: " + routedCN + " credit notes, " + routedDisregard + " disregarded" + (unroutable > 0 ? ", " + unroutable + " unclassified" : "") + (heldForDoctype > 0 ? ", " + heldForDoctype + " held pending doctype confirmation" : "");
                 if (providerForAudit) envelopeDetails += " — provider: " + providerForAudit.name + (isFirstForProvider ? " (FIRST UPLOAD)" : "");
                 auditLog("CSV Imported", envelopeDetails, {
                   uploadId: uploadId,
@@ -26222,7 +26415,7 @@ export default function FactoringDashboard() {
                   providerName: providerForAudit ? providerForAudit.name : null,
                   isFirstForProvider: isFirstForProvider,
                   rows: { created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errored: errors.length, total: csvImportData.length },
-                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, active: doctypeRoutingActive },
+                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, held: heldForDoctype, active: doctypeRoutingActive },
                   source: "csv_import"
                 });
 
@@ -26230,7 +26423,7 @@ export default function FactoringDashboard() {
                   created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errors: errors,
                   total: csvImportData.length,
                   uploadId: uploadId,
-                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, active: doctypeRoutingActive }
+                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, held: heldForDoctype, active: doctypeRoutingActive }
                 });
                 setDataVer(function(v) { return v + 1; });
                 setCsvImportProcessing(false);
@@ -26625,6 +26818,7 @@ export default function FactoringDashboard() {
                         <tr><td style={{ padding: "2px 24px 2px 0" }}>Invoices</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{csvImportResult.created + csvImportResult.updated}</td></tr>
                         <tr><td style={{ padding: "2px 24px 2px 0" }}>Credit notes</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{csvImportResult.routing.creditNotes}</td></tr>
                         <tr><td style={{ padding: "2px 24px 2px 0" }}>Disregarded</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: csvImportResult.routing.disregarded > 0 ? "#F59E0B" : "inherit" }}>{csvImportResult.routing.disregarded}</td></tr>
+                        {csvImportResult.routing.held > 0 && <tr><td style={{ padding: "2px 24px 2px 0", color: "#D97706" }}>Held pending confirmation</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#D97706" }}>{csvImportResult.routing.held}</td></tr>}
                         {csvImportResult.routing.unclassified > 0 && <tr><td style={{ padding: "2px 24px 2px 0", color: "#EF4444" }}>Unclassified &mdash; not imported</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#EF4444" }}>{csvImportResult.routing.unclassified}</td></tr>}
                         <tr><td style={{ padding: "6px 24px 2px 0", color: "var(--muted)", borderTop: "1px solid var(--border)" }}>Rows read from file</td><td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", borderTop: "1px solid var(--border)", paddingTop: 6 }}>{csvImportResult.total}</td></tr>
                       </tbody></table>
@@ -26926,6 +27120,68 @@ export default function FactoringDashboard() {
                 {doctypeLedger && flaggedCount > 0 && !doctypeShowFlagged && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B40", fontSize: 11.5, color: "#D97706", marginBottom: 12, lineHeight: 1.55 }}>
                   {"\u26A0"} {flaggedCount} combination{flaggedCount === 1 ? "" : "s"} negative but classified as an invoice. That is the classic mis-call &mdash; worth checking each one is a genuine invoice rather than an unrecognised credit note.
                 </div>}
+
+                {/* RULE-LEVEL REVIEW ITEMS (Phase 3, writeup 4.3)
+                     One item per (buyer, code, sign) — never decomposed into
+                     hundreds of identical per-row items. Confirm clears the
+                     hold on every affected row; Change routes to reclassify,
+                     which is subject to the 3.5 gating. */}
+                {(function() {
+                  var held = INVOICES_DB.filter(function(i) { return i.pendingDoctypeConfirmation && !i.voided; });
+                  if (held.length === 0) return null;
+                  var groups = {}, order = [];
+                  held.forEach(function(inv) {
+                    var raw = String(inv.rawDocumentType == null ? "" : inv.rawDocumentType).trim().toLowerCase();
+                    var k = inv.buyerId + "\u0001" + raw + "\u0001" + (inv.signBucket || "");
+                    if (!groups[k]) { groups[k] = { buyerId: inv.buyerId, raw: raw, sample: inv.rawDocumentType, bucket: inv.signBucket, provider: inv.sourceProvider, count: 0, value: 0, currency: inv.currency, invs: [] }; order.push(k); }
+                    groups[k].count++; groups[k].value += (inv.amount || 0); groups[k].invs.push(inv);
+                  });
+                  order.sort(function(a, b) { return groups[b].value - groups[a].value; });
+
+                  async function confirmGroup(g) {
+                    setDoctypeConfirming(g.buyerId + g.raw + g.bucket);
+                    try {
+                      if (g.provider) await persistProviderConfirmation(g.buyerId, g.raw, g.bucket, g.provider, (userProfile && userProfile.id) || null);
+                      for (var i = 0; i < g.invs.length; i++) {
+                        var raw = INVOICES_DB.find(function(x) { return x.id === g.invs[i].id; });
+                        if (!raw) continue;
+                        raw.pendingDoctypeConfirmation = false;
+                        await saveInvoice(raw.id);
+                      }
+                      // Name the specific hold cleared. A generic "hold removed"
+                      // would imply an eligibility change that did not happen —
+                      // the row may still be operator-held.
+                      auditLog("Doctype Confirmation Cleared", "'" + (g.sample || "(blank)") + "' (" + g.bucket + ") confirmed for " + (buyName(g.buyerId) || g.buyerId) + " — " + g.count + " row" + (g.count === 1 ? "" : "s") + " released to the purchase queue", { buyerId: g.buyerId, rawDocumentType: g.sample, signBucket: g.bucket, rows: g.count });
+                      setDataVer(function(v) { return v + 1; });
+                    } catch (e) {
+                      alert("Could not confirm: " + (e.message || String(e)));
+                    }
+                    setDoctypeConfirming(null);
+                  }
+
+                  return <div style={{ marginBottom: 16, padding: "14px 18px", borderRadius: 8, background: "#F59E0B08", border: "1px solid #F59E0B45" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "#D97706", marginBottom: 4 }}>
+                      {"\u26A0"} {order.length} rule{order.length === 1 ? "" : "s"} awaiting confirmation
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 10, lineHeight: 1.55 }}>
+                      These codes arrived from a provider other than the one their rule was learned under. The rows were imported, but are held from allocation until someone confirms the code still means the same thing.
+                    </div>
+                    {order.map(function(k) {
+                      var g = groups[k];
+                      var busy = doctypeConfirming === (g.buyerId + g.raw + g.bucket);
+                      return <div key={k} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid #F59E0B25", flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 12 }}>{g.sample || "(blank)"}</span>
+                        <span style={{ fontSize: 11, color: g.bucket === "negative" ? "#EF4444" : "var(--muted)" }}>{g.bucket}</span>
+                        <span style={{ fontSize: 11.5 }}>{buyName(g.buyerId) || g.buyerId}</span>
+                        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>{g.count.toLocaleString()} rows · {money(g.value, g.currency)} held</span>
+                        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                          <button disabled={busy} onClick={function() { confirmGroup(g); }} style={{ padding: "4px 12px", borderRadius: 5, border: "none", background: "#10B981", color: "#fff", fontSize: 11, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Working..." : "Confirm"}</button>
+                          <button onClick={function() { setManageTab("doctypes"); loadDoctypeLedger(); }} title="Reclassify below — the rule changed rather than being confirmed" style={{ padding: "4px 12px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Changed</button>
+                        </span>
+                      </div>;
+                    })}
+                  </div>;
+                })()}
 
                 {doctypeReclassify && (function() {
                   var rc = doctypeReclassify;
