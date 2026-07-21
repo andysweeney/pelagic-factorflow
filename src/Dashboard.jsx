@@ -1,4 +1,4 @@
-    import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -905,6 +905,9 @@ function unpackInvoiceRow(row) {
     pendingDoctypeConfirmation: row.pending_doctype_confirmation || false,
     rawDocumentType: row.raw_document_type || null, rawAmount: row.raw_amount != null ? row.raw_amount : null,
     signBucket: row.sign_bucket || null, sourceProvider: row.source_provider || null,
+    importBatch: row.import_batch || null, voidReason: row.void_reason || null,
+    reclassifiedToType: row.reclassified_to_type || null, reclassifiedToId: row.reclassified_to_id || null,
+    reclassifiedAt: row.reclassified_at || null, reclassifiedBy: row.reclassified_by || null,
     writtenDownShort: row.written_down_short || false, writeDownDate: row.write_down_date || null,
     pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null,
     tranches: row.tranches || [],
@@ -947,6 +950,14 @@ function packInvoiceRow(inv) {
     pending_doctype_confirmation: inv.pendingDoctypeConfirmation || false,
     raw_document_type: inv.rawDocumentType || null, raw_amount: inv.rawAmount != null ? inv.rawAmount : null,
     source_provider: inv.sourceProvider || null,
+    // Which upload produced this row. Without it, reclassify cannot be scoped
+    // to selected uploads and a change of meaning would rewrite all history.
+    import_batch: inv.importBatch || null,
+    void_reason: inv.voidReason || null,
+    reclassified_to_type: inv.reclassifiedToType || null,
+    reclassified_to_id: inv.reclassifiedToId || null,
+    reclassified_at: inv.reclassifiedAt || null,
+    reclassified_by: inv.reclassifiedBy || null,
     written_down_short: inv.writtenDownShort || false, write_down_date: inv.writeDownDate || null,
     pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null,
     tranches: inv.tranches || [],
@@ -984,7 +995,17 @@ function packCreditNoteRow(cn) {
     buyer_id: bParent, buyer_entity_id: bEntity,
     allocations: cn.allocations || [], notes: cn.notes || [],
     voided: cn.voided || false, voided_at: cn.voidedAt || null, voided_by: cn.voidedBy || null, void_reason: cn.voidReason || null,
-    created_display: cn.createdDisplay || null
+    created_display: cn.createdDisplay || null,
+    // Provenance (Phase 1b). sign_bucket is GENERATED and must NOT be written.
+    raw_document_type: cn.rawDocumentType || null,
+    raw_amount: cn.rawAmount != null ? cn.rawAmount : null,
+    doc_subtype: cn.docSubtype || null,
+    source_provider: cn.sourceProvider || null,
+    import_batch: cn.importBatch || null,
+    reclassified_from_type: cn.reclassifiedFromType || null,
+    reclassified_from_id: cn.reclassifiedFromId || null,
+    reclassified_at: cn.reclassifiedAt || null,
+    reclassified_by: cn.reclassifiedBy || null
   };
 }
 
@@ -1003,6 +1024,16 @@ function unpackCreditNoteRow(row) {
     buyerId: bIds.buyerId,
     buyerEntityId: bIds.entityId,
     createdDisplay: row.created_display, allocations: row.allocations || [],
+    rawDocumentType: row.raw_document_type || null,
+    rawAmount: row.raw_amount != null ? row.raw_amount : null,
+    signBucket: row.sign_bucket || null,
+    docSubtype: row.doc_subtype || null,
+    sourceProvider: row.source_provider || null,
+    importBatch: row.import_batch || null,
+    reclassifiedFromType: row.reclassified_from_type || null,
+    reclassifiedFromId: row.reclassified_from_id || null,
+    reclassifiedAt: row.reclassified_at || null,
+    reclassifiedBy: row.reclassified_by || null,
     notes: row.notes || [],
     voided: row.voided || false, voidedAt: row.voided_at || null, voidedBy: row.voided_by || null, voidReason: row.void_reason || null
   };
@@ -1466,6 +1497,339 @@ function isPurchaseEligible(inv) { return purchaseEligibility(inv).eligible; }
 function purchaseBlockLabel(inv) {
   var r = purchaseEligibility(inv).reasons;
   return r.length === 0 ? "" : r.map(function(x) { return x.label; }).join("; ");
+}
+
+// ============================================================================
+// DOCUMENT-TYPE CLASSIFICATION  (Phase 1b)
+//
+// Ported from Buyer Insights. The alias table public.buyer_doctype_aliases is
+// SHARED between the two apps, keyed on (buyer_id, raw_value, sign_bucket), so
+// the normalisation here must match buyer-insights_v2.html EXACTLY. If the two
+// diverge, each app quietly holds its own rule for the same buyer convention
+// and neither notices. Verified against the shipped BI source 21 Jul 2026.
+//
+// Two design commitments this exists to uphold:
+//   1. Sign is never trusted as arithmetic. It is part of a row's IDENTITY for
+//      classification. Stored amounts are positive magnitudes; direction is
+//      implied by which table the row lands in.
+//   2. Nothing is dropped or misclassified silently. An unresolved combination
+//      blocks the save; everything not saved is counted and shown.
+// ============================================================================
+
+// Routing targets. Must match the buyer_doctype_aliases.canonical_value CHECK.
+var CANONICAL_DOCTYPES = ["invoice", "credit_note", "disregard"];
+
+// Sentinel raw value for a file with NO document-type column that DOES contain
+// negatives — i.e. the buyer's ERP encodes credits by sign alone. Reconciled on
+// sign only. Stored in the alias table; written as NULL into raw_document_type.
+// The literal string must match Buyer Insights.
+var NO_DOCTYPE_SENTINEL = "__bi_no_doctype__";
+
+// Positive is defined as >= 0. Zero counts as positive (and is counted
+// separately for display, since a zero-value row is worth a second look).
+function signBucket(amt) { return amt < 0 ? "negative" : "positive"; }
+
+// Composite alias key: (raw value, sign bucket), joined by NUL — a character
+// that cannot appear in a CSV cell. Raw value is trimmed and lowercased so
+// lookups are case-insensitive and so what we WRITE matches what BI writes.
+// The DB now enforces this with a CHECK (raw_value = lower(btrim(raw_value))).
+function doctypeKey(rawValue, bucket) {
+  return String(rawValue == null ? "" : rawValue).trim().toLowerCase() + "\u0000" + bucket;
+}
+function doctypeKeyParts(key) {
+  var i = key.lastIndexOf("\u0000");
+  return { raw: key.slice(0, i), bucket: key.slice(i + 1) };
+}
+function doctypeDisplayLabel(raw) {
+  if (raw === NO_DOCTYPE_SENTINEL) return "(no document-type column)";
+  if (raw === "" || raw == null)   return "(blank)";
+  return raw;
+}
+// Optional reason labels, carried on the row for reporting only. They never
+// affect routing or arithmetic — they exist so dilution can later be broken
+// down by reason (a rebate is a different risk from a dispute credit).
+var DOC_SUBTYPES = {
+  invoice: [["standard", "Standard invoice"], ["rebill", "Rebill / re-issue"]],
+  credit_note: [
+    ["return", "Return / RTV"], ["dispute_credit", "Quality / dispute credit"],
+    ["pricing_adjustment", "Pricing adjustment"], ["rebate", "Volume / retro rebate"],
+    ["settlement_discount", "Settlement discount"], ["chargeback", "Chargeback / deduction"],
+    ["debit_memo", "Debit memo"], ["marketing_contribution", "Marketing contribution"]
+  ],
+  disregard: [
+    ["statement_line", "Statement / balance line"], ["duplicate", "Duplicate"],
+    ["internal", "Internal or intercompany"], ["adjustment", "Ledger adjustment"]
+  ]
+};
+function DOC_SUBTYPES_FOR(target) { return DOC_SUBTYPES[target] || []; }
+
+function doctypeTargetLabel(target) {
+  return target === "invoice" ? "Invoice"
+       : target === "credit_note" ? "Credit Note"
+       : target === "disregard" ? "Disregard" : String(target || "");
+}
+
+// In-memory alias cache: DOCTYPE_ALIASES[buyerId][key] = {target, subtype}.
+// Populated from the DB per buyer; PENDING_DOCTYPE_ALIASES holds this session's
+// unsaved reconciliation choices, keyed by buyerId then key.
+var DOCTYPE_ALIASES = {};
+var PENDING_DOCTYPE_ALIASES = {};
+
+// ----------------------------------------------------------------------------
+// canonicaliseDocType — the precedence order, from BI section 3.
+//
+//   1. per-buyer saved alias
+//   2. pending alias chosen this session
+//   3. hardcoded recognisers
+//   4. null  -> forces reconciliation, blocks the save
+//
+// Returns { target, subtype } or null. NOTE the object shape: both writeups
+// previously described this as returning a bare class string. It does not.
+//
+// Two deliberate judgement rules live here:
+//   - 'debit' is NOT a recogniser. A buyer-issued debit memo reduces the
+//     supplier's receivable (a chargeback), so it must never auto-route to
+//     invoice.
+//   - A NEGATIVE amount labelled "invoice" is a contradiction, not a fact. It
+//     is not auto-routed; a human decides.
+//
+// A saved alias beats the recognisers, INCLUDING for blanks — the "always
+// reconcile" branch below only applies when nothing is saved. That is not a
+// bug, but it is how a careless classification becomes a permanent silent
+// rule, so the reconciliation UI must show what it is about to persist.
+// ----------------------------------------------------------------------------
+function canonicaliseDocType(raw, bucket, buyerId) {
+  var key = doctypeKey(raw, bucket);
+
+  var saved = buyerId && DOCTYPE_ALIASES[buyerId];
+  if (saved && saved[key]) return saved[key];
+
+  var pending = buyerId && PENDING_DOCTYPE_ALIASES[buyerId];
+  if (pending && pending[key]) return pending[key];
+
+  var s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (s === "" || s === NO_DOCTYPE_SENTINEL) return null;   // always reconcile
+
+  var isInvoiceWord = ["invoice", "inv", "i", "sales invoice"].indexOf(s) !== -1;
+  var isCreditWord  = ["credit_note", "credit note", "creditnote", "cn", "credit", "c", "crn"].indexOf(s) !== -1;
+
+  if (isInvoiceWord && bucket === "positive") return { target: "invoice", subtype: "standard" };
+  if (isCreditWord) return { target: "credit_note", subtype: null };
+  return null;
+}
+
+// ----------------------------------------------------------------------------
+// Alias persistence.
+//
+// RLS on buyer_doctype_aliases: read needs is_internal_user(), write needs the
+// admin or operations role, both taken from the JWT claim minted by
+// public.custom_access_token_hook. CSV import is admin-only, so the import path
+// satisfies both.
+//
+// IMPORTANT — a failed READ must not look like an empty rule set. Buyer
+// Insights logs a warning and substitutes {} on error, so a permissions or
+// network failure is indistinguishable from "this buyer has no saved rules",
+// which would silently re-open every previously-settled combination. Here the
+// error is propagated so the caller can block the import.
+// ----------------------------------------------------------------------------
+async function loadBuyerDoctypeAliases(buyerId, force) {
+  if (!buyerId) return {};
+  if (!force && DOCTYPE_ALIASES[buyerId]) return DOCTYPE_ALIASES[buyerId];
+
+  var res = await supabase
+    .from("buyer_doctype_aliases")
+    .select("raw_value, sign_bucket, canonical_value, doc_subtype")
+    .eq("buyer_id", buyerId);
+
+  if (res && res.error) {
+    // Deliberately thrown, not swallowed. See note above.
+    throw new Error("Could not load document-type rules for " + buyerId + ": " + res.error.message);
+  }
+
+  var map = {};
+  (res.data || []).forEach(function(r) {
+    map[doctypeKey(r.raw_value, r.sign_bucket || "positive")] = {
+      target: r.canonical_value,
+      subtype: r.doc_subtype || null
+    };
+  });
+  DOCTYPE_ALIASES[buyerId] = map;
+  return map;
+}
+
+// Load aliases for every buyer present in the file. A FactorFlow CSV is a
+// supplier ledger spanning many buyers, unlike a Buyer Insights upload — hence
+// the (buyer x code x sign) triple rather than BI's (code x sign) pair.
+async function loadDoctypeAliasesForBuyers(buyerIds, force) {
+  var unique = [];
+  (buyerIds || []).forEach(function(b) { if (b && unique.indexOf(b) === -1) unique.push(b); });
+  for (var i = 0; i < unique.length; i++) await loadBuyerDoctypeAliases(unique[i], force);
+  return DOCTYPE_ALIASES;
+}
+
+// Persist this session's choices. Upserts on the primary key
+// (buyer_id, raw_value, sign_bucket). raw_value is written already normalised,
+// matching what Buyer Insights writes and what the CHECK constraint requires.
+async function persistPendingDoctypeAliases(actorId, provider) {
+  var buyerIds = Object.keys(PENDING_DOCTYPE_ALIASES);
+  if (buyerIds.length === 0) return { saved: 0 };
+
+  var rows = [];
+  buyerIds.forEach(function(bid) {
+    var picks = PENDING_DOCTYPE_ALIASES[bid] || {};
+    Object.keys(picks).forEach(function(k) {
+      var p = doctypeKeyParts(k);
+      var v = picks[k];
+      rows.push({
+        buyer_id: bid,
+        raw_value: p.raw,
+        sign_bucket: p.bucket,
+        canonical_value: v.target,
+        doc_subtype: v.subtype || null,
+        created_by: actorId || null,
+        learned_under_provider: provider || null,
+        last_seen_provider: provider || null,
+        updated_at: new Date().toISOString(),
+        updated_by: actorId || null
+      });
+    });
+  });
+  if (rows.length === 0) return { saved: 0 };
+
+  var res = await supabase
+    .from("buyer_doctype_aliases")
+    .upsert(rows, { onConflict: "buyer_id,raw_value,sign_bucket" });
+
+  if (res && res.error) {
+    throw new Error("Could not save document-type rules: " + res.error.message);
+  }
+
+  // Promote into the live cache, then clear pending.
+  buyerIds.forEach(function(bid) {
+    if (!DOCTYPE_ALIASES[bid]) DOCTYPE_ALIASES[bid] = {};
+    var picks = PENDING_DOCTYPE_ALIASES[bid] || {};
+    Object.keys(picks).forEach(function(k) { DOCTYPE_ALIASES[bid][k] = picks[k]; });
+  });
+  PENDING_DOCTYPE_ALIASES = {};
+  return { saved: rows.length };
+}
+
+// ----------------------------------------------------------------------------
+// The scan: group file rows by (buyer x code x sign) and report which
+// combinations do not resolve.
+//
+// getRow(row) must return { buyerId, rawDocType, amount } where rawDocType is
+// null/undefined when the file has no document-type column at all.
+// ----------------------------------------------------------------------------
+function scanDoctypeCombinations(rows, getRow) {
+  var groups = {};
+  var hasColumn = false;
+  var anyNegative = false;
+
+  (rows || []).forEach(function(row, idx) {
+    var f = getRow(row, idx);
+    if (!f) return;
+    var amt = parseFloat(f.amount);
+    if (isNaN(amt)) return;                       // unreadable amounts are a
+                                                  // save-time drop, counted there
+    if (amt < 0) anyNegative = true;
+
+    var hasDt = f.rawDocType !== null && f.rawDocType !== undefined;
+    if (hasDt) hasColumn = true;
+
+    var raw = hasDt ? String(f.rawDocType == null ? "" : f.rawDocType).trim() : NO_DOCTYPE_SENTINEL;
+    var bucket = signBucket(amt);
+    var buyerId = f.buyerId || "";
+    var key = buyerId + "\u0001" + doctypeKey(raw, bucket);
+
+    if (!groups[key]) {
+      groups[key] = {
+        key: key, buyerId: buyerId, raw: raw, bucket: bucket,
+        display: doctypeDisplayLabel(raw),
+        count: 0, zeroCount: 0, magnitude: 0
+      };
+    }
+    groups[key].count++;
+    groups[key].magnitude += Math.abs(amt);
+    if (amt === 0) groups[key].zeroCount++;
+  });
+
+  return { groups: groups, hasColumn: hasColumn, anyNegative: anyNegative };
+}
+
+// Which combinations still need a human? Mirrors BI's two-way rule for a file
+// with no document-type column: all amounts >= 0 is legacy behaviour with no
+// prompt; any negatives raise a single sign-only card per buyer.
+function unresolvedDoctypeCombinations(scan) {
+  var out = [];
+  if (!scan) return out;
+  if (!scan.hasColumn && !scan.anyNegative) return out;   // legacy, no prompt
+
+  Object.keys(scan.groups).forEach(function(k) {
+    var g = scan.groups[k];
+    if (!canonicaliseDocType(g.raw, g.bucket, g.buyerId)) out.push(g);
+  });
+
+  // Rank by value: a rare combination worth GBP 200 is noise; one worth
+  // GBP 180k is worth a phone call.
+  out.sort(function(a, b) { return b.magnitude - a.magnitude; });
+  return out;
+}
+
+// Record a reconciliation choice for the current session.
+function setPendingDoctypeAlias(buyerId, raw, bucket, target, subtype) {
+  if (!buyerId) return;
+  if (CANONICAL_DOCTYPES.indexOf(target) === -1) return;
+  if (!PENDING_DOCTYPE_ALIASES[buyerId]) PENDING_DOCTYPE_ALIASES[buyerId] = {};
+  PENDING_DOCTYPE_ALIASES[buyerId][doctypeKey(raw, bucket)] = {
+    target: target, subtype: subtype || null
+  };
+}
+function getPendingDoctypeAlias(buyerId, raw, bucket) {
+  var m = PENDING_DOCTYPE_ALIASES[buyerId];
+  return (m && m[doctypeKey(raw, bucket)]) || null;
+}
+function clearPendingDoctypeAliases() { PENDING_DOCTYPE_ALIASES = {}; }
+
+// Hard gate: every present combination must resolve before the save is allowed.
+function doctypeGateOpen(scan) {
+  return unresolvedDoctypeCombinations(scan).length === 0;
+}
+
+// ----------------------------------------------------------------------------
+// Route one row. Returns:
+//   { target, subtype, amount, rawAmount, rawDocumentType, signBucket }
+// where amount is always a POSITIVE MAGNITUDE and rawAmount keeps the original
+// signed value. Returns null when the row does not resolve — the caller counts
+// it rather than guessing.
+// ----------------------------------------------------------------------------
+function routeDoctypeRow(buyerId, rawDocType, amount) {
+  var amt = parseFloat(amount);
+  if (isNaN(amt)) return null;
+
+  var hasDt = rawDocType !== null && rawDocType !== undefined;
+  var raw = hasDt ? String(rawDocType == null ? "" : rawDocType).trim() : NO_DOCTYPE_SENTINEL;
+  var bucket = signBucket(amt);
+
+  var decision = canonicaliseDocType(raw, bucket, buyerId);
+
+  // Legacy path: no document-type column and nothing negative anywhere in the
+  // file. The caller establishes that from the scan and passes rawDocType as
+  // undefined; a positive row with no column and no alias is an invoice, which
+  // is the behaviour that existed before this phase.
+  if (!decision && !hasDt && bucket === "positive") {
+    decision = { target: "invoice", subtype: null };
+  }
+  if (!decision) return null;
+
+  return {
+    target: decision.target,
+    subtype: decision.subtype || null,
+    amount: Math.abs(amt),
+    rawAmount: amt,
+    rawDocumentType: (raw === NO_DOCTYPE_SENTINEL ? null : raw),
+    signBucket: bucket
+  };
 }
 
 function getEligiblePrograms(inv, supDilRates) {
@@ -5404,6 +5768,28 @@ export default function FactoringDashboard() {
   var csvAr1 = useState({}), csvAliasPicks = csvAr1[0], setCsvAliasPicks = csvAr1[1];
   // Tracks which inline alias adds are currently in-flight (entityType + "|" + externalString → true).
   var csvAr2 = useState({}), csvAliasSaving = csvAr2[0], setCsvAliasSaving = csvAr2[1];
+  // --- Document-type reconciliation (Phase 1b) ---
+  // csvDoctypeScan   result of scanDoctypeCombinations over the staged file
+  // csvDoctypePicks  operator choices this session, keyed by group key
+  // csvDoctypeError  a FAILED ALIAS READ. Deliberately fatal: an empty rule
+  //                  set and an unreadable one must never look the same.
+  var csvDt1 = useState(null), csvDoctypeScan = csvDt1[0], setCsvDoctypeScan = csvDt1[1];
+  var csvDt2 = useState({}),   csvDoctypePicks = csvDt2[0], setCsvDoctypePicks = csvDt2[1];
+  var csvDt3 = useState(null), csvDoctypeError = csvDt3[0], setCsvDoctypeError = csvDt3[1];
+  var csvDt4 = useState(false), csvDoctypeBusy = csvDt4[0], setCsvDoctypeBusy = csvDt4[1];
+  // --- Doc Types tab (Phase 2) ---
+  var dtl1 = useState(null),  doctypeLedger = dtl1[0], setDoctypeLedger = dtl1[1];
+  var dtl2 = useState(false), doctypeLedgerLoading = dtl2[0], setDoctypeLedgerLoading = dtl2[1];
+  var dtl3 = useState(null),  doctypeLedgerError = dtl3[0], setDoctypeLedgerError = dtl3[1];
+  var dtl4 = useState(""),    doctypeLedgerBuyer = dtl4[0], setDoctypeLedgerBuyer = dtl4[1];
+  var dtl5 = useState(false), doctypeShowFlagged = dtl5[0], setDoctypeShowFlagged = dtl5[1];
+  // Upload scope. FactorFlow is a continuous ledger, so a code's meaning can
+  // change over time; "all uploads" is a view, never an assumption that one
+  // rule has always applied.
+  var dtl6 = useState(""), doctypeUploadFilter = dtl6[0], setDoctypeUploadFilter = dtl6[1];
+  var dtl7 = useState({}), doctypeExpanded = dtl7[0], setDoctypeExpanded = dtl7[1];
+  // { combo, target, subtype, uploads:{batch:bool}, updateRule, running, result }
+  var dtl8 = useState(null), doctypeReclassify = dtl8[0], setDoctypeReclassify = dtl8[1];
   // Selected provider for this CSV import. null = no provider selected (the BI-style
   // direct-Pelagic-ID flow stays available for back-compat). When set, external string
   // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
@@ -21388,7 +21774,7 @@ export default function FactoringDashboard() {
                       <td style={{ padding: "8px 8px" }}>
                         {(!noElig || isDnp) ? <div onClick={function() { toggleSelect(inv.id); }} style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid " + (isSel ? "var(--accent)" : "var(--border)"), background: isSel ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{isSel ? "\u2713" : ""}</div> : <div style={{ width: 18, height: 18, borderRadius: 4, border: "2px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: 9 }} title="No eligible programs">{"\ud83d\udd12"}</div>}
                       </td>
-                      <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{isDnp && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}</td>
+                      <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{purchaseHolds(inv).map(function(h) { return <span key={h.code} title={h.label} style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: h.system ? "#F59E0B14" : "#EF444414", color: h.system ? "#D97706" : "#EF4444", border: "1px solid " + (h.system ? "#F59E0B30" : "#EF444430") }}>{h.badge}</span>; })}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11, color: daysPending > 30 ? "#EF4444" : daysPending > 7 ? "#D97706" : "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{daysPending}d</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierId || inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
@@ -21918,7 +22304,7 @@ export default function FactoringDashboard() {
 
             <div style={{ padding: "8px 16px", background: "#15AEC020", border: "1px solid #15AEC0", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#15AEC0", fontWeight: 600 }}>v14 — CSV Import + Review Queue enabled</div>
             <div style={{ display: "flex", background: "var(--card)", borderRadius: 10, padding: 3, border: "1px solid var(--border)", marginBottom: 16, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
-              {["suppliers", "buyers", "service_providers", "programs", "benchmarks", "csv_import", "csv_review", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t === "benchmarks" ? "Benchmarks" : t}</button>; })}
+              {["suppliers", "buyers", "service_providers", "programs", "benchmarks", "csv_import", "csv_review", "doctypes", "csv_providers", "users", "audit"].map(function(t) { return <button key={t} onClick={function() { setManageTab(t); setManageEdit(null); setShowNewEntity(false); setManageFields({}); setManageDetail(null); setMgEntSearch(""); setMgEntCountryFilter(""); setMgEntStatusFilter(""); setMgEntBankFilter(""); setMgEntPage(0); setMgEntSort("name"); setMgEntDir("asc"); setMgProgSearch(""); setMgProgCcyFilter(""); setMgProgSort("name"); setMgProgDir("asc"); setMgUsrSearch(""); setMgUsrRoleFilter(""); setMgUsrStatusFilter(""); setMgUsrSort("name"); setMgUsrDir("asc"); setMgAudSearch(""); setMgAudActionFilter(""); setMgAudDateFrom(""); setMgAudDateTo(""); setMgAudPage(0); setMgAudDir("desc"); if (t === "users") loadUsers(); }} style={{ padding: "10px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: manageTab === t ? 600 : 400, background: manageTab === t ? "var(--accent)" : "transparent", color: manageTab === t ? "#fff" : "var(--muted)", transition: "all 0.15s ease", whiteSpace: "nowrap", textTransform: "capitalize" }}>{t === "csv_import" ? "CSV Import" : t === "csv_review" ? "Review Queue" : t === "doctypes" ? "Doc Types" : t === "csv_providers" ? "CSV Providers" : t === "audit" ? "Audit Log" : t === "programs" ? "Funding Programs" : t === "service_providers" ? "Service Providers" : t === "queue" ? "Payment Queue" : t === "users" ? "User Administration" : t === "benchmarks" ? "Benchmarks" : t}</button>; })}
             </div>
 
             {/* Entity Detail Screen */}
@@ -24967,6 +25353,10 @@ export default function FactoringDashboard() {
                 { key: "external_buyer_string", label: "External Buyer ID / buyer code", required: false, hints: ["external_buyer_id","externalbuyerid","provider_buyer_id","external_customer_id","provider_customer_id","buyer_code","customer_code"] },
                 { key: "supplier", label: "Supplier Name (label)", required: false, hints: ["supplier_name","suppliername","vendor_name","supplier"] },
                 { key: "buyer", label: "Buyer Name (label)", required: false, hints: ["buyer_name","buyername","customer_name","buyer"] },
+                // Document type. Optional: a file without it is legacy
+                // behaviour when every amount is >= 0, and raises sign-only
+                // classification cards when negatives are present.
+                { key: "document_type", label: "Document Type", required: false, hints: ["document_type","doc_type","doctype","type","record_type","transaction_type","invoice_type"] },
                 { key: "invoice_amount", label: "Invoice Amount", required: true, hints: ["invoice_amount","amount","inv_amount","invoice_value","gross_amount","total"] },
                 { key: "approved_amount", label: "Approved Amount", required: false, hints: ["approved_amount","purchased","net_amount"] },
                 { key: "currency", label: "Currency", required: false, hints: ["currency","ccy","curr"] },
@@ -25029,6 +25419,114 @@ export default function FactoringDashboard() {
                 if (!col) return null;
                 var val = row[col];
                 return val != null && String(val).trim() !== "" ? String(val).trim() : null;
+              }
+
+              // ----------------------------------------------------------------
+              // DOCUMENT-TYPE RECONCILIATION (Phase 1b)
+              //
+              // Sequenced AFTER entity resolution and BEFORE processing: the
+              // scan keys on (buyer x code x sign), so it needs the resolved
+              // buyer identity. A FactorFlow CSV is a supplier ledger that can
+              // span many buyers in one file — unlike a Buyer Insights upload,
+              // which is scoped to one. Flattening to (code x sign) would
+              // resolve one buyer's convention and silently apply it to
+              // another, which is the failure this whole design exists to
+              // prevent.
+              // ----------------------------------------------------------------
+
+              // Buyer identity for a staged row, mirroring the resolution order
+              // used by validateImport and processCsvImport: direct Pelagic ID,
+              // then provider alias, then the import-wide default buyer.
+              function resolveRowBuyerParentId(row) {
+                var csvBuyerId = getMapped(row, "buyer_id");
+                if (csvBuyerId) return String(csvBuyerId).split(":")[0];
+                var extB = getMapped(row, "external_buyer_string");
+                if (extB && csvProvider) {
+                  var aliasRowB = PROVIDER_ALIASES_DB.find(function(a) {
+                    return a.entityType === "buyer" && a.providerId === csvProvider.id && a.externalString === extB;
+                  });
+                  if (aliasRowB) return String(parseEntityId(aliasRowB.pelagicEntityId).supplierId || "").split(":")[0];
+                }
+                if (csvDefaultBuyer) return String(csvDefaultBuyer).split(":")[0];
+                return "";
+              }
+
+              // Read one staged row into the shape scanDoctypeCombinations wants.
+              // rawDocType is undefined when no document-type column is mapped —
+              // that is what triggers the sign-only path.
+              function doctypeRowReader(row) {
+                var hasCol = !!csvImportMapping["document_type"];
+                var rawVal = hasCol ? row[csvImportMapping["document_type"]] : undefined;
+                if (hasCol && rawVal == null) rawVal = "";
+                var amtStr = getMapped(row, "invoice_amount");
+                return {
+                  buyerId: resolveRowBuyerParentId(row),
+                  rawDocType: hasCol ? rawVal : undefined,
+                  amount: amtStr ? parseFloat(amtStr) : NaN
+                };
+              }
+
+              // Entry point from validateImport. Loads the saved rules for every
+              // buyer in the file, scans, and either skips straight to
+              // processing (nothing to ask) or opens the reconciliation step.
+              async function beginDoctypeReconciliation() {
+                setCsvDoctypeError(null);
+                setCsvDoctypeBusy(true);
+                try {
+                  var buyerIds = [];
+                  csvImportData.forEach(function(row) {
+                    var b = resolveRowBuyerParentId(row);
+                    if (b && buyerIds.indexOf(b) === -1) buyerIds.push(b);
+                  });
+                  // Throws on failure rather than substituting an empty map.
+                  await loadDoctypeAliasesForBuyers(buyerIds, true);
+
+                  var scan = scanDoctypeCombinations(csvImportData, doctypeRowReader);
+                  setCsvDoctypeScan(scan);
+                  setCsvDoctypeBusy(false);
+
+                  if (doctypeGateOpen(scan)) { setCsvImportStep("processing"); return; }
+                  setCsvImportStep("reconciliation");
+                } catch (e) {
+                  // Blocking. A rule set we could not read is not an empty one.
+                  setCsvDoctypeBusy(false);
+                  setCsvDoctypeScan(null);
+                  setCsvDoctypeError(e && e.message ? e.message : String(e));
+                  setCsvImportStep("reconciliation");
+                }
+              }
+
+              // Record a choice. Kept in two places on purpose: React state
+              // drives the UI, the module-level pending map drives
+              // canonicaliseDocType.
+              function pickDoctype(group, target, subtype) {
+                setPendingDoctypeAlias(group.buyerId, group.raw, group.bucket, target, subtype);
+                setCsvDoctypePicks(function(prev) {
+                  var next = Object.assign({}, prev);
+                  next[group.key] = { target: target, subtype: subtype || null };
+                  return next;
+                });
+              }
+
+              // Save the rules, then re-scan. The re-scan is the gate: if
+              // anything still fails to resolve we do not advance, whatever the
+              // button state said.
+              async function commitDoctypeReconciliation() {
+                setCsvDoctypeBusy(true);
+                try {
+                  await persistPendingDoctypeAliases(
+                    (userProfile && userProfile.id) || null,
+                    (csvProvider && csvProvider.id) || null
+                  );
+                  var scan = scanDoctypeCombinations(csvImportData, doctypeRowReader);
+                  setCsvDoctypeScan(scan);
+                  setCsvDoctypeBusy(false);
+                  if (!doctypeGateOpen(scan)) return;
+                  setCsvImportStep("processing");
+                } catch (e) {
+                  setCsvDoctypeBusy(false);
+                  setCsvDoctypeError(e && e.message ? e.message : String(e));
+                }
               }
 
               function parseDateVal(str) {
@@ -25238,7 +25736,12 @@ export default function FactoringDashboard() {
                 // alone (with no hard errors) still blocks processing because
                 // those rows wouldn't have known IDs to import.
                 var hasBlockingIssues = errors.length > 0 || unrecognisedAliases.length > 0;
-                setCsvImportStep(hasBlockingIssues ? "validation_failed" : "processing");
+                // Doctype reconciliation sits between resolution and
+                // processing. beginDoctypeReconciliation skips itself when
+                // every combination already resolves, so files without a
+                // document-type column behave exactly as they did before.
+                if (hasBlockingIssues) { setCsvImportStep("validation_failed"); return; }
+                beginDoctypeReconciliation();
               }
 
               // --- PROCESSING ---
@@ -25252,6 +25755,19 @@ export default function FactoringDashboard() {
                 // can be traced back to the import that introduced it.
                 var uploadId = "UPL-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8).toUpperCase();
                 var created = 0, updated = 0, queued = 0, skipped = 0, errors = [];
+                // --- Doctype routing (Phase 1b) ---------------------------------
+                // routedCN / routedDisregard are DELIBERATE routing decisions and
+                // are reported separately from `skipped`, which counts failures.
+                // Conflating them would hide a misclassification behind a number
+                // that already looks like noise.
+                var routedCN = 0, routedDisregard = 0, unroutable = 0;
+                var cnQueue = [], disregardQueue = [];
+                var doctypeColMapped = !!csvImportMapping["document_type"];
+                // The legacy path: no document-type column anywhere and no
+                // negative amounts. routeDoctypeRow treats an undefined raw code
+                // on a positive row as an invoice, preserving pre-1b behaviour.
+                var doctypeScanNow = csvDoctypeScan || scanDoctypeCombinations(csvImportData, doctypeRowReader);
+                var doctypeRoutingActive = doctypeColMapped || doctypeScanNow.anyNegative;
                 var reviewItems = [];
                 var now = new Date();
                 var nowStr = now.toISOString().split("T")[0];
@@ -25334,6 +25850,52 @@ export default function FactoringDashboard() {
                   var amountPaidStr = getMapped(row, "amount_paid");
                   var amountPaid = amountPaidStr ? parseFloat(amountPaidStr) : null;
 
+                  // ---- DOCTYPE ROUTING ----------------------------------------
+                  // Runs before the invoice lookup so that credit notes and
+                  // disregards never enter the invoice path at all. amount is
+                  // replaced by a POSITIVE MAGNITUDE; the signed original is
+                  // retained in rawAmount as provenance. Direction is expressed
+                  // by which table the row lands in, never by the stored sign.
+                  var rawDocTypeCell = doctypeColMapped ? row[csvImportMapping["document_type"]] : undefined;
+                  if (doctypeColMapped && rawDocTypeCell == null) rawDocTypeCell = "";
+                  var dtRoute = null;
+                  if (doctypeRoutingActive) {
+                    dtRoute = routeDoctypeRow(buyParentId, rawDocTypeCell, amount);
+                    if (!dtRoute) {
+                      // Should be unreachable: the reconciliation gate ran before
+                      // processing. Kept as a backstop that COUNTS rather than
+                      // guesses — a row we cannot classify is never written.
+                      unroutable++;
+                      errors.push("Row " + (rowIdx + 2) + " (" + ref + "): document type '" +
+                        doctypeDisplayLabel(String(rawDocTypeCell == null ? "" : rawDocTypeCell).trim()) +
+                        "' is not classified for buyer " + (buyParentId || "?") + " — not imported");
+                      return;
+                    }
+                    if (dtRoute.target !== "invoice") {
+                      if (!supParentId || !buyParentId) {
+                        errors.push("Row " + (rowIdx + 2) + " (" + ref + "): identity could not be resolved for a " +
+                          doctypeTargetLabel(dtRoute.target).toLowerCase() + " row");
+                        return;
+                      }
+                      var routedCommon = {
+                        reference: ref, currency: currency.toUpperCase(), date: invoiceDate,
+                        amount: dtRoute.amount, rawAmount: dtRoute.rawAmount,
+                        rawDocumentType: dtRoute.rawDocumentType, docSubtype: dtRoute.subtype,
+                        sourceProvider: csvProvider ? csvProvider.id : null,
+                        supplierId: supParentId, supplierEntityId: makeEntityId(supParentId, supBranchIdFinal || null),
+                        buyerId: buyParentId, buyerEntityId: makeEntityId(buyParentId, buyBranchIdFinal || null),
+                        csvRow: rowIdx + 2
+                      };
+                      // Credit notes need no due date — that asymmetry is the
+                      // reason the two classes are separate tables (writeup 3.1).
+                      if (dtRoute.target === "credit_note") { cnQueue.push(routedCommon); routedCN++; }
+                      else { disregardQueue.push(routedCommon); routedDisregard++; }
+                      return;
+                    }
+                    // Invoice: carry the magnitude forward, keep the original.
+                    amount = dtRoute.amount;
+                  }
+
                   // Find existing invoice by reference
                   var existing = INVOICES_DB.find(function(inv) { return inv.invoiceReference === ref; });
 
@@ -25411,6 +25973,11 @@ export default function FactoringDashboard() {
                       invoiceReference: ref, purchaseOrder: po || null,
                       invoiceStatusHistory: statusHist,
                       adjustments: [], doNotPurchase: false,
+                      // Provenance. amount above is already a positive magnitude.
+                      rawDocumentType: dtRoute ? dtRoute.rawDocumentType : null,
+                      rawAmount: dtRoute ? dtRoute.rawAmount : null,
+                      sourceProvider: csvProvider ? csvProvider.id : null,
+                      importBatch: uploadId,
                       csvAmountPaid: amountPaid,
                       notes: csvNotes.map(function(t) { return { text: t, display: nowDisplay }; })
                     });
@@ -25584,6 +26151,60 @@ export default function FactoringDashboard() {
                 // Pelagic IDs — back-compat path). isFirstForProvider derives from
                 // the existing audit log so we don't need a separate "ever seen
                 // this provider?" table.
+                // ---- FLUSH ROUTED ROWS -----------------------------------------
+                // Credit notes go through CREDIT_NOTES_DB + packCreditNoteRow so
+                // they are indistinguishable from hand-created ones downstream.
+                // Disregards go straight to their own table: they are audit rows,
+                // never loaded into memory, and excluded from everything by
+                // default because they live nowhere else (writeup 3.1).
+                for (var ci = 0; ci < cnQueue.length; ci++) {
+                  var q = cnQueue[ci];
+                  var cnId = "CN-" + String(CREDIT_NOTES_DB.length + 1).padStart(5, "0");
+                  var cnObj = {
+                    creditNoteId: cnId, amount: q.amount, currency: q.currency,
+                    date: q.date, reference: q.reference,
+                    supplierId: q.supplierEntityId, supplierEntityId: q.supplierEntityId,
+                    buyerId: q.buyerId, buyerEntityId: q.buyerEntityId,
+                    supplierName: getEntityDisplayName(q.supplierEntityId),
+                    buyerName: buyName(q.buyerId),
+                    allocations: [], notes: [{ text: "Created via CSV import (routed from document type '" + (q.rawDocumentType || "(blank)") + "')", display: nowDisplay }],
+                    voided: false, createdDisplay: nowDisplay,
+                    rawDocumentType: q.rawDocumentType, rawAmount: q.rawAmount,
+                    docSubtype: q.docSubtype, sourceProvider: q.sourceProvider,
+                    importBatch: uploadId
+                  };
+                  CREDIT_NOTES_DB.push(cnObj);
+                  try {
+                    var cnRes = await supabase.from("credit_notes").upsert([packCreditNoteRow(cnObj)], { onConflict: "credit_note_id" });
+                    if (cnRes && cnRes.error) { errors.push("Credit note " + cnId + " (row " + q.csvRow + "): " + cnRes.error.message); routedCN--; }
+                    else auditLog("Credit Note Created (CSV)", "Credit note " + cnId + " (" + q.reference + ") routed from document type '" + (q.rawDocumentType || "(blank)") + "'. " + money(q.amount, q.currency), { creditNoteId: cnId, reference: q.reference, source: "csv_import", uploadId: uploadId, buyerId: q.buyerId, rawDocumentType: q.rawDocumentType, rawAmount: q.rawAmount });
+                  } catch (e) { errors.push("Credit note " + cnId + ": " + (e.message || String(e))); routedCN--; }
+                }
+
+                if (disregardQueue.length > 0) {
+                  var drRows = disregardQueue.map(function(q) {
+                    return {
+                      buyer_id: q.buyerId, buyer_entity_id: q.buyerEntityId,
+                      supplier_id: q.supplierId, supplier_entity_id: q.supplierEntityId,
+                      reference: q.reference, currency: q.currency, doc_date: q.date,
+                      amount: q.amount, raw_document_type: q.rawDocumentType,
+                      raw_amount: q.rawAmount, doc_subtype: q.docSubtype,
+                      source_provider: q.sourceProvider, import_batch: uploadId,
+                      created_by: (userProfile && userProfile.id) || null
+                    };
+                  });
+                  try {
+                    var drRes = await supabase.from("disregarded_documents").insert(drRows);
+                    if (drRes && drRes.error) {
+                      errors.push("Disregarded rows not saved: " + drRes.error.message);
+                      routedDisregard = 0;
+                    }
+                  } catch (e) {
+                    errors.push("Disregarded rows not saved: " + (e.message || String(e)));
+                    routedDisregard = 0;
+                  }
+                }
+
                 var providerForAudit = (typeof csvProvider !== "undefined" && csvProvider) ? csvProvider : null;
                 var isFirstForProvider = false;
                 if (providerForAudit) {
@@ -25593,6 +26214,7 @@ export default function FactoringDashboard() {
                   });
                 }
                 var envelopeDetails = "CSV import: " + created + " created, " + updated + " updated, " + reviewItems.length + " queued for review, " + skipped + " skipped, " + errors.length + " errors (of " + csvImportData.length + " rows)";
+                if (doctypeRoutingActive) envelopeDetails += " — routed: " + routedCN + " credit notes, " + routedDisregard + " disregarded" + (unroutable > 0 ? ", " + unroutable + " unclassified" : "");
                 if (providerForAudit) envelopeDetails += " — provider: " + providerForAudit.name + (isFirstForProvider ? " (FIRST UPLOAD)" : "");
                 auditLog("CSV Imported", envelopeDetails, {
                   uploadId: uploadId,
@@ -25600,13 +26222,15 @@ export default function FactoringDashboard() {
                   providerName: providerForAudit ? providerForAudit.name : null,
                   isFirstForProvider: isFirstForProvider,
                   rows: { created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errored: errors.length, total: csvImportData.length },
+                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, active: doctypeRoutingActive },
                   source: "csv_import"
                 });
 
                 setCsvImportResult({
                   created: created, updated: updated, queued: reviewItems.length, skipped: skipped, errors: errors,
                   total: csvImportData.length,
-                  uploadId: uploadId
+                  uploadId: uploadId,
+                  routing: { creditNotes: routedCN, disregarded: routedDisregard, unclassified: unroutable, active: doctypeRoutingActive }
                 });
                 setDataVer(function(v) { return v + 1; });
                 setCsvImportProcessing(false);
@@ -25636,10 +26260,10 @@ export default function FactoringDashboard() {
 
                   {/* Step indicator */}
                   <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
-                    {["mapping", "resolution", "processing", "done"].map(function(s, si) {
+                    {["mapping", "resolution", "reconciliation", "processing", "done"].map(function(s, si) {
                       var active = s === step;
-                      var done = ["mapping", "resolution", "processing", "done"].indexOf(step) > si;
-                      return <div key={s} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, background: active ? "var(--accent)" : done ? "#10B98120" : "var(--bg)", border: "1px solid " + (active ? "var(--accent)" : done ? "#10B98140" : "var(--border)"), textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: active ? "#fff" : done ? "#10B981" : "var(--muted)" }}>{si + 1}. {s === "mapping" ? "Map Columns" : s === "resolution" ? "Resolve Names" : s === "processing" ? "Process" : "Results"}</div>;
+                      var done = ["mapping", "resolution", "reconciliation", "processing", "done"].indexOf(step) > si;
+                      return <div key={s} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, background: active ? "var(--accent)" : done ? "#10B98120" : "var(--bg)", border: "1px solid " + (active ? "var(--accent)" : done ? "#10B98140" : "var(--border)"), textAlign: "center", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: active ? "#fff" : done ? "#10B981" : "var(--muted)" }}>{si + 1}. {s === "mapping" ? "Map Columns" : s === "resolution" ? "Resolve Names" : s === "reconciliation" ? "Classify" : s === "processing" ? "Process" : "Results"}</div>;
                     })}
                   </div>
 
@@ -25827,6 +26451,121 @@ export default function FactoringDashboard() {
                   })()}
 
                   {/* STEP 3: Ready to process — all rows have valid supplier_id and buyer_id */}
+                  {/* STEP 3: Document-type classification (Phase 1b).
+                       One card per (buyer, raw code); one row per sign bucket
+                       present. Save is hard-gated until every combination
+                       resolves — an unseen sign on a known code counts as
+                       unresolved, because sign is half the key. */}
+                  {step === "reconciliation" && (function() {
+                    var unresolved = csvDoctypeScan ? unresolvedDoctypeCombinations(csvDoctypeScan) : [];
+                    var allPicked = unresolved.every(function(g) { return !!csvDoctypePicks[g.key]; });
+
+                    // Group into cards: buyer, then raw code. Sign buckets are
+                    // rows within a card.
+                    var cards = [];
+                    var cardIdx = {};
+                    unresolved.forEach(function(g) {
+                      var ck = g.buyerId + "\u0001" + g.raw;
+                      if (cardIdx[ck] === undefined) {
+                        cardIdx[ck] = cards.length;
+                        cards.push({ buyerId: g.buyerId, raw: g.raw, display: g.display, rows: [], value: 0 });
+                      }
+                      var c = cards[cardIdx[ck]];
+                      c.rows.push(g);
+                      c.value += g.magnitude;
+                    });
+                    cards.sort(function(a, b) { return b.value - a.value; });
+
+                    var totalRows = unresolved.reduce(function(n, g) { return n + g.count; }, 0);
+                    var totalValue = unresolved.reduce(function(n, g) { return n + g.magnitude; }, 0);
+
+                    return <div>
+                      {csvDoctypeError && <div style={{ marginBottom: 16, padding: "14px 18px", borderRadius: 8, background: "#EF444410", border: "1px solid #EF444450" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444", marginBottom: 6 }}>{"\u26A0"} Could not read this buyer's saved document-type rules</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.55 }}>{csvDoctypeError}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.55, marginTop: 8 }}>
+                          The import is blocked deliberately. Rules that cannot be read are not the same as no rules: continuing would re-ask for classifications already settled, and could overwrite them with different answers.
+                        </div>
+                      </div>}
+
+                      {!csvDoctypeError && <>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                          {unresolved.length} document-type combination{unresolved.length === 1 ? "" : "s"} need classifying
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 16, lineHeight: 1.55 }}>
+                          {totalRows.toLocaleString()} row{totalRows === 1 ? "" : "s"} &middot; {totalValue.toLocaleString("en-GB", { maximumFractionDigits: 0 })} total value.
+                          Each answer is saved as a standing rule for that buyer and reused on the next upload &mdash; including by Buyer Insights, which shares these rules.
+                        </div>
+
+                        {cards.map(function(c, ci) {
+                          return <div key={ci} style={{ marginBottom: 14, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", overflow: "hidden" }}>
+                            <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "baseline", gap: 10 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace" }}>{c.display}</span>
+                              <span style={{ fontSize: 11, color: "var(--muted)" }}>{buyName(c.buyerId) || c.buyerId}</span>
+                            </div>
+                            <table style={{ width: "100%", fontSize: 11.5, borderCollapse: "collapse" }}>
+                              <thead><tr style={{ color: "var(--muted)", textAlign: "left" }}>
+                                <th style={{ padding: "6px 14px", fontWeight: 600 }}>Sign</th>
+                                <th style={{ padding: "6px 14px", fontWeight: 600 }}>Rows</th>
+                                <th style={{ padding: "6px 14px", fontWeight: 600 }}>Value</th>
+                                <th style={{ padding: "6px 14px", fontWeight: 600 }}>Route to</th>
+                                <th style={{ padding: "6px 14px", fontWeight: 600 }}>Reason (optional)</th>
+                              </tr></thead>
+                              <tbody>
+                                {c.rows.map(function(g, gi) {
+                                  var pick = csvDoctypePicks[g.key] || null;
+                                  return <tr key={gi} style={{ borderTop: "1px solid var(--border)" }}>
+                                    <td style={{ padding: "8px 14px" }}>
+                                      <span style={{ fontWeight: 700, color: g.bucket === "negative" ? "#EF4444" : "var(--text)" }}>{g.bucket}</span>
+                                      {g.zeroCount > 0 && <span style={{ color: "var(--muted)", marginLeft: 6 }}>({g.zeroCount} zero)</span>}
+                                    </td>
+                                    <td style={{ padding: "8px 14px" }}>{g.count.toLocaleString()}</td>
+                                    <td style={{ padding: "8px 14px" }}>{g.magnitude.toLocaleString("en-GB", { maximumFractionDigits: 0 })}</td>
+                                    <td style={{ padding: "8px 14px" }}>
+                                      <select value={pick ? pick.target : ""} onChange={function(e) {
+                                        var t = e.target.value;
+                                        if (!t) return;
+                                        pickDoctype(g, t, t === "invoice" ? "standard" : (pick && pick.subtype) || null);
+                                      }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid " + (pick ? "var(--border)" : "#F59E0B80"), background: "var(--card)", color: "var(--text)", fontSize: 11.5, cursor: "pointer" }}>
+                                        <option value="">Choose...</option>
+                                        <option value="invoice">Invoice</option>
+                                        <option value="credit_note">Credit Note</option>
+                                        <option value="disregard">Disregard</option>
+                                      </select>
+                                    </td>
+                                    <td style={{ padding: "8px 14px" }}>
+                                      <select value={(pick && pick.subtype) || ""} disabled={!pick} onChange={function(e) {
+                                        pickDoctype(g, pick.target, e.target.value || null);
+                                      }} style={{ padding: "4px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 11.5, cursor: pick ? "pointer" : "default", opacity: pick ? 1 : 0.5 }}>
+                                        <option value="">(none)</option>
+                                        {DOC_SUBTYPES_FOR(pick ? pick.target : "").map(function(sopt) {
+                                          return <option key={sopt[0]} value={sopt[0]}>{sopt[1]}</option>;
+                                        })}
+                                      </select>
+                                    </td>
+                                  </tr>;
+                                })}
+                              </tbody>
+                            </table>
+                            {c.rows.some(function(g) { return g.bucket === "negative"; }) && <div style={{ padding: "8px 14px", borderTop: "1px solid var(--border)", fontSize: 11, color: "#D97706", background: "#F59E0B08" }}>
+                              {"\u26A0"} This code appears with a negative amount. A negative labelled as an invoice is a contradiction rather than a fact &mdash; check it is not a credit note before routing.
+                            </div>}
+                          </div>;
+                        })}
+                      </>}
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
+                        <button onClick={function() { clearPendingDoctypeAliases(); setCsvDoctypePicks({}); setCsvDoctypeError(null); setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
+                        <button disabled={!!csvDoctypeError || !allPicked || csvDoctypeBusy} onClick={commitDoctypeReconciliation} style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "var(--accent)" : "var(--border)", color: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "pointer" : "not-allowed" }}>
+                          {csvDoctypeBusy ? "Saving..." : "Save rules & continue \u2192"}
+                        </button>
+                      </div>
+                      {!csvDoctypeError && !allPicked && <div style={{ textAlign: "right", fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+                        Every combination above must be classified before the import can proceed.
+                      </div>}
+                    </div>;
+                  })()}
+
                   {step === "processing" && <div style={{ padding: "20px 0" }}>
                     <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Validated. Ready to process {csvImportData.length.toLocaleString()} rows.</div>
                     {csvResolution && csvResolution.nameDivergences && csvResolution.nameDivergences.length > 0 && <div style={{ textAlign: "center", fontSize: 11, color: "#F59E0B", marginBottom: 12 }}>{csvResolution.nameDivergences.length} row{csvResolution.nameDivergences.length === 1 ? "" : "s"} have name mismatches between CSV and Main Portal — IDs match, names will be normalised to Main Portal values and a note logged on each affected invoice.</div>}
@@ -25875,11 +26614,26 @@ export default function FactoringDashboard() {
                       <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", borderTop: "2px solid var(--muted)" }}><div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Unchanged</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{csvImportResult.skipped}</div></div>
                       <div style={{ padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)", borderTop: "2px solid #EF4444" }}><div style={{ fontSize: 9, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)", marginBottom: 4 }}>Errors</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "#EF4444" }}>{csvImportResult.errors.length}</div></div>
                     </div>
+                    {/* Routing summary. Disregards are shown as their own line,
+                        NOT folded into "unchanged" or "errors": a disregard is a
+                        deliberate routing decision while a skip is a failure, and
+                        they call for different responses. This is the safety net
+                        that makes a shrunk file impossible to miss. */}
+                    {csvImportResult.routing && csvImportResult.routing.active && <div style={{ marginBottom: 12, padding: "12px 16px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 700, color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 8 }}>Document-type routing</div>
+                      <table style={{ fontSize: 12, borderCollapse: "collapse" }}><tbody>
+                        <tr><td style={{ padding: "2px 24px 2px 0" }}>Invoices</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{csvImportResult.created + csvImportResult.updated}</td></tr>
+                        <tr><td style={{ padding: "2px 24px 2px 0" }}>Credit notes</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{csvImportResult.routing.creditNotes}</td></tr>
+                        <tr><td style={{ padding: "2px 24px 2px 0" }}>Disregarded</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: csvImportResult.routing.disregarded > 0 ? "#F59E0B" : "inherit" }}>{csvImportResult.routing.disregarded}</td></tr>
+                        {csvImportResult.routing.unclassified > 0 && <tr><td style={{ padding: "2px 24px 2px 0", color: "#EF4444" }}>Unclassified &mdash; not imported</td><td style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#EF4444" }}>{csvImportResult.routing.unclassified}</td></tr>}
+                        <tr><td style={{ padding: "6px 24px 2px 0", color: "var(--muted)", borderTop: "1px solid var(--border)" }}>Rows read from file</td><td style={{ fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", borderTop: "1px solid var(--border)", paddingTop: 6 }}>{csvImportResult.total}</td></tr>
+                      </tbody></table>
+                    </div>}
                     {csvImportResult.errors.length > 0 && <div style={{ maxHeight: 200, overflowY: "auto", padding: "10px 14px", borderRadius: 6, background: "#EF444410", border: "1px solid #EF444430", fontSize: 11, color: "#EF4444", lineHeight: 1.8, marginBottom: 12 }}>
                       {csvImportResult.errors.map(function(err, ei) { return <div key={ei}>{err}</div>; })}
                     </div>}
                     {csvImportResult.queued > 0 && <div style={{ marginTop: 10, fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{csvImportResult.queued} items require admin review. <span onClick={function() { setManageTab("csv_review"); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>Go to Review Queue {"\u2192"}</span></div>}
-                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); setCsvAliasPicks({}); setCsvAliasSaving({}); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
+                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); setCsvAliasPicks({}); setCsvAliasSaving({}); setCsvDoctypeScan(null); setCsvDoctypePicks({}); setCsvDoctypeError(null); clearPendingDoctypeAliases(); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
                   </div>}
                 </div>
               </div>;
@@ -25888,6 +26642,467 @@ export default function FactoringDashboard() {
 
 
             {/* CSV Review Queue */}
+            {/* ================= DOC TYPES (Phase 2) =================
+                 Reads factorflow_doctype_ledger: one row per
+                 (buyer, code, sign, class, subtype, currency) across invoices,
+                 credit notes and disregarded documents.
+
+                 This is where someone checks whether a code routed to
+                 disregard six months ago should still be, and where the
+                 negative-classified-as-invoice mis-call surfaces. Disregards
+                 appear here as a first-class class rather than being invisible
+                 — a separate table makes exclusion the default, which is the
+                 point, but also the risk. */}
+            {!manageDetail && manageTab === "doctypes" && (function() {
+
+              async function loadDoctypeLedger() {
+                setDoctypeLedgerLoading(true);
+                setDoctypeLedgerError(null);
+                try {
+                  var res = await supabase
+                    .from("factorflow_doctype_ledger")
+                    .select("*")
+                    .order("total_value", { ascending: false });
+                  if (res && res.error) throw new Error(res.error.message);
+                  setDoctypeLedger(res.data || []);
+                } catch (e) {
+                  // Same principle as the alias read: an unreadable ledger and
+                  // an empty one must not look the same.
+                  setDoctypeLedger(null);
+                  setDoctypeLedgerError(e && e.message ? e.message : String(e));
+                }
+                setDoctypeLedgerLoading(false);
+              }
+
+              // ----------------------------------------------------------------
+              // RECLASSIFY (Phase 2)
+              //
+              // In Buyer Insights this is a column flip in one table. Here the
+              // classes live in different tables because they are different
+              // objects, so a move is a create plus a void — never a delete.
+              // daily_book_snapshots references invoices ON DELETE CASCADE, so
+              // deleting an invoice would silently erase it from every past
+              // day's snapshot. A correction that rewrites history is worse
+              // than the error it corrects.
+              //
+              // Scope is per-upload, not buyer-wide. FactorFlow is a continuous
+              // ledger: a code's meaning can change over time, and uploads that
+              // were classified correctly at the time must not be rewritten.
+              // ----------------------------------------------------------------
+
+              // Rows eligible to move, for the selected uploads. Reads the
+              // in-memory stores so the lock rules are evaluated against the
+              // same objects the rest of the app acts on.
+              function reclassifyCandidates(rc) {
+                var c = rc.combo;
+                var wanted = Object.keys(rc.uploads).filter(function(u) { return rc.uploads[u]; });
+                function inScope(rowBatch) {
+                  return wanted.indexOf(rowBatch || "(unrecorded)") !== -1;
+                }
+                function codeMatches(raw) {
+                  return String(raw == null ? "" : raw).trim().toLowerCase() === c.raw_value;
+                }
+                var movable = [], locked = [];
+                if (c.doc_class === "invoice") {
+                  INVOICES_DB.forEach(function(inv) {
+                    if (inv.buyerId !== c.buyer_id) return;
+                    if (!codeMatches(inv.rawDocumentType)) return;
+                    if ((inv.signBucket || null) !== (c.sign_bucket || null)) return;
+                    if (!inScope(inv.importBatch)) return;
+                    if (inv.voided) return;
+                    var free = inv.fundingStatus === "pending" && !inv.fundingProgram;
+                    (free ? movable : locked).push(inv);
+                  });
+                } else if (c.doc_class === "credit_note") {
+                  CREDIT_NOTES_DB.forEach(function(cn) {
+                    if (cn.buyerId !== c.buyer_id) return;
+                    if (!codeMatches(cn.rawDocumentType)) return;
+                    if ((cn.signBucket || null) !== (c.sign_bucket || null)) return;
+                    if (!inScope(cn.importBatch)) return;
+                    if (cn.voided) return;
+                    var free = (cn.allocations || []).length === 0;
+                    (free ? movable : locked).push(cn);
+                  });
+                }
+                return { movable: movable, locked: locked };
+              }
+
+              // Which moves are supported, and why the others are not. Refusing
+              // clearly beats half-applying.
+              function reclassifyBlockedReason(fromClass, toClass) {
+                if (fromClass === toClass) return "Already routed there.";
+                if (fromClass === "disregard") return "Disregarded rows are not held in memory. Re-import the file to reclassify them.";
+                if (fromClass === "credit_note" && toClass === "invoice") return "An invoice requires a due date, which a credit note does not carry. Create the invoice manually so the due date is a deliberate decision rather than a guess.";
+                return null;
+              }
+
+              async function applyReclassify() {
+                var rc = doctypeReclassify;
+                if (!rc || !rc.target) return;
+                var cand = reclassifyCandidates(rc);
+                var moved = 0, failed = [];
+                var actorId = (userProfile && userProfile.id) || null;
+                var stamp = new Date().toISOString();
+
+                setDoctypeReclassify(Object.assign({}, rc, { running: true, result: null }));
+
+                for (var i = 0; i < cand.movable.length; i++) {
+                  var src = cand.movable[i];
+                  try {
+                    // CREATE FIRST, VOID SECOND. If the void fails we are left
+                    // with a linked orphan that is discoverable; the other order
+                    // would destroy the record before its replacement exists.
+                    var newId = null;
+                    if (rc.target === "credit_note") {
+                      newId = "CN-" + String(CREDIT_NOTES_DB.length + 1).padStart(5, "0");
+                      var cnObj = {
+                        creditNoteId: newId, amount: src.amount, currency: src.currency,
+                        date: src.invoiceDate || src.date, reference: src.invoiceReference || src.reference,
+                        supplierId: src.supplierEntityId || src.supplierId, supplierEntityId: src.supplierEntityId || src.supplierId,
+                        buyerId: src.buyerId, buyerEntityId: src.buyerEntityId || src.buyerId,
+                        supplierName: src.supplierName, buyerName: src.buyerName,
+                        allocations: [], voided: false, createdDisplay: nowDisplay,
+                        notes: [{ text: "Reclassified from " + src.id + " (document type '" + (src.rawDocumentType || "(blank)") + "')", display: nowDisplay }],
+                        rawDocumentType: src.rawDocumentType, rawAmount: src.rawAmount,
+                        docSubtype: rc.subtype || null, sourceProvider: src.sourceProvider,
+                        importBatch: src.importBatch,
+                        reclassifiedFromType: "invoice", reclassifiedFromId: src.id,
+                        reclassifiedAt: stamp, reclassifiedBy: actorId
+                      };
+                      CREDIT_NOTES_DB.push(cnObj);
+                      await saveCreditNote(newId);
+                    } else if (rc.target === "disregard") {
+                      var drRes = await supabase.from("disregarded_documents").insert([{
+                        buyer_id: src.buyerId, buyer_entity_id: src.buyerEntityId || src.buyerId,
+                        supplier_id: (src.supplierId || "").split(":")[0] || null,
+                        supplier_entity_id: src.supplierEntityId || src.supplierId,
+                        reference: src.invoiceReference || src.reference,
+                        currency: src.currency, doc_date: src.invoiceDate || src.date,
+                        amount: src.amount, raw_document_type: src.rawDocumentType,
+                        raw_amount: src.rawAmount, doc_subtype: rc.subtype || null,
+                        source_provider: src.sourceProvider, import_batch: src.importBatch,
+                        created_by: actorId,
+                        reclassified_from_type: rc.combo.doc_class,
+                        reclassified_from_id: src.id || src.creditNoteId,
+                        reclassified_at: stamp, reclassified_by: actorId
+                      }]);
+                      if (drRes && drRes.error) throw new Error(drRes.error.message);
+                      newId = "(disregarded)";
+                    }
+
+                    // VOID THE ORIGINAL — never delete it.
+                    var reason = "Reclassified to " + doctypeTargetLabel(rc.target) +
+                                 (newId && newId !== "(disregarded)" ? " " + newId : "") +
+                                 " — document type '" + (src.rawDocumentType || "(blank)") + "' re-decided";
+                    if (rc.combo.doc_class === "invoice") {
+                      var raw = INVOICES_DB.find(function(x) { return x.id === src.id; });
+                      if (!raw) throw new Error("invoice " + src.id + " no longer in memory");
+                      raw.voided = true; raw.voidedAt = stamp; raw.voidedBy = actorId;
+                      raw.voidReason = reason;
+                      raw.reclassifiedToType = rc.target;
+                      raw.reclassifiedToId = newId;
+                      raw.reclassifiedAt = stamp; raw.reclassifiedBy = actorId;
+                      await saveInvoice(raw.id);
+                      auditLog("Invoice Reclassified", src.id + " voided and replaced: " + reason, { invoiceId: src.id, newId: newId, buyerId: src.buyerId, rawDocumentType: src.rawDocumentType, importBatch: src.importBatch });
+                    } else {
+                      var rawCn = CREDIT_NOTES_DB.find(function(x) { return x.creditNoteId === src.creditNoteId; });
+                      if (!rawCn) throw new Error("credit note " + src.creditNoteId + " no longer in memory");
+                      rawCn.voided = true; rawCn.voidedAt = stamp; rawCn.voidedBy = actorId;
+                      rawCn.voidReason = reason;
+                      rawCn.reclassifiedAt = stamp; rawCn.reclassifiedBy = actorId;
+                      await saveCreditNote(rawCn.creditNoteId);
+                      auditLog("Credit Note Reclassified", src.creditNoteId + " voided and replaced: " + reason, { creditNoteId: src.creditNoteId, newId: newId, buyerId: src.buyerId, importBatch: src.importBatch });
+                    }
+                    moved++;
+                  } catch (e) {
+                    failed.push((src.id || src.creditNoteId) + ": " + (e.message || String(e)));
+                  }
+                }
+
+                // The standing rule is a SEPARATE decision, never a side effect.
+                var ruleUpdated = false, ruleError = null;
+                if (rc.updateRule) {
+                  try {
+                    setPendingDoctypeAlias(rc.combo.buyer_id, rc.combo.raw_value, rc.combo.sign_bucket, rc.target, rc.subtype || null);
+                    await persistPendingDoctypeAliases(actorId, null);
+                    ruleUpdated = true;
+                    auditLog("Doctype Rule Changed", "'" + (rc.combo.raw_value || "(blank)") + "' (" + rc.combo.sign_bucket + ") for " + rc.combo.buyer_id + " now routes to " + doctypeTargetLabel(rc.target), { buyerId: rc.combo.buyer_id, rawValue: rc.combo.raw_value, signBucket: rc.combo.sign_bucket, target: rc.target });
+                  } catch (e) { ruleError = e.message || String(e); }
+                }
+
+                setDataVer(function(v) { return v + 1; });
+                setDoctypeReclassify(Object.assign({}, rc, {
+                  running: false,
+                  result: { moved: moved, locked: cand.locked.length, failed: failed, ruleUpdated: ruleUpdated, ruleError: ruleError }
+                }));
+                loadDoctypeLedger();
+              }
+
+              var rows = doctypeLedger || [];
+              if (doctypeLedgerBuyer) rows = rows.filter(function(r) { return r.buyer_id === doctypeLedgerBuyer; });
+              if (doctypeUploadFilter) rows = rows.filter(function(r) { return r.import_batch === doctypeUploadFilter; });
+              if (doctypeShowFlagged) rows = rows.filter(function(r) { return r.negative_as_invoice; });
+
+              var buyerOpts = [], uploadOpts = [];
+              (doctypeLedger || []).forEach(function(r) {
+                if (r.buyer_id && buyerOpts.indexOf(r.buyer_id) === -1) buyerOpts.push(r.buyer_id);
+                if (r.import_batch && uploadOpts.indexOf(r.import_batch) === -1) uploadOpts.push(r.import_batch);
+              });
+              buyerOpts.sort();
+              uploadOpts.sort().reverse();
+
+              // Roll up to (buyer, code, sign, class) with the uploads as
+              // children. The rule is one thing; the uploads it was applied to
+              // are another, and reclassify acts on the second.
+              var combos = [], comboIdx = {};
+              rows.forEach(function(r) {
+                var k = [r.buyer_id, r.raw_value, r.sign_bucket, r.doc_class].join("\u0001");
+                if (comboIdx[k] === undefined) {
+                  comboIdx[k] = combos.length;
+                  combos.push({ key: k, buyer_id: r.buyer_id, raw_value: r.raw_value,
+                    raw_value_sample: r.raw_value_sample, sign_bucket: r.sign_bucket,
+                    doc_class: r.doc_class, doc_subtype: r.doc_subtype, currency: r.currency,
+                    negative_as_invoice: r.negative_as_invoice, hand_created: r.hand_created,
+                    rowCount: 0, value: 0, locked: 0, replaced: 0, uploads: [] });
+                }
+                var c = combos[comboIdx[k]];
+                c.rowCount += Number(r.row_count || 0);
+                c.value += Number(r.total_value || 0);
+                c.locked += Number(r.locked_rows || 0);
+                c.replaced += Number(r.reclassified_out || 0);
+                c.uploads.push(r);
+              });
+              combos.forEach(function(c) { c.uploads.sort(function(a, b) { return (b.import_batch || "").localeCompare(a.import_batch || ""); }); });
+              combos.sort(function(a, b) { return b.value - a.value; });
+
+              var flaggedCount = (doctypeLedger || []).filter(function(r) { return r.negative_as_invoice; }).length;
+              var lockedTotal = rows.reduce(function(n, r) { return n + (r.locked_rows || 0); }, 0);
+              var rowTotal = rows.reduce(function(n, r) { return n + Number(r.row_count || 0); }, 0);
+
+              function classChip(cls) {
+                var c = cls === "invoice" ? "#10B981" : cls === "credit_note" ? "var(--accent)" : "#94A3B8";
+                var label = cls === "invoice" ? "Invoice" : cls === "credit_note" ? "Credit Note" : "Disregard";
+                return <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: c + "18", color: c, border: "1px solid " + c + "35", whiteSpace: "nowrap" }}>{label}</span>;
+              }
+
+              return <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                  <button onClick={loadDoctypeLedger} disabled={doctypeLedgerLoading} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: doctypeLedgerLoading ? "default" : "pointer", opacity: doctypeLedgerLoading ? 0.6 : 1 }}>
+                    {doctypeLedgerLoading ? "Loading..." : (doctypeLedger ? "Refresh" : "Load ledger")}
+                  </button>
+                  {doctypeLedger && <>
+                    <select value={doctypeLedgerBuyer} onChange={function(e) { setDoctypeLedgerBuyer(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
+                      <option value="">All buyers</option>
+                      {buyerOpts.map(function(b) { return <option key={b} value={b}>{buyName(b) || b}</option>; })}
+                    </select>
+                    <select value={doctypeUploadFilter} onChange={function(e) { setDoctypeUploadFilter(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
+                      <option value="">All uploads</option>
+                      {uploadOpts.map(function(u) { return <option key={u} value={u}>{u}</option>; })}
+                    </select>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={doctypeShowFlagged} onChange={function(e) { setDoctypeShowFlagged(e.target.checked); }} style={{ cursor: "pointer" }} />
+                      Flagged only{flaggedCount > 0 ? " (" + flaggedCount + ")" : ""}
+                    </label>
+                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>
+                      {rows.length} combination{rows.length === 1 ? "" : "s"} &middot; {rowTotal.toLocaleString()} rows
+                      {lockedTotal > 0 ? " · " + lockedTotal.toLocaleString() + " locked by downstream state" : ""}
+                    </span>
+                  </>}
+                </div>
+
+                {doctypeLedgerError && <div style={{ padding: "14px 18px", borderRadius: 8, background: "#EF444410", border: "1px solid #EF444450", marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#EF4444", marginBottom: 6 }}>{"\u26A0"} Could not read the document-type ledger</div>
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.55 }}>{doctypeLedgerError}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.55, marginTop: 8 }}>
+                    If the view does not exist yet, run <span style={{ fontFamily: "monospace" }}>04-phase2-doctype-ledger.sql</span>. An empty ledger and an unreadable one are not the same thing, so nothing is shown rather than showing zero.
+                  </div>
+                </div>}
+
+                {!doctypeLedger && !doctypeLedgerError && !doctypeLedgerLoading && <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
+                  Every document-type decision made at import, across invoices, credit notes and disregarded rows.<br />
+                  Load the ledger to see what this buyer&rsquo;s files actually became.
+                </div>}
+
+                {doctypeLedger && flaggedCount > 0 && !doctypeShowFlagged && <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B40", fontSize: 11.5, color: "#D97706", marginBottom: 12, lineHeight: 1.55 }}>
+                  {"\u26A0"} {flaggedCount} combination{flaggedCount === 1 ? "" : "s"} negative but classified as an invoice. That is the classic mis-call &mdash; worth checking each one is a genuine invoice rather than an unrecognised credit note.
+                </div>}
+
+                {doctypeReclassify && (function() {
+                  var rc = doctypeReclassify;
+                  var blocked = rc.target ? reclassifyBlockedReason(rc.combo.doc_class, rc.target) : null;
+                  var anyUpload = Object.keys(rc.uploads).some(function(k) { return rc.uploads[k]; });
+                  var cand = (rc.target && !blocked && anyUpload) ? reclassifyCandidates(rc) : { movable: [], locked: [] };
+                  var ready = !!rc.target && !blocked && anyUpload && cand.movable.length > 0 && !rc.running;
+
+                  return <div style={{ marginBottom: 16, padding: "16px 18px", borderRadius: 8, background: "var(--card)", border: "1px solid var(--accent)" }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        Reclassify <span style={{ fontFamily: "monospace" }}>{rc.combo.raw_value_sample || rc.combo.raw_value || "(blank)"}</span>
+                        <span style={{ color: "var(--muted)", fontWeight: 400 }}> · {rc.combo.sign_bucket} · {buyName(rc.combo.buyer_id) || rc.combo.buyer_id}</span>
+                      </div>
+                      <button onClick={function() { setDoctypeReclassify(null); }} style={{ border: "none", background: "transparent", color: "var(--muted)", fontSize: 16, cursor: "pointer", lineHeight: 1 }}>{"\u00d7"}</button>
+                    </div>
+
+                    {!rc.result && <>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>Currently {doctypeTargetLabel(rc.combo.doc_class)} {"\u2192"} route to</span>
+                        <select value={rc.target} onChange={function(e) { setDoctypeReclassify(Object.assign({}, rc, { target: e.target.value, subtype: null })); }} style={{ padding: "5px 9px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
+                          <option value="">Choose...</option>
+                          <option value="invoice">Invoice</option>
+                          <option value="credit_note">Credit Note</option>
+                          <option value="disregard">Disregard</option>
+                        </select>
+                        {rc.target && !blocked && <select value={rc.subtype || ""} onChange={function(e) { setDoctypeReclassify(Object.assign({}, rc, { subtype: e.target.value || null })); }} style={{ padding: "5px 9px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>
+                          <option value="">Reason (none)</option>
+                          {DOC_SUBTYPES_FOR(rc.target).map(function(o) { return <option key={o[0]} value={o[0]}>{o[1]}</option>; })}
+                        </select>}
+                      </div>
+
+                      {blocked && <div style={{ padding: "10px 14px", borderRadius: 6, background: "#EF444410", border: "1px solid #EF444440", fontSize: 11.5, color: "#EF4444", lineHeight: 1.55, marginBottom: 12 }}>
+                        {blocked}
+                      </div>}
+
+                      {rc.target && !blocked && <>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 700, color: "var(--muted)", letterSpacing: "0.05em", marginBottom: 6 }}>Which uploads</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.55 }}>
+                          Only the uploads you tick are changed. Uploads classified correctly under the code&rsquo;s earlier meaning stay as they are.
+                        </div>
+                        <div style={{ marginBottom: 12 }}>
+                          {rc.combo.uploads.map(function(u, ui) {
+                            return <label key={ui} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 12, cursor: "pointer" }}>
+                              <input type="checkbox" checked={!!rc.uploads[u.import_batch]} onChange={function(e) {
+                                var ups = Object.assign({}, rc.uploads); ups[u.import_batch] = e.target.checked;
+                                setDoctypeReclassify(Object.assign({}, rc, { uploads: ups }));
+                              }} style={{ cursor: "pointer" }} />
+                              <span style={{ fontFamily: "monospace", fontSize: 11 }}>{u.import_batch === "(unrecorded)" ? "(upload not recorded)" : u.import_batch}</span>
+                              <span style={{ color: "var(--muted)" }}>{Number(u.row_count).toLocaleString()} rows · {money(Number(u.total_value || 0), u.currency)}</span>
+                              {u.locked_rows > 0 && <span style={{ color: "#D97706", fontSize: 11 }}>{u.locked_rows} locked</span>}
+                            </label>;
+                          })}
+                        </div>
+
+                        {anyUpload && <div style={{ padding: "10px 14px", borderRadius: 6, background: "var(--bg)", border: "1px solid var(--border)", fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
+                          <div><strong>{cand.movable.length.toLocaleString()}</strong> row{cand.movable.length === 1 ? "" : "s"} will be voided and replaced as {doctypeTargetLabel(rc.target).toLowerCase()}s.</div>
+                          {cand.locked.length > 0 && <div style={{ color: "#D97706" }}>
+                            <strong>{cand.locked.length.toLocaleString()}</strong> cannot be moved &mdash; {rc.combo.doc_class === "invoice" ? "already allocated to a programme or past pending" : "already allocated against invoices"}. These need manual correction with their own audit entry.
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, fontFamily: "monospace" }}>
+                              {cand.locked.slice(0, 8).map(function(x) { return x.id || x.creditNoteId; }).join(", ")}{cand.locked.length > 8 ? " +" + (cand.locked.length - 8) + " more" : ""}
+                            </div>
+                          </div>}
+                          {cand.movable.length === 0 && <div style={{ color: "var(--muted)" }}>Nothing in the selected uploads can be moved.</div>}
+                        </div>}
+
+                        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, cursor: "pointer", marginBottom: 12, lineHeight: 1.55 }}>
+                          <input type="checkbox" checked={!!rc.updateRule} onChange={function(e) { setDoctypeReclassify(Object.assign({}, rc, { updateRule: e.target.checked })); }} style={{ cursor: "pointer", marginTop: 2 }} />
+                          <span>
+                            Also change the standing rule, so future uploads route this code here.
+                            <span style={{ display: "block", color: "#D97706", fontSize: 11, marginTop: 3 }}>
+                              The rule is shared with Buyer Insights &mdash; changing it also changes how that system classifies this buyer&rsquo;s next upload.
+                            </span>
+                          </span>
+                        </label>
+                      </>}
+
+                      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                        <button onClick={function() { setDoctypeReclassify(null); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        <button disabled={!ready} onClick={applyReclassify} style={{ padding: "8px 18px", borderRadius: 7, border: "none", background: ready ? "var(--accent)" : "var(--border)", color: ready ? "#fff" : "var(--muted)", fontSize: 12, fontWeight: 700, cursor: ready ? "pointer" : "not-allowed" }}>
+                          {rc.running ? "Working..." : "Void and replace " + (cand.movable.length || 0) + " row" + (cand.movable.length === 1 ? "" : "s")}
+                        </button>
+                      </div>
+                    </>}
+
+                    {/* Never a silent partial success. */}
+                    {rc.result && <div style={{ fontSize: 12, lineHeight: 1.8 }}>
+                      <div style={{ color: "#10B981", fontWeight: 700 }}>{rc.result.moved.toLocaleString()} row{rc.result.moved === 1 ? "" : "s"} voided and replaced.</div>
+                      {rc.result.locked > 0 && <div style={{ color: "#D97706" }}>{rc.result.locked.toLocaleString()} blocked by downstream state and left untouched.</div>}
+                      {rc.result.failed.length > 0 && <div style={{ color: "#EF4444" }}>
+                        {rc.result.failed.length} failed:
+                        <div style={{ fontSize: 11, fontFamily: "monospace", marginTop: 4 }}>{rc.result.failed.slice(0, 10).map(function(f, fi) { return <div key={fi}>{f}</div>; })}</div>
+                      </div>}
+                      {rc.result.ruleUpdated && <div style={{ color: "var(--muted)" }}>Standing rule updated for future uploads.</div>}
+                      {rc.result.ruleError && <div style={{ color: "#EF4444" }}>Rows moved, but the standing rule was NOT updated: {rc.result.ruleError}</div>}
+                      <button onClick={function() { setDoctypeReclassify(null); }} style={{ marginTop: 10, padding: "7px 16px", borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Close</button>
+                    </div>}
+                  </div>;
+                })()}
+
+                {doctypeLedger && combos.length > 0 && <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border)" }}>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead><tr style={{ background: "var(--bg)", color: "var(--muted)", textAlign: "left" }}>
+                      <th style={{ padding: "9px 12px", fontWeight: 600, width: 24 }}></th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600 }}>Buyer</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600 }}>Code</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600 }}>Sign</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600 }}>Routed to</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600, textAlign: "right" }}>Uploads</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600, textAlign: "right" }}>Rows</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600, textAlign: "right" }}>Value</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600, textAlign: "right" }}>Locked</th>
+                      <th style={{ padding: "9px 12px", fontWeight: 600 }}></th>
+                    </tr></thead>
+                    <tbody>{combos.map(function(c) {
+                      var open = !!doctypeExpanded[c.key];
+                      return <React.Fragment key={c.key}>
+                        <tr onClick={function() { setDoctypeExpanded(function(prev) { var n = Object.assign({}, prev); if (n[c.key]) delete n[c.key]; else n[c.key] = true; return n; }); }}
+                            style={{ borderTop: "1px solid var(--border)", background: c.negative_as_invoice ? "#F59E0B08" : "transparent", cursor: "pointer" }}>
+                          <td style={{ padding: "9px 12px", color: "var(--muted)" }}>{open ? "\u25be" : "\u25b8"}</td>
+                          <td style={{ padding: "9px 12px" }}>{buyName(c.buyer_id) || c.buyer_id}</td>
+                          <td style={{ padding: "9px 12px", fontFamily: "monospace", fontWeight: 600 }}>
+                            {c.negative_as_invoice && <span title="Negative amount classified as an invoice" style={{ color: "#D97706", marginRight: 5 }}>{"\u26A0"}</span>}
+                            {c.raw_value_sample || (c.raw_value === "" ? "(blank)" : c.raw_value) || "(blank)"}
+                          </td>
+                          <td style={{ padding: "9px 12px", color: c.sign_bucket === "negative" ? "#EF4444" : "var(--muted)" }}>
+                            {c.sign_bucket || <span title="No raw amount — created by hand, not from a file">(none)</span>}
+                          </td>
+                          <td style={{ padding: "9px 12px" }}>{classChip(c.doc_class)}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)" }}>{c.uploads.length}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{c.rowCount.toLocaleString()}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace" }}>{money(c.value, c.currency)}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", color: c.locked > 0 ? "#D97706" : "var(--muted)" }} title={c.locked > 0 ? "Rows carrying funding or allocation state — these cannot be moved by tooling" : ""}>{c.locked.toLocaleString()}</td>
+                          <td style={{ padding: "9px 12px", textAlign: "right" }}>
+                            <button onClick={function(ev) {
+                              ev.stopPropagation();
+                              var ups = {};
+                              c.uploads.forEach(function(u) { ups[u.import_batch] = false; });
+                              setDoctypeReclassify({ combo: c, target: "", subtype: null, uploads: ups, updateRule: false, running: false, result: null });
+                            }} style={{ padding: "3px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>Reclassify</button>
+                          </td>
+                        </tr>
+                        {open && c.uploads.map(function(u, ui) {
+                          var unrecorded = u.import_batch === "(unrecorded)";
+                          return <tr key={ui} style={{ borderTop: "1px solid var(--border)", background: "var(--bg)" }}>
+                            <td></td>
+                            <td colSpan={3} style={{ padding: "7px 12px 7px 24px", fontFamily: "monospace", fontSize: 11, color: unrecorded ? "var(--muted)" : "var(--text-secondary)" }}>
+                              {unrecorded ? <span title="Imported before upload provenance was recorded — not guessed at">{"(upload not recorded)"}</span> : u.import_batch}
+                            </td>
+                            <td style={{ padding: "7px 12px", fontSize: 11, color: "var(--muted)" }}>
+                              {u.first_seen ? fmt(u.first_seen) : "\u2014"}
+                            </td>
+                            <td></td>
+                            <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{Number(u.row_count).toLocaleString()}</td>
+                            <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{money(Number(u.total_value || 0), u.currency)}</td>
+                            <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: u.locked_rows > 0 ? "#D97706" : "var(--muted)" }}>
+                              {Number(u.locked_rows || 0).toLocaleString()}
+                              {u.reclassified_out > 0 && <span title="Already voided and replaced by a reclassification" style={{ color: "#10B981", marginLeft: 6 }}>{"\u2713" + u.reclassified_out}</span>}
+                            </td>
+                            <td></td>
+                          </tr>;
+                        })}
+                      </React.Fragment>;
+                    })}</tbody>
+                  </table>
+                </div>}
+
+                {doctypeLedger && combos.length === 0 && <div style={{ padding: "30px 20px", textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
+                  No rows match. {doctypeShowFlagged ? "Nothing is flagged, which is the outcome you want." : "Nothing has been imported with a document type yet."}
+                </div>}
+
+                {doctypeLedger && <div style={{ marginTop: 14, fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+                  Expand a combination to see which uploads it came from. A code&rsquo;s meaning can change over time, so reclassification will act on the uploads you select rather than on the buyer as a whole &mdash; nothing retroactively rewrites uploads that were classified correctly at the time. Rows counted under <strong>Locked</strong> carry funding or allocation state and cannot be moved by tooling at all.
+                </div>}
+              </div>;
+            })()}
+
             {!manageDetail && manageTab === "csv_review" && (function() {
               function acceptReview(idx) {
                 var item = csvReviewQueue[idx];
@@ -27181,5 +28396,3 @@ export default function FactoringDashboard() {
     </div>
   );
 }
-
-    
