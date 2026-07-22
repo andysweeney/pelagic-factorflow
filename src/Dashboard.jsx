@@ -21162,6 +21162,16 @@ export default function FactoringDashboard() {
             setView("program"); setSelectedProgram(programId); setProgTab("overview");
           }
           async function createInvoice() {
+            // A negative invoice amount is almost always a credit note booked
+            // the lazy way. Refuse it explicitly and point at the right tool,
+            // rather than silently doing nothing — the silence is what let the
+            // habit form. The CSV path already routes negatives through
+            // reconciliation; this closes the same door on manual entry.
+            var rawAmt = parseFloat(nf.amount);
+            if (!isNaN(rawAmt) && rawAmt < 0) {
+              alert("Invoices are always a positive amount.\n\nA negative value usually means this is a credit note. Use the Credit Note function to record it — that keeps it out of the funding calculation and preserves the audit trail. Booking it here as a negative invoice is the mis-entry this system is designed to prevent.");
+              return;
+            }
             if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
             var newId = nextId("INV-", INVOICES_DB, "id");
             var hist = [{ status: "Received", date: nf.invoiceDate }];
@@ -21315,6 +21325,7 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Invoice Amount</label>
                     <input type="number" step="0.01" value={nf.amount} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { amount: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                    {parseFloat(nf.amount) < 0 && <div style={{ fontSize: 10.5, color: "#D97706", lineHeight: 1.45, marginTop: 2 }}>{"\u26A0"} A negative amount usually means this is a credit note. Use the Credit Note function instead.</div>}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Invoice Date</label>
