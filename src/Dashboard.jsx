@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -5869,6 +5869,11 @@ export default function FactoringDashboard() {
   // entity does not show the previous buyer's figures while loading.
   var dtl9 = useState({}), buyerDisregards = dtl9[0], setBuyerDisregards = dtl9[1];
   var dtl10 = useState(null), doctypeConfirming = dtl10[0], setDoctypeConfirming = dtl10[1];
+  // Frozen card set for the Classify screen: the combinations that needed a
+  // decision when the screen opened, held stable while choices are made so a
+  // pick populates its row rather than deleting it.
+  var doctypeCardsRef = useRef([]);
+  var dtl11 = useState(null), doctypeCardsScan = dtl11[0], setDoctypeCardsScan = dtl11[1];
   // Selected provider for this CSV import. null = no provider selected (the BI-style
   // direct-Pelagic-ID flow stays available for back-compat). When set, external string
   // columns in the CSV are resolved via provider_entity_aliases scoped to this provider.
@@ -26650,7 +26655,20 @@ export default function FactoringDashboard() {
                        resolves — an unseen sign on a known code counts as
                        unresolved, because sign is half the key. */}
                   {step === "reconciliation" && (function() {
-                    var unresolved = csvDoctypeScan ? unresolvedDoctypeCombinations(csvDoctypeScan) : [];
+                    // Combinations that NEED a human decision. Computed once,
+                    // before any pending pick is applied — otherwise choosing a
+                    // target makes canonicaliseDocType resolve the combination
+                    // and the card vanishes mid-edit, taking the reason dropdown
+                    // with it. A pick populates the row; it does not remove it.
+                    // The set is frozen for the life of the screen so it is
+                    // stable as choices are made; the save gate below is what
+                    // actually enforces completeness.
+                    var unresolved = doctypeCardsRef.current;
+                    if (!unresolved || doctypeCardsScan !== csvDoctypeScan) {
+                      unresolved = csvDoctypeScan ? unresolvedDoctypeCombinations(csvDoctypeScan) : [];
+                      doctypeCardsRef.current = unresolved;
+                      setDoctypeCardsScan(csvDoctypeScan);
+                    }
                     var allPicked = unresolved.every(function(g) { return !!csvDoctypePicks[g.key]; });
 
                     // Group into cards: buyer, then raw code. Sign buckets are
@@ -26748,7 +26766,7 @@ export default function FactoringDashboard() {
                       </>}
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20 }}>
-                        <button onClick={function() { clearPendingDoctypeAliases(); setCsvDoctypePicks({}); setCsvDoctypeError(null); setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
+                        <button onClick={function() { clearPendingDoctypeAliases(); doctypeCardsRef.current = []; setDoctypeCardsScan(null); setCsvDoctypePicks({}); setCsvDoctypeError(null); setCsvImportStep("mapping"); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{"\u2190"} Back to Mapping</button>
                         <button disabled={!!csvDoctypeError || !allPicked || csvDoctypeBusy} onClick={commitDoctypeReconciliation} style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "var(--accent)" : "var(--border)", color: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: (!csvDoctypeError && allPicked && !csvDoctypeBusy) ? "pointer" : "not-allowed" }}>
                           {csvDoctypeBusy ? "Saving..." : "Save rules & continue \u2192"}
                         </button>
@@ -26827,7 +26845,7 @@ export default function FactoringDashboard() {
                       {csvImportResult.errors.map(function(err, ei) { return <div key={ei}>{err}</div>; })}
                     </div>}
                     {csvImportResult.queued > 0 && <div style={{ marginTop: 10, fontSize: 12, color: "#F59E0B", fontWeight: 600 }}>{csvImportResult.queued} items require admin review. <span onClick={function() { setManageTab("csv_review"); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline" }}>Go to Review Queue {"\u2192"}</span></div>}
-                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); setCsvAliasPicks({}); setCsvAliasSaving({}); setCsvDoctypeScan(null); setCsvDoctypePicks({}); setCsvDoctypeError(null); clearPendingDoctypeAliases(); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
+                    <button onClick={function() { setCsvImportData(null); setCsvImportStep("mapping"); setCsvResolution(null); setCsvImportResult(null); setCsvAliasPicks({}); setCsvAliasSaving({}); setCsvDoctypeScan(null); setCsvDoctypePicks({}); setCsvDoctypeError(null); clearPendingDoctypeAliases(); doctypeCardsRef.current = []; setDoctypeCardsScan(null); }} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Import Another File</button>
                   </div>}
                 </div>
               </div>;
