@@ -26955,6 +26955,9 @@ export default function FactoringDashboard() {
                 var moved = 0, failed = [];
                 var actorId = (userProfile && userProfile.id) || null;
                 var stamp = new Date().toISOString();
+                // Human-readable form for note/createdDisplay fields. The import
+                // path has its own nowDisplay; that one is out of scope here.
+                var stampDisplay = new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
                 setDoctypeReclassify(Object.assign({}, rc, { running: true, result: null }));
 
@@ -26973,8 +26976,8 @@ export default function FactoringDashboard() {
                         supplierId: src.supplierEntityId || src.supplierId, supplierEntityId: src.supplierEntityId || src.supplierId,
                         buyerId: src.buyerId, buyerEntityId: src.buyerEntityId || src.buyerId,
                         supplierName: src.supplierName, buyerName: src.buyerName,
-                        allocations: [], voided: false, createdDisplay: nowDisplay,
-                        notes: [{ text: "Reclassified from " + src.id + " (document type '" + (src.rawDocumentType || "(blank)") + "')", display: nowDisplay }],
+                        allocations: [], voided: false, createdDisplay: stampDisplay,
+                        notes: [{ text: "Reclassified from " + src.id + " (document type '" + (src.rawDocumentType || "(blank)") + "')", display: stampDisplay }],
                         rawDocumentType: src.rawDocumentType, rawAmount: src.rawAmount,
                         docSubtype: rc.subtype || null, sourceProvider: src.sourceProvider,
                         importBatch: src.importBatch,
