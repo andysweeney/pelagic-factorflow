@@ -9405,8 +9405,8 @@ function parseDate(str) {
     str = String(str).trim();
     if (!str) return null;
 
-    // DD/MM/YYYY or DD-MM-YYYY
-    var match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    // DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY (SAP/European exports use dots)
+    var match = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
     if (match) {
         var d = parseInt(match[1]), m = parseInt(match[2]), y = parseInt(match[3]);
         // Disambiguate: first > 12 must be DD; second > 12 must be MM/DD.
