@@ -1763,9 +1763,9 @@ var INVOICE_FIELDS = [
     //   partner_invoice_id  — third-party data provider's ID (rare)
     // Exactly one of (buyer/supplier/partner) is the "Primary ID" for this
     // upload — set via the radio in the mapping UI, drives re-import dedup.
-    { key: 'buyer_invoice_id',    label: 'Buyer Invoice ID', required: false, hints: ['buyer_invoice_id', 'buyer_id', 'document_number', 'document_no', 'doc_number', 'doc_no', 'ap_invoice_id', 'ar_doc_id', 'invoice_number', 'invoicenumber', 'invoice_ref', 'invoiceref'] },
-    { key: 'supplier_invoice_id', label: 'Supplier Invoice ID', required: false, hints: ['supplier_invoice_id', 'vendor_invoice_id', 'vendor_invoice_number', 'supplier_invoice_number', 'invoice_id'] },
-    { key: 'partner_invoice_id',  label: 'Partner Invoice ID', required: false, hints: ['partner_invoice_id', 'provider_invoice_id', 'partner_id', 'data_provider_id', 'source_id'] },
+    { key: 'buyer_invoice_id',    label: 'Buyer Invoice ID', required: false, hints: ['buyer_invoice_id', 'buyer_id', 'document_number', 'document_no', 'doc_number', 'doc_no', 'ap_invoice_id', 'ar_doc_id', 'invoice_number', 'invoicenumber', 'invoice_ref', 'invoiceref'], composite: true },
+    { key: 'supplier_invoice_id', label: 'Supplier Invoice ID', required: false, hints: ['supplier_invoice_id', 'vendor_invoice_id', 'vendor_invoice_number', 'supplier_invoice_number', 'invoice_id'], composite: true },
+    { key: 'partner_invoice_id',  label: 'Partner Invoice ID', required: false, hints: ['partner_invoice_id', 'provider_invoice_id', 'partner_id', 'data_provider_id', 'source_id'], composite: true },
     // ── Supplier identity ───────────────────────────────────────────────
     { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number', 'supplier_code', 'vendor_code'] },
     { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname', 'payee', 'trading_name'] },
@@ -1999,9 +1999,9 @@ function inferInvoiceStatus(fields, buyerId) {
 // Primary ID for CNs is set independently of invoices because some buyers
 // emit invoices keyed on buyer_id but CNs keyed on supplier reference.
 var CN_FIELDS = [
-    { key: 'buyer_cn_id',         label: 'Buyer Credit Note ID', required: false, hints: ['buyer_cn_id', 'buyer_credit_note_id', 'document_number', 'document_no', 'doc_number', 'credit_note_number', 'cn_number', 'cn_ref', 'reference'] },
-    { key: 'supplier_cn_id',      label: 'Supplier Credit Note ID', required: false, hints: ['supplier_cn_id', 'supplier_credit_note_id', 'vendor_credit_note_id', 'vendor_cn_id'] },
-    { key: 'partner_cn_id',       label: 'Partner Credit Note ID', required: false, hints: ['partner_cn_id', 'provider_cn_id', 'partner_credit_note_id'] },
+    { key: 'buyer_cn_id',         label: 'Buyer Credit Note ID', required: false, hints: ['buyer_cn_id', 'buyer_credit_note_id', 'document_number', 'document_no', 'doc_number', 'credit_note_number', 'cn_number', 'cn_ref', 'reference'], composite: true },
+    { key: 'supplier_cn_id',      label: 'Supplier Credit Note ID', required: false, hints: ['supplier_cn_id', 'supplier_credit_note_id', 'vendor_credit_note_id', 'vendor_cn_id'], composite: true },
+    { key: 'partner_cn_id',       label: 'Partner Credit Note ID', required: false, hints: ['partner_cn_id', 'provider_cn_id', 'partner_credit_note_id'], composite: true },
     { key: 'supplier_identifier', label: 'Supplier ID', required: true,  hints: ['supplier_id', 'supplierid', 'vendor_id', 'vendorid', 'supplier', 'vendor', 'vendor_number', 'supplier_number'] },
     { key: 'supplier_name',       label: 'Supplier Name', required: false, hints: ['supplier_name', 'suppliername', 'vendor_name', 'vendorname'] },
     { key: 'cn_date',             label: 'Credit Note Date', required: true,  hints: ['credit_note_date', 'cn_date', 'date', 'document_date', 'issue_date'] },
@@ -2616,6 +2616,100 @@ function buildMappingRow(field, csvColumns, mappingTarget, prefix) {
     label.className = 'mapping-label';
     label.innerHTML = field.label + (field.required ? '<span class="req">*</span>' : '');
 
+    // ── Composite (multi-column) fields ────────────────────────────────
+    // SAP's real invoice key is Company Code + Document Number + Fiscal Year
+    // + Item — no single column is unique. Composite fields let the operator
+    // build that key in-app instead of concatenating in Excel.
+    if (field.composite) {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex; flex-direction:column; gap:4px;';
+        var partsArr = (Object.prototype.toString.call(current) === '[object Array]')
+            ? current.slice() : (current ? [current] : ['']);
+
+        function commitParts() {
+            var clean = partsArr.filter(function(p) { return p; });
+            mappingTarget[field.key] = clean.length === 0 ? null
+                                     : (clean.length === 1 ? clean[0] : clean);
+            if (clean.length) { row.classList.add('matched'); } else { row.classList.remove('matched'); }
+            updateMappingDiagnostic(); updatePreview(); refreshSaveSection();
+        }
+
+        function renderParts() {
+            wrap.innerHTML = '';
+            partsArr.forEach(function(part, idx) {
+                var line = document.createElement('div');
+                line.style.cssText = 'display:flex; gap:4px; align-items:center;';
+
+                var sel = document.createElement('select');
+                sel.style.cssText = 'flex:1; min-width:0;';
+                sel.className = part ? 'auto-matched' : '';
+                var isYear = part && part.indexOf('YEAR:') === 0;
+                var bare = isYear ? part.slice(5) : part;
+                sel.innerHTML = '<option value="">' + (idx === 0 ? '— Skip / Not in CSV —' : '— none —') + '</option>';
+                csvColumns.forEach(function(c) {
+                    var o = document.createElement('option');
+                    o.value = c; o.textContent = c;
+                    if (c === bare) o.selected = true;
+                    sel.appendChild(o);
+                });
+                sel.addEventListener('change', function() {
+                    partsArr[idx] = this.value ? (isYear ? 'YEAR:' + this.value : this.value) : '';
+                    commitParts(); renderParts();
+                });
+                line.appendChild(sel);
+
+                // "Year only" toggle — turns a date column into its 4-digit year,
+                // which is what makes an SAP document number unique.
+                var yb = document.createElement('button');
+                yb.type = 'button'; yb.className = 'btn btn-xs';
+                yb.textContent = 'Year';
+                yb.title = 'Use only the YEAR of this date column (for fiscal-year keys)';
+                yb.style.cssText = 'padding:2px 7px;' + (isYear ? 'background:var(--accent); color:#fff;' : '');
+                yb.addEventListener('click', function() {
+                    if (!partsArr[idx]) return;
+                    partsArr[idx] = isYear ? bare : 'YEAR:' + bare;
+                    commitParts(); renderParts();
+                });
+                line.appendChild(yb);
+
+                if (partsArr.length > 1) {
+                    var rm = document.createElement('button');
+                    rm.type = 'button'; rm.className = 'btn btn-xs';
+                    rm.textContent = '\u2212';
+                    rm.style.cssText = 'padding:2px 8px; color:var(--danger);';
+                    rm.addEventListener('click', function() {
+                        partsArr.splice(idx, 1); commitParts(); renderParts();
+                    });
+                    line.appendChild(rm);
+                }
+                wrap.appendChild(line);
+            });
+
+            var add = document.createElement('button');
+            add.type = 'button'; add.className = 'btn btn-xs';
+            add.textContent = '+ Add column to key';
+            add.style.cssText = 'padding:2px 8px; align-self:flex-start;';
+            add.addEventListener('click', function() { partsArr.push(''); renderParts(); });
+            wrap.appendChild(add);
+
+            var clean = partsArr.filter(function(p) { return p; });
+            if (clean.length > 1) {
+                var hint = document.createElement('div');
+                hint.style.cssText = 'font-size:10px; color:var(--text-secondary); font-family:var(--mono);';
+                hint.textContent = 'Key = ' + clean.map(function(p) {
+                    return p.indexOf('YEAR:') === 0 ? 'year(' + p.slice(5) + ')' : p;
+                }).join(' - ');
+                wrap.appendChild(hint);
+            }
+        }
+        renderParts();
+
+        row.appendChild(label);
+        row.appendChild(wrap);
+        row.appendChild(document.createElement('span'));
+        return row;
+    }
+
     var select = document.createElement('select');
     select.id = 'map-' + prefix + '-' + field.key;
     select.className = current ? 'auto-matched' : '';
@@ -2677,10 +2771,48 @@ function updateMappingDiagnostic() {
     }
 }
 
+// Normalise a raw cell. Excel/CSV exports of numeric codes arrive as "54.0"
+// or "7007743935.0"; left alone these corrupt document-type alias keys and
+// make composite IDs ugly. Only exact integer-with-.0 is touched, so real
+// decimals (-6.87) and text are untouched.
+function normaliseCell(v) {
+    if (v === null || v === undefined) return v;
+    var s = String(v).trim();
+    if (/^-?\d+\.0$/.test(s)) return s.slice(0, -2);
+    return v;
+}
+
+// A mapping entry is either a single column name, or an ARRAY of column names
+// for composite keys (e.g. SAP's real invoice key is
+// Company Code + Document Number + Fiscal Year + Item). Array parts are joined
+// with "-", blank parts skipped. Returns null if every part is empty.
 function getMappedValue(row, fieldKey, mappingTarget) {
     var col = mappingTarget[fieldKey];
     if (!col) return null;
-    return row[col];
+    if (Object.prototype.toString.call(col) === '[object Array]') {
+        var parts = [];
+        for (var i = 0; i < col.length; i++) {
+            if (!col[i]) continue;
+            var raw = compositePartValue(row, col[i]);
+            if (raw === null || raw === undefined) continue;
+            var s = String(raw).trim();
+            if (s === '') continue;
+            parts.push(s);
+        }
+        return parts.length ? parts.join('-') : null;
+    }
+    return normaliseCell(row[col]);
+}
+
+// Composite mappings need a year extracted from a date column (SAP recycles
+// document numbers each fiscal year). Marked by a "YEAR:" prefix on the part.
+function compositePartValue(row, part) {
+    if (!part) return null;
+    if (part.indexOf('YEAR:') === 0) {
+        var d = parseDate(normaliseCell(row[part.slice(5)]));
+        return d ? d.slice(0, 4) : null;
+    }
+    return normaliseCell(row[part]);
 }
 
 // ================================================================
@@ -9405,6 +9537,16 @@ function parseDate(str) {
     str = String(str).trim();
     if (!str) return null;
 
+    // Excel serial date (SAP/Excel exports often emit bare numbers). Bounded to
+    // ~1954-2064 so ordinary integers aren't reinterpreted. Without this,
+    // new Date("45077") silently yields the YEAR 45077 — valid, and very wrong.
+    if (/^\d{5}(\.\d+)?$/.test(str)) {
+        var serial = parseFloat(str);
+        if (serial >= 20000 && serial <= 60000) {
+            var ed = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+            if (!isNaN(ed.getTime())) return ed.toISOString().split('T')[0];
+        }
+    }
     // DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY (SAP/European exports use dots)
     var match = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
     if (match) {
