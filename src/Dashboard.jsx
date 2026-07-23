@@ -16563,19 +16563,66 @@ export default function FactoringDashboard() {
                 reader.readAsText(file);
               }
 
+              // A mapping entry is either a single column name, or an ARRAY of
+              // column names for composite keys. SAP's real invoice key is
+              // Company Code + Document Number + Fiscal Year + Item — no single
+              // column is unique. Array parts join with "-"; a "YEAR:" prefix
+              // uses just the 4-digit year of a date column (fiscal-year keys).
+              // Excel emits numeric codes as "54.0" / "7007743935.0", so exact
+              // integer-with-.0 is trimmed; real decimals are untouched.
+              function normCell(v) {
+                if (v === null || v === undefined) return null;
+                var s = String(v).trim();
+                if (s === "") return null;
+                if (/^-?\d+\.0$/.test(s)) s = s.slice(0, -2);
+                return s;
+              }
               function getMapped(row, key) {
                 var col = csvImportMapping[key];
                 if (!col) return null;
-                var val = row[col];
-                return val != null && String(val).trim() !== "" ? String(val).trim() : null;
+                if (Object.prototype.toString.call(col) === "[object Array]") {
+                  var parts = [];
+                  for (var i = 0; i < col.length; i++) {
+                    var p = col[i];
+                    if (!p) continue;
+                    var val;
+                    if (p.indexOf("YEAR:") === 0) {
+                      var d = parseDateVal(normCell(row[p.slice(5)]));
+                      val = d ? d.slice(0, 4) : null;
+                    } else {
+                      val = normCell(row[p]);
+                    }
+                    if (val) parts.push(val);
+                  }
+                  return parts.length ? parts.join("-") : null;
+                }
+                return normCell(row[col]);
               }
 
               function parseDateVal(str) {
+                if (str === null || str === undefined) return null;
+                str = String(str).trim();
                 if (!str) return null;
-                str = str.trim();
-                var m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-                if (m) { var d = parseInt(m[1]), mo = parseInt(m[2]), y = parseInt(m[3]); if (d > 12) return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); }
-                m = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+                // Excel serial date (SAP/Excel exports often emit these as bare
+                // numbers). Bounded to ~1954-2064 so ordinary integers in a date
+                // column aren't silently reinterpreted. Without this, new Date()
+                // turns "45077" into the year 45077 — a valid date, silently wrong.
+                if (/^\d{5}(\.\d+)?$/.test(str)) {
+                  var serial = parseFloat(str);
+                  if (serial >= 20000 && serial <= 60000) {
+                    var ed = new Date(Date.UTC(1899, 11, 30) + Math.round(serial) * 86400000);
+                    return !isNaN(ed.getTime()) ? ed.toISOString().split("T")[0] : null;
+                  }
+                }
+                // DD/MM/YYYY, DD-MM-YYYY or DD.MM.YYYY (SAP/European use dots)
+                var m = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+                if (m) {
+                  var d = parseInt(m[1]), mo = parseInt(m[2]), y = parseInt(m[3]);
+                  if (d > 12) return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+                  if (mo > 12) return y+"-"+String(d).padStart(2,"0")+"-"+String(mo).padStart(2,"0");
+                  return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+                }
+                m = str.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
                 if (m) return m[1]+"-"+String(parseInt(m[2])).padStart(2,"0")+"-"+String(parseInt(m[3])).padStart(2,"0");
                 var dt = new Date(str);
                 return !isNaN(dt.getTime()) ? dt.toISOString().split("T")[0] : null;
