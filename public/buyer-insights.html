@@ -1373,7 +1373,13 @@
              when a document_type column is mapped and contains values BI
              can't auto-route. Operator maps each to Invoice / Credit Note /
              Disregard. Saved per-buyer; blocks Save until all resolved. -->
-        <div id="doctypeAliasSection" class="card hidden" style="border-left:4px solid #7C3AED;">
+        <div id="dateFormatSection" class="card hidden" style="border-left:4px solid #0369A1;">
+        <div class="card-title">Date Formats Detected</div>
+        <div class="card-subtitle">Order is proven from the data where possible. A column is only flagged when no value exceeds 12 in either position, so day/month order genuinely cannot be determined — confirm it there and Save will unlock.</div>
+        <div id="dateFormatBody" style="margin-top:8px;"></div>
+    </div>
+
+    <div id="doctypeAliasSection" class="card hidden" style="border-left:4px solid #7C3AED;">
             <div class="card-title">Step 2c — Reconcile Document Types</div>
             <div class="card-subtitle">This file contains document types or sign conventions not yet mapped for this buyer. Classify each value separately for positive and negative amounts — the same code often means an invoice when positive and a credit when negative. Optionally tag a reason. Disregarded rows are saved but excluded from analytics. Mappings are remembered for this buyer.</div>
             <div id="doctypeAliasGrid" style="display:flex; flex-direction:column; gap:10px; margin-top:8px;"></div>
@@ -2851,6 +2857,8 @@ function updatePreview() {
 // SAVE SECTION VISIBILITY + PROCESS BUTTON
 // ================================================================
 function refreshSaveSection() {
+    detectMappedDateFormats();
+    refreshDateFormatSection();
     refreshStatusAliasSection();
     refreshDoctypeAliasSection();
     var ready = isReadyToSave();
@@ -3315,6 +3323,68 @@ function persistPendingStatusAliases(buyerId, done) {
 }
 // ─────────────────────────────────────────────────────────────────────────
 
+// Shows the format detected for every mapped date column, with the evidence.
+// Ambiguous columns get an explicit chooser and block Save until resolved.
+function refreshDateFormatSection() {
+    var sec = document.getElementById('dateFormatSection');
+    var body = document.getElementById('dateFormatBody');
+    if (!sec || !body) return;
+    var cols = [], seen = {};
+    [['invoice', state.invoiceMapping], ['cn', state.cnMapping]].forEach(function(pair){
+        var map = pair[1];
+        if (!map) return;
+        DATE_FIELD_KEYS.forEach(function(k){
+            var c = map[k];
+            if (!c || typeof c !== 'string' || seen[c]) return;
+            var f = state.dateFormats && state.dateFormats[c];
+            if (!f || f.kind === 'empty') return;
+            seen[c] = 1; cols.push({ column: c, field: k, fmt: f });
+        });
+    });
+    if (cols.length === 0) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+    body.innerHTML = '';
+
+    cols.forEach(function(item){
+        var f = item.fmt;
+        var bad = f.ambiguous && !f.userSet;
+        var card = document.createElement('div');
+        card.style.cssText = 'border:1px solid ' + (bad ? 'var(--danger)' : 'var(--border)') +
+            '; border-radius:6px; padding:8px 10px; background:var(--bg); margin-bottom:6px;';
+
+        var sample = (f.samples || []).slice(0,2);
+        var rendered = sample.map(function(s){
+            var p = parseDateStrict(s, f);
+            return escHTML(s) + ' \u2192 ' + (p ? p : '<span style="color:var(--danger)">unparsed</span>');
+        }).join('&nbsp;&nbsp;\u00B7&nbsp;&nbsp;');
+
+        card.innerHTML =
+            '<div style="display:flex; justify-content:space-between; gap:10px; align-items:baseline;">' +
+              '<span style="font-family:var(--mono); font-size:12px; font-weight:700;">' + escHTML(item.column) + '</span>' +
+              '<span style="font-size:10px; color:var(--text-secondary);">' + f.total.toLocaleString() + ' values' +
+              (f.blank ? ' \u00B7 ' + f.blank.toLocaleString() + ' blank' : '') + '</span></div>' +
+            '<div style="font-size:11px; color:' + (bad ? 'var(--danger)' : 'var(--text-secondary)') + '; margin-top:3px;">' +
+              escHTML(f.note || '') + '</div>' +
+            '<div style="font-size:10px; font-family:var(--mono); color:var(--text-secondary); margin-top:3px;">' + rendered + '</div>';
+
+        if (bad) {
+            var sel = document.createElement('select');
+            sel.style.cssText = 'margin-top:6px; padding:5px 8px; background:var(--card); border:1px solid var(--border); border-radius:4px; font-size:12px;';
+            sel.innerHTML = '<option value="">\u2014 Confirm day/month order \u2014</option>' +
+                            '<option value="dmy">Day first (DD/MM/YYYY)</option>' +
+                            '<option value="mdy">Month first (MM/DD/YYYY)</option>';
+            sel.addEventListener('change', function(){
+                if (!this.value) return;
+                f.order = this.value; f.userSet = true; f.ambiguous = false;
+                f.note = 'Order confirmed by operator: ' + (this.value === 'dmy' ? 'day first.' : 'month first.');
+                refreshSaveSection(); updatePreview();
+            });
+            card.appendChild(sel);
+        }
+        body.appendChild(card);
+    });
+}
+
 function isReadyToSave() {
     if (state.invoiceData.length === 0) return false;
     var missingInv = INVOICE_FIELDS.filter(function(f) { return f.required && !state.invoiceMapping[f.key]; });
@@ -3336,7 +3406,27 @@ function isReadyToSave() {
     // Same gate for unresolved document types.
     var unrecognisedDt = scanUnrecognisedDoctypes();
     if (unrecognisedDt.length > 0) return false;
+    // And for date columns whose day/month order the data cannot prove. Saving
+    // with an unconfirmed order is how 03/10/2023 silently becomes 10 March.
+    if (ambiguousDateColumns().length > 0) return false;
     return true;
+}
+
+// Mapped date columns whose format is ambiguous or internally inconsistent,
+// and which the operator has not explicitly confirmed.
+function ambiguousDateColumns() {
+    if (!state.dateFormats) return [];
+    var out = [], seen = {};
+    [state.invoiceMapping, state.cnMapping].forEach(function(map){
+        if (!map) return;
+        DATE_FIELD_KEYS.forEach(function(k){
+            var col = map[k];
+            if (!col || typeof col !== 'string' || seen[col]) return;
+            var f = state.dateFormats[col];
+            if (f && f.ambiguous && !f.userSet) { seen[col] = 1; out.push({ column: col, field: k, fmt: f }); }
+        });
+    });
+    return out;
 }
 
 function setupProcessHandler() {
@@ -3484,11 +3574,11 @@ function finishProcessAndSave(selectedBuyerId) {
         if (!ccy) { drops.noCurrency++; return; }
 
         // One physical date column — issue date for both classes.
-        var docDate = parseDate(getMappedValue(raw, 'invoice_date', state.invoiceMapping));
+        var docDate = mappedDate(raw, 'invoice_date', state.invoiceMapping);
         if (!docDate) { drops.noDate++; return; }
 
         var isInvoice = (decision.target === 'invoice');
-        var dueDate = isInvoice ? parseDate(getMappedValue(raw, 'due_date', state.invoiceMapping)) : null;
+        var dueDate = isInvoice ? mappedDate(raw, 'due_date', state.invoiceMapping) : null;
         if (isInvoice && !dueDate) { drops.noDueDate++; return; }
 
         // paid_amount: a negative value is a refund / clawback, not a payment.
@@ -3513,15 +3603,15 @@ function finishProcessAndSave(selectedBuyerId) {
             }
             statusInfo = inferInvoiceStatus({
                 invoice_date:    docDate,
-                paid_date:       parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+                paid_date:       mappedDate(raw, 'paid_date', state.invoiceMapping),
                 paid_amount:     paidAmt,
                 invoice_status:  rawStatusVal,
                 cancelled_flag:  getMappedValue(raw, 'cancelled_flag', state.invoiceMapping),
-                cancelled_date:  parseDate(getMappedValue(raw, 'cancelled_date', state.invoiceMapping)),
+                cancelled_date:  mappedDate(raw, 'cancelled_date', state.invoiceMapping),
                 rejected_flag:   getMappedValue(raw, 'rejected_flag', state.invoiceMapping),
-                rejected_date:   parseDate(getMappedValue(raw, 'rejected_date', state.invoiceMapping)),
+                rejected_date:   mappedDate(raw, 'rejected_date', state.invoiceMapping),
                 approved_flag:   getMappedValue(raw, 'approved_flag', state.invoiceMapping),
-                approved_date:   parseDate(getMappedValue(raw, 'approved_date', state.invoiceMapping))
+                approved_date:   mappedDate(raw, 'approved_date', state.invoiceMapping)
             }, selectedBuyerId);
         }
 
@@ -3545,7 +3635,7 @@ function finishProcessAndSave(selectedBuyerId) {
             primary_id_field:    ({ supplier_invoice_id: 'supplier_doc_id', partner_invoice_id: 'partner_doc_id' }[state.primaryIdField] || 'buyer_doc_id'),
             doc_date:            docDate,
             due_date:            dueDate,
-            paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.invoiceMapping)),
+            paid_date:           mappedDate(raw, 'paid_date', state.invoiceMapping),
             paid_amount:         paidAmt,
             currency:            ccy,
             invoice_status:      statusInfo.status,
@@ -3571,7 +3661,7 @@ function finishProcessAndSave(selectedBuyerId) {
         if (isNaN(signedAmt)) { drops.badAmount++; return; }
         var ccy = (getMappedValue(raw, 'currency', state.cnMapping) || '').toString().trim().toUpperCase();
         if (!ccy) { drops.noCurrency++; return; }
-        var cnDate = parseDate(getMappedValue(raw, 'cn_date', state.cnMapping));
+        var cnDate = mappedDate(raw, 'cn_date', state.cnMapping);
         if (!cnDate) { drops.noDate++; return; }
 
         currencies[ccy] = true;
@@ -3591,7 +3681,7 @@ function finishProcessAndSave(selectedBuyerId) {
             primary_id_field:    ({ supplier_cn_id: 'supplier_doc_id', partner_cn_id: 'partner_doc_id' }[state.primaryCnIdField] || 'buyer_doc_id'),
             doc_date:            cnDate,
             due_date:            null,
-            paid_date:           parseDate(getMappedValue(raw, 'paid_date', state.cnMapping)),
+            paid_date:           mappedDate(raw, 'paid_date', state.cnMapping),
             paid_amount:         null,
             currency:            ccy,
             invoice_status:      null,
@@ -9532,6 +9622,116 @@ function fetchAllRows(table, uploadId, cb) {
 // ================================================================
 // UTILITIES
 // ================================================================
+// ── Column-level date format detection ────────────────────────────────────
+// A single value can be ambiguous: 03/10/2023 is either 3 October or 10 March,
+// and both parse "successfully". A COLUMN is almost never ambiguous — scan every
+// value and let the data prove the order. If any value's first part exceeds 12
+// the column is day-first; if any second part exceeds 12 it is month-first.
+// Only when neither ever occurs is the column truly ambiguous, and then we ASK.
+// This is what stops the silent corruption that swapped 200,996 rows previously.
+var DATE_FIELD_KEYS = ['invoice_date','due_date','paid_date','cn_date','status_change_date',
+                       'cancelled_date','rejected_date','approved_date'];
+
+function detectDateFormat(values) {
+    var total=0, serial=0, iso=0, delim=0, monthname=0, blank=0, unparsed=0;
+    var dFirst=0, mFirst=0, sep=null, twoDigitYear=0, samples=[];
+    var MON=/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+    for (var i=0;i<values.length;i++){
+        var raw=values[i];
+        if(raw===null||raw===undefined||String(raw).trim()===''){blank++;continue;}
+        var s=String(raw).trim(); total++;
+        if(samples.length<3) samples.push(s);
+        if(/^\d{5}(\.\d+)?$/.test(s)&&parseFloat(s)>=20000&&parseFloat(s)<=60000){serial++;continue;}
+        if(/^\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}([ T].*)?$/.test(s)){iso++;continue;}
+        if(MON.test(s)||/[-\/ ](jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(s)){monthname++;continue;}
+        var m=s.match(/^(\d{1,2})([-\/.])(\d{1,2})\2(\d{4}|\d{2})([ T].*)?$/);
+        if(m){
+            delim++; sep=sep||m[2];
+            if(m[4].length===2) twoDigitYear++;
+            if(parseInt(m[1],10)>12) dFirst++;
+            if(parseInt(m[3],10)>12) mFirst++;
+            continue;
+        }
+        unparsed++;
+    }
+    var kind='unknown', order=null, ambiguous=false, note='';
+    if(total===0) return {kind:'empty',total:0,blank:blank,ambiguous:false,note:'',samples:[]};
+    var maj=Math.max(serial,iso,delim,monthname);
+    if(maj===serial&&serial>0){kind='serial';note='Excel serial numbers.';}
+    else if(maj===iso&&iso>0){kind='iso';note='ISO YYYY-MM-DD (unambiguous).';}
+    else if(maj===monthname&&monthname>0){kind='monthname';note='Month names (unambiguous).';}
+    else if(maj===delim&&delim>0){
+        kind='delimited';
+        if(dFirst>0&&mFirst>0){ambiguous=true;note='CONFLICT: this column mixes day-first and month-first values. The source export is inconsistent — do not import.';}
+        else if(dFirst>0){order='dmy';note='Day-first (DD'+sep+'MM'+sep+'YYYY), proven by '+dFirst.toLocaleString()+' value(s) with a first part above 12.';}
+        else if(mFirst>0){order='mdy';note='Month-first (MM'+sep+'DD'+sep+'YYYY), proven by '+mFirst.toLocaleString()+' value(s) with a second part above 12.';}
+        else{ambiguous=true;order=(sep==='.')?'dmy':null;
+             note=(sep==='.')?'No value exceeds 12, so order is unproven. Dot separator implies day-first — please confirm.'
+                             :'No value exceeds 12 in either position. Day/month order cannot be determined from the data — please confirm.';}
+    }
+    return {kind:kind,order:order,ambiguous:ambiguous,note:note,sep:sep,total:total,blank:blank,
+            serial:serial,iso:iso,delimited:delim,monthname:monthname,unparsed:unparsed,
+            twoDigitYear:twoDigitYear,samples:samples};
+}
+
+// Strict parse against a resolved format. NO new Date() fallback — that is what
+// turned "45077" into the year 45077. Non-matching values return null and are
+// counted as drops rather than silently invented.
+function parseDateStrict(raw, fmt){
+    if(!fmt) return parseDate(raw);
+    if(raw===null||raw===undefined) return null;
+    var s=String(raw).trim(); if(!s) return null;
+    function mk(y,m,d){
+        y=+y;m=+m;d=+d;
+        if(m<1||m>12||d<1||d>31||y<1900||y>2100) return null;
+        var dt=new Date(Date.UTC(y,m-1,d));
+        if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d) return null;
+        return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    }
+    if(fmt.kind==='serial'){
+        if(!/^\d{5}(\.\d+)?$/.test(s)) return null;
+        var n=parseFloat(s); if(n<20000||n>60000) return null;
+        var ed=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);
+        return isNaN(ed.getTime())?null:ed.toISOString().slice(0,10);
+    }
+    if(fmt.kind==='iso'){var mi=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);return mi?mk(mi[1],mi[2],mi[3]):null;}
+    if(fmt.kind==='monthname'){var d2=new Date(s);return isNaN(d2.getTime())?null:d2.toISOString().slice(0,10);}
+    if(fmt.kind==='delimited'){
+        var m=s.match(/^(\d{1,2})([-\/.])(\d{1,2})\2(\d{4}|\d{2})/); if(!m) return null;
+        var y=m[4]; if(y.length===2) y=(+y<=69?'20':'19')+y;
+        return fmt.order==='mdy'?mk(y,m[1],m[3]):mk(y,m[3],m[1]);
+    }
+    return null;
+}
+
+// Detect a format for every column mapped to a date field. Scans up to 50k rows
+// — statistically certain to encounter a day above 12 in any real date column.
+function detectMappedDateFormats() {
+    state.dateFormats = state.dateFormats || {};
+    var jobs = [[state.invoiceData, state.invoiceMapping], [state.cnData, state.cnMapping]];
+    jobs.forEach(function(job){
+        var rows=job[0], map=job[1];
+        if(!rows||!rows.length||!map) return;
+        DATE_FIELD_KEYS.forEach(function(k){
+            var col=map[k];
+            if(!col||typeof col!=='string') return;
+            if(state.dateFormats[col] && state.dateFormats[col].userSet) return;
+            var vals=[], lim=Math.min(rows.length,50000);
+            for(var i=0;i<lim;i++) vals.push(rows[i][col]);
+            state.dateFormats[col]=detectDateFormat(vals);
+        });
+    });
+}
+
+// Resolve a mapped date field using its column's detected format.
+function mappedDate(row, fieldKey, mappingTarget) {
+    var raw = getMappedValue(row, fieldKey, mappingTarget);
+    if (raw === null || raw === undefined) return null;
+    var col = mappingTarget[fieldKey];
+    var fmt = (typeof col === 'string' && state.dateFormats) ? state.dateFormats[col] : null;
+    return parseDateStrict(raw, fmt);
+}
+
 function parseDate(str) {
     if (!str) return null;
     str = String(str).trim();
