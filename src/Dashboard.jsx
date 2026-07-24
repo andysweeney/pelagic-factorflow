@@ -505,7 +505,7 @@ async function saveInvoice(invId) {
       invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
-      do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+      do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
       notes: inv.notes || []
     };
     var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
@@ -596,7 +596,7 @@ async function saveSupplier(supId) {
     var row = {
       id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
       jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-      onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+      onboarding_date: s.onboardingDate || null, notes: Array.isArray(s.notes) ? s.notes : [],
       street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
       country: s.country || "United Kingdom", zip: s.zip || null,
       primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
@@ -624,7 +624,7 @@ async function saveBuyer(buyId) {
     var row = {
       id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
       jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-      onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+      onboarding_date: b.onboardingDate || null, notes: Array.isArray(b.notes) ? b.notes : [],
       street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
       country: b.country || "United Kingdom", zip: b.zip || null,
       primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
@@ -648,7 +648,7 @@ async function saveServiceProvider(spId) {
     var row = {
       id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
       jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active",
-      role: sp.role || null, notes: sp.notes || null,
+      role: sp.role || null, notes: Array.isArray(sp.notes) ? sp.notes : [],
       street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
       country: sp.country || "United Kingdom", zip: sp.zip || null,
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
@@ -712,7 +712,7 @@ function mapInvoiceRow(row) {
     invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
-    doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+    doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
     notes: row.notes || [],
     csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
     intendedPaymentDate: row.intended_payment_date || null
@@ -871,7 +871,7 @@ async function loadPersistedData() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
           notes: row.notes || []
         });
       });
@@ -952,7 +952,7 @@ async function loadPersistedData() {
       auditData.forEach(function(row) {
         AUDIT_LOG.push({
           timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
+          action: row.event_type, details: row.details, context: row.context || {}
         });
       });
     }
@@ -1086,7 +1086,7 @@ async function reloadForSupplier(supplierId) {
       invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
       invoiceStatusHistory: row.invoice_status_history || [],
       adjustments: row.adjustments || [],
-      doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+      doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
       notes: row.notes || [],
       csvAmountPaid: row.csv_amount_paid != null ? parseFloat(row.csv_amount_paid) : null,
       intendedPaymentDate: row.intended_payment_date || null
@@ -1179,7 +1179,7 @@ async function reloadForSupplier(supplierId) {
       (ctx.supplierId && (ctx.supplierId === supplierId || parseEntityId(ctx.supplierId).supplierId === parentId)) ||
       (ctx.invoiceId && invIdSet[ctx.invoiceId]);
     if (relevant) {
-      AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+      AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.event_type, details: row.details, context: ctx });
     }
   });
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
@@ -1205,7 +1205,7 @@ async function reloadInvoices() {
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
-          doNotFund: row.do_not_fund || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
+          doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
           notes: row.notes || []
         });
       });
@@ -1307,7 +1307,7 @@ async function reloadAuditLog() {
       auditData.forEach(function(row) {
         AUDIT_LOG.push({
           timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.action, details: row.details, context: row.context || {}
+          action: row.event_type, details: row.details, context: row.context || {}
         });
       });
       _lastSavedAuditIndex = AUDIT_LOG.length;
@@ -1422,7 +1422,7 @@ async function savePersistedData() {
       return {
         id: s.id, name: s.name, company_number: s.companyNumber || null, vat_number: s.vatNumber || null,
         jurisdiction: s.jurisdiction || "United Kingdom", status: s.status || "Active",
-        onboarding_date: s.onboardingDate || null, notes: s.notes || null,
+        onboarding_date: s.onboardingDate || null, notes: Array.isArray(s.notes) ? s.notes : [],
         street1: s.street1 || null, street2: s.street2 || null, city: s.city || null, state: s.state || null,
         country: s.country || "United Kingdom", zip: s.zip || null,
         primary_contact: s.primaryContact || null, primary_email: s.primaryEmail || null, primary_phone: s.primaryPhone || null, primary_signatory: s.primarySignatory || false,
@@ -1446,7 +1446,7 @@ async function savePersistedData() {
       return {
         id: b.id, name: b.name, company_number: b.companyNumber || null, vat_number: b.vatNumber || null,
         jurisdiction: b.jurisdiction || "United Kingdom", status: b.status || "Active",
-        onboarding_date: b.onboardingDate || null, notes: b.notes || null,
+        onboarding_date: b.onboardingDate || null, notes: Array.isArray(b.notes) ? b.notes : [],
         street1: b.street1 || null, street2: b.street2 || null, city: b.city || null, state: b.state || null,
         country: b.country || "United Kingdom", zip: b.zip || null,
         primary_contact: b.primaryContact || null, primary_email: b.primaryEmail || null, primary_phone: b.primaryPhone || null, primary_signatory: b.primarySignatory || false,
@@ -1463,7 +1463,7 @@ async function savePersistedData() {
     var spRows = SERVICE_PROVIDERS_DB.map(function(sp) {
       return {
         id: sp.id, name: sp.name, company_number: sp.companyNumber || null, vat_number: sp.vatNumber || null,
-        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: sp.notes || null,
+        jurisdiction: sp.jurisdiction || "United Kingdom", status: sp.status || "Active", role: sp.role || null, notes: Array.isArray(sp.notes) ? sp.notes : [],
         street1: sp.street1 || null, street2: sp.street2 || null, city: sp.city || null, state: sp.state || null,
         country: sp.country || "United Kingdom", zip: sp.zip || null,
         primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
@@ -1510,7 +1510,7 @@ async function savePersistedData() {
         invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
         invoice_status_history: inv.invoiceStatusHistory || [],
         adjustments: inv.adjustments || [],
-        do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+        do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
         notes: inv.notes || []
       };
     });
@@ -1630,7 +1630,7 @@ async function savePersistedData() {
       var newAuditRows = AUDIT_LOG.slice(_lastSavedAuditIndex).map(function(a) {
         return {
           timestamp: a.timestamp, display_time: a.displayTime,
-          action: a.action, details: a.details, context: a.context || {}
+          event_type: a.action, details: a.details, context: a.context || {}
         };
       });
       if (newAuditRows.length > 0) {
@@ -1670,7 +1670,7 @@ function _auditLog(action, details, context, dateOverride) {
   // Save directly to Supabase
   supabase.from("audit_log").insert([{
     timestamp: entry.timestamp, display_time: entry.displayTime,
-    action: entry.action, details: entry.details, context: entry.context
+    event_type: entry.action, details: entry.details, context: entry.context
   }]).then(function(result) {
     if (result.error) console.error("[AuditSave] Error:", result.error.message, result.error.details);
   });
@@ -2268,7 +2268,7 @@ export default function FactoringDashboard() {
             return Math.abs(aMs - rowMs) < 2;
           });
           if (!exists) {
-            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.action, details: row.details, context: ctx });
+            AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.event_type, details: row.details, context: ctx });
             scheduleRender();
           }
         }
@@ -17019,7 +17019,7 @@ export default function FactoringDashboard() {
                     invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
                     invoice_status_history: inv.invoiceStatusHistory || [],
                     adjustments: inv.adjustments || [],
-                    do_not_fund: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
+                    do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
                     notes: inv.notes || []
                   };
                 });
