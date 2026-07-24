@@ -8283,9 +8283,9 @@ function generateObservations(c, ccy) {
         out.push({
             sev: (t.stalePct || 0) >= 0.05 ? 'concern' : 'watch',
             owner: 'AP', tag: 'De-risk', gbp: staleAmt,
-            headline: moneyShort(staleAmt, ccy) + ' across ' + staleCnt.toLocaleString() + ' invoices is approved but still unpaid 30+ days past due.',
-            why: 'Invoices the business has already acknowledged it owes. Holding approved payables strains suppliers and is squarely an AP execution question.',
-            q: 'We have approved ' + moneyShort(staleAmt, ccy) + ' of invoices and left them 30+ days past due \u2014 why are we sitting on approved payables?'
+            headline: moneyShort(staleAmt, ccy) + ' across ' + staleCnt.toLocaleString() + ' invoices is unpaid and 30+ days past due.',
+            why: 'Past due and unsettled, and not cancelled or rejected. Where the upload supplied an approval status these are acknowledged payables; where it did not, this is simply overdue AP. Either reading points at AP execution.',
+            q: 'Why is ' + moneyShort(staleAmt, ccy) + ' of payables sitting more than 30 days past due without settlement?'
         });
     }
 
