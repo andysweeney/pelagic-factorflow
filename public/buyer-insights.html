@@ -5740,7 +5740,7 @@ function renderGroupPanel(group) {
                     var m = /^BR-(\d+)$/.exec(b.branchId || '');
                     if (m) { var n = parseInt(m[1], 10); if (n > maxN) maxN = n; }
                 });
-                var newBranchId = 'BR-' + String(maxN + 1).padStart(3, '0');
+                var newBranchId = 'BR-' + String(maxN + 1).padStart(4, '0');
                 // Build the new branch object. Field shape matches what MP
                 // expects (see Dashboard.jsx branch creation). Minimal fields
                 // — operator can fill in address / bank details / contacts
@@ -5748,12 +5748,12 @@ function renderGroupPanel(group) {
                 var newBranch = {
                     branchId:           newBranchId,
                     branchName:         proposedName,
-                    addressLine1:       '',
-                    addressLine2:       '',
+                    street1:            '',
+                    street2:            '',
                     city:               '',
-                    county:             '',
+                    state:              '',
                     country:            'United Kingdom',
-                    postcode:           '',
+                    zip:                '',
                     primaryContact:     '',
                     primaryEmail:       '',
                     primaryPhone:       '',
@@ -5819,7 +5819,7 @@ function renderGroupPanel(group) {
                         if (sp) sp.converted_branch_id = newBranchId;
                         // MP audit log + BI prospect note in parallel.
                         var auditEntry = {
-                            action:     'Branch Created via BI',
+                            event_type: 'Branch Created via BI',
                             details:    'Branch "' + proposedName + '" (' + newBranchId + ') added to supplier ' + grp.converted_supplier_id + ' via BI conversion of prospect ' + pid + '.',
                             context: {
                                 supplierId:    grp.converted_supplier_id,
