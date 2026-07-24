@@ -2631,6 +2631,9 @@ export default function FactoringDashboard() {
   var um5 = useState(""), userSaveMsg = um5[0], setUserSaveMsg = um5[1];
   var csvImp1 = useState(null), csvImportData = csvImp1[0], setCsvImportData = csvImp1[1];
   var csvImp2 = useState({}), csvImportMapping = csvImp2[0], setCsvImportMapping = csvImp2[1];
+  // Operator-confirmed day/month order per column, for date columns the data
+  // cannot prove (no value above 12 in either position). Column -> "dmy"|"mdy".
+  var csvDO = useState({}), csvDateOrder = csvDO[0], setCsvDateOrder = csvDO[1];
   var csvImp3 = useState(null), csvImportResult = csvImp3[0], setCsvImportResult = csvImp3[1];
   var csvImp4 = useState(false), csvImportProcessing = csvImp4[0], setCsvImportProcessing = csvImp4[1];
   var csvImp6 = useState(""), csvImportProgress = csvImp6[0], setCsvImportProgress = csvImp6[1];
@@ -16577,6 +16580,91 @@ export default function FactoringDashboard() {
                 if (/^-?\d+\.0$/.test(s)) s = s.slice(0, -2);
                 return s;
               }
+              // Column-level date detection. A single value can be ambiguous
+              // (03/10/2023 = 3 Oct or 10 Mar, both parse "successfully"); a
+              // COLUMN almost never is. Scan every value and let the data prove
+              // the order: any first part > 12 means day-first, any second part
+              // > 12 means month-first. Only if neither ever occurs is it truly
+              // ambiguous — then we ask rather than guess.
+              function detectDateFormat(values) {
+                var total=0,serial=0,iso=0,delim=0,monthname=0,blank=0;
+                var dFirst=0,mFirst=0,sep=null,samples=[];
+                var MON=/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
+                for(var i=0;i<values.length;i++){
+                  var raw=values[i];
+                  if(raw===null||raw===undefined||String(raw).trim()===""){blank++;continue;}
+                  var s=String(raw).trim(); total++;
+                  if(samples.length<3) samples.push(s);
+                  if(/^\d{5}(\.\d+)?$/.test(s)&&parseFloat(s)>=20000&&parseFloat(s)<=60000){serial++;continue;}
+                  if(/^\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}([ T].*)?$/.test(s)){iso++;continue;}
+                  if(MON.test(s)||/[-\/ ](jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(s)){monthname++;continue;}
+                  var m=s.match(/^(\d{1,2})([-\/.])(\d{1,2})\2(\d{4}|\d{2})([ T].*)?$/);
+                  if(m){delim++;sep=sep||m[2];
+                    if(parseInt(m[1],10)>12) dFirst++;
+                    if(parseInt(m[3],10)>12) mFirst++;}
+                }
+                var kind="unknown",order=null,ambiguous=false,note="";
+                if(total===0) return {kind:"empty",total:0,ambiguous:false,note:"",samples:[]};
+                var maj=Math.max(serial,iso,delim,monthname);
+                if(maj===serial&&serial>0){kind="serial";note="Excel serial numbers.";}
+                else if(maj===iso&&iso>0){kind="iso";note="ISO YYYY-MM-DD (unambiguous).";}
+                else if(maj===monthname&&monthname>0){kind="monthname";note="Month names (unambiguous).";}
+                else if(maj===delim&&delim>0){kind="delimited";
+                  if(dFirst>0&&mFirst>0){ambiguous=true;note="CONFLICT: column mixes day-first and month-first values.";}
+                  else if(dFirst>0){order="dmy";note="Day-first, proven by "+dFirst+" value(s) above 12.";}
+                  else if(mFirst>0){order="mdy";note="Month-first, proven by "+mFirst+" value(s) above 12.";}
+                  else{ambiguous=true;order=(sep===".")?"dmy":null;
+                       note=(sep===".")?"Order unproven; dot separator implies day-first — confirm."
+                                       :"Day/month order cannot be determined from the data — confirm.";}
+                }
+                return {kind:kind,order:order,ambiguous:ambiguous,note:note,sep:sep,
+                        total:total,blank:blank,samples:samples};
+              }
+
+              function parseDateStrict(raw,fmt){
+                if(!fmt) return parseDateVal(raw);
+                if(raw===null||raw===undefined) return null;
+                var s=String(raw).trim(); if(!s) return null;
+                function mk(y,m,d){y=+y;m=+m;d=+d;
+                  if(m<1||m>12||d<1||d>31||y<1900||y>2100) return null;
+                  var dt=new Date(Date.UTC(y,m-1,d));
+                  if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d) return null;
+                  return y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
+                if(fmt.kind==="serial"){
+                  if(!/^\d{5}(\.\d+)?$/.test(s)) return null;
+                  var n=parseFloat(s); if(n<20000||n>60000) return null;
+                  var ed=new Date(Date.UTC(1899,11,30)+Math.round(n)*86400000);
+                  return isNaN(ed.getTime())?null:ed.toISOString().slice(0,10);}
+                if(fmt.kind==="iso"){var mi=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);return mi?mk(mi[1],mi[2],mi[3]):null;}
+                if(fmt.kind==="monthname"){var d2=new Date(s);return isNaN(d2.getTime())?null:d2.toISOString().slice(0,10);}
+                if(fmt.kind==="delimited"){
+                  var m=s.match(/^(\d{1,2})([-\/.])(\d{1,2})\2(\d{4}|\d{2})/); if(!m) return null;
+                  var y=m[4]; if(y.length===2) y=(+y<=69?"20":"19")+y;
+                  return fmt.order==="mdy"?mk(y,m[1],m[3]):mk(y,m[3],m[1]);}
+                return null;
+              }
+
+              // Detect once per mapped date column, then parse every row against it.
+              var CSV_DATE_KEYS=["invoice_date","due_date","buyer_received_date","approval_date",
+                                 "cancelled_date","declined_date","disputed_date","settled_date"];
+              function buildDateFormats(){
+                var fmts={};
+                CSV_DATE_KEYS.forEach(function(k){
+                  var col=csvImportMapping[k];
+                  if(!col||typeof col!=="string"||fmts[col]) return;
+                  var vals=[],lim=Math.min(csvImportData.length,50000);
+                  for(var i=0;i<lim;i++) vals.push(csvImportData[i][col]);
+                  var f=detectDateFormat(vals);
+                  // Operator confirmation wins over an unproven guess.
+                  if(csvDateOrder && csvDateOrder[col]){
+                    f.order=csvDateOrder[col]; f.ambiguous=false; f.userSet=true;
+                    f.note="Order confirmed by operator: "+(f.order==="dmy"?"day first.":"month first.");
+                  }
+                  fmts[col]=f;
+                });
+                return fmts;
+              }
+
               function getMapped(row, key) {
                 var col = csvImportMapping[key];
                 if (!col) return null;
@@ -16711,6 +16799,16 @@ export default function FactoringDashboard() {
                 setCsvImportProgress("Processing rows...");
                 _isSaving = true; // Suppress realtime reloads during import
                 var created = 0, updated = 0, queued = 0, skipped = 0, errors = [];
+                // Detect each date column's format ONCE, then parse strictly
+                // against it — no per-value guessing, no new Date() fallback.
+                var CSV_DATE_FORMATS = buildDateFormats();
+                function mappedDate(row, key) {
+                  var col = csvImportMapping[key];
+                  var raw = getMapped(row, key);
+                  if (raw === null) return null;
+                  var f = (typeof col === "string") ? CSV_DATE_FORMATS[col] : null;
+                  return parseDateStrict(raw, f);
+                }
                 // Scan for the highest existing INV- number ONCE. Calling nextId()
                 // per row would rescan the whole invoice array every iteration
                 // (O(rows x invoices)) and hang the browser on a large import.
@@ -16737,17 +16835,17 @@ export default function FactoringDashboard() {
                   var amountStr = getMapped(row, "invoice_amount");
                   var amount = amountStr ? parseFloat(amountStr) : null;
                   var currency = getMapped(row, "currency") || "GBP";
-                  var invoiceDate = parseDateVal(getMapped(row, "invoice_date"));
-                  var dueDate = parseDateVal(getMapped(row, "due_date"));
+                  var invoiceDate = mappedDate(row, "invoice_date");
+                  var dueDate = mappedDate(row, "due_date");
                   var approvedAmount = getMapped(row, "approved_amount") ? parseFloat(getMapped(row, "approved_amount")) : null;
                   var po = getMapped(row, "purchase_order");
                   var supplierRef = getMapped(row, "supplier_ref");
-                  var buyerReceivedDate = parseDateVal(getMapped(row, "buyer_received_date"));
-                  var approvalDate = parseDateVal(getMapped(row, "approval_date"));
-                  var cancelledDate = parseDateVal(getMapped(row, "cancelled_date"));
-                  var declinedDate = parseDateVal(getMapped(row, "declined_date"));
-                  var disputedDate = parseDateVal(getMapped(row, "disputed_date"));
-                  var settledDate = parseDateVal(getMapped(row, "settled_date"));
+                  var buyerReceivedDate = mappedDate(row, "buyer_received_date");
+                  var approvalDate = mappedDate(row, "approval_date");
+                  var cancelledDate = mappedDate(row, "cancelled_date");
+                  var declinedDate = mappedDate(row, "declined_date");
+                  var disputedDate = mappedDate(row, "disputed_date");
+                  var settledDate = mappedDate(row, "settled_date");
                   var amountPaidStr = getMapped(row, "amount_paid");
                   var amountPaid = amountPaidStr ? parseFloat(amountPaidStr) : null;
 
@@ -16951,6 +17049,16 @@ export default function FactoringDashboard() {
               var mapping = csvImportMapping;
               var cols = csvImportCols;
               var requiredOk = CSV_FIELDS.filter(function(f) { return f.required; }).every(function(f) { return mapping[f.key]; });
+              // Date-format detection for the mapping screen. A column whose
+              // day/month order the data cannot prove blocks progress until the
+              // operator confirms it — guessing is how 03/10/2023 silently
+              // becomes 10 March.
+              var csvDateFmts = (csvImportData && csvImportData.length) ? buildDateFormats() : {};
+              var csvDateCols = Object.keys(csvDateFmts).filter(function(c){
+                return csvDateFmts[c] && csvDateFmts[c].kind !== "empty";
+              });
+              var csvDatesAmbiguous = csvDateCols.filter(function(c){ return csvDateFmts[c].ambiguous; });
+              var datesOk = csvDatesAmbiguous.length === 0;
               var step = csvImportStep;
 
               return <div>
@@ -17001,6 +17109,33 @@ export default function FactoringDashboard() {
                       </div>
 
                       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 6 }}>Preview (first 3 rows)</div>
+                      {csvDateCols.length > 0 && <div style={{ border: "1px solid " + (datesOk ? "var(--border)" : "var(--danger)"), borderRadius: 8, padding: "12px 14px", marginBottom: 16, background: "var(--bg)" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>Date Formats Detected</div>
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>Order is proven from the data where possible. A column is only flagged when no value exceeds 12 in either position, so day/month order genuinely cannot be determined.</div>
+                        {csvDateCols.map(function(c) {
+                          var f = csvDateFmts[c];
+                          var bad = f.ambiguous;
+                          return <div key={c} style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 700 }}>{c}</span>
+                              <span style={{ fontSize: 10, color: "var(--muted)" }}>{(f.total || 0).toLocaleString()} values{f.blank ? " \u00b7 " + f.blank.toLocaleString() + " blank" : ""}</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: bad ? "var(--danger)" : "var(--muted)", marginTop: 3 }}>{f.note}</div>
+                            <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "var(--muted)", marginTop: 3 }}>
+                              {(f.samples || []).slice(0, 2).map(function(s) { return s + " \u2192 " + (parseDateStrict(s, f) || "unparsed"); }).join("   \u00b7   ")}
+                            </div>
+                            {bad && <select value={csvDateOrder[c] || ""} onChange={function(e) {
+                              var v = e.target.value; if (!v) return;
+                              var nx = Object.assign({}, csvDateOrder); nx[c] = v; setCsvDateOrder(nx);
+                            }} style={{ marginTop: 7, padding: "5px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--card)", color: "var(--text)", fontSize: 12 }}>
+                              <option value="">{"\u2014 Confirm day/month order \u2014"}</option>
+                              <option value="dmy">Day first (DD/MM/YYYY)</option>
+                              <option value="mdy">Month first (MM/DD/YYYY)</option>
+                            </select>}
+                          </div>;
+                        })}
+                      </div>}
+
                       <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 6, marginBottom: 16 }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead><tr>{CSV_FIELDS.filter(function(f) { return mapping[f.key]; }).map(function(f) {
@@ -17015,7 +17150,7 @@ export default function FactoringDashboard() {
                         </table>
                       </div>
 
-                      <button onClick={resolveEntities} disabled={!requiredOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: requiredOk ? "var(--accent)" : "var(--border)", color: requiredOk ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: requiredOk ? "pointer" : "default" }}>Next: Resolve Entities {"\u2192"}</button>
+                      <button onClick={resolveEntities} disabled={!requiredOk || !datesOk} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: (requiredOk && datesOk) ? "var(--accent)" : "var(--border)", color: (requiredOk && datesOk) ? "#fff" : "var(--muted)", fontSize: 13, fontWeight: 700, cursor: (requiredOk && datesOk) ? "pointer" : "default" }}>Next: Resolve Entities {"\u2192"}</button>
                       {!requiredOk && <span style={{ marginLeft: 12, fontSize: 11, color: "#EF4444" }}>Map all required fields (*) to proceed</span>}
                     </div>}
                   </div>}
