@@ -1948,6 +1948,22 @@ function canonicaliseDocType(raw, bucket, buyerId) {
     return null;
 }
 
+// Like canonicaliseDocType but WITHOUT this session's pending picks. Used only
+// to decide what still needs a decision in the reconciliation grid, so a combo
+// the operator just classified stays visible instead of vanishing on select.
+function doctypeSavedResolution(raw, bucket, buyerId) {
+    var key = doctypeKey(raw, bucket);
+    var saved = buyerId && state.doctypeAliases && state.doctypeAliases[buyerId];
+    if (saved && saved[key]) return saved[key];
+    var s = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (s === '' || s === NO_DOCTYPE_SENTINEL) return null;
+    var isInvoiceWord = ['invoice', 'inv', 'i', 'sales invoice'].indexOf(s) !== -1;
+    var isCreditWord  = ['credit_note', 'credit note', 'creditnote', 'cn', 'credit', 'c', 'crn'].indexOf(s) !== -1;
+    if (isInvoiceWord && bucket === 'positive') return { target: 'invoice', subtype: 'standard' };
+    if (isCreditWord) return { target: 'credit_note', subtype: null };
+    return null;
+}
+
 // Infer the canonical status for a single invoice row, given the raw
 // fields the operator mapped. Precedence (paid wins, then rejection,
 // then cancellation, then approved, default processing). Terminal-state
@@ -3004,10 +3020,6 @@ function refreshDoctypeAliasSection() {
     var note    = document.getElementById('doctypeAliasNote');
     if (!section || !grid) return;
 
-    var unresolved = scanUnrecognisedDoctypes();
-    if (unresolved.length === 0) { section.classList.add('hidden'); return; }
-    section.classList.remove('hidden');
-
     var buyerId = (document.getElementById('buyerSelect') || {}).value || null;
     var all = scanAllDoctypeGroups();
 
@@ -3020,12 +3032,21 @@ function refreshDoctypeAliasSection() {
         byRaw[g.raw].total += g.count;
     });
 
-    var unresolvedRaws = {};
-    unresolved.forEach(function(u) { unresolvedRaws[u.raw] = true; });
+    // A combo needs a decision only when no SAVED alias or built-in recogniser
+    // covers it. This session's pending picks are intentionally ignored here, so a
+    // row you just classified stays on screen instead of vanishing.
+    var inScopeRaws = {};
+    Object.keys(all).forEach(function(k) {
+        var g = all[k];
+        if (!doctypeSavedResolution(g.raw, g.bucket, buyerId)) inScopeRaws[g.raw] = true;
+    });
 
     var raws = Object.keys(byRaw)
-        .filter(function(r) { return unresolvedRaws[r]; })
+        .filter(function(r) { return inScopeRaws[r]; })
         .sort(function(a, b) { return byRaw[b].total - byRaw[a].total; });
+
+    if (raws.length === 0) { section.classList.add('hidden'); return; }
+    section.classList.remove('hidden');
 
     grid.innerHTML = '';
 
@@ -3113,6 +3134,10 @@ function refreshDoctypeAliasSection() {
 
             row.appendChild(tgt);
             row.appendChild(sub);
+            var statusMark = document.createElement('span');
+            statusMark.style.cssText = 'width:18px; text-align:center; font-size:14px; font-weight:700; color:' + (current ? '#10B981' : 'var(--border)') + ';';
+            statusMark.textContent = current ? '\u2713' : '\u00B7';
+            row.appendChild(statusMark);
             card.appendChild(row);
         });
 
