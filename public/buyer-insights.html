@@ -4137,7 +4137,7 @@ function renderUploadsHistory() {
 
 function deleteUpload(uploadId) {
     if (!sbClient) return;
-    // FK CASCADE on buyer_invoices / buyer_credit_notes handles row cleanup.
+    // ON DELETE CASCADE on the buyer_* base tables handles row cleanup.
     sbClient.from('buyer_uploads').delete().eq('id', uploadId).then(function(res) {
         if (res.error) { alert('Delete failed: ' + res.error.message); return; }
         loadAllData();
@@ -8864,7 +8864,6 @@ function renderDoctypeLedger() {
                 '<td style="padding:8px 10px; text-align:right; font-variant-numeric:tabular-nums;">' + it.rows.toLocaleString() + zeroNote + '</td>' +
                 '<td style="padding:8px 10px; text-align:right; font-variant-numeric:tabular-nums;">' + it.value.toLocaleString(undefined, { maximumFractionDigits: 0 }) + '</td>' +
                 '<td style="padding:8px 10px;">' + clsPill + subLabel + '</td>' +
-                '<td style="padding:8px 10px; text-align:right;"><button class="btn btn-xs dt-reclass" data-raw="' + escHTML(it.raw) + '" data-sign="' + it.sign + '" data-cls="' + it.cls + '" data-subtype="' + escHTML(it.subtype || '') + '" style="padding:3px 10px;">Reclassify</button></td>' +
                 '</tr>';
         }).join('');
 
@@ -8874,69 +8873,12 @@ function renderDoctypeLedger() {
             '<thead><tr style="background:var(--bg); text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-secondary);">' +
             '<th style="padding:8px 10px;">Raw code</th><th style="padding:8px 10px;">Sign</th>' +
             '<th style="padding:8px 10px; text-align:right;">Rows</th><th style="padding:8px 10px; text-align:right;">Value</th>' +
-            '<th style="padding:8px 10px;">Classified as</th><th style="padding:8px 10px;"></th></tr></thead>' +
+            '<th style="padding:8px 10px;">Classified as</th></tr></thead>' +
             '<tbody>' + rowsHtml + '</tbody></table></div>' +
             (scope === 'buyer'
-                ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">Reclassifying here updates this code across every upload for the buyer and re-runs their analytics.</div>'
-                : '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">Reclassify applies buyer-wide (the classification rule is per buyer) and re-runs affected analytics.</div>');
+                ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">This is how each code is classified for this buyer across all uploads. Classification is set when a file is imported. To correct it, delete the upload, fix the source file, and re-import — saved definitions are applied automatically.</div>'
+                : '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">This shows how each code in this upload was classified at import. To change a classification, delete this upload, correct the source file, and re-import — saved definitions are applied automatically.</div>');
 
-        body.querySelectorAll('.dt-reclass').forEach(function(btn) {
-            btn.addEventListener('click', function() { openReclassifyDialog(buyerId, btn); });
-        });
-    });
-}
-
-function openReclassifyDialog(buyerId, btn) {
-    var raw     = btn.getAttribute('data-raw');
-    var sign    = btn.getAttribute('data-sign');
-    var curCls  = btn.getAttribute('data-cls');
-    var label   = raw === '' ? '(blank / no code)' : raw;
-
-    var newCls = window.prompt(
-        'Reclassify "' + label + '" (' + sign + ') for this buyer.\n\n' +
-        'Currently: ' + (DOCTYPE_CLASS_LABEL[curCls] || curCls) + '\n\n' +
-        'Type one of:  invoice  |  credit_note  |  disregard', curCls);
-    if (newCls === null) return;
-    newCls = newCls.trim().toLowerCase();
-    if (['invoice', 'credit_note', 'disregard'].indexOf(newCls) === -1) {
-        alert('Not a valid class. Use invoice, credit_note, or disregard.');
-        return;
-    }
-
-    var subtype = null;
-    var subs = DOC_SUBTYPES[newCls] || [];
-    if (subs.length > 0) {
-        var subInput = window.prompt(
-            'Optional reason label for ' + (DOCTYPE_CLASS_LABEL[newCls] || newCls) + '.\n\n' +
-            'Type one of:\n' + subs.map(function(p) { return '  ' + p[0]; }).join('\n') +
-            '\n\nor leave blank for none.', '');
-        if (subInput === null) return;
-        subtype = subInput.trim() || null;
-    }
-
-    if (!confirm('Reclassify "' + label + '" (' + sign + ') to ' + (DOCTYPE_CLASS_LABEL[newCls] || newCls) +
-                 (subtype ? ' / ' + subtype : '') + ' for this buyer?\n\n' +
-                 'This updates every matching row and re-runs the affected analytics.')) return;
-
-    var body = document.getElementById('doctypesLedgerBody');
-    if (body) body.innerHTML = '<div style="color:var(--text-secondary); font-size:13px;">Reclassifying and re-queuing analytics…</div>';
-
-    sbClient.rpc('reclassify_buyer_doctype', {
-        p_buyer_id: buyerId,
-        p_raw_document_type: raw,
-        p_sign_bucket: sign,
-        p_new_class: newCls,
-        p_new_subtype: subtype,
-        p_scope_upload_id: null
-    }).then(function(res) {
-        if (res.error) {
-            alert('Reclassify failed: ' + res.error.message);
-            renderDoctypeLedger();
-            return;
-        }
-        alert('Reclassified ' + (res.data != null ? res.data.toLocaleString() : '') +
-              ' row(s). Analytics for affected uploads are recomputing in the background — refresh the report in a minute to see updated numbers.');
-        renderDoctypeLedger();
     });
 }
 
