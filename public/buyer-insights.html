@@ -2038,6 +2038,7 @@ var state = {
     // by canonicaliseInvoiceStatus before the hardcoded rules.
     statusAliases: {},  // { buyer_id: { 'AWAITING_APPROVAL': 'approved', ... } }
     // Document-type aliases — same shape, for mixed-file routing.
+    doctypeLatestChange: {},
     doctypeAliases: {},        // { buyer_id: { 'INV': 'invoice', 'CRN': 'credit_note', ... } }
     pendingDoctypeAliases: {}, // { 'INV': 'invoice', ... } — current upload UI
     // Pending resolutions in the current upload UI. Keyed by raw value;
@@ -2424,7 +2425,7 @@ function setupTabs() {
             btn.classList.add('active');
             document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.add('hidden'); });
             document.getElementById('tab-' + tab).classList.remove('hidden');
-            if (tab === 'uploads-history') renderUploadsHistory();
+            if (tab === 'uploads-history') { renderUploadsHistory(); loadDoctypeLatestChanges(renderUploadsHistory); }
             if (tab === 'prospects') {
                 // Always return to list view when switching back to the tab
                 var dv = document.getElementById('prospectsDetailView');
@@ -3148,6 +3149,25 @@ function loadBuyerDoctypeAliases(buyerId, done) {
         });
 }
 
+// Most recent doc-type definition change per buyer, used to flag uploads that
+// were imported before their buyer's definitions were last edited.
+function loadDoctypeLatestChanges(done) {
+    if (!sbClient) { if (done) done(); return; }
+    sbClient.from('buyer_doctype_aliases')
+        .select('buyer_id, updated_at, created_at')
+        .then(function(res) {
+            if (res.error) { if (done) done(); return; }
+            var m = {};
+            (res.data || []).forEach(function(r) {
+                var t = r.updated_at;  // an actual post-import edit, not the import itself
+                if (!t) return;
+                if (!m[r.buyer_id] || String(t) > String(m[r.buyer_id])) m[r.buyer_id] = t;
+            });
+            state.doctypeLatestChange = m;
+            if (done) done();
+        });
+}
+
 function persistPendingDoctypeAliases(buyerId, done) {
     if (!sbClient || !buyerId || !state.pendingDoctypeAliases) { done(); return; }
     var keys = Object.keys(state.pendingDoctypeAliases);
@@ -3199,11 +3219,15 @@ function refreshSavedAliasesSection() {
     function pill(text, color, bg, border) {
         return '<span style="display:inline-block; padding:2px 8px; border-radius:4px; background:' + bg + '; color:' + color + '; border:1px solid ' + border + '; font-size:11px; font-weight:600;">' + escHTML(text) + '</span>';
     }
-    function aliasRow(rawLabel, canonLabel, kind, rawVal, bucket) {
+    function aliasRow(rawLabel, canonLabel, kind, rawVal, bucket, curTarget, curSubtype) {
+        var editBtn = (kind === 'doctype')
+            ? '<button class="btn btn-xs" data-edit-doctype="1" data-edit-raw="' + escHTML(rawVal) + '" data-edit-bucket="' + escHTML(bucket || '') + '" data-edit-cur="' + escHTML(curTarget || '') + '" data-edit-subtype="' + escHTML(curSubtype || '') + '" style="background:transparent; color:var(--text); border:1px solid var(--border); padding:2px 8px; margin-right:4px;">Edit</button>'
+            : '';
         return '<div style="display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid var(--border);">' +
             '<span style="font-family:var(--mono); font-size:12px; flex:1; min-width:0;">' + escHTML(rawLabel) + '</span>' +
             '<span style="color:var(--muted); font-size:12px;">\u2192</span>' +
             '<span style="min-width:120px;">' + canonLabel + '</span>' +
+            editBtn +
             '<button class="btn btn-xs" data-alias-kind="' + kind + '" data-alias-raw="' + escHTML(rawVal) +
               '" data-alias-bucket="' + escHTML(bucket || '') + '" style="background:transparent; color:var(--danger); border:1px solid var(--border); padding:2px 8px;">Delete</button>' +
             '</div>';
@@ -3222,7 +3246,7 @@ function refreshSavedAliasesSection() {
             var rawLabel = doctypeDisplayLabel(parts.raw) + ' \u00B7 ' + signLabel;
             var canon = pill(DOCTYPE_LABEL[cv] || cv, col, 'transparent', 'var(--border)') +
                         (subtype ? ' <span style="font-size:10px; color:var(--text-secondary);">' + escHTML(subtype) + '</span>' : '');
-            html += aliasRow(rawLabel, canon, 'doctype', parts.raw, parts.bucket);
+            html += aliasRow(rawLabel, canon, 'doctype', parts.raw, parts.bucket, cv, subtype);
         });
     }
     if (statusKeys.length > 0) {
@@ -3239,6 +3263,12 @@ function refreshSavedAliasesSection() {
             var rawVal = btn.getAttribute('data-alias-raw');
             var bucket = btn.getAttribute('data-alias-bucket') || null;
             deleteAlias(bid, kind, rawVal, bucket);
+        });
+    });
+
+    body.querySelectorAll('[data-edit-doctype]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            openDoctypeDefinitionEditor(bid, btn.getAttribute('data-edit-raw'), btn.getAttribute('data-edit-bucket') || 'positive', btn.getAttribute('data-edit-cur'), btn.getAttribute('data-edit-subtype') || null);
         });
     });
 }
@@ -3262,6 +3292,85 @@ function deleteAlias(buyerId, kind, rawValue, bucket) {
             // Re-scan in case the deleted alias means a value now needs
             // reconciliation again (if that value is present in the staged file).
             refreshSaveSection();
+        });
+}
+
+// Inline editor for a saved document-type definition. Changes the rule in
+// buyer_doctype_aliases; the corrected routing applies on the next import.
+function openDoctypeDefinitionEditor(buyerId, raw, bucket, curTarget, curSubtype) {
+    var body = document.getElementById('savedAliasesBody');
+    if (!body) return;
+    var existing = document.getElementById('defEditor');
+    if (existing) existing.remove();
+    var label = doctypeDisplayLabel(raw) + ' - ' + (bucket === 'negative' ? 'Negative' : 'Positive');
+    var affected = (state.uploads || []).filter(function(u) { return u.buyer_id === buyerId; }).length;
+    var OPTS = [['invoice', 'Invoice'], ['credit_note', 'Credit note'], ['disregard', 'Disregard']];
+    var optHtml = OPTS.map(function(o) {
+        return '<option value="' + o[0] + '"' + (o[0] === curTarget ? ' selected' : '') + '>' + o[1] + '</option>';
+    }).join('');
+    var wrap = document.createElement('div');
+    wrap.id = 'defEditor';
+    wrap.style.cssText = 'border:1px solid var(--accent, #4C82E4); border-radius:8px; padding:12px; margin:0 0 10px; background:var(--bg);';
+    wrap.innerHTML =
+        '<div style="font-size:12px; font-weight:700; margin-bottom:8px;">Edit definition: <span style="font-family:var(--mono);">' + escHTML(label) + '</span></div>' +
+        '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+            '<span style="font-size:12px; color:var(--text-secondary);">Route to</span>' +
+            '<select id="defEditClass" style="padding:5px 8px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:13px;">' + optHtml + '</select>' +
+            '<button id="defEditSave" class="btn btn-xs" style="padding:5px 12px;">Save</button>' +
+            '<button id="defEditCancel" class="btn btn-xs" style="padding:5px 12px; background:transparent; border:1px solid var(--border); color:var(--text-secondary);">Cancel</button>' +
+        '</div>' +
+        '<div id="defEditReasonRow" style="margin-top:8px; display:none;">' +
+            '<input id="defEditReason" placeholder="Why does this route against the sign?" style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">' +
+        '</div>' +
+        '<div style="font-size:11px; color:var(--text-secondary); margin-top:8px;">Saving changes the rule for this buyer. Existing uploads keep their current routing and are flagged &quot;definitions changed since import&quot; until re-imported' + (affected ? ' (' + affected + ' upload' + (affected === 1 ? '' : 's') + ' affected)' : '') + '.</div>';
+    body.insertBefore(wrap, body.firstChild);
+    function contradicts() {
+        var v = document.getElementById('defEditClass').value;
+        return (bucket === 'negative' && v === 'credit_note') || (bucket === 'positive' && v === 'invoice');
+    }
+    function syncReason() {
+        document.getElementById('defEditReasonRow').style.display = contradicts() ? 'block' : 'none';
+    }
+    document.getElementById('defEditClass').addEventListener('change', syncReason);
+    syncReason();
+    document.getElementById('defEditCancel').addEventListener('click', function() { refreshSavedAliasesSection(); });
+    document.getElementById('defEditSave').addEventListener('click', function() {
+        var newClass = document.getElementById('defEditClass').value;
+        var reasonEl = document.getElementById('defEditReason');
+        var reason = reasonEl ? reasonEl.value.trim() : '';
+        saveDoctypeDefinitionEdit(buyerId, raw, bucket, newClass, curTarget, curSubtype, reason);
+    });
+}
+
+function saveDoctypeDefinitionEdit(buyerId, raw, bucket, newClass, curTarget, curSubtype, reason) {
+    var against = (bucket === 'negative' && newClass === 'credit_note') || (bucket === 'positive' && newClass === 'invoice');
+    if (against && !reason) { alert('This routing runs against the sign. Please add a short reason before saving.'); return; }
+    if (!sbClient || !buyerId) { alert('Not connected. Cannot save.'); return; }
+    var actorId = (window.__currentUser && window.__currentUser.id) || null;
+    var row = {
+        buyer_id: buyerId, raw_value: raw, sign_bucket: bucket,
+        canonical_value: newClass,
+        doc_subtype: (newClass === curTarget ? (curSubtype || null) : null),
+        updated_by: actorId,
+        updated_at: new Date().toISOString()
+    };
+    if (against) row.classification_note = reason;
+    var saveBtn = document.getElementById('defEditSave');
+    if (saveBtn) { saveBtn.textContent = 'Saving...'; saveBtn.disabled = true; }
+    sbClient.from('buyer_doctype_aliases')
+        .upsert([row], { onConflict: 'buyer_id,raw_value,sign_bucket' })
+        .then(function(res) {
+            if (res.error) {
+                alert('Could not update the definition: ' + res.error.message);
+                if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+                return;
+            }
+            if (!state.doctypeAliases[buyerId]) state.doctypeAliases[buyerId] = {};
+            state.doctypeAliases[buyerId][doctypeKey(raw, bucket)] = { target: newClass, subtype: row.doc_subtype };
+            state.doctypeLatestChange[buyerId] = new Date().toISOString();
+            refreshSavedAliasesSection();
+            if (typeof renderUploadsHistory === 'function') renderUploadsHistory();
+            alert('Definition updated. New imports use it automatically. Existing uploads for this buyer are now flagged as needing re-import to apply the change.');
         });
 }
 // ─────────────────────────────────────────────────────────────────────────
@@ -4087,6 +4196,8 @@ function renderUploadsHistory() {
         var dateRange = (u.date_range_min && u.date_range_max) ? (u.date_range_min + ' → ' + u.date_range_max) : '—';
         var ccyList = (u.currencies_seen && u.currencies_seen.length) ? u.currencies_seen.join(', ') : '—';
         var isVisible = isUploadVisible(u.id);
+        var defLatest = state.doctypeLatestChange && state.doctypeLatestChange[u.buyer_id];
+        var isStale = !!(defLatest && u.created_at && (new Date(defLatest).getTime() - new Date(u.created_at).getTime()) > 5000);
 
         tr.innerHTML =
             '<td class="text-center" style="white-space:nowrap;">' +
@@ -4095,6 +4206,7 @@ function renderUploadsHistory() {
             '<td><strong>' + escHTML(buyerName(u) || '(no buyer)') + '</strong>' +
                 (u.buyer_label ? '<div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">' + escHTML(u.buyer_label) + '</div>' : '') +
                 (u.notes ? '<div style="font-size:10px; color:var(--muted); margin-top:2px;">' + escHTML(u.notes) + '</div>' : '') +
+                (isStale ? '<div style="margin-top:4px;"><span style="display:inline-block; font-size:10px; font-weight:700; color:#F5A524; background:rgba(245,165,36,0.12); border:1px solid rgba(245,165,36,0.4); border-radius:5px; padding:2px 7px;">Definitions changed since import - re-import to apply</span></div>' : '') +
             '</td>' +
             '<td class="text-right mono">' + (u.invoice_count || 0).toLocaleString() + '</td>' +
             '<td class="text-right mono">' + (u.cn_count || 0).toLocaleString() + '</td>' +
