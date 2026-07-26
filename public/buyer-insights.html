@@ -1333,6 +1333,13 @@
             <div class="card-title">Step 1 — Upload Buyer's AP Data</div>
             <div class="card-subtitle">Drop the buyer's invoice and (optional) credit note CSV exports. We support most ERP formats (Coupa, SAP, Oracle, NetSuite, Xero, Sage). Column mapping is auto-detected; review and adjust in Step 2.</div>
 
+            <div style="max-width:440px; margin-bottom:18px;">
+                <label class="form-label">Buyer <span style="color:var(--danger);">*</span></label>
+                <select id="buyerSelect" class="form-input">
+                    <option value="">Loading...</option>
+                </select>
+                <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">Select the buyer first. Their saved document-type definitions are then applied automatically, so you only classify codes that are genuinely new.</div>
+            </div>
             <div class="drop-zones">
                 <div id="invoiceZone" class="drop-zone">
                     <div class="drop-zone-title">Invoices CSV</div>
@@ -1412,13 +1419,7 @@
         <!-- Buyer label + save -->
         <div id="saveSection" class="card hidden">
             <div class="card-title">Step 4 — Label and Save</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
-                <div>
-                    <label class="form-label">Buyer <span style="color:var(--danger);">*</span></label>
-                    <select id="buyerSelect" class="form-input">
-                        <option value="">Loading…</option>
-                    </select>
-                </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
                 <div>
                     <label class="form-label">Upload label <span style="color:var(--danger);">*</span></label>
                     <input id="buyerLabel" type="text" class="form-input" placeholder="e.g. 2024 AP book" />
@@ -7322,6 +7323,142 @@ function getCurrentStats() {
     };
 }
 
+// ================================================================
+// DILUTION COMPONENTS — four lines, one headline
+// ================================================================
+// Four distinct ways realised supplier value leaks away. Each stays a
+// visible line of its own; all of them sum into one combined headline.
+//   1. creditNotes — explicit, usually agreed          (t.totalCNs)
+//   2. shortPay    — implicit deduction at payment      (t.shortPayAmount)
+//   3. rejected    — buyer refused to accept            (t.rejectedAmount)
+//   4. cancelled   — supplier withdrew the invoice      (t.cancelledAmount)
+//
+// Attribution matters as much as the total. Rejection is an adverse BUYER
+// signal (disputes, squeezing, process breakdown). Cancellation is normally
+// supplier-side housekeeping — duplicates, keying errors — and is nobody's
+// red flag. Both reduce what the supplier actually realises, so both belong
+// in the total; only the buyer-driven ones feed `adverseDilutionRate`, which
+// is what severities, flags and league sorts key on. Merging the two would
+// manufacture a false buyer red flag out of supplier admin noise.
+//
+// A component whose source field is absent from the snapshot is emitted with
+// present:false and contributes 0, so the UI can say "not captured in this
+// upload" instead of showing a confident zero. NOTE: rejected/cancelled
+// amounts must sit inside totalSpend for these rates to be comparable — the
+// snapshot builder keeps them there and dates them to the terminal date.
+function buildDilutionComponents(t) {
+    var spend = t.totalSpend || 0;
+    function comp(key, label, shortLabel, amount, count, blame, note) {
+        var present = (amount !== null && amount !== undefined);
+        var amt = present ? amount : 0;
+        return {
+            key: key, label: label, shortLabel: shortLabel,
+            present: present, amount: amt,
+            count: (count === null || count === undefined) ? null : count,
+            rate: spend > 0 ? amt / spend : 0,
+            blame: blame,   // 'agreed' | 'buyer' | 'supplier'
+            note: note
+        };
+    }
+    var comps = [
+        comp('creditNotes', 'Credit notes', 'CN', t.totalCNs, t.cnCount, 'agreed',
+            'Explicit and usually agreed. This is the only line a credit-note-only view shows.'),
+        comp('shortPay', 'Short payments', 'short-pay', t.shortPayAmount, t.shortPayCount, 'buyer',
+            'Paid short of the invoiced amount — the same economic leakage as a credit note, without the paperwork.'),
+        comp('rejected', 'Rejected / disputed', 'rejected', t.rejectedAmount, t.rejectedCount, 'buyer',
+            'Refused by the buyer. Adverse buyer signal: disputes, squeezing, or a broken approval process.'),
+        comp('cancelled', 'Cancelled by supplier', 'cancelled', t.cancelledAmount, t.cancelledCount, 'supplier',
+            'Treated as supplier-side by rule \u2014 typically duplicates or keying errors. Counted in the total, never in the buyer\'s grade.')
+    ];
+    var totalAmount = 0, adverseAmount = 0, anyPresent = false;
+    comps.forEach(function(k) {
+        totalAmount += k.amount;
+        if (k.blame !== 'supplier') adverseAmount += k.amount;
+        if (k.present) anyPresent = true;
+    });
+    return {
+        components:    comps,
+        totalAmount:   totalAmount,
+        combinedRate:  spend > 0 ? totalAmount / spend : 0,
+        adverseAmount: adverseAmount,
+        adverseRate:   spend > 0 ? adverseAmount / spend : 0,
+        anyPresent:    anyPresent
+    };
+}
+
+// ================================================================
+// AP FLOAT — known outcomes only, with a coverage gate
+// ================================================================
+// The float is only as honest as the dates behind it, and the honest answer to
+// a missing date is to count nothing. Both available assumptions are worse:
+// treating an undated invoice as still open runs it to the end of the file and
+// over-counts wildly (this is what produced ~495 implied days on the test
+// buyer), while assuming it was paid on its due date bakes in "punctual" and
+// flatters the buyer.
+//
+// So the snapshot builds the float from real outcomes alone — a payment date,
+// or a rejection / cancellation date. An invoice with neither contributes
+// nothing. That makes the number a FLOOR: every pound-day in it is evidenced,
+// and the true float is this or higher, never lower. The floor is only useful
+// while the unknown share is modest, which is what the gate below decides.
+//
+// Mature = due date more than 60 days before the file horizon — invoices that
+// should be settled by now. Young invoices legitimately have no outcome yet,
+// so scoring coverage over all invoices punishes recent data. That is exactly
+// why the naive paymentCoveragePct is not the gate.
+//
+// Resolved = a paid date OR a terminal outcome (rejected / cancelled). Those
+// are known, not gaps. Only mature-yet-still-open invoices are unknown — and
+// an unknown may be a genuinely late real balance or a missing paid date. The
+// gate does not need to tell those apart: when the unknown share is small the
+// floor sits close to the truth, and when it is large the floor understates by
+// so much that no label can rescue it.
+//
+//   >= 70%   firm      — show it plainly, footnoted as a floor
+//   30–70%   floor     — show it as "at least", labelled with the coverage
+//   <  30%   suppress  — withhold the headline and say why
+//
+// matureCoveragePct comes from the snapshot builder. Until that ships we fall
+// back to the naive all-invoice coverage, which understates on recent-heavy
+// files — conservative in the right direction: it can pull a firm number down
+// to "at least", never push a bad one up.
+var AP_FLOAT_FIRM_MIN     = 0.70;
+var AP_FLOAT_SUPPRESS_MAX = 0.30;
+
+function computeApFloatGate(t, naiveCoveragePct) {
+    var hasMature = (t.matureCoveragePct !== null && t.matureCoveragePct !== undefined);
+    var cov = hasMature ? t.matureCoveragePct : (naiveCoveragePct || 0);
+    return {
+        mode:          cov >= AP_FLOAT_FIRM_MIN ? 'firm' : (cov >= AP_FLOAT_SUPPRESS_MAX ? 'floor' : 'suppress'),
+        coveragePct:   cov,
+        basis:         hasMature ? 'mature' : 'naive',
+        population:    hasMature ? (t.matureInvoiceCount || null) : (t.invoiceCount || null),
+        resolvedCount: hasMature ? (t.matureResolvedCount || null) : null
+    };
+}
+
+// One sentence describing the coverage behind the gate, for panel copy.
+function apFloatCoverageSentence(g) {
+    var noun = g.basis === 'mature' ? 'invoices old enough to be settled' : 'invoices';
+    var tail = g.population ? (' of the ' + g.population.toLocaleString() + ' ' + noun) : (' of ' + noun);
+    return pct(g.coveragePct) + tail + ' have a recorded outcome';
+}
+
+// The qualifier that turns the number into a claim we can defend line by line.
+// Every renderer pulls from these two so the report, the print pack and the
+// deck never describe the same figure three different ways.
+function apFloatPrefix(g) {
+    return (g && g.mode === 'floor') ? 'at least ' : '';
+}
+function apFloatFootnote(g) {
+    var s = 'Built only from invoices whose outcome is known: a payment date, or a rejection or cancellation. ' +
+            'Where the source flagged a rejection or cancellation without giving a date, it is dated seven days after the invoice. ' +
+            'Invoices with no recorded outcome at all contribute nothing rather than being assumed still open, ' +
+            'so this is a floor \u2014 the true float is this figure or higher.';
+    if (g && g.coveragePct != null) s += ' Here, ' + apFloatCoverageSentence(g) + '.';
+    return s;
+}
+
 // Enrich one currency block from the snapshot with the derived fields the
 // legacy computeBuyerStats() produced. Pure function; no DOM, no side effects.
 function enrichSnapshotCcy(c) {
@@ -7410,11 +7547,34 @@ function enrichSnapshotCcy(c) {
         consistentlyLate:  consistentlyLate
     };
 
+    // ── Dilution components + AP-float gate ─────────────────────────
+    // Derived once, here, so every renderer (report, print, deck, tiles)
+    // sees the same numbers. Suppressing the float by nulling
+    // apOutstandingAvg is deliberate: every downstream site already handles
+    // null gracefully, so the gate propagates without touching them.
+    var _naiveCov = (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0;
+    var _dil      = buildDilutionComponents(t);
+    var _gate     = computeApFloatGate(t, _naiveCov);
+    var _apRaw    = (t.apOutstandingAvg !== null && t.apOutstandingAvg !== undefined) ? t.apOutstandingAvg : null;
+
     // Enriched totals
     var enrichedTotals = Object.assign({}, t, {
         netSpend:           Math.round(((t.totalSpend || 0) - (t.totalCNs || 0)) * 100) / 100,
         avgInvoiceAmount:   (t.invoiceCount || 0) > 0 ? Math.round((t.totalSpend / t.invoiceCount) * 100) / 100 : 0,
-        paymentCoveragePct: (t.invoiceCount || 0) > 0 ? totalPaid / t.invoiceCount : 0
+        paymentCoveragePct: _naiveCov,
+        // Four components, one headline. combinedDilutionRate is the total of
+        // all four; adverseDilutionRate excludes supplier-side cancellation
+        // and is what any buyer-facing severity should key on.
+        dilutionComponents:    _dil.components,
+        dilutionTotalAmount:   _dil.totalAmount,
+        combinedDilutionRate:  _dil.anyPresent ? _dil.combinedRate : (t.combinedDilutionRate || 0),
+        adverseDilutionAmount: _dil.adverseAmount,
+        adverseDilutionRate:   _dil.anyPresent ? _dil.adverseRate : (t.combinedDilutionRate || 0),
+        netOfDilution:         Math.round(((t.totalSpend || 0) - _dil.totalAmount) * 100) / 100,
+        // AP float, gated on outcome coverage.
+        apFloatGate:          _gate,
+        apOutstandingAvgRaw:  _apRaw,
+        apOutstandingAvg:     (_gate.mode === 'suppress') ? null : _apRaw
         // Tier-B working-capital fields (avgDaysToPaid, avgStatedTermDays,
         // apOutstandingAvg, dpdBuckets, earlyPaidSpend/Count, latePaidSpend,
         // veryLatePaidSpend) pass through from the snapshot via the spread of
@@ -7814,8 +7974,18 @@ function renderSectionAtAGlance(c, ccy) {
         wcTiles += wcTile('Stated terms', _stVal, _stSub, '');
         wcTiles += wcTile('Actual time to pay', t.avgDaysToPaid + 'd', 'invoice to payment', '');
         wcTiles += wcTile('Terms gap', (gap >= 0 ? '+' : '') + gap + 'd', gap > 0 ? 'paid past your own terms' : 'inside terms', gapRead);
+        var _apg = t.apFloatGate || null;
         if (t.apOutstandingAvg != null) {
-            wcTiles += wcTile('Supplier credit financing you', moneyShort(t.apOutstandingAvg, ccy), 'avg ' + ccy + ' balance outstanding', '');
+            var _isFloor = (_apg && _apg.mode === 'floor');
+            wcTiles += wcTile('Supplier credit financing you',
+                (_isFloor ? '\u2265 ' : '') + moneyShort(t.apOutstandingAvg, ccy),
+                _isFloor ? 'minimum \u2014 ' + pct(_apg.coveragePct) + ' of invoices have an outcome'
+                         : 'avg ' + ccy + ' balance outstanding, resolved invoices only',
+                _isFloor ? 'watch' : '');
+        } else if (_apg && _apg.mode === 'suppress' && t.apOutstandingAvgRaw != null) {
+            // Withheld, not missing — say which, or the tile reads as "no data".
+            wcTiles += wcTile('Supplier credit financing you', 'Not shown',
+                'only ' + pct(_apg.coveragePct) + ' of mature invoices have an outcome', 'watch');
         }
     } else if (t.avgDaysPastDue != null) {
         var dpd = t.avgDaysPastDue;
@@ -7841,10 +8011,17 @@ function renderSectionAtAGlance(c, ccy) {
 
     // ── Invoice quality cluster ───────────────────────────────────
     var combined = t.combinedDilutionRate || 0, cnRate = t.dilutionRate || 0, spRate = t.implicitDilutionRate || 0;
-    var dilRead = combined >= 0.08 ? 'concern' : combined >= 0.05 ? 'watch' : 'good';
+    // Severity reads the adverse rate (all components except supplier-side
+    // cancellation) so supplier admin noise can never darken a buyer's tile.
+    var adverse = (t.adverseDilutionRate != null) ? t.adverseDilutionRate : combined;
+    var dilRead = adverse >= 0.08 ? 'concern' : adverse >= 0.05 ? 'watch' : 'good';
+    var _dcomps = t.dilutionComponents || [];
+    var _dsub = _dcomps.filter(function(k) { return k.present; })
+        .map(function(k) { return k.shortLabel + ' ' + pct(k.rate); }).join(' &middot; ');
+    if (!_dsub) _dsub = 'CN ' + pct(cnRate) + ' &middot; short-pay ' + pct(spRate);
     var spAmt = t.shortPayAmount || 0, spCnt = t.shortPayCount || 0;
     var qualTiles =
-        wcTile('Combined dilution', pct(combined), 'CN ' + pct(cnRate) + ' &middot; short-pay ' + pct(spRate), dilRead) +
+        wcTile('Combined dilution', pct(combined), _dsub, dilRead) +
         wcTile('Short-paid value', moneyShort(spAmt, ccy), spCnt.toLocaleString() + ' invoices paid short', spAmt > 0 ? (spRate >= 0.05 ? 'concern' : 'watch') : 'good');
     if (t.rejectionRate != null) {
         var rejRate = t.rejectionRate, rejCnt = t.rejectedCount || 0, rejAmt = t.rejectedAmount || 0, rejCntRate = t.rejectionCountRate || 0;
@@ -7853,6 +8030,16 @@ function renderSectionAtAGlance(c, ccy) {
             rejCnt === 0 ? 'None' : pct(rejRate),
             rejCnt === 0 ? 'no invoices rejected' : rejCnt.toLocaleString() + ' invoices, ' + moneyShort(rejAmt, ccy) + ' (' + pct(rejCntRate) + ' by count)',
             rejRead);
+    }
+    // Cancellations sit next to rejections but never carry a severity read:
+    // withdrawing your own duplicate invoice is not a buyer failing.
+    if (t.cancelledAmount != null) {
+        var cancCnt = t.cancelledCount || 0, cancAmt = t.cancelledAmount || 0;
+        var cancRate = (t.totalSpend || 0) > 0 ? cancAmt / t.totalSpend : 0;
+        qualTiles += wcTile('Cancelled by supplier',
+            cancCnt === 0 ? 'None' : pct(cancRate),
+            cancCnt === 0 ? 'no invoices withdrawn' : cancCnt.toLocaleString() + ' invoices, ' + moneyShort(cancAmt, ccy) + ' \u2014 supplier-side, not a buyer signal',
+            '');
     }
 
     var _periodKey = (window.__upload && window.__upload.currentPeriodKey) || 'all';
@@ -8050,11 +8237,74 @@ function drawConcentrationChart(ccy, c) {
 // Section 3 — Dilution (quality signals)
 // ────────────────────────────────────────────────────────────────
 
+// The four-component breakdown. Every component gets a line whether or not
+// it fired, so a zero is legible as "measured, none found" and a missing
+// source field is legible as "not captured" — neither reads as the other.
+function renderDilutionComponents(t, ccy, forPrint) {
+    var comps = t.dilutionComponents || [];
+    if (!comps.length) return '';
+    var boxCls   = forPrint ? 'print-chart-box' : 'chart-box';
+    var titleCls = forPrint ? 'print-chart-box-title' : 'chart-box-title';
+    var tableCls = forPrint ? 'print-table' : 'report-table';
+    var footHtml = forPrint
+        ? function(x) { return '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">' + x + '</div>'; }
+        : function(x) { return '<div class="terms-foot">' + x + '</div>'; };
+    var spend = t.totalSpend || 0;
+    var blameLabel = { agreed: 'Agreed', buyer: 'Buyer-driven', supplier: 'Supplier-side' };
+    var blameColour = { agreed: 'var(--text-secondary)', buyer: 'var(--amber-d)', supplier: 'var(--text-secondary)' };
+    var rows = comps.map(function(k) {
+        var amtCell, rateCell, cntCell;
+        if (!k.present) {
+            amtCell = '<span style="color:var(--text-secondary);">not captured</span>';
+            rateCell = '&mdash;'; cntCell = '&mdash;';
+        } else {
+            amtCell = k.amount > 0 ? moneyShort(k.amount, ccy) : '&mdash;';
+            rateCell = pct(k.rate);
+            cntCell = (k.count != null) ? k.count.toLocaleString() : '&mdash;';
+        }
+        return '<tr>' +
+            '<td><strong>' + escHTML(k.label) + '</strong><div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + k.note + '</div></td>' +
+            '<td class="text-right mono">' + cntCell + '</td>' +
+            '<td class="text-right mono">' + amtCell + '</td>' +
+            '<td class="text-right mono">' + rateCell + '</td>' +
+            '<td class="text-right" style="color:' + (blameColour[k.blame] || 'var(--text-secondary)') + ';font-weight:600;">' + (blameLabel[k.blame] || '') + '</td>' +
+        '</tr>';
+    }).join('');
+    var total = t.dilutionTotalAmount || 0;
+    var adverse = t.adverseDilutionAmount || 0;
+    var totalRow = '<tr style="border-top:2px solid var(--border);">' +
+        '<td><strong>Combined dilution</strong></td>' +
+        '<td class="text-right mono">&mdash;</td>' +
+        '<td class="text-right mono"><strong>' + moneyShort(total, ccy) + '</strong></td>' +
+        '<td class="text-right mono"><strong>' + pct(spend > 0 ? total / spend : 0) + '</strong></td>' +
+        '<td class="text-right" style="color:var(--text-secondary);">of ' + escHTML(ccy) + ' spend</td>' +
+    '</tr>';
+    var foot = 'All four reduce what your suppliers actually realise, so all four are in the combined figure. Only the buyer-driven lines \u2014 ' +
+        moneyShort(adverse, ccy) + ' (' + pct(spend > 0 ? adverse / spend : 0) + ') \u2014 count against the buyer; supplier cancellations are counted but never graded. ' +
+        'Rejected and cancelled invoices leave the payables float at their terminal date, so nothing is both outstanding and diluted.';
+    return '' +
+        '<div class="' + boxCls + '">' +
+            '<div class="' + titleCls + '">Dilution components &mdash; ' + escHTML(ccy) + '</div>' +
+            '<table class="' + tableCls + '">' +
+                '<thead><tr>' +
+                    '<th>Component</th>' +
+                    '<th class="text-right">Invoices</th>' +
+                    '<th class="text-right">Value</th>' +
+                    '<th class="text-right">% of spend</th>' +
+                    '<th class="text-right">Driven by</th>' +
+                '</tr></thead>' +
+                '<tbody>' + rows + totalRow + '</tbody>' +
+            '</table>' +
+            footHtml(foot) +
+        '</div>';
+}
+
 function renderSectionDilution(c, ccy) {
     var t = c.totals;
     var cnTotal = t.totalCNs || 0;
     var spTotal = t.shortPayAmount || 0;
     var combinedRate = t.combinedDilutionRate || 0;
+    var dilTotal = (t.dilutionTotalAmount != null) ? t.dilutionTotalAmount : (cnTotal + spTotal);
 
     // Combined-leakage league built from suppliers (CN + short-pay). The
     // snapshot's dilution.league is CN-only, so we read suppliers directly.
@@ -8071,7 +8321,7 @@ function renderSectionDilution(c, ccy) {
         })
         .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
 
-    if (cnTotal === 0 && spTotal === 0) {
+    if (dilTotal === 0) {
         return '' +
             '<div class="section">' +
                 '<div class="section-eyebrow">Section 3</div>' +
@@ -8108,11 +8358,12 @@ function renderSectionDilution(c, ccy) {
             '<div class="section-title">Supply Chain Quality</div>' +
             '<div class="section-lede">' + lede + '</div>' +
             '<div class="stat-grid">' +
-                statCard('Combined dilution', pct(combinedRate), 'of ' + ccy + ' spend') +
+                statCard('Combined dilution', pct(combinedRate), moneyShort(dilTotal, ccy) + ' of ' + ccy + ' spend') +
                 statCard('Credit notes', moneyShort(cnTotal, ccy), (t.cnCount || 0).toLocaleString() + ' CNs') +
                 statCard('Short-paid', moneyShort(spTotal, ccy), (t.shortPayCount || 0).toLocaleString() + ' invoices') +
-                statCard('Net spend', moneyShort(t.netSpend, ccy), '') +
+                statCard('Realised by suppliers', moneyShort((t.netOfDilution != null ? t.netOfDilution : t.netSpend), ccy), 'spend net of all four components') +
             '</div>' +
+            renderDilutionComponents(t, ccy, false) +
             '<div class="chart-box">' +
                 '<div class="chart-box-title">Dilution league &mdash; ' + ccy + ' (credit notes + short-pay)</div>' +
                 '<table class="report-table">' +
@@ -8427,14 +8678,22 @@ function generateObservations(c, ccy) {
     }
 
     // 3. Combined dilution — Procurement (exposes the credit-note-only blind spot)
-    var cnTotal = t.totalCNs || 0, spTotal = t.shortPayAmount || 0, combined = (t.totalCNs || 0) + (t.shortPayAmount || 0);
-    if (combined > 0 && (t.combinedDilutionRate || 0) >= 0.03) {
+    // Severity and the headline number are the adverse rate — CN, short-pay
+    // and rejections. Supplier cancellations are real leakage and appear in
+    // the combined figure, but they are not the buyer's failing and must not
+    // escalate a signal against them.
+    var cnTotal = t.totalCNs || 0, spTotal = t.shortPayAmount || 0, rejTotal = t.rejectedAmount || 0;
+    var combined = (t.adverseDilutionAmount != null) ? t.adverseDilutionAmount : (cnTotal + spTotal);
+    var adverseRate = (t.adverseDilutionRate != null) ? t.adverseDilutionRate : (t.combinedDilutionRate || 0);
+    if (combined > 0 && adverseRate >= 0.03) {
+        var _parts = moneyShort(cnTotal, ccy) + ' credit notes plus ' + moneyShort(spTotal, ccy) + ' short-paid';
+        if (rejTotal > 0) _parts += ' plus ' + moneyShort(rejTotal, ccy) + ' rejected';
         out.push({
-            sev: (t.combinedDilutionRate || 0) >= 0.08 ? 'concern' : 'watch',
+            sev: adverseRate >= 0.08 ? 'concern' : 'watch',
             owner: 'Procurement', tag: 'De-risk', gbp: combined,
-            headline: 'Real leakage is ' + moneyShort(combined, ccy) + ' (' + pct(t.combinedDilutionRate) + ') &mdash; ' + moneyShort(cnTotal, ccy) + ' credit notes plus ' + moneyShort(spTotal, ccy) + ' short-paid.',
-            why: 'A credit-note-only view shows ' + moneyShort(cnTotal, ccy) + '. The short-pay component is the same economic leakage and is usually invisible to the CFO.',
-            q: 'Our true dilution is ' + pct(t.combinedDilutionRate) + ' (' + moneyShort(combined, ccy) + '), not the credit-note figure &mdash; what is driving the short-pays?'
+            headline: 'Real leakage is ' + moneyShort(combined, ccy) + ' (' + pct(adverseRate) + ') &mdash; ' + _parts + '.',
+            why: 'A credit-note-only view shows ' + moneyShort(cnTotal, ccy) + '. Short payments' + (rejTotal > 0 ? ' and rejections' : '') + ' are the same economic leakage and are usually invisible to the CFO.',
+            q: 'Our true dilution is ' + pct(adverseRate) + ' (' + moneyShort(combined, ccy) + '), not the credit-note figure &mdash; what is driving it?'
         });
     }
 
@@ -8563,8 +8822,24 @@ function renderTermsPanel(pt, ccy) {
 }
 function renderApFloatPanel(c, ccy) {
     var t = c.totals;
+    var gate = t.apFloatGate || null;
+    // Suppressed: a number exists, but too few invoices behind it have a
+    // recorded outcome to stand it up. Say so plainly rather than printing a
+    // figure that is arithmetically faithful to bad inputs.
+    if (gate && gate.mode === 'suppress' && t.apOutstandingAvgRaw != null) {
+        return '' +
+            '<div class="terms-panel apf-panel">' +
+                '<div class="terms-panel-title">Supplier credit &mdash; ' + escHTML(ccy) + ' AP float</div>' +
+                '<div class="terms-panel-summary">Not enough payment data to estimate reliably &mdash; only ' + apFloatCoverageSentence(gate) + '. ' +
+                    'The float counts only invoices whose outcome is known, and on this upload too few are, so anything we showed would understate the real balance severalfold. It is withheld rather than shown.</div>' +
+                '<div class="terms-foot">Re-upload with paid dates \u2014 or rejection / cancellation dates, which close an invoice just as definitively. A rejection or cancellation flag on its own is enough: it is dated seven days after the invoice. Add either and the float, the terms-extension lever and the early-payment sections unlock automatically.</div>' +
+            '</div>';
+    }
     if (t.apOutstandingAvg == null) return '';
     var avg = t.apOutstandingAvg, daily = t.apDailySpend || 0;
+    var estNote = (gate && gate.mode === 'floor')
+        ? ' <span style="color:var(--amber-d);font-weight:600;">A minimum, not a measurement &mdash; ' + apFloatCoverageSentence(gate) + '.</span>'
+        : '';
     var impliedDays = daily > 0 ? Math.round(avg / daily) : null;
     var defRate = 8;
     var rowsHtml = [1, 7, 14, 30].map(function(n) {
@@ -8579,8 +8854,9 @@ function renderApFloatPanel(c, ccy) {
     return '' +
         '<div class="terms-panel apf-panel">' +
             '<div class="terms-panel-title">Supplier credit &mdash; ' + escHTML(ccy) + ' AP float</div>' +
-            '<div class="terms-panel-summary">On average <strong>' + moneyShort(avg, ccy) + '</strong> of supplier credit is financing you' +
-                (impliedDays != null ? ' &mdash; about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+            '<div class="terms-panel-summary">On average <strong>' + apFloatPrefix(gate) + moneyShort(avg, ccy) + '</strong> of supplier credit is financing you' +
+                (impliedDays != null ? ' &mdash; ' + (apFloatPrefix(gate) ? 'at least ' : 'about ') + impliedDays + ' days of spend outstanding at any moment' : '') + '.' + estNote + '</div>' +
+            '<div class="terms-foot" style="margin-top:6px;">' + apFloatFootnote(gate) + '</div>' +
             '<div class="apf-layout">' +
                 '<div class="apf-col">' +
                     '<div class="apf-controls">Cost of capital: <input type="number" id="apf-rate-' + ccy + '" value="' + defRate + '" min="0" max="100" step="0.5"> % per year</div>' +
@@ -12809,10 +13085,11 @@ function deckWorkingCapitalInner(c, ccy, meta) {
     var floatHtml;
     if (apOut != null) {
         var fr = [1, 7, 14, 30].map(function (n) { var freed = daily * n; return '<tr><td>+' + n + (n === 1 ? ' day' : ' days') + '</td><td>' + moneyShort(freed, ccy) + '</td><td>' + moneyShort(freed * rate / 100, ccy) + '</td></tr>'; }).join('');
-        floatHtml = '<div style="font-size:11.5px;color:var(--body);line-height:1.5;margin-bottom:10px;">On average <b style="color:var(--ink);">' + moneyShort(apOut, ccy) + '</b> of supplier credit is financing you' + (impliedDays != null ? ' \u2014 about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+        floatHtml = '<div style="font-size:11.5px;color:var(--body);line-height:1.5;margin-bottom:10px;">On average <b style="color:var(--ink);">' + apFloatPrefix(t.apFloatGate) + moneyShort(apOut, ccy) + '</b> of supplier credit is financing you' + (impliedDays != null ? ' \u2014 ' + (apFloatPrefix(t.apFloatGate) ? 'at least ' : 'about ') + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+            '<div style="font-size:10px;color:var(--muted);line-height:1.45;margin-bottom:10px;">' + apFloatFootnote(t.apFloatGate) + '</div>' +
             '<table class="tb"><thead><tr><th>Extend terms by</th><th>Cash freed (one-off)</th><th>Value / yr @ ' + rate + '%</th></tr></thead><tbody>' + fr + '</tbody></table>';
     } else {
-        floatHtml = '<div style="font-size:11px;color:var(--muted);">Insufficient paid-date coverage to estimate AP float.</div>';
+        floatHtml = '<div style="font-size:11px;color:var(--muted);">Too few invoices have a recorded outcome to put a floor under the AP float.</div>';
     }
     var sme = (typeof smeAccelCompute === 'function') ? smeAccelCompute(ccy, 25) : null;
     var ltHtml;
@@ -13367,7 +13644,8 @@ function renderPrintApFloat(c, ccy) {
     }).join('');
     return '<div class="print-chart-box">' +
         '<div class="print-chart-box-title">Supplier credit &mdash; ' + ccy + ' AP float</div>' +
-        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">On average ' + moneyShort(avg, ccy) + ' of supplier credit is financing you' + (impliedDays != null ? ' &mdash; about ' + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+        '<div style="font-size:8pt; color:#475569; margin-bottom:2mm;">On average ' + apFloatPrefix(c.totals.apFloatGate) + moneyShort(avg, ccy) + ' of supplier credit is financing you' + (impliedDays != null ? ' &mdash; ' + (apFloatPrefix(c.totals.apFloatGate) ? 'at least ' : 'about ') + impliedDays + ' days of spend outstanding at any moment' : '') + '.</div>' +
+        '<div style="font-size:7pt; color:#64748B; margin-bottom:2mm;">' + apFloatFootnote(c.totals.apFloatGate) + '</div>' +
         '<table class="print-table">' +
             '<thead><tr><th>Extend terms by</th><th class="text-right">Cash freed (one-off)</th><th class="text-right">Value / yr @ ' + defRate + '%</th></tr></thead>' +
             '<tbody>' + rows + '</tbody>' +
@@ -13519,6 +13797,7 @@ function renderPrintSectionDilution(c, ccy) {
     var cnTotal = t.totalCNs || 0;
     var spTotal = t.shortPayAmount || 0;
     var combinedRate = t.combinedDilutionRate || 0;
+    var dilTotal = (t.dilutionTotalAmount != null) ? t.dilutionTotalAmount : (cnTotal + spTotal);
 
     // Combined-leakage league built from suppliers (CN + short-pay), mirroring the
     // on-screen Section 3 — the snapshot's dilution.league is CN-only.
@@ -13531,7 +13810,7 @@ function renderPrintSectionDilution(c, ccy) {
         })
         .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
 
-    if (cnTotal === 0 && spTotal === 0) {
+    if (dilTotal === 0) {
         return '' +
             '<div class="print-section">' +
                 '<div class="print-section-eyebrow">Section 3</div>' +
@@ -13564,11 +13843,13 @@ function renderPrintSectionDilution(c, ccy) {
             '<div class="print-section-lede">' + lede + '</div>' +
 
             '<div class="print-stat-grid">' +
-                printStatCard('Combined dilution', pct(combinedRate), 'of ' + ccy + ' spend') +
+                printStatCard('Combined dilution', pct(combinedRate), moneyShort(dilTotal, ccy) + ' of ' + ccy + ' spend') +
                 printStatCard('Credit notes', moneyShort(cnTotal, ccy), (t.cnCount || 0).toLocaleString() + ' CNs') +
                 printStatCard('Short-paid', moneyShort(spTotal, ccy), (t.shortPayCount || 0).toLocaleString() + ' invoices') +
-                printStatCard('Net spend', moneyShort(t.netSpend, ccy), '') +
+                printStatCard('Realised by suppliers', moneyShort((t.netOfDilution != null ? t.netOfDilution : t.netSpend), ccy), 'net of all four components') +
             '</div>' +
+
+            renderDilutionComponents(t, ccy, true) +
 
             '<div class="print-chart-box">' +
                 '<div class="print-chart-box-title">Dilution league &mdash; top ' + top.length + ' by combined rate (credit notes + short-pay)</div>' +
