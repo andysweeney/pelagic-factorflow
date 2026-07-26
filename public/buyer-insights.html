@@ -9530,6 +9530,47 @@ function drawTrendsVolume(labels, ts, ccy) {
 // CN spikes a bucket to 200%, that's worth seeing — it's the signal.
 // ────────────────────────────────────────────────────────────────
 
+// ── Dilution series, four components ────────────────────────────
+// Rejection and cancellation only earn a line when the file actually contains
+// them. On a file with neither — which is most of them — two flat zero lines
+// would be most of the legend and none of the signal.
+//
+// Cancellation is grey on purpose. It is real leakage and belongs in the
+// total, but it is supplier-side housekeeping, and a red or amber line would
+// read as an accusation against a buyer who did nothing.
+var DIL_COLOURS = { cn: '#F59E0B', sp: '#DC2626', rej: '#9333EA', canc: '#64748B', total: '#6366F1' };
+
+function dilSeries(dil, key) {
+    return (dil || []).map(function(d) { var v = d[key]; return (v != null) ? v : 0; });
+}
+function dilTotalSeries(dil) {
+    return (dil || []).map(function(d) { return (d.combinedRate != null) ? d.combinedRate : (d.rate || 0); });
+}
+function dilAnyNonZero(arr) {
+    return arr.some(function(v) { return v > 0; });
+}
+// Which component lines to draw, in order, given the data. Each entry carries
+// the amount key so tooltips can quote the underlying figure.
+function dilComponentLines(dil) {
+    var out = [
+        { label: 'Credit notes', values: dilSeries(dil, 'rate'),          colour: DIL_COLOURS.cn,  amountKey: 'cnTotal' },
+        { label: 'Short-pay',    values: dilSeries(dil, 'shortPayRate'),  colour: DIL_COLOURS.sp,  amountKey: 'shortPayTotal' }
+    ];
+    var rej  = dilSeries(dil, 'rejectedRate');
+    var canc = dilSeries(dil, 'cancelledRate');
+    if (dilAnyNonZero(rej))  out.push({ label: 'Rejected',  values: rej,  colour: DIL_COLOURS.rej,  amountKey: 'rejectedTotal' });
+    if (dilAnyNonZero(canc)) out.push({ label: 'Cancelled', values: canc, colour: DIL_COLOURS.canc, amountKey: 'cancelledTotal', dashed: true });
+    return out;
+}
+function dilTotalTooltip(d, pctv) {
+    var parts = [];
+    if (d.cnTotal != null)   parts.push('CN ' + d.cnTotal);
+    if (d.shortPayTotal)     parts.push('short-pay ' + d.shortPayTotal);
+    if (d.rejectedTotal)     parts.push('rejected ' + d.rejectedTotal);
+    if (d.cancelledTotal)    parts.push('cancelled ' + d.cancelledTotal);
+    return 'Total dilution: ' + pctv + (parts.length ? ' (' + parts.join(' + ') + ')' : '');
+}
+
 function drawTrendsDilution(labels, ts) {
     var canvas = document.getElementById('trends-chart-dilution');
     if (!canvas) return;
@@ -9537,29 +9578,29 @@ function drawTrendsDilution(labels, ts) {
     // 50% (DILUTION_CAP) for legibility. Cost: at typical 0.5-2% rates the
     // chart looked flat against a 0-50% axis. Tradeoff was wrong — auto-scale
     // is clearer and outliers should show as outliers, not get hidden.
-    var cnRates    = ts.dilution.map(function(d) { return d.rate; });
-    var spRates    = ts.dilution.map(function(d) { return d.shortPayRate != null ? d.shortPayRate : 0; });
-    var totalRates = ts.dilution.map(function(d) { return d.combinedRate != null ? d.combinedRate : d.rate; });
+    var lines = dilComponentLines(ts.dilution);
+    var datasets = lines.map(function(ln) {
+        return { label: ln.label, data: ln.values, borderColor: ln.colour, backgroundColor: ln.colour + '20',
+                 borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3,
+                 borderDash: ln.dashed ? [2, 2] : undefined };
+    });
+    datasets.push({ label: 'Total dilution', data: dilTotalSeries(ts.dilution), borderColor: DIL_COLOURS.total,
+                    backgroundColor: DIL_COLOURS.total + '20', borderWidth: 2, pointRadius: 2, fill: false,
+                    tension: 0.3, borderDash: [5, 3] });
 
     _chartInstances['trends-dilution'] = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                { label: 'Credit notes',   data: cnRates,    borderColor: '#F59E0B', backgroundColor: '#F59E0B20', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3 },
-                { label: 'Short-pay',      data: spRates,    borderColor: '#DC2626', backgroundColor: '#DC262620', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3 },
-                { label: 'Total dilution', data: totalRates, borderColor: '#6366F1', backgroundColor: '#6366F120', borderWidth: 2, pointRadius: 2, fill: false, tension: 0.3, borderDash: [5, 3] }
-            ]
-        },
+        data: { labels: labels, datasets: datasets },
         options: chartCommonOptions({
             yLeftLabel: 'Rate',
             yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; },
             tooltipFormatter: function(ctx) {
                 var d = ts.dilution[ctx.dataIndex];
                 var pctv = (ctx.parsed.y * 100).toFixed(2) + '%';
-                if (ctx.datasetIndex === 0) return 'Credit notes: ' + pctv + ' (CN ' + d.cnTotal + ' / inv ' + d.invTotal + ')';
-                if (ctx.datasetIndex === 1) return 'Short-pay: ' + pctv + ' (' + (d.shortPayTotal != null ? d.shortPayTotal : 0) + ' short / inv ' + d.invTotal + ')';
-                return 'Total dilution: ' + pctv + ' (CN ' + d.cnTotal + ' + short-pay ' + (d.shortPayTotal != null ? d.shortPayTotal : 0) + ')';
+                var ln = lines[ctx.datasetIndex];
+                if (!ln) return dilTotalTooltip(d, pctv);
+                var amt = d[ln.amountKey];
+                return ln.label + ': ' + pctv + ' (' + (amt != null ? amt : 0) + ' / inv ' + d.invTotal + ')';
             }
         })
     });
@@ -14344,19 +14385,18 @@ function drawTrendsPrintDilution(ccy, ts) {
     var canvas = document.getElementById('print-trends-dil-' + ccy);
     if (!canvas) return;
     // Auto-scale Y axis — same fix as the screen version. See drawTrendsDilution.
-    var cnRates    = ts.dilution.map(function(d) { return d.rate; });
-    var spRates    = ts.dilution.map(function(d) { return d.shortPayRate != null ? d.shortPayRate : 0; });
-    var totalRates = ts.dilution.map(function(d) { return d.combinedRate != null ? d.combinedRate : d.rate; });
+    var pLines = dilComponentLines(ts.dilution);
+    var pDatasets = pLines.map(function(ln) {
+        return { label: ln.label, data: ln.values, borderColor: ln.colour, backgroundColor: ln.colour + '25',
+                 borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3,
+                 borderDash: ln.dashed ? [2, 2] : undefined };
+    });
+    pDatasets.push({ label: 'Total dilution', data: dilTotalSeries(ts.dilution), borderColor: DIL_COLOURS.total,
+                     backgroundColor: DIL_COLOURS.total + '25', borderWidth: 1.5, pointRadius: 1, fill: false,
+                     tension: 0.3, borderDash: [4, 2] });
     var inst = new Chart(canvas.getContext('2d'), {
         type: 'line',
-        data: {
-            labels: ts.buckets,
-            datasets: [
-                { label: 'Credit notes',   data: cnRates,    borderColor: '#F59E0B', backgroundColor: '#F59E0B25', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3 },
-                { label: 'Short-pay',      data: spRates,    borderColor: '#DC2626', backgroundColor: '#DC262625', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3 },
-                { label: 'Total dilution', data: totalRates, borderColor: '#6366F1', backgroundColor: '#6366F125', borderWidth: 1.5, pointRadius: 1, fill: false, tension: 0.3, borderDash: [4, 2] }
-            ]
-        },
+        data: { labels: ts.buckets, datasets: pDatasets },
         options: trendsPrintChartOptions({ legend: true, yLeftFormat: function(v) { return (v * 100).toFixed(1) + '%'; } })
     });
     _printChartInstances.push(inst);
@@ -14798,16 +14838,24 @@ function buildTrendsDilution(meta, c, ts, ccy) {
     var combined = dil.map(function (d) { return ((d.combinedRate != null ? d.combinedRate : d.rate) || 0) * 100; });
     var cn = dil.map(function (d) { return (d.rate || 0) * 100; });
     var sp = dil.map(function (d) { return (d.shortPayRate || 0) * 100; });
-    var maxV = Math.max.apply(null, [0.1].concat(combined, cn, sp));
+    var rej = dil.map(function (d) { return (d.rejectedRate || 0) * 100; });
+    var canc = dil.map(function (d) { return (d.cancelledRate || 0) * 100; });
+    var maxV = Math.max.apply(null, [0.1].concat(combined, cn, sp, rej, canc));
     var dAx = _niceAxis(0, maxV, 4); dAx.min = 0;
     var dp = dAx.step < 1 ? 1 : 0;
     var yticks = _axisTicks(dAx, function (v) { return (+v.toFixed(dp)) + '%'; });
 
-    var chart = deckLineChart([
+    // Same rule as the screen and print charts: a component only gets a line
+    // where the file has it, so the deck never carries two flat zero series.
+    var deckDil = [
         { name: 'Total dilution', values: combined, color: 'var(--brand-d)', dashed: true, markers: true },
         { name: 'Credit notes', values: cn, color: 'var(--amber)' },
         { name: 'Short-pay', values: sp, color: 'var(--red)' }
-    ], 0, dAx.max, yticks, { height: 300, months: buckets });
+    ];
+    if (dilAnyNonZero(rej))  deckDil.push({ name: 'Rejected',  values: rej,  color: DIL_COLOURS.rej });
+    if (dilAnyNonZero(canc)) deckDil.push({ name: 'Cancelled', values: canc, color: DIL_COLOURS.canc });
+
+    var chart = deckLineChart(deckDil, 0, dAx.max, yticks, { height: 300, months: buckets });
 
     var avg = _tMean(combined);
     var maxC = combined.length ? Math.max.apply(null, combined) : null;
