@@ -5172,11 +5172,15 @@ function applyAndRenderProspects(enriched) {
         return getGroupBuyerCount(e.row.group_id) >= 2;
     });
     if (f.pills.quality)      filtered = filtered.filter(function(e) {
-        // Combined dilution = credit notes + short-pays. Falls back to the
-        // plain CN rate when the snapshot pre-dates commit 3.
+        // Flags read the ADVERSE rate: credit notes, short pays and rejections,
+        // but not supplier-side cancellations. A supplier withdrawing its own
+        // duplicate invoice is not evidence against the buyer, and folding it in
+        // would flag buyers who did nothing. Falls back through combined to the
+        // plain CN rate for snapshots that pre-date those fields.
         if (!e.stats) return false;
-        var combined = e.stats.combinedDilutionRate != null ? e.stats.combinedDilutionRate : e.stats.dilutionRate;
-        return combined >= 0.08;
+        var adverse = e.stats.adverseDilutionRate != null ? e.stats.adverseDilutionRate
+                    : (e.stats.combinedDilutionRate != null ? e.stats.combinedDilutionRate : e.stats.dilutionRate);
+        return adverse >= 0.08;
     });
     if (f.pills.shortpay)     filtered = filtered.filter(function(e) {
         // Short-pay pattern: implicit dilution >3% even allowing for CNs.
@@ -8309,24 +8313,37 @@ function renderSectionDilution(c, ccy) {
     // Combined-leakage league built from suppliers (CN + short-pay). The
     // snapshot's dilution.league is CN-only, so we read suppliers directly.
     // Exact figures throughout — no estimates.
+    // The rate shown is combinedDilutionRate, which spans all four components.
+    // Every one of them therefore needs a column and a place in the filter —
+    // otherwise a supplier appears with a large rate and nothing on the row to
+    // account for it, or fails the filter entirely despite real leakage.
     var league = (c.suppliers || [])
-        .filter(function(s) { return (s.invoiceCount || 0) >= 3 && ((s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0); })
+        .filter(function(s) {
+            return (s.invoiceCount || 0) >= 3 && (
+                (s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0 ||
+                (s.rejectedAmount || 0) > 0 || (s.cancelledAmount || 0) > 0);
+        })
         .map(function(s) {
             return {
                 identifier: s.identifier, name: s.name,
                 invoiceCount: s.invoiceCount || 0, invoiceTotal: s.totalSpend || 0,
                 cnTotal: s.cnTotal || 0, shortPayAmount: s.shortPayAmount || 0,
+                rejectedAmount: s.rejectedAmount || 0, cancelledAmount: s.cancelledAmount || 0,
                 combinedRate: s.combinedDilutionRate || 0, sharePct: s.sharePct || 0
             };
         })
         .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
+    // Only column what the file actually contains, same rule as the charts.
+    var lgRej  = league.some(function(s) { return s.rejectedAmount > 0; });
+    var lgCanc = league.some(function(s) { return s.cancelledAmount > 0; });
+    var lgCols = (lgRej ? 1 : 0) + (lgCanc ? 1 : 0);
 
     if (dilTotal === 0) {
         return '' +
             '<div class="section">' +
                 '<div class="section-eyebrow">Section 3</div>' +
                 '<div class="section-title">Supply Chain Quality</div>' +
-                '<div class="section-lede">No credit notes and no short-paid invoices in this period &mdash; no dilution signal to report.</div>' +
+                '<div class="section-lede">No credit notes, short payments, rejections or cancellations in this period &mdash; no dilution signal to report.</div>' +
             '</div>';
     }
 
@@ -8341,6 +8358,8 @@ function renderSectionDilution(c, ccy) {
             '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
             '<td class="text-right mono">' + (s.cnTotal > 0 ? moneyShort(s.cnTotal, ccy) : '&mdash;') + '</td>' +
             '<td class="text-right mono">' + (s.shortPayAmount > 0 ? moneyShort(s.shortPayAmount, ccy) : '&mdash;') + '</td>' +
+            (lgRej  ? '<td class="text-right mono">' + (s.rejectedAmount  > 0 ? moneyShort(s.rejectedAmount, ccy)  : '&mdash;') + '</td>' : '') +
+            (lgCanc ? '<td class="text-right mono" style="color:var(--text-secondary);">' + (s.cancelledAmount > 0 ? moneyShort(s.cancelledAmount, ccy) : '&mdash;') + '</td>' : '') +
             '<td class="text-right dil-cell ' + cls + '">' + pct(s.combinedRate) + '</td>' +
             '<td class="text-right mono" style="color:var(--text-secondary);">' + pct(s.sharePct) + '</td>' +
         '</tr>';
@@ -8365,12 +8384,15 @@ function renderSectionDilution(c, ccy) {
             '</div>' +
             renderDilutionComponents(t, ccy, false) +
             '<div class="chart-box">' +
-                '<div class="chart-box-title">Dilution league &mdash; ' + ccy + ' (credit notes + short-pay)</div>' +
+                '<div class="chart-box-title">Dilution league &mdash; ' + escHTML(ccy) +
+                    ' (' + (lgCols ? 'all components' : 'credit notes + short-pay') + ')</div>' +
                 '<table class="report-table">' +
                     '<thead><tr>' +
                         '<th>#</th><th>Supplier</th>' +
                         '<th class="text-right">Invoices</th><th class="text-right">Invoice total</th>' +
                         '<th class="text-right">Credit notes</th><th class="text-right">Short-paid</th>' +
+                        (lgRej  ? '<th class="text-right">Rejected</th>' : '') +
+                        (lgCanc ? '<th class="text-right" style="color:var(--muted);">Cancelled</th>' : '') +
                         '<th class="text-right">Combined</th>' +
                         '<th class="text-right" style="color:var(--muted);">Share</th>' +
                     '</tr></thead>' +
@@ -13219,15 +13241,24 @@ function buildDeckQualityInner(c, ccy, meta) {
     var dilQual = (t.combinedDilutionRate || 0) >= 0.05 ? 'elevated' : 'low overall';
     var leagueHtml;
     if (withLeak === 0) {
-        leagueHtml = '<div class="panel line" style="margin-top:13px;"><div style="font-size:11.5px;color:var(--muted);">No credit notes or short payments recorded in this period \u2014 no dilution signal to report.</div></div>';
+        leagueHtml = '<div class="panel line" style="margin-top:13px;"><div style="font-size:11.5px;color:var(--muted);">No credit notes, short payments, rejections or cancellations recorded in this period \u2014 no dilution signal to report.</div></div>';
     } else {
         var maxComb = (top[0].combinedDilutionRate || 0) || 1;
+        // Columns follow the data: a deck with two dead columns of dashes is
+        // worse than one without them, and a rate with nothing behind it is
+        // worse still.
+        var dkRej  = top.some(function (s) { return (s.rejectedAmount || 0) > 0; });
+        var dkCanc = top.some(function (s) { return (s.cancelledAmount || 0) > 0; });
+        var dkParts = ['credit notes', 'short-paid'];
+        if (dkRej)  dkParts.push('rejected');
+        if (dkCanc) dkParts.push('cancelled');
+        var dkFormula = 'Combined rate = (' + dkParts.join(' + ') + ') \u00f7 invoice total.';
         var rows = top.map(function (s) {
             var w = Math.max(2, (s.combinedDilutionRate || 0) / maxComb * 100);
-            return '<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">' + escHTML(s.name || '\u2014') + '</td><td>' + (s.invoiceCount || 0).toLocaleString() + '</td><td>' + moneyShort(s.totalSpend || 0, ccy) + '</td><td>' + ((s.cnTotal || 0) > 0 ? moneyShort(s.cnTotal, ccy) : '\u2014') + '</td><td>' + ((s.shortPayAmount || 0) > 0 ? moneyShort(s.shortPayAmount, ccy) : '\u2014') + '</td><td style="width:150px;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><div style="width:70px;height:9px;background:var(--surf2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + w.toFixed(0) + '%;background:var(--amber);"></div></div><b style="color:var(--amber-d);width:34px;text-align:right;">' + pct(s.combinedDilutionRate || 0) + '</b></div></td></tr>';
+            return '<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;">' + escHTML(s.name || '\u2014') + '</td><td>' + (s.invoiceCount || 0).toLocaleString() + '</td><td>' + moneyShort(s.totalSpend || 0, ccy) + '</td><td>' + ((s.cnTotal || 0) > 0 ? moneyShort(s.cnTotal, ccy) : '\u2014') + '</td><td>' + ((s.shortPayAmount || 0) > 0 ? moneyShort(s.shortPayAmount, ccy) : '\u2014') + '</td>' + (dkRej ? '<td>' + ((s.rejectedAmount || 0) > 0 ? moneyShort(s.rejectedAmount, ccy) : '\u2014') + '</td>' : '') + (dkCanc ? '<td style="color:var(--muted);">' + ((s.cancelledAmount || 0) > 0 ? moneyShort(s.cancelledAmount, ccy) : '\u2014') + '</td>' : '') + '<td style="width:150px;"><div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;"><div style="width:70px;height:9px;background:var(--surf2);border-radius:3px;overflow:hidden;"><div style="height:100%;width:' + w.toFixed(0) + '%;background:var(--amber);"></div></div><b style="color:var(--amber-d);width:34px;text-align:right;">' + pct(s.combinedDilutionRate || 0) + '</b></div></td></tr>';
         }).join('');
-        var moreNote = withLeak > 10 ? '<div style="font-size:10px;color:var(--muted);margin-top:10px;">+ ' + (withLeak - 10).toLocaleString() + ' more suppliers show some dilution. Combined rate = (credit notes + short-paid) \u00f7 invoice total.</div>' : '<div style="font-size:10px;color:var(--muted);margin-top:10px;">Combined rate = (credit notes + short-paid) \u00f7 invoice total.</div>';
-        leagueHtml = '<div class="panel line" style="margin-top:13px;"><div class="p-kick">Dilution league \u2014 top 10 by combined rate (credit notes + short-pay)</div><table class="tb"><thead><tr><th>Supplier</th><th>Invoices</th><th>Invoice total</th><th>Credit notes</th><th>Short-paid</th><th>Combined rate</th></tr></thead><tbody>' + rows + '</tbody></table>' + moreNote + '</div>';
+        var moreNote = '<div style="font-size:10px;color:var(--muted);margin-top:10px;">' + (withLeak > 10 ? '+ ' + (withLeak - 10).toLocaleString() + ' more suppliers show some dilution. ' : '') + dkFormula + '</div>';
+        leagueHtml = '<div class="panel line" style="margin-top:13px;"><div class="p-kick">Dilution league \u2014 top 10 by combined rate</div><table class="tb"><thead><tr><th>Supplier</th><th>Invoices</th><th>Invoice total</th><th>Credit notes</th><th>Short-paid</th>' + (dkRej ? '<th>Rejected</th>' : '') + (dkCanc ? '<th style="color:var(--muted);">Cancelled</th>' : '') + '<th>Combined rate</th></tr></thead><tbody>' + rows + '</tbody></table>' + moreNote + '</div>';
     }
     return '<div class="sec-kick">Section 3</div><div class="sec-title">Supply-chain quality</div>' +
         '<div class="sec-lead">Credit notes and short payments inflate accounts payable until they clear, and flag over-billing or poor supply quality. Combined dilution sits at <b style="color:var(--ink);">' + pct(t.combinedDilutionRate || 0) + '</b> of ' + escHTML(ccy) + ' spend \u2014 ' + dilQual + ', but concentrated in the suppliers below.</div>' +
@@ -13840,23 +13871,32 @@ function renderPrintSectionDilution(c, ccy) {
     var combinedRate = t.combinedDilutionRate || 0;
     var dilTotal = (t.dilutionTotalAmount != null) ? t.dilutionTotalAmount : (cnTotal + spTotal);
 
-    // Combined-leakage league built from suppliers (CN + short-pay), mirroring the
-    // on-screen Section 3 — the snapshot's dilution.league is CN-only.
+    // Combined-leakage league built from suppliers, mirroring the on-screen
+    // Section 3 — the snapshot's dilution.league is CN-only. All four
+    // components are in the rate, so all four are in the filter and, where the
+    // file has them, on the row.
     var league = (c.suppliers || [])
-        .filter(function(s) { return (s.invoiceCount || 0) >= 3 && ((s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0); })
+        .filter(function(s) {
+            return (s.invoiceCount || 0) >= 3 && (
+                (s.cnTotal || 0) > 0 || (s.shortPayAmount || 0) > 0 ||
+                (s.rejectedAmount || 0) > 0 || (s.cancelledAmount || 0) > 0);
+        })
         .map(function(s) {
             return { name: s.name, invoiceCount: s.invoiceCount || 0, invoiceTotal: s.totalSpend || 0,
                 cnTotal: s.cnTotal || 0, shortPayAmount: s.shortPayAmount || 0,
+                rejectedAmount: s.rejectedAmount || 0, cancelledAmount: s.cancelledAmount || 0,
                 combinedRate: s.combinedDilutionRate || 0 };
         })
         .sort(function(a, b) { return b.combinedRate - a.combinedRate; });
+    var prRej  = league.some(function(s) { return s.rejectedAmount > 0; });
+    var prCanc = league.some(function(s) { return s.cancelledAmount > 0; });
 
     if (dilTotal === 0) {
         return '' +
             '<div class="print-section">' +
                 '<div class="print-section-eyebrow">Section 3</div>' +
                 '<div class="print-section-title">Supply Chain Quality</div>' +
-                '<div class="print-section-lede">No credit notes and no short-paid invoices in this period &mdash; no dilution signal to report.</div>' +
+                '<div class="print-section-lede">No credit notes, short payments, rejections or cancellations in this period &mdash; no dilution signal to report.</div>' +
             '</div>';
     }
 
@@ -13871,6 +13911,8 @@ function renderPrintSectionDilution(c, ccy) {
             '<td class="text-right mono">' + moneyShort(s.invoiceTotal, ccy) + '</td>' +
             '<td class="text-right mono">' + (s.cnTotal > 0 ? moneyShort(s.cnTotal, ccy) : '&mdash;') + '</td>' +
             '<td class="text-right mono">' + (s.shortPayAmount > 0 ? moneyShort(s.shortPayAmount, ccy) : '&mdash;') + '</td>' +
+            (prRej  ? '<td class="text-right mono">' + (s.rejectedAmount  > 0 ? moneyShort(s.rejectedAmount, ccy)  : '&mdash;') + '</td>' : '') +
+            (prCanc ? '<td class="text-right mono">' + (s.cancelledAmount > 0 ? moneyShort(s.cancelledAmount, ccy) : '&mdash;') + '</td>' : '') +
             '<td class="text-right ' + cls + '">' + pct(s.combinedRate) + '</td>' +
         '</tr>';
     }).join('');
@@ -13893,9 +13935,9 @@ function renderPrintSectionDilution(c, ccy) {
             renderDilutionComponents(t, ccy, true) +
 
             '<div class="print-chart-box">' +
-                '<div class="print-chart-box-title">Dilution league &mdash; top ' + top.length + ' by combined rate (credit notes + short-pay)</div>' +
+                '<div class="print-chart-box-title">Dilution league &mdash; top ' + top.length + ' by combined rate</div>' +
                 '<table class="print-table">' +
-                    '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Invoice total</th><th class="text-right">Credit notes</th><th class="text-right">Short-paid</th><th class="text-right">Combined</th></tr></thead>' +
+                    '<thead><tr><th>#</th><th>Supplier</th><th class="text-right">Invoices</th><th class="text-right">Invoice total</th><th class="text-right">Credit notes</th><th class="text-right">Short-paid</th>' + (prRej ? '<th class="text-right">Rejected</th>' : '') + (prCanc ? '<th class="text-right">Cancelled</th>' : '') + '<th class="text-right">Combined</th></tr></thead>' +
                     '<tbody>' + rows + '</tbody>' +
                 '</table>' +
                 (withLeak > 10 ? '<div style="font-size:7pt; color:#64748B; margin-top:2mm;">+ ' + (withLeak - 10) + ' more suppliers with dilution</div>' : '') +
