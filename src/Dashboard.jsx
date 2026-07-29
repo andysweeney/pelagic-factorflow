@@ -502,7 +502,7 @@ async function saveInvoice(invId) {
       invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
       funding_program: inv.fundingProgram || null,
       partial_approved_amount: inv.partialApprovedAmount || 0,
-      invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+      invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null, buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null,
       invoice_status_history: inv.invoiceStatusHistory || [],
       adjustments: inv.adjustments || [],
       do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
@@ -709,7 +709,7 @@ function mapInvoiceRow(row) {
     createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
     invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
     fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+    invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
     invoiceStatusHistory: row.invoice_status_history || [],
     adjustments: row.adjustments || [],
     doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
@@ -868,7 +868,7 @@ async function loadPersistedData() {
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
           doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
@@ -1083,7 +1083,7 @@ async function reloadForSupplier(supplierId) {
       createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
       invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
       fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-      invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+      invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
       invoiceStatusHistory: row.invoice_status_history || [],
       adjustments: row.adjustments || [],
       doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
@@ -1202,7 +1202,7 @@ async function reloadInvoices() {
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order,
+          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
           invoiceStatusHistory: row.invoice_status_history || [],
           adjustments: row.adjustments || [],
           doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
@@ -1507,7 +1507,7 @@ async function savePersistedData() {
         invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
         funding_program: inv.fundingProgram || null,
         partial_approved_amount: inv.partialApprovedAmount || 0,
-        invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+        invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null, buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null,
         invoice_status_history: inv.invoiceStatusHistory || [],
         adjustments: inv.adjustments || [],
         do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
@@ -2415,7 +2415,7 @@ export default function FactoringDashboard() {
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].id : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
   var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
-  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
+  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
   var hd1 = useState(null), hbDisburseInv = hd1[0], setHbDisburseInv = hd1[1];
   var ha1 = useState([]), hbAllocs = ha1[0], setHbAllocs = ha1[1];
   var hs1 = useState(""), hbSupplierAmt = hs1[0], setHbSupplierAmt = hs1[1];
@@ -3057,7 +3057,7 @@ export default function FactoringDashboard() {
   function startEdit(inv) {
     setEditInv(inv.id);
     setEditFields({
-      buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", poNumber: inv.poNumber || "",
+      buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", purchaseOrder: inv.purchaseOrder || "",
       buyerReceivedDate: inv.buyerReceivedDate || "", pelagicReceivedDate: inv.createdDate || "",
       cancelledDate: inv.cancelledDate || "",
       declinedDate: inv.declinedDate || "", disputedDate: inv.disputedDate || "",
@@ -3075,7 +3075,7 @@ export default function FactoringDashboard() {
     var fields = [
       { key: "buyerRef", label: "Buyer Invoice Ref" },
       { key: "supplierRef", label: "Supplier Invoice Ref" },
-      { key: "poNumber", label: "Purchase Order No." },
+      { key: "purchaseOrder", label: "Purchase Order No." },
       { key: "buyerReceivedDate", label: "Buyer Received Date" }
     ];
     fields.forEach(function(fd) {
@@ -6402,7 +6402,7 @@ export default function FactoringDashboard() {
             <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: fsf !== "all" ? "var(--accent)" : undefined, color: fsf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
             <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{b + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
             {hasActive && <button onClick={clearAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters ({activeFilters.length})</button>}
-            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
+            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
             <div style={{ marginLeft: isS ? 0 : "auto", fontSize: 11.5, color: hasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: hasActive ? 600 : 400 }}>{hasActive && filtered.length !== totalCount ? filtered.length + " of " + totalCount : filtered.length} invoices</div>
           </div>;
         })()}
@@ -6529,7 +6529,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
-                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("poNumber") : <span style={val}>{inv.poNumber || "\u2014"}</span>}</div>
+                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
                                           <div style={sectionHeader}>Amounts</div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
@@ -8732,7 +8732,7 @@ export default function FactoringDashboard() {
 
           // Filter
           var buyInvs = allBuyInvs.slice();
-          if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
+          if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
           if (biIsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === biIsf; });
           if (biFsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.fundingStatus === biFsf; });
           if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.supplierName === biSupFilter; });
@@ -8863,7 +8863,7 @@ export default function FactoringDashboard() {
                               <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
                               {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Invoice Ref</span><span style={val}>{inv.buyerRef}</span></div>}
                               {inv.supplierRef && <div style={row}><span style={lbl}>Supplier Invoice Ref</span><span style={val}>{inv.supplierRef}</span></div>}
-                              {inv.poNumber && <div style={row}><span style={lbl}>Purchase Order No.</span><span style={val}>{inv.poNumber}</span></div>}
+                              {inv.purchaseOrder && <div style={row}><span style={lbl}>Purchase Order No.</span><span style={val}>{inv.purchaseOrder}</span></div>}
                               <div style={sectionHeader}>Amounts</div>
                               <div style={row}><span style={lbl}>Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                               <div style={row}><span style={lbl}>Currency</span><span style={val}>{inv.currency}</span></div>
@@ -9984,7 +9984,7 @@ export default function FactoringDashboard() {
               var allProgInvsTab = progInvs.slice();
               var fInvs = allProgInvsTab.slice();
               // Apply filters
-              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.poNumber || "").toLowerCase().indexOf(s) > -1; });
+              if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
               if (piSupFilter) fInvs = fInvs.filter(function(inv) { return inv.supplierName === piSupFilter; });
               if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return inv.buyerName === piBuyFilter; });
               if (piInvStFilter) fInvs = fInvs.filter(function(inv) { return inv.invoiceStatus === piInvStFilter; });
@@ -10160,7 +10160,7 @@ export default function FactoringDashboard() {
                                         <div><span style={{ color: "var(--muted)" }}>Program: </span><span style={{ color: "#38BDF8", fontWeight: 600 }}>{prog.name}</span></div>
                                         {inv.buyerRef && <div><span style={{ color: "var(--muted)" }}>Buyer Ref: </span>{inv.buyerRef}</div>}
                                         {inv.supplierRef && <div><span style={{ color: "var(--muted)" }}>Supplier Ref: </span>{inv.supplierRef}</div>}
-                                        {inv.poNumber && <div><span style={{ color: "var(--muted)" }}>PO Number: </span>{inv.poNumber}</div>}
+                                        {inv.purchaseOrder && <div><span style={{ color: "var(--muted)" }}>PO Number: </span>{inv.purchaseOrder}</div>}
                                       </div>
                                     </div>
                                     <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
@@ -10346,7 +10346,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
-                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("poNumber") : <span style={val}>{inv.poNumber || "\u2014"}</span>}</div>
+                                          <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
                                           <div style={sectionHeader}>Amounts</div>
                                           <div style={row}><span style={lbl}>Invoice Amount</span><span style={Object.assign({}, val, { fontWeight: 700 })}>{money(inv.amount, inv.currency)}</span></div>
                                           <div style={row}><span style={lbl}>Approved Amount</span>{isEditing ? eField("partialApprovedAmount") : <span style={Object.assign({}, val, { color: inv.partialApprovedAmount > 0 ? "#0EA5E9" : "var(--text)" })}>{inv.partialApprovedAmount > 0 ? money(inv.partialApprovedAmount, inv.currency) : money(inv.amount, inv.currency)}</span>}</div>
@@ -13948,7 +13948,10 @@ export default function FactoringDashboard() {
               amount: r2(amt), currency: nf.currency, capitalDue: 0, holdback: 0,
               interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
               advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
-              buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", poNumber: nf.poNumber || "",
+              buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", purchaseOrder: nf.purchaseOrder || "",
+              // Without this a manual invoice has a null reference, which can
+              // never match the CSV importer, so it duplicates on every import.
+              invoiceReference: nf.buyerRef || newId,
               invoiceStatus: "Received", invoiceStatusHistory: hist,
               fundingStatus: "pending", fundingProgram: null,
               invoiceDate: nf.invoiceDate, dueDate: nf.dueDate,
@@ -13957,7 +13960,7 @@ export default function FactoringDashboard() {
             });
             auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: nf.buyer, dueDate: nf.dueDate });
             saveInvoice(newId);
-            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", poNumber: "", doNotFund: false });
+            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
             setInvlShowCreate(false);
             setDataVer(function(v) { return v + 1; });
           }
@@ -13980,7 +13983,7 @@ export default function FactoringDashboard() {
             if (invlDnaFilter === "no") r = r.filter(function(inv) { return !inv.doNotAdvance; });
             if (invlDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= invlDateFrom; });
             if (invlDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= invlDateTo; });
-            if (invlSearch) { var q = invlSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            if (invlSearch) { var q = invlSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
             return r;
           }
           // Stats (always honour filters)
@@ -14078,7 +14081,7 @@ export default function FactoringDashboard() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Purchase Order No.</label>
-                    <input type="text" value={nf.poNumber} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { poNumber: e.target.value }); }); }} placeholder="Optional" style={inpS} />
+                    <input type="text" value={nf.purchaseOrder} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { purchaseOrder: e.target.value }); }); }} placeholder="Optional" style={inpS} />
                   </div>
                 </div>
                 {amt > 0 && days > 0 && <div style={{ marginTop: 12, padding: "10px 16px", borderRadius: 8, background: "var(--bg)", fontSize: 12 }}>
@@ -14103,7 +14106,7 @@ export default function FactoringDashboard() {
                   var rows = filteredInvs.map(function(inv) {
                     var progName = "";
                     if (inv.fundingProgram) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === inv.fundingProgram; }); progName = p ? p.name : inv.fundingProgram; }
-                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.fundingStatus || "", progName, inv.doNotFund ? "yes" : "no", inv.doNotAdvance ? "yes" : "no", inv.buyerRef || "", inv.supplierRef || "", inv.poNumber || ""];
+                    return [inv.id, inv.invoiceDate, inv.dueDate, inv.supplierName || "", inv.buyerName || "", inv.amount, inv.currency, inv.invoiceStatus || "", inv.fundingStatus || "", progName, inv.doNotFund ? "yes" : "no", inv.doNotAdvance ? "yes" : "no", inv.buyerRef || "", inv.supplierRef || "", inv.purchaseOrder || ""];
                   });
                   var csv = [headers].concat(rows).map(function(r) { return r.map(function(c) { var s = String(c == null ? "" : c); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(","); }).join("\n");
                   var blob = new Blob([csv], { type: "text/csv" });
@@ -14221,7 +14224,7 @@ export default function FactoringDashboard() {
             if (upiBuyFilter) r = r.filter(function(inv) { return inv.buyerName === upiBuyFilter; });
             if (upiDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= upiDateFrom; });
             if (upiDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= upiDateTo; });
-            if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.poNumber || "").toLowerCase().indexOf(q) > -1; }); }
+            if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
             return r;
           }
           // Build eligible programs per-invoice (intersection driver for bulk allocate)
@@ -16814,6 +16817,10 @@ export default function FactoringDashboard() {
                 // (O(rows x invoices)) and hang the browser on a large import.
                 var invIdBase = maxIdNum("INV-", INVOICES_DB, "id");
                 var reviewItems = [];
+                // Only invoices this import actually created or changed are
+                // written back. Writing all of INVOICES_DB reverted rows that
+                // had been changed elsewhere since this tab loaded.
+                var touched = [];
                 var now = new Date();
                 var nowStr = now.toISOString().split("T")[0];
                 var nowDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -16884,7 +16891,7 @@ export default function FactoringDashboard() {
                     if (supResolved && supResolved.match !== "exact") csvNotes.push("Supplier resolved: '" + csvSupplierName + "' \u2192 " + sup.name);
                     if (buyResolved && buyResolved.match !== "exact") csvNotes.push("Buyer resolved: '" + csvBuyerName + "' \u2192 " + buy.name);
 
-                    INVOICES_DB.push({
+                    var newInv = {
                       id: newId, supplierName: sup.name, supplierId: sup.id, buyerName: buy.name, buyerId: buy.id,
                       amount: amount, currency: currency.toUpperCase(),
                       capitalDue: 0, holdback: 0, interestCharged: 0, deferredPayment: 0, daysToMaturity: 0,
@@ -16894,11 +16901,14 @@ export default function FactoringDashboard() {
                       invoiceStatus: invStatus, fundingStatus: csvFundingStatus,
                       fundingProgram: null, partialApprovedAmount: approvedAmount || 0,
                       invoiceReference: ref, purchaseOrder: po || null,
+                      supplierRef: supplierRef || "",
                       invoiceStatusHistory: statusHist,
                       adjustments: [], doNotFund: false,
                       csvAmountPaid: amountPaid,
                       notes: csvNotes.map(function(t) { return { text: t, display: nowDisplay }; })
-                    });
+                    };
+                    INVOICES_DB.push(newInv);
+                    touched.push(newInv);
                     auditLog("Invoice Created (CSV)", "Invoice " + newId + " (" + ref + ") created via CSV import. " + sup.name + " / " + buy.name + " / " + money(amount, currency), { invoiceId: newId, reference: ref, source: "csv_import" });
                     created++;
                     return;
@@ -16979,6 +16989,7 @@ export default function FactoringDashboard() {
                   if (changes.length > 0) {
                     existing.notes.push({ text: "CSV Update: " + changes.join("; "), display: nowDisplay });
                     auditLog("Invoice Updated (CSV)", "Invoice " + existing.id + " (" + ref + ") updated via CSV. Changes: " + changes.join("; "), { invoiceId: existing.id, reference: ref, changes: changes, source: "csv_import" });
+                    touched.push(existing);
                     updated++;
                   } else if (queued === 0) {
                     skipped++;
@@ -17003,7 +17014,7 @@ export default function FactoringDashboard() {
                 }
 
                 // Write new/updated invoices directly to Supabase in batches
-                var invToSave = INVOICES_DB.map(function(inv) {
+                var invToSave = touched.filter(function(inv, i) { return touched.indexOf(inv) === i; }).map(function(inv) {
                   return {
                     id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
                     amount: inv.amount, currency: inv.currency,
@@ -17016,7 +17027,7 @@ export default function FactoringDashboard() {
                     invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
                     funding_program: inv.fundingProgram || null,
                     partial_approved_amount: inv.partialApprovedAmount || 0,
-                    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null,
+                    invoice_reference: inv.invoiceReference || null, purchase_order: inv.purchaseOrder || null, buyer_ref: inv.buyerRef || null, supplier_ref: inv.supplierRef || null,
                     invoice_status_history: inv.invoiceStatusHistory || [],
                     adjustments: inv.adjustments || [],
                     do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
