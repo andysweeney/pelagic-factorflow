@@ -2415,7 +2415,7 @@ export default function FactoringDashboard() {
   var batchDeduct1 = useState([]), batchDeductions = batchDeduct1[0], setBatchDeductions = batchDeduct1[1]; // [{ invoiceId, amount }]
   var ss1 = useState(SUPPLIERS_DB.length > 0 ? SUPPLIERS_DB[0].id : ""), selectedSupplier = ss1[0], setSelectedSupplier = ss1[1];
   var sc1 = useState("all"), supCurrency = sc1[0], setSupCurrency = sc1[1];
-  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
+  var ni1 = useState({ supplier: SUPPLIERS_DB[0] ? SUPPLIERS_DB[0].id : "", buyer: BUYERS_DB[0] ? BUYERS_DB[0].id : "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), invoiceReference: "", buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }), newInvFields = ni1[0], setNewInvFields = ni1[1];
   var hd1 = useState(null), hbDisburseInv = hd1[0], setHbDisburseInv = hd1[1];
   var ha1 = useState([]), hbAllocs = ha1[0], setHbAllocs = ha1[1];
   var hs1 = useState(""), hbSupplierAmt = hs1[0], setHbSupplierAmt = hs1[1];
@@ -6402,7 +6402,7 @@ export default function FactoringDashboard() {
             <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: fsf !== "all" ? "var(--accent)" : undefined, color: fsf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
             <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{b + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
             {hasActive && <button onClick={clearAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters ({activeFilters.length})</button>}
-            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
+            {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), invoiceReference: "", buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
             <div style={{ marginLeft: isS ? 0 : "auto", fontSize: 11.5, color: hasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: hasActive ? 600 : 400 }}>{hasActive && filtered.length !== totalCount ? filtered.length + " of " + totalCount : filtered.length} invoices</div>
           </div>;
         })()}
@@ -6526,7 +6526,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
                                           <div style={sectionHeader}>References</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
-                                          <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>3rd Party ID</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
@@ -10342,7 +10342,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
                                           <div style={sectionHeader}>References</div>
-                                          <div style={row}><span style={lbl}>Invoice Reference</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>3rd Party ID</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
@@ -13949,9 +13949,7 @@ export default function FactoringDashboard() {
               interestCharged: 0, deferredPayment: 0, daysToMaturity: days,
               advanceRate: supRate.advanceRate, annualRate: supRate.annualRate, penaltyRate: supRate.penaltyRate,
               buyerRef: nf.buyerRef || "", supplierRef: nf.supplierRef || "", purchaseOrder: nf.purchaseOrder || "",
-              // Without this a manual invoice has a null reference, which can
-              // never match the CSV importer, so it duplicates on every import.
-              invoiceReference: nf.buyerRef || newId,
+              invoiceReference: nf.invoiceReference || null,
               invoiceStatus: "Received", invoiceStatusHistory: hist,
               fundingStatus: "pending", fundingProgram: null,
               invoiceDate: nf.invoiceDate, dueDate: nf.dueDate,
@@ -13960,7 +13958,7 @@ export default function FactoringDashboard() {
             });
             auditLog("Invoice Created", newId + " created: " + money(amt, nf.currency) + " " + supParentName + " \u2192 " + buyDisplayName, { invoiceId: newId, amount: amt, currency: nf.currency, supplier: supParentName, supplierId: nf.supplier, buyer: buyDisplayName, buyerId: nf.buyer, dueDate: nf.dueDate });
             saveInvoice(newId);
-            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
+            setNewInvFields({ supplier: "", buyer: "", amount: "", currency: "GBP", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), invoiceReference: "", buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false });
             setInvlShowCreate(false);
             setDataVer(function(v) { return v + 1; });
           }
@@ -14070,6 +14068,10 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Due Date</label>
                     <input type="date" value={nf.dueDate} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { dueDate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>3rd Party ID</label>
+                    <input type="text" value={nf.invoiceReference} onChange={function(e) { setNewInvFields(function(p) { return Object.assign({}, p, { invoiceReference: e.target.value }); }); }} placeholder="Third-party ref (optional)" style={inpS} />
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)" }}>Buyer Invoice Ref</label>
@@ -16511,7 +16513,7 @@ export default function FactoringDashboard() {
 
                         {!manageDetail && manageTab === "csv_import" && (function() {
               var CSV_FIELDS = [
-                { key: "invoice_ref", label: "Invoice Reference", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no","buyer_invoice_ref","buyer_ref"] },
+                { key: "invoice_ref", label: "3rd Party ID", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no","buyer_invoice_ref","buyer_ref"] },
                 { key: "supplier", label: "Supplier", required: true, hints: ["supplier","supplier_name","supplier_id","vendor","vendor_name"] },
                 { key: "buyer", label: "Buyer", required: true, hints: ["buyer","buyer_name","buyer_id","customer","debtor"] },
                 { key: "invoice_amount", label: "Invoice Amount", required: true, hints: ["invoice_amount","amount","inv_amount","invoice_value","gross_amount","total"] },
