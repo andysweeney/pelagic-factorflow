@@ -33,6 +33,36 @@ function r6(v) { return Math.round(v * 1000000) / 1000000; }
 function r2(v) { return Math.round(v * 100) / 100; }
 function addDays(s, n) { var p = s.split("-"); var d = new Date(Date.UTC(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]))); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().split("T")[0]; }
 function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); return Math.round((Date.UTC(parseInt(pb[0]), parseInt(pb[1]) - 1, parseInt(pb[2])) - Date.UTC(parseInt(pa[0]), parseInt(pa[1]) - 1, parseInt(pa[2]))) / 86400000); }
+// Entries that are genuine statuses. "Buyer Received" is an event, not a
+// status, and must never become one.
+// The canonical statuses (INV_STATUSES) minus "Received", which is the
+// default state rather than an event. Bare "Approved" is not canonical but
+// is retained so older rows still resolve.
+var REAL_STATUSES = ["Approved", "Approved in Full", "Approved in Part", "Cancelled", "Declined", "Disputed", "Settled", "Buyer Default"];
+// An approval with no approved amount is an approval in full.
+function approvedStatusFor(amount, approvedAmount) {
+  var ap = approvedAmount || 0;
+  return (ap > 0 && ap < (amount || 0)) ? "Approved in Part" : "Approved in Full";
+}
+// One approval may be recorded under any of these names.
+// Each status also has a flat date column on the invoice.
+var STATUS_DATE_FIELD = { "Approved": "approvedDate", "Approved in Full": "approvedDate", "Approved in Part": "approvedDate", "Cancelled": "cancelledDate", "Declined": "declinedDate", "Disputed": "disputedDate", "Settled": "settledDate" };
+function statusAliases(st) {
+  return st === "Approved" ? ["Approved", "Approved in Full", "Approved in Part"] : [st];
+}
+function deriveInvoiceStatus(hist) {
+  if (!hist || !hist.length) return null;
+  var cand = hist.filter(function(h) { return h && h.date && REAL_STATUSES.indexOf(h.status) > -1; });
+  if (!cand.length) return null;
+  var newest = cand[0].date;
+  for (var i = 1; i < cand.length; i++) { if (cand[i].date > newest) newest = cand[i].date; }
+  var names = [];
+  for (var j = 0; j < cand.length; j++) {
+    if (cand[j].date === newest && names.indexOf(cand[j].status) < 0) names.push(cand[j].status);
+  }
+  if (names.length > 1) return { ambiguous: names, date: newest };
+  return { status: names[0], date: newest };
+}
 function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
 
 // ======== Tranche helpers ========
@@ -499,6 +529,9 @@ async function saveInvoice(invId) {
       advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
       invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
       created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+      cancelled_date: inv.cancelledDate || null, declined_date: inv.declinedDate || null,
+      disputed_date: inv.disputedDate || null, settled_date: inv.settledDate || null,
+      buyer_received_date: inv.buyerReceivedDate || null,
       invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
       funding_program: inv.fundingProgram || null,
       partial_approved_amount: inv.partialApprovedAmount || 0,
@@ -707,6 +740,9 @@ function mapInvoiceRow(row) {
     advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
     invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
     createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    cancelledDate: row.cancelled_date, declinedDate: row.declined_date,
+    disputedDate: row.disputed_date, settledDate: row.settled_date,
+    buyerReceivedDate: row.buyer_received_date,
     invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
     fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
     invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
@@ -866,6 +902,9 @@ async function loadPersistedData() {
           advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
           invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    cancelledDate: row.cancelled_date, declinedDate: row.declined_date,
+    disputedDate: row.disputed_date, settledDate: row.settled_date,
+    buyerReceivedDate: row.buyer_received_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
@@ -1081,6 +1120,9 @@ async function reloadForSupplier(supplierId) {
       advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
       invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
       createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    cancelledDate: row.cancelled_date, declinedDate: row.declined_date,
+    disputedDate: row.disputed_date, settledDate: row.settled_date,
+    buyerReceivedDate: row.buyer_received_date,
       invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
       fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
       invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
@@ -1200,6 +1242,9 @@ async function reloadInvoices() {
           advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
           invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
           createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
+    cancelledDate: row.cancelled_date, declinedDate: row.declined_date,
+    disputedDate: row.disputed_date, settledDate: row.settled_date,
+    buyerReceivedDate: row.buyer_received_date,
           invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
           fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
           invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
@@ -1504,6 +1549,9 @@ async function savePersistedData() {
         advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
         invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
         created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+      cancelled_date: inv.cancelledDate || null, declined_date: inv.declinedDate || null,
+      disputed_date: inv.disputedDate || null, settled_date: inv.settledDate || null,
+      buyer_received_date: inv.buyerReceivedDate || null,
         invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
         funding_program: inv.fundingProgram || null,
         partial_approved_amount: inv.partialApprovedAmount || 0,
@@ -3060,6 +3108,7 @@ export default function FactoringDashboard() {
       invoiceReference: inv.invoiceReference || "",
       buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", purchaseOrder: inv.purchaseOrder || "",
       buyerReceivedDate: inv.buyerReceivedDate || "", pelagicReceivedDate: inv.createdDate || "",
+      approvedDate: inv.approvedDate || "",
       cancelledDate: inv.cancelledDate || "",
       declinedDate: inv.declinedDate || "", disputedDate: inv.disputedDate || "",
       settledDate: inv.settledDate || "",
@@ -3073,8 +3122,10 @@ export default function FactoringDashboard() {
     var changes = [];
     var statusChanges = [];
     // Save text/date fields
+    var oldApprovedDate = raw.approvedDate || "";
     var fields = [
       { key: "invoiceReference", label: "3rd Party ID" },
+      { key: "approvedDate", label: "Approval Date" },
       { key: "buyerRef", label: "Buyer Invoice Ref" },
       { key: "supplierRef", label: "Supplier Invoice Ref" },
       { key: "purchaseOrder", label: "Purchase Order No." },
@@ -3085,6 +3136,24 @@ export default function FactoringDashboard() {
       var oldVal = (raw[fd.key] || "").trim();
       if (newVal !== oldVal) { changes.push(fd.label + ": " + (oldVal || "\u2014") + " \u2192 " + (newVal || "\u2014")); raw[fd.key] = newVal || null; }
     });
+    // A manual approval-date edit has to move the history entry too, or the
+    // status would be derived from a date the invoice no longer claims.
+    if ((raw.approvedDate || "") !== oldApprovedDate) {
+      var aHist = raw.invoiceStatusHistory || (raw.invoiceStatusHistory = []);
+      var aAt = -1;
+      var apAliases = statusAliases("Approved");
+      for (var ah = 0; ah < aHist.length; ah++) { if (apAliases.indexOf(aHist[ah].status) > -1) { aAt = ah; break; } }
+      if (raw.approvedDate) {
+        if (!(raw.partialApprovedAmount > 0)) raw.partialApprovedAmount = raw.amount || 0;
+        if (aAt > -1) aHist[aAt].date = raw.approvedDate;
+        else aHist.push({ status: approvedStatusFor(raw.amount, raw.partialApprovedAmount), date: raw.approvedDate, note: "Manually set" });
+      } else if (aAt > -1) { aHist.splice(aAt, 1); }
+      var aDv = deriveInvoiceStatus(aHist);
+      if (aDv && aDv.status && raw.invoiceStatus !== aDv.status) {
+        statusChanges.push(raw.invoiceStatus + " \u2192 " + aDv.status);
+        raw.invoiceStatus = aDv.status;
+      }
+    }
     // Pelagic Received Date maps to createdDate
     var newPelagic = (f.pelagicReceivedDate || "").trim();
     var oldPelagic = (raw.createdDate || "").trim();
@@ -3098,8 +3167,7 @@ export default function FactoringDashboard() {
       raw.partialApprovedAmount = newApproved;
       if (newApproved > 0) {
         var today = new Date().toISOString().split("T")[0];
-        raw.approvedDate = today;
-        changes.push("Approval Date: \u2192 " + today);
+        if (!raw.approvedDate) { raw.approvedDate = today; changes.push("Approval Date: \u2192 " + today); }
         var newStatus = newApproved >= raw.amount ? "Approved in Full" : "Approved in Part";
         if (raw.invoiceStatus !== newStatus) {
           statusChanges.push(raw.invoiceStatus + " \u2192 " + newStatus);
@@ -6519,7 +6587,7 @@ export default function FactoringDashboard() {
                                         var editDateInput = Object.assign({}, editInput, { width: 130 });
                                         var term = (inv.invoiceDate && inv.dueDate) ? daysBetween(inv.invoiceDate, inv.dueDate) : 0;
                                         function eField(key, type) {
-                                          var clearable = type === "date" && (key === "cancelledDate" || key === "declinedDate" || key === "disputedDate" || key === "settledDate" || key === "buyerReceivedDate" || key === "pelagicReceivedDate");
+                                          var clearable = type === "date" && (key === "approvedDate" || key === "cancelledDate" || key === "declinedDate" || key === "disputedDate" || key === "settledDate" || key === "buyerReceivedDate" || key === "pelagicReceivedDate");
                                           return <span style={{ display: "flex", gap: 4, alignItems: "center" }}><input type={type || "text"} value={editFields[key] || ""} onChange={function(e) { var v = e.target.value; setEditFields(function(f) { var u = {}; u[key] = v; return Object.assign({}, f, u); }); }} style={type === "date" ? editDateInput : editInput} />{clearable && editFields[key] && <button onClick={function() { setEditFields(function(f) { var u = {}; u[key] = ""; return Object.assign({}, f, u); }); }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>×</button>}</span>;
                                         }
                                         var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 8, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
@@ -6547,7 +6615,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer Received Date</span>{isEditing ? eField("buyerReceivedDate", "date") : <span style={val}>{inv.buyerReceivedDate ? fmt(inv.buyerReceivedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Pelagic Received Date</span>{isEditing ? eField("pelagicReceivedDate", "date") : <span style={val}>{fmt(inv.createdDate)}</span>}</div>
                                           <div style={row}><span style={lbl}>Cancelled Date</span>{isEditing ? eField("cancelledDate", "date") : <span style={val}>{inv.cancelledDate ? fmt(inv.cancelledDate) : "\u2014"}</span>}</div>
-                                          <div style={row}><span style={lbl}>Approval Date</span><span style={Object.assign({}, val, { color: inv.approvedDate ? "var(--text)" : "var(--muted)" })}>{inv.approvedDate ? fmt(inv.approvedDate) : "\u2014"}</span>{isEditing && <span style={{ fontSize: 8, color: "var(--muted)", fontStyle: "italic" }}>auto</span>}</div>
+                                          <div style={row}><span style={lbl}>Approval Date</span>{isEditing ? eField("approvedDate", "date") : <span style={Object.assign({}, val, { color: inv.approvedDate ? "var(--text)" : "var(--muted)" })}>{inv.approvedDate ? fmt(inv.approvedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Declined Date</span>{isEditing ? eField("declinedDate", "date") : <span style={val}>{inv.declinedDate ? fmt(inv.declinedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Disputed Date</span>{isEditing ? eField("disputedDate", "date") : <span style={val}>{inv.disputedDate ? fmt(inv.disputedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Settled Date</span>{isEditing ? eField("settledDate", "date") : <span style={val}>{inv.settledDate ? fmt(inv.settledDate) : "\u2014"}</span>}</div>
@@ -10336,7 +10404,7 @@ export default function FactoringDashboard() {
                                         var editDateInput = Object.assign({}, editInput, { width: 130 });
                                         var term = (inv.invoiceDate && inv.dueDate) ? daysBetween(inv.invoiceDate, inv.dueDate) : 0;
                                         function eField(key, type) {
-                                          var clearable = type === "date" && (key === "cancelledDate" || key === "declinedDate" || key === "disputedDate" || key === "settledDate" || key === "buyerReceivedDate" || key === "pelagicReceivedDate");
+                                          var clearable = type === "date" && (key === "approvedDate" || key === "cancelledDate" || key === "declinedDate" || key === "disputedDate" || key === "settledDate" || key === "buyerReceivedDate" || key === "pelagicReceivedDate");
                                           return <span style={{ display: "flex", gap: 4, alignItems: "center" }}><input type={type || "text"} value={editFields[key] || ""} onChange={function(e) { var v = e.target.value; setEditFields(function(f) { var u = {}; u[key] = v; return Object.assign({}, f, u); }); }} style={type === "date" ? editDateInput : editInput} />{clearable && editFields[key] && <button onClick={function() { setEditFields(function(f) { var u = {}; u[key] = ""; return Object.assign({}, f, u); }); }} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #C0392B40", background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>×</button>}</span>;
                                         }
                                         var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 10, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
@@ -10364,7 +10432,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer Received Date</span>{isEditing ? eField("buyerReceivedDate", "date") : <span style={val}>{inv.buyerReceivedDate ? fmt(inv.buyerReceivedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Pelagic Received Date</span>{isEditing ? eField("pelagicReceivedDate", "date") : <span style={val}>{fmt(inv.createdDate)}</span>}</div>
                                           <div style={row}><span style={lbl}>Cancelled Date</span>{isEditing ? eField("cancelledDate", "date") : <span style={val}>{inv.cancelledDate ? fmt(inv.cancelledDate) : "\u2014"}</span>}</div>
-                                          <div style={row}><span style={lbl}>Approval Date</span><span style={Object.assign({}, val, { color: inv.approvedDate ? "var(--text)" : "var(--muted)" })}>{inv.approvedDate ? fmt(inv.approvedDate) : "\u2014"}</span>{isEditing && <span style={{ fontSize: 8, color: "var(--muted)", fontStyle: "italic" }}>auto</span>}</div>
+                                          <div style={row}><span style={lbl}>Approval Date</span>{isEditing ? eField("approvedDate", "date") : <span style={Object.assign({}, val, { color: inv.approvedDate ? "var(--text)" : "var(--muted)" })}>{inv.approvedDate ? fmt(inv.approvedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Declined Date</span>{isEditing ? eField("declinedDate", "date") : <span style={val}>{inv.declinedDate ? fmt(inv.declinedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Disputed Date</span>{isEditing ? eField("disputedDate", "date") : <span style={val}>{inv.disputedDate ? fmt(inv.disputedDate) : "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Settled Date</span>{isEditing ? eField("settledDate", "date") : <span style={val}>{inv.settledDate ? fmt(inv.settledDate) : "\u2014"}</span>}</div>
@@ -16532,6 +16600,9 @@ export default function FactoringDashboard() {
                 { key: "cancelled_date", label: "Cancelled Date", required: false, hints: ["cancelled_date","cancellation_date","canceled_date"] },
                 { key: "declined_date", label: "Declined Date", required: false, hints: ["declined_date","rejection_date","rejected_date"] },
                 { key: "disputed_date", label: "Disputed Date", required: false, hints: ["disputed_date","dispute_date"] },
+                { key: "approved_flag", label: "Approved Flag", required: false, hints: ["approved_flag","approved","is_approved","approval_flag"] },
+                { key: "cancelled_flag", label: "Cancelled Flag", required: false, hints: ["cancelled_flag","cancelled","is_cancelled","canceled_flag"] },
+                { key: "rejected_flag", label: "Rejected Flag", required: false, hints: ["rejected_flag","rejected","is_rejected","declined_flag","declined"] },
                 { key: "settled_date", label: "Settled Date", required: false, hints: ["settled_date","settlement_date","paid_date"] },
                 { key: "amount_paid", label: "Amount Paid to Date", required: false, hints: ["amount_paid","amount_paid_to_date","amountpaid","paid_to_date","paidtodate","payments_to_invoice","paid_amount"] }
               ];
@@ -16792,7 +16863,14 @@ export default function FactoringDashboard() {
                   var newAlias = { aliasName: u.csvName, entityType: u.type, entityId: u.resolvedTo.id, entityName: u.resolvedTo.name };
                   ENTITY_ALIASES_DB.push(newAlias);
                   if (supabase) {
-                    supabase.from("entity_aliases").insert({ alias_name: u.csvName, entity_type: u.type, entity_id: u.resolvedTo.id, entity_name: u.resolvedTo.name });
+                    // Fire-and-forget with no handler meant a failed alias write
+                    // was invisible: it stayed in memory and vanished on reload.
+                    supabase.from("entity_aliases").insert({ alias_name: u.csvName, entity_type: u.type, entity_id: u.resolvedTo.id, entity_name: u.resolvedTo.name })
+                      .then(function(r) {
+                        if (r && r.error) console.error("[CSV Import] Alias not saved: \"" + u.csvName + "\" \u2014 " + r.error.message + ". It will need resolving again next session.");
+                      }, function(e) {
+                        console.error("[CSV Import] Alias not saved: \"" + u.csvName + "\" \u2014 " + e);
+                      });
                   }
                 });
 
@@ -16860,6 +16938,20 @@ export default function FactoringDashboard() {
                   var declinedDate = mappedDate(row, "declined_date");
                   var disputedDate = mappedDate(row, "disputed_date");
                   var settledDate = mappedDate(row, "settled_date");
+                  // A flag is "Y". YES/TRUE/1 are accepted too, case-insensitively.
+                  function isFlagSet(v) {
+                    if (!v) return false;
+                    var t = String(v).trim().toUpperCase();
+                    return t === "Y" || t === "YES" || t === "TRUE" || t === "1";
+                  }
+                  // TEMP-VIEWDATE: the simulated "today" used for testing. Search this
+                  // marker when viewDate is retired and swap it for the real date.
+                  var uploadDate = viewDate;
+                  // A flag with no date of its own takes the upload date. A supplied date
+                  // always wins, so a file can carry both without conflict.
+                  if (isFlagSet(getMapped(row, "approved_flag")) && !approvalDate) approvalDate = uploadDate;
+                  if (isFlagSet(getMapped(row, "cancelled_flag")) && !cancelledDate) cancelledDate = uploadDate;
+                  if (isFlagSet(getMapped(row, "rejected_flag")) && !declinedDate) declinedDate = uploadDate;
                   var amountPaidStr = getMapped(row, "amount_paid");
                   var amountPaid = amountPaidStr ? parseFloat(amountPaidStr) : null;
 
@@ -16881,11 +16973,14 @@ export default function FactoringDashboard() {
                     var statusHist = [{ status: "Received", date: nowStr, note: "Created via CSV import" }];
                     var invStatus = "Received";
 
-                    if (approvalDate) { statusHist.push({ status: "Approved", date: approvalDate, note: "Via CSV import" }); invStatus = "Approved"; }
-                    if (cancelledDate) { statusHist.push({ status: "Cancelled", date: cancelledDate, note: "Via CSV import" }); invStatus = "Cancelled"; }
-                    if (declinedDate) { statusHist.push({ status: "Declined", date: declinedDate, note: "Via CSV import" }); invStatus = "Declined"; }
-                    if (disputedDate) { statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" }); invStatus = "Disputed"; }
-                    if (settledDate) { statusHist.push({ status: "Settled", date: settledDate, note: "Via CSV import" }); invStatus = "Settled"; }
+                    if (approvalDate) statusHist.push({ status: approvedStatusFor(amount, approvedAmount), date: approvalDate, note: "Via CSV import" });
+                    if (cancelledDate) statusHist.push({ status: "Cancelled", date: cancelledDate, note: "Via CSV import" });
+                    if (declinedDate) statusHist.push({ status: "Declined", date: declinedDate, note: "Via CSV import" });
+                    if (disputedDate) statusHist.push({ status: "Disputed", date: disputedDate, note: "Via CSV import" });
+                    if (settledDate) statusHist.push({ status: "Settled", date: settledDate, note: "Via CSV import" });
+                    // Chronology decides, not the order these happen to be written.
+                    var createdDerived = deriveInvoiceStatus(statusHist);
+                    if (createdDerived && createdDerived.status) invStatus = createdDerived.status;
 
                     var isHistoric = false;
                     if (cancelledDate || declinedDate || disputedDate || settledDate) isHistoric = true;
@@ -16906,7 +17001,12 @@ export default function FactoringDashboard() {
                       invoiceDate: invoiceDate, dueDate: dueDate, fundedDate: null,
                       createdDate: nowStr, approvedDate: approvalDate, fullyRepaidDate: settledDate,
                       invoiceStatus: invStatus, fundingStatus: csvFundingStatus,
-                      fundingProgram: null, partialApprovedAmount: approvedAmount || 0,
+                      fundingProgram: null,
+                      cancelledDate: cancelledDate || null, declinedDate: declinedDate || null,
+                      disputedDate: disputedDate || null, settledDate: settledDate || null,
+                      approvedDate: approvalDate || null,
+                      // An approval carrying no amount approves the whole invoice.
+                      partialApprovedAmount: (approvalDate && approvedAmount === null) ? (amount || 0) : (approvedAmount || 0),
                       invoiceReference: ref, purchaseOrder: po || null,
                       supplierRef: supplierRef || "", buyerRef: buyerRefCsv || "",
                       invoiceStatusHistory: statusHist,
@@ -16955,26 +17055,65 @@ export default function FactoringDashboard() {
                     else { changes.push("Due Date: " + (existing.dueDate || "\u2014") + " \u2192 " + dueDate); existing.dueDate = dueDate; }
                   }
 
-                  function applyStatusDate(dateVal, statusName, field) {
-                    if (!dateVal) return;
-                    var hasStatus = existing.invoiceStatusHistory.some(function(h) { return h.status === statusName; });
-                    if (hasStatus) return;
+                  var statusAdded = false;
+                  function applyStatusDate(dateVal, statusName, field, csvKey) {
+                    var aliases = statusAliases(statusName);
+                    var prior = null;
+                    for (var pi = 0; pi < existing.invoiceStatusHistory.length; pi++) {
+                      if (aliases.indexOf(existing.invoiceStatusHistory[pi].status) > -1) { prior = existing.invoiceStatusHistory[pi]; break; }
+                    }
+                    if (!dateVal) {
+                      // A mapped column with an empty cell asserts the date is gone. An
+                      // unmapped column asserts nothing, so the invoice is left alone.
+                      if (prior && csvKey && csvImportMapping[csvKey]) {
+                        queueForReview(field, statusName + " Date Removed", prior.date, "");
+                      }
+                      return;
+                    }
+                    if (prior) {
+                      // Same date means nothing to do. A different date is a genuine
+                      // disagreement and must surface rather than vanish.
+                      if (prior.date !== dateVal) queueForReview(field, statusName + " Date", prior.date, dateVal);
+                      return;
+                    }
                     if (isFunded && (statusName === "Cancelled" || statusName === "Declined" || statusName === "Settled")) {
                       queueForReview(field, statusName + " Date", null, dateVal);
                     } else {
-                      existing.invoiceStatusHistory.push({ status: statusName, date: dateVal, note: "Via CSV import" });
-                      existing.invoiceStatus = statusName;
-                      if (statusName === "Approved") existing.approvedDate = dateVal;
+                      // Approval with no amount supplied approves the whole invoice, so the
+                      // figure agrees with the status instead of contradicting it.
+                      if (statusName === "Approved" && approvedAmount === null && !(existing.partialApprovedAmount > 0)) {
+                        existing.partialApprovedAmount = existing.amount || 0;
+                        changes.push("Approved Amount: 0 \u2192 " + (existing.amount || 0) + " (approval with no amount)");
+                      }
+                      var recStatus = statusName === "Approved"
+                        ? approvedStatusFor(existing.amount, existing.partialApprovedAmount)
+                        : statusName;
+                      existing.invoiceStatusHistory.push({ status: recStatus, date: dateVal, note: "Via CSV import" });
+                      statusAdded = true;
+                      if (STATUS_DATE_FIELD[statusName]) existing[STATUS_DATE_FIELD[statusName]] = dateVal;
                       if (statusName === "Settled") existing.fullyRepaidDate = dateVal;
-                      changes.push("Status \u2192 " + statusName + " (" + dateVal + ")");
+                      changes.push(statusName + " Date: \u2192 " + dateVal);
                     }
                   }
 
-                  applyStatusDate(approvalDate, "Approved", "approvalDate");
-                  applyStatusDate(cancelledDate, "Cancelled", "cancelledDate");
-                  applyStatusDate(declinedDate, "Declined", "declinedDate");
-                  applyStatusDate(disputedDate, "Disputed", "disputedDate");
-                  applyStatusDate(settledDate, "Settled", "settledDate");
+                  applyStatusDate(approvalDate, "Approved", "approvalDate", "approval_date");
+                  applyStatusDate(cancelledDate, "Cancelled", "cancelledDate", "cancelled_date");
+                  applyStatusDate(declinedDate, "Declined", "declinedDate", "declined_date");
+                  applyStatusDate(disputedDate, "Disputed", "disputedDate", "disputed_date");
+                  applyStatusDate(settledDate, "Settled", "settledDate", "settled_date");
+                  // Current status is the chronologically latest of the five real
+                  // statuses. "Buyer Received" is a history event, not a status, so it
+                  // is excluded. Two different statuses on the latest date is ambiguous,
+                  // so that goes to review and the stored status is left alone.
+                  if (statusAdded) {
+                    var derived = deriveInvoiceStatus(existing.invoiceStatusHistory);
+                    if (derived && derived.ambiguous) {
+                      queueForReview("invoiceStatus", "Status", existing.invoiceStatus, derived.ambiguous.join(" / ") + " (all dated " + derived.date + ")");
+                    } else if (derived && existing.invoiceStatus !== derived.status) {
+                      changes.push("Status: " + (existing.invoiceStatus || "\u2014") + " \u2192 " + derived.status);
+                      existing.invoiceStatus = derived.status;
+                    }
+                  }
 
                   if (buyerReceivedDate) {
                     var hasReceived = existing.invoiceStatusHistory.some(function(h) { return h.status === "Buyer Received"; });
@@ -17031,6 +17170,9 @@ export default function FactoringDashboard() {
                     advance_rate: inv.advanceRate || 0, annual_rate: inv.annualRate || 0, penalty_rate: inv.penaltyRate || 0,
                     invoice_date: inv.invoiceDate, due_date: inv.dueDate, funded_date: inv.fundedDate,
                     created_date: inv.createdDate, approved_date: inv.approvedDate, fully_repaid_date: inv.fullyRepaidDate,
+      cancelled_date: inv.cancelledDate || null, declined_date: inv.declinedDate || null,
+      disputed_date: inv.disputedDate || null, settled_date: inv.settledDate || null,
+      buyer_received_date: inv.buyerReceivedDate || null,
                     invoice_status: inv.invoiceStatus, funding_status: inv.fundingStatus,
                     funding_program: inv.fundingProgram || null,
                     partial_approved_amount: inv.partialApprovedAmount || 0,
@@ -17267,16 +17409,37 @@ export default function FactoringDashboard() {
                 else if (item.field === "currency") inv.currency = item.newValue;
                 else if (item.field === "invoiceDate") inv.invoiceDate = item.newValue;
                 else if (item.field === "dueDate") inv.dueDate = item.newValue;
-                else if (item.field === "cancelledDate") { inv.invoiceStatusHistory.push({ status: "Cancelled", date: item.newValue, note: "Accepted from CSV review" }); inv.invoiceStatus = "Cancelled"; }
-                else if (item.field === "declinedDate") { inv.invoiceStatusHistory.push({ status: "Declined", date: item.newValue, note: "Accepted from CSV review" }); inv.invoiceStatus = "Declined"; }
-                else if (item.field === "settledDate") { inv.invoiceStatusHistory.push({ status: "Settled", date: item.newValue, note: "Accepted from CSV review" }); inv.invoiceStatus = "Settled"; inv.fullyRepaidDate = item.newValue; }
-                else if (item.field === "approvalDate") { inv.invoiceStatusHistory.push({ status: "Approved", date: item.newValue, note: "Accepted from CSV review" }); inv.invoiceStatus = "Approved"; inv.approvedDate = item.newValue; }
+                else if (["cancelledDate","declinedDate","disputedDate","settledDate","approvalDate"].indexOf(item.field) > -1) {
+                  var ST_OF = { cancelledDate: "Cancelled", declinedDate: "Declined", disputedDate: "Disputed", settledDate: "Settled", approvalDate: "Approved" };
+                  var DT_OF = { cancelledDate: "cancelledDate", declinedDate: "declinedDate", disputedDate: "disputedDate", settledDate: "settledDate", approvalDate: "approvedDate" };
+                  var stName = ST_OF[item.field];
+                  var hist = inv.invoiceStatusHistory || (inv.invoiceStatusHistory = []);
+                  var at = -1;
+                  var stAliases = statusAliases(stName);
+                  for (var hi = 0; hi < hist.length; hi++) { if (stAliases.indexOf(hist[hi].status) > -1) { at = hi; break; } }
+                  if (!item.newValue) {
+                    // Removal accepted: drop the entry rather than storing a blank date.
+                    if (at > -1) hist.splice(at, 1);
+                    inv[DT_OF[item.field]] = null;
+                    if (stName === "Settled") inv.fullyRepaidDate = null;
+                  } else {
+                    // Update in place. Appending would leave two entries for one status.
+                    if (stName === "Approved" && !(inv.partialApprovedAmount > 0)) inv.partialApprovedAmount = inv.amount || 0;
+                    if (at > -1) { hist[at].date = item.newValue; hist[at].note = "Updated from CSV review"; }
+                    else hist.push({ status: stName === "Approved" ? approvedStatusFor(inv.amount, inv.partialApprovedAmount) : stName, date: item.newValue, note: "Accepted from CSV review" });
+                    inv[DT_OF[item.field]] = item.newValue;
+                    if (stName === "Settled") inv.fullyRepaidDate = item.newValue;
+                  }
+                  var dv = deriveInvoiceStatus(hist);
+                  if (dv && dv.status) inv.invoiceStatus = dv.status;
+                  else if (!dv) inv.invoiceStatus = "Received";
+                }
 
                 // Move to recovery mode if funded
                 var isFunded = inv.fundingStatus !== "pending" && inv.fundingStatus !== "purchased" && inv.fundedDate;
                 if (isFunded) inv.fundingStatus = "recovery_mode";
 
-                inv.notes.push({ text: "CSV review accepted: " + item.label + " changed from " + (item.oldValue || "\u2014") + " to " + item.newValue + (isFunded ? ". Moved to Recovery Mode." : ""), display: nowD });
+                inv.notes.push({ text: "CSV review accepted: " + item.label + " changed from " + (item.oldValue || "\u2014") + " to " + (item.newValue || "\u2014") + (isFunded ? ". Moved to Recovery Mode." : ""), display: nowD });
                 saveInvoice(inv.id);
                     auditLog("CSV Review Accepted", "Invoice " + inv.id + " (" + item.reference + "): " + item.label + " changed. " + (isFunded ? "Moved to Recovery Mode." : ""), { invoiceId: inv.id, field: item.field, oldValue: item.oldValue, newValue: item.newValue, source: "csv_review" });
 
