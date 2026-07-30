@@ -3057,6 +3057,7 @@ export default function FactoringDashboard() {
   function startEdit(inv) {
     setEditInv(inv.id);
     setEditFields({
+      invoiceReference: inv.invoiceReference || "",
       buyerRef: inv.buyerRef || "", supplierRef: inv.supplierRef || "", purchaseOrder: inv.purchaseOrder || "",
       buyerReceivedDate: inv.buyerReceivedDate || "", pelagicReceivedDate: inv.createdDate || "",
       cancelledDate: inv.cancelledDate || "",
@@ -3073,6 +3074,7 @@ export default function FactoringDashboard() {
     var statusChanges = [];
     // Save text/date fields
     var fields = [
+      { key: "invoiceReference", label: "3rd Party ID" },
       { key: "buyerRef", label: "Buyer Invoice Ref" },
       { key: "supplierRef", label: "Supplier Invoice Ref" },
       { key: "purchaseOrder", label: "Purchase Order No." },
@@ -4823,7 +4825,8 @@ export default function FactoringDashboard() {
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Term"), React.createElement("span", { style: spVal }, (inv.daysToMaturity || 0) + " days")),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Maturity"), React.createElement("span", { style: Object.assign({}, spVal, { color: matColor, fontWeight: 600 }) }, matLabel)),
                                     React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Invoice Status"), React.createElement("span", { style: Object.assign({}, spVal, { fontWeight: 600 }) }, inv.invoiceStatus)),
-                                    inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Reference"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
+                                    inv.invoiceReference ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "3rd Party ID"), React.createElement("span", { style: spVal }, inv.invoiceReference)) : null,
+                                    inv.supplierRef ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Supplier Invoice Ref"), React.createElement("span", { style: spVal }, inv.supplierRef)) : null,
                                     inv.purchaseOrder ? React.createElement("div", { style: spRow }, React.createElement("span", { style: spLbl }, "Purchase Order"), React.createElement("span", { style: spVal }, inv.purchaseOrder)) : null
                                   ),
                                   /* Funding Details — only show once funded */
@@ -6526,7 +6529,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
                                           <div style={sectionHeader}>References</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
-                                          <div style={row}><span style={lbl}>3rd Party ID</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>3rd Party ID</span>{isEditing ? eField("invoiceReference") : <span style={valA}>{inv.invoiceReference || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Purchase Order No.</span>{isEditing ? eField("purchaseOrder") : <span style={val}>{inv.purchaseOrder || "\u2014"}</span>}</div>
@@ -10342,7 +10345,7 @@ export default function FactoringDashboard() {
                                           <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
                                           <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
                                           <div style={sectionHeader}>References</div>
-                                          <div style={row}><span style={lbl}>3rd Party ID</span><span style={valA}>{inv.invoiceReference || "\u2014"}</span></div>
+                                          <div style={row}><span style={lbl}>3rd Party ID</span>{isEditing ? eField("invoiceReference") : <span style={valA}>{inv.invoiceReference || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Supplier Invoice Ref</span>{isEditing ? eField("supplierRef") : <span style={val}>{inv.supplierRef || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
@@ -16513,7 +16516,7 @@ export default function FactoringDashboard() {
 
                         {!manageDetail && manageTab === "csv_import" && (function() {
               var CSV_FIELDS = [
-                { key: "invoice_ref", label: "3rd Party ID", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no","buyer_invoice_ref","buyer_ref"] },
+                { key: "invoice_ref", label: "3rd Party ID", required: true, hints: ["invoice_ref","invoice_reference","reference","ref","invoice_number","inv_no"] },
                 { key: "supplier", label: "Supplier", required: true, hints: ["supplier","supplier_name","supplier_id","vendor","vendor_name"] },
                 { key: "buyer", label: "Buyer", required: true, hints: ["buyer","buyer_name","buyer_id","customer","debtor"] },
                 { key: "invoice_amount", label: "Invoice Amount", required: true, hints: ["invoice_amount","amount","inv_amount","invoice_value","gross_amount","total"] },
@@ -16521,6 +16524,7 @@ export default function FactoringDashboard() {
                 { key: "currency", label: "Currency", required: false, hints: ["currency","ccy","curr"] },
                 { key: "purchase_order", label: "Purchase Order", required: false, hints: ["purchase_order","po","po_number"] },
                 { key: "supplier_ref", label: "Supplier Invoice Ref", required: false, hints: ["supplier_ref","supplier_invoice_ref","supplier_reference"] },
+                { key: "buyer_ref", label: "Buyer Invoice Ref", required: false, hints: ["buyer_ref","buyer_invoice_ref","buyer_reference"] },
                 { key: "invoice_date", label: "Invoice Date", required: true, hints: ["invoice_date","inv_date","date"] },
                 { key: "due_date", label: "Due Date", required: true, hints: ["due_date","payment_due","maturity_date"] },
                 { key: "buyer_received_date", label: "Buyer Received Date", required: false, hints: ["buyer_received_date","received_date","receipt_date"] },
@@ -16849,6 +16853,7 @@ export default function FactoringDashboard() {
                   var approvedAmount = getMapped(row, "approved_amount") ? parseFloat(getMapped(row, "approved_amount")) : null;
                   var po = getMapped(row, "purchase_order");
                   var supplierRef = getMapped(row, "supplier_ref");
+                  var buyerRefCsv = getMapped(row, "buyer_ref");
                   var buyerReceivedDate = mappedDate(row, "buyer_received_date");
                   var approvalDate = mappedDate(row, "approval_date");
                   var cancelledDate = mappedDate(row, "cancelled_date");
@@ -16903,7 +16908,7 @@ export default function FactoringDashboard() {
                       invoiceStatus: invStatus, fundingStatus: csvFundingStatus,
                       fundingProgram: null, partialApprovedAmount: approvedAmount || 0,
                       invoiceReference: ref, purchaseOrder: po || null,
-                      supplierRef: supplierRef || "",
+                      supplierRef: supplierRef || "", buyerRef: buyerRefCsv || "",
                       invoiceStatusHistory: statusHist,
                       adjustments: [], doNotFund: false,
                       csvAmountPaid: amountPaid,
