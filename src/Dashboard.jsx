@@ -1,4 +1,4 @@
-    import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -2170,8 +2170,15 @@ export default function FactoringDashboard() {
   var sm1 = useState(null), successMsg = sm1[0], setSuccessMsg = sm1[1];
   var dv1 = useState(0), dataVer = dv1[0], setDataVer = dv1[1];
 
-  // Load persisted data on mount
+  // Load persisted data once a user session exists.
+  // Gated on the user id (a stable string), NOT the session object -- the session
+  // object is replaced on every token refresh, which would re-trigger the load.
+  // Without this gate the load fires at mount while signed out, every fetch is
+  // refused as `anon`, safeFetch swallows the errors, and _dataLoaded latches
+  // true -- so nothing ever reloads after sign-in and the book renders empty.
+  var _loadUserId = session && session.user ? session.user.id : null;
   useEffect(function() {
+    if (!_loadUserId) return;
     if (_dataLoaded) { setStorageLoading(false); return; }
     loadPersistedData().then(function() {
       _dataLoaded = true;
@@ -2182,7 +2189,7 @@ export default function FactoringDashboard() {
       setDataVer(function(v) { return v + 1; });
       if (CSV_REVIEW_QUEUE_DB.length > 0) setCsvReviewQueue(CSV_REVIEW_QUEUE_DB);
     });
-  }, []);
+  }, [_loadUserId]);
 
   // dataVer changes trigger re-render only, NOT automatic saves
   // Individual operations (fund, execute, etc.) use targeted saves (saveInvoice, saveSPQEntry, etc.)
@@ -2346,7 +2353,11 @@ export default function FactoringDashboard() {
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_notes" }, function() {
         if (!_isSaving) reloadCreditNotes().then(scheduleRender);
       })
-      .subscribe();
+      .subscribe(function(status, err) {
+        // Log-only. A channel that fails to join is otherwise completely silent:
+        // every binding on it dies together and nothing reaches the console.
+        console.log("[realtime]", status, err || "");
+      });
 
     return function() {
       if (renderTimer) clearTimeout(renderTimer);
@@ -18180,5 +18191,3 @@ export default function FactoringDashboard() {
     </div>
   );
 }
-
-    
