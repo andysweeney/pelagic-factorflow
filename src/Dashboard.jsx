@@ -158,9 +158,11 @@ function makeEntityId(supplierId, branchId) {
 // Supplier visibility scope, in one place.
 //   Parent user (SUP-0001)     -> own invoices + every branch's.
 //   Branch user (SUP-0001:BR1) -> that branch only.
-// Deliberately matches on supplier_id alone. The previous supplier_name match
-// resolved to the PARENT's name for every user, so a branch login received the
-// whole group.
+// Takes an ENTITY id, not a raw supplier_id column. Callers reading DB rows must
+// pass rowEntityId(row): supplier_id alone is FK-constrained to parent ids, so a
+// branch user compared against it matches nothing and sees an empty book.
+// The earlier supplier_name match resolved to the PARENT's name for every user,
+// so a branch login received the whole group.
 function supplierIdInScope(rowSupplierId, sf) {
   if (!rowSupplierId || !sf) return false;
   if (sf.isBranch) return rowSupplierId === sf.supplierId;
@@ -183,12 +185,80 @@ function getParentEntityId(entityId) {
   if (!entityId) return entityId;
   return parseEntityId(entityId).supplierId;
 }
+// ======== Entity column mapping (DB <-> app) ========
+// The DB splits what the app calls supplierId across two columns:
+//   supplier_id         FK -> suppliers(id). Can ONLY ever hold a parent id.
+//                       Writing "SUP-0001:BR1" here raises
+//                       invoices_supplier_id_fkey. Branches are jsonb on the
+//                       parent row, not rows in suppliers.
+//   supplier_entity_id  full entity id for branch rows; NULL for parent-level.
+// NULL is meaningful: it means "parent-level", not "unknown". Do not backfill.
+// Always write both together via these two helpers; always read via rowEntityId.
+function branchEntityId(entityId) {
+  return parseEntityId(entityId).branchId ? entityId : null;
+}
+function rowEntityId(row) {
+  if (!row) return "";
+  return row.supplier_entity_id || row.supplier_id || "";
+}
 function getEntityDisplayName(entityId) {
   if (!entityId) return "";
   var sup = getSupplierById(entityId);
   if (!sup) return entityId;
   var br = getBranchById(entityId);
   return br ? sup.name + " \u2014 " + br.branchName : sup.name;
+}
+// ---- Buyer entity helpers: exact mirror of the supplier set above. ----
+// buyers.branches is jsonb on the parent row, same shape as suppliers.branches.
+// invoices/credit_notes carry buyer_entity_id alongside the FK-safe buyer_id.
+// Note supplier_payment_queue has no buyer_entity_id: it is supplier-side only.
+function getBuyerById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  return BUYERS_DB.find(function(b) { return b.id === parsed.supplierId; }) || null;
+}
+function getBuyerBranchById(entityId) {
+  if (!entityId) return null;
+  var parsed = parseEntityId(entityId);
+  if (!parsed.branchId) return null;
+  var buy = BUYERS_DB.find(function(b) { return b.id === parsed.supplierId; });
+  if (!buy || !buy.branches) return null;
+  return buy.branches.find(function(br) { return br.branchId === parsed.branchId; }) || null;
+}
+function getBuyerEntityDisplayName(entityId) {
+  if (!entityId) return "";
+  var buy = getBuyerById(entityId);
+  if (!buy) return entityId;
+  var br = getBuyerBranchById(entityId);
+  return br ? buy.name + " \u2014 " + br.branchName : buy.name;
+}
+function getAllBuyerEntities() {
+  var result = [];
+  BUYERS_DB.forEach(function(b) {
+    result.push({ value: b.id, label: b.name, buyerId: b.id, isBranch: false });
+    if (b.branches) b.branches.forEach(function(br) {
+      var eid = makeEntityId(b.id, br.branchId);
+      result.push({ value: eid, label: b.name + " \u2014 " + br.branchName, buyerId: b.id, isBranch: true, branchId: br.branchId || "" });
+    });
+  });
+  return result;
+}
+// user_profiles stores identity in discrete columns: supplier_id / buyer_id hold
+// a bare parent id (both FK-constrained to their parent table), branch_id holds
+// the branch or NULL. Compose the entity id here, once, at the boundary - every
+// consumer downstream (supplierIdInScope, scope filters, realtime matchers)
+// already speaks entity ids and needs no change.
+// Never test for a colon in supplier_id: after the phase A migration there is
+// never one, and branch-ness is branch_id being non-null.
+function profileEntityId(profile) {
+  if (!profile) return "";
+  var base = profile.supplier_id || profile.buyer_id || "";
+  if (!base) return "";
+  return makeEntityId(base, profile.branch_id || null);
+}
+function rowBuyerEntityId(row) {
+  if (!row) return "";
+  return row.buyer_entity_id || row.buyer_id || "";
 }
 // Build a list of all supplier entities for dropdowns: [{ value: "SUP-001", label: "Parent" }, { value: "SUP-001:BR-001", label: "Parent — Branch" }]
 function getAllSupplierEntities() {
@@ -540,7 +610,7 @@ async function saveInvoice(invId) {
   _isSaving = true;
   try {
     var row = {
-      id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
+      id: inv.id, supplier_name: inv.supplierName, supplier_id: getParentEntityId(inv.supplierId) || "", supplier_entity_id: branchEntityId(inv.supplierId), buyer_name: inv.buyerName, buyer_id: getParentEntityId(inv.buyerId) || "", buyer_entity_id: branchEntityId(inv.buyerId),
       amount: inv.amount, currency: inv.currency,
       capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
       interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
@@ -573,7 +643,7 @@ async function saveSPQEntry(spqId) {
   try {
     var row = {
       id: item.id, type: item.type, invoice_id: item.invoiceId || null, invoice_ids: item.invoiceIds || [],
-      supplier_name: item.supplierName, supplier_id: item.supplierId || null,
+      supplier_name: item.supplierName, supplier_id: getParentEntityId(item.supplierId) || null, supplier_entity_id: branchEntityId(item.supplierId),
       bank_name: item.bankName || null, bank_details: item.bankDetails || null,
       amount: item.amount, currency: item.currency, status: item.status || "Pending",
       program_id: item.programId || null, program_name: item.programName || null,
@@ -684,6 +754,7 @@ async function saveBuyer(buyId) {
       contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
       contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
       contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
+      branches: b.branches || [],
       paused: b.paused || false
     };
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
@@ -719,8 +790,8 @@ async function saveCreditNote(cnId) {
   try {
     var row = {
       credit_note_id: cn.creditNoteId, amount: cn.amount, date: cn.date, currency: cn.currency,
-      reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: cn.supplierId || "",
-      buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
+      reference: cn.reference || "", supplier_name: cn.supplierName, supplier_id: getParentEntityId(cn.supplierId) || "", supplier_entity_id: branchEntityId(cn.supplierId),
+      buyer_name: cn.buyerName, buyer_id: getParentEntityId(cn.buyerId) || "", buyer_entity_id: branchEntityId(cn.buyerId),
       allocations: cn.allocations || [], notes: cn.notes || []
     };
     var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
@@ -751,7 +822,7 @@ async function saveHoldbackPayment(hbpId) {
 
 function mapInvoiceRow(row) {
   return {
-    id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+    id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
     amount: parseFloat(row.amount) || 0, currency: row.currency,
     capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
     interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
@@ -895,6 +966,7 @@ async function loadPersistedData() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          branches: row.branches || [],
           paused: row.paused || false
         });
       });
@@ -942,7 +1014,7 @@ async function loadPersistedData() {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
         INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
           amount: parseFloat(row.amount) || 0, currency: row.currency,
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
           interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
@@ -1004,7 +1076,7 @@ async function loadPersistedData() {
       spqRes.data.forEach(function(row) {
         SUPPLIER_PAYMENT_QUEUE.push({
           id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
+          supplierName: row.supplier_name, supplierId: rowEntityId(row),
           bankName: row.bank_name, bankDetails: row.bank_details,
           amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
           programId: row.program_id, programName: row.program_name,
@@ -1028,7 +1100,7 @@ async function loadPersistedData() {
         CREDIT_NOTES_DB.push({
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
           createdDisplay: row.created_display, allocations: row.allocations || []
         });
       });
@@ -1154,9 +1226,12 @@ async function reloadForSupplier(supplierId) {
   if (!supplierName) { _supplierLoaded = false; return; }
   
   // Load only the invoices this user is entitled to see (see supplierIdInScope).
+  // Every row for the group carries supplier_id = parent, so the parent case is a
+  // plain equality; branches are singled out by supplier_entity_id. The old LIKE
+  // scanned supplier_id for "PARENT:*", which the FK guarantees never matches.
   var scopeFilter = isBranch
-    ? { column: "supplier_id", value: supplierId }
-    : { or: "supplier_id.eq." + parentId + ",supplier_id.like." + parentId + ":*" };
+    ? { column: "supplier_entity_id", value: supplierId }
+    : { column: "supplier_id", value: parentId };
   var invData = await fetchAllRows("invoices", scopeFilter, { strict: true });
   var seen = {};
   INVOICES_DB.length = 0;
@@ -1164,7 +1239,7 @@ async function reloadForSupplier(supplierId) {
     if (seen[row.id]) return;
     seen[row.id] = true;
     INVOICES_DB.push({
-      id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+      id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
       amount: parseFloat(row.amount) || 0, currency: row.currency,
       capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
       interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
@@ -1200,7 +1275,7 @@ async function reloadForSupplier(supplierId) {
   spqData.forEach(function(row) {
     SUPPLIER_PAYMENT_QUEUE.push({
       id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-      supplierName: row.supplier_name, supplierId: row.supplier_id,
+      supplierName: row.supplier_name, supplierId: rowEntityId(row),
       bankName: row.bank_name, bankDetails: row.bank_details,
       amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
       programId: row.program_id, programName: row.program_name,
@@ -1286,7 +1361,7 @@ async function reloadInvoices() {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
         INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
           amount: parseFloat(row.amount) || 0, currency: row.currency,
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
           interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
@@ -1376,7 +1451,7 @@ async function reloadSPQ() {
       spqRes.data.forEach(function(row) {
         SUPPLIER_PAYMENT_QUEUE.push({
           id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-          supplierName: row.supplier_name, supplierId: row.supplier_id,
+          supplierName: row.supplier_name, supplierId: rowEntityId(row),
           bankName: row.bank_name, bankDetails: row.bank_details,
           amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
           programId: row.program_id, programName: row.program_name,
@@ -1459,6 +1534,7 @@ async function reloadBuyers() {
           contact3Name: row.contact3_name || "", contact3Email: row.contact3_email || "", contact3Phone: row.contact3_phone || "", contact3Signatory: row.contact3_signatory || false,
           contact4Name: row.contact4_name || "", contact4Email: row.contact4_email || "", contact4Phone: row.contact4_phone || "", contact4Signatory: row.contact4_signatory || false,
           contact5Name: row.contact5_name || "", contact5Email: row.contact5_email || "", contact5Phone: row.contact5_phone || "", contact5Signatory: row.contact5_signatory || false,
+          branches: row.branches || [],
           paused: row.paused || false
         });
       });
@@ -1503,7 +1579,7 @@ async function reloadCreditNotes() {
         CREDIT_NOTES_DB.push({
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
-          supplierName: row.supplier_name, supplierId: row.supplier_id || "", buyerName: row.buyer_name, buyerId: row.buyer_id || "",
+          supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
           createdDisplay: row.created_display, allocations: row.allocations || []
         });
       });
@@ -1551,6 +1627,7 @@ async function savePersistedData() {
         contact3_name: b.contact3Name || null, contact3_email: b.contact3Email || null, contact3_phone: b.contact3Phone || null, contact3_signatory: b.contact3Signatory || false,
         contact4_name: b.contact4Name || null, contact4_email: b.contact4Email || null, contact4_phone: b.contact4Phone || null, contact4_signatory: b.contact4Signatory || false,
         contact5_name: b.contact5Name || null, contact5_email: b.contact5Email || null, contact5_phone: b.contact5Phone || null, contact5_signatory: b.contact5Signatory || false,
+        branches: b.branches || [],
         paused: b.paused || false
       };
     });
@@ -1593,7 +1670,7 @@ async function savePersistedData() {
     // Save invoices
     var invRows = INVOICES_DB.map(function(inv) {
       return {
-        id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
+        id: inv.id, supplier_name: inv.supplierName, supplier_id: getParentEntityId(inv.supplierId) || "", supplier_entity_id: branchEntityId(inv.supplierId), buyer_name: inv.buyerName, buyer_id: getParentEntityId(inv.buyerId) || "", buyer_entity_id: branchEntityId(inv.buyerId),
         amount: inv.amount, currency: inv.currency,
         capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
         interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
@@ -1683,7 +1760,7 @@ async function savePersistedData() {
     var spqRows = SUPPLIER_PAYMENT_QUEUE.map(function(q) {
       return {
         id: q.id, type: q.type, invoice_id: q.invoiceId || null, invoice_ids: q.invoiceIds || [],
-        supplier_name: q.supplierName, supplier_id: q.supplierId || null,
+        supplier_name: q.supplierName, supplier_id: getParentEntityId(q.supplierId) || null, supplier_entity_id: branchEntityId(q.supplierId),
         bank_name: q.bankName || null, bank_details: q.bankDetails || null,
         amount: q.amount, currency: q.currency, status: q.status || "Pending",
         program_id: q.programId || null, program_name: q.programName || null,
@@ -1706,7 +1783,7 @@ async function savePersistedData() {
       return {
         credit_note_id: cn.creditNoteId, amount: cn.amount, currency: cn.currency,
         date: cn.date, reference: cn.reference || "",
-        supplier_name: cn.supplierName, supplier_id: cn.supplierId || "", buyer_name: cn.buyerName, buyer_id: cn.buyerId || "",
+        supplier_name: cn.supplierName, supplier_id: getParentEntityId(cn.supplierId) || "", supplier_entity_id: branchEntityId(cn.supplierId), buyer_name: cn.buyerName, buyer_id: getParentEntityId(cn.buyerId) || "", buyer_entity_id: branchEntityId(cn.buyerId),
         created_display: cn.createdDisplay || null, allocations: cn.allocations || []
       };
     });
@@ -2145,7 +2222,7 @@ export default function FactoringDashboard() {
           if (SUPPLIERS_DB.length === 0) {
             loadPersistedData().then(function(res) {
               if (res && res.ok === false) { setLoadError(res); return; }
-              reloadForSupplier(result.data.supplier_id).then(function() {
+              reloadForSupplier(profileEntityId(result.data)).then(function() {
                 setDataVer(function(v) { return v + 1; });
               }).catch(function(err) {
                 // A supplier's own load failed part-way. Show the failure screen
@@ -2156,7 +2233,7 @@ export default function FactoringDashboard() {
               });
             });
           } else {
-            reloadForSupplier(result.data.supplier_id).then(function() {
+            reloadForSupplier(profileEntityId(result.data)).then(function() {
               setDataVer(function(v) { return v + 1; });
             }).catch(function(err) {
               _supplierLoaded = false;
@@ -2327,7 +2404,7 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var row = payload.new || payload.old;
           if (row) {
-            var matchesSup = supplierIdInScope(row.supplier_id, sf);
+            var matchesSup = supplierIdInScope(rowEntityId(row), sf);
             if (!matchesSup) return;
             // Keep supplier invoice-id set in sync so later audit-log realtime
             // relevance checks find invoices that arrived after the initial load
@@ -2345,13 +2422,13 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var spqRow = payload.new || payload.old;
           if (spqRow) {
-            var matches = supplierIdInScope(spqRow.supplier_id, sf);
+            var matches = supplierIdInScope(rowEntityId(spqRow), sf);
             if (!matches) return;
           }
         }
         if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
           return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
-            supplierName: row.supplier_name, supplierId: row.supplier_id || "",
+            supplierName: row.supplier_name, supplierId: rowEntityId(row),
             bankName: row.bank_name, bankDetails: row.bank_details,
             amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
             programId: row.program_id, programName: row.program_name,
@@ -4196,7 +4273,7 @@ export default function FactoringDashboard() {
         var spAmber = "#F59E0B";
 
         // Entity ID from user profile: "SUP-001" = parent user, "SUP-001:BR-001" = branch user
-        var spRawId = userProfile.supplier_id || "";
+        var spRawId = profileEntityId(userProfile);
         var spParsed = parseEntityId(spRawId);
         var spParentId = spParsed.supplierId || "";
         var spIsBranchUser = !!spParsed.branchId;
@@ -17250,7 +17327,7 @@ export default function FactoringDashboard() {
                 // Write new/updated invoices directly to Supabase in batches
                 var invToSave = touched.filter(function(inv, i) { return touched.indexOf(inv) === i; }).map(function(inv) {
                   return {
-                    id: inv.id, supplier_name: inv.supplierName, supplier_id: inv.supplierId || "", buyer_name: inv.buyerName, buyer_id: inv.buyerId || "",
+                    id: inv.id, supplier_name: inv.supplierName, supplier_id: getParentEntityId(inv.supplierId) || "", supplier_entity_id: branchEntityId(inv.supplierId), buyer_name: inv.buyerName, buyer_id: getParentEntityId(inv.buyerId) || "", buyer_entity_id: branchEntityId(inv.buyerId),
                     amount: inv.amount, currency: inv.currency,
                     capital_due: inv.capitalDue || 0, holdback: inv.holdback || 0,
                     interest_charged: inv.interestCharged || 0, deferred_payment: inv.deferredPayment || 0,
@@ -17617,8 +17694,8 @@ export default function FactoringDashboard() {
               function openEditUser(user) {
                 var role = user.role;
                 // Map stored role: if role is "supplier" but supplier_id has ":", it's a branch user
-                if (role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) role = "supplier_branch";
-                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: user.supplier_id || "", status: user.status || "active" });
+                if (role === "supplier" && user.branch_id) role = "supplier_branch";
+                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: profileEntityId(user), status: user.status || "active" });
                 setUserEdit(user);
                 setUserSaveMsg("");
               }
@@ -17638,7 +17715,10 @@ export default function FactoringDashboard() {
 
                 // Determine the stored role and supplier_id
                 var storedRole = f.role === "supplier_branch" ? "supplier" : f.role;
-                var storedSupplierId = (f.role === "supplier" || f.role === "supplier_branch") ? f.supplier_id : null;
+                // The picker yields an entity id; the columns take it split apart.
+                var storedEntityId = (f.role === "supplier" || f.role === "supplier_branch") ? (f.supplier_id || null) : null;
+                var storedSupplierId = storedEntityId ? (getParentEntityId(storedEntityId) || null) : null;
+                var storedBranchId = storedEntityId ? (parseEntityId(storedEntityId).branchId || null) : null;
 
                 setUserSaveMsg("Saving...");
 
@@ -17658,11 +17738,11 @@ export default function FactoringDashboard() {
                     restoreAndUpsert.then(function() {
                       return supabase.from("user_profiles").upsert({
                         id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
-                        supplier_id: storedSupplierId, status: f.status || "active"
+                        supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active"
                       });
                     }).then(function(r2) {
                       if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
-                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedSupplierId ? " — " + getEntityDisplayName(storedSupplierId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
+                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedEntityId ? " — " + getEntityDisplayName(storedEntityId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
                       setUserSaveMsg("");
                       setUserEdit(null);
                       loadUsers();
@@ -17670,10 +17750,10 @@ export default function FactoringDashboard() {
                   });
                 } else {
                   // Update existing user profile
-                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, status: f.status || "active" };
+                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active" };
                   supabase.from("user_profiles").update(updates).eq("id", userEdit.id).then(function(r2) {
                     if (r2.error) { setUserSaveMsg("Error: " + r2.error.message); return; }
-                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedSupplierId ? ", entity: " + getEntityDisplayName(storedSupplierId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
+                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedEntityId ? ", entity: " + getEntityDisplayName(storedEntityId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
                     setUserSaveMsg("");
                     setUserEdit(null);
                     loadUsers();
@@ -17782,7 +17862,7 @@ export default function FactoringDashboard() {
                   var muHasActive = !!(mgUsrSearch || mgUsrRoleFilter || mgUsrStatusFilter);
                   // Effective display role (handles supplier_branch derivation)
                   function effectiveRole(user) {
-                    if (user.role === "supplier" && user.supplier_id && user.supplier_id.indexOf(":") > -1) return "supplier_branch";
+                    if (user.role === "supplier" && user.branch_id) return "supplier_branch";
                     return user.role;
                   }
                   function applyMuFilters(list) {
