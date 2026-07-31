@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+    import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
@@ -322,12 +322,12 @@ function getEligiblePrograms(inv, supDilRates) {
     if (term > fp.maxInvoiceTerm) return false;
     if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) return false;
     if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) return false;
-    if (fp.maxSupDilLive && dr.dilRate > fp.maxSupDilLive) return false;
-    if (fp.maxSupDil30 && dr.dil30 > fp.maxSupDil30) return false;
-    if (fp.maxSupDil90 && dr.dil90 > fp.maxSupDil90) return false;
-    if (fp.maxFundDilLive && dr.fdilRate > fp.maxFundDilLive) return false;
-    if (fp.maxFundDil30 && dr.fdil30 > fp.maxFundDil30) return false;
-    if (fp.maxFundDil90 && dr.fdil90 > fp.maxFundDil90) return false;
+    if (fp.maxSupDilLive != null && dr.dilRate > fp.maxSupDilLive) return false;
+    if (fp.maxSupDil30 != null && dr.dil30 > fp.maxSupDil30) return false;
+    if (fp.maxSupDil90 != null && dr.dil90 > fp.maxSupDil90) return false;
+    if (fp.maxFundDilLive != null && dr.fdilRate > fp.maxFundDilLive) return false;
+    if (fp.maxFundDil30 != null && dr.fdil30 > fp.maxFundDil30) return false;
+    if (fp.maxFundDil90 != null && dr.fdil90 > fp.maxFundDil90) return false;
     // Single invoice limit per supplier per program
     var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
     if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
@@ -588,8 +588,8 @@ async function saveFundingProgram(progId) {
       threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
       threshold_recovery: fp.thresholdRecovery || 30,
       threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
-      max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
-      max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
+      max_sup_dil_live: fp.maxSupDilLive == null ? null : fp.maxSupDilLive, max_sup_dil_30: fp.maxSupDil30 == null ? null : fp.maxSupDil30, max_sup_dil_90: fp.maxSupDil90 == null ? null : fp.maxSupDil90,
+      max_fund_dil_live: fp.maxFundDilLive == null ? null : fp.maxFundDilLive, max_fund_dil_30: fp.maxFundDil30 == null ? null : fp.maxFundDil30, max_fund_dil_90: fp.maxFundDil90 == null ? null : fp.maxFundDil90,
       eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
       eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
       created_date: fp.createdDate || null,
@@ -879,8 +879,8 @@ async function loadPersistedData() {
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
           thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
-          maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
-          maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
+          maxSupDilLive: row.max_sup_dil_live == null ? null : parseFloat(row.max_sup_dil_live), maxSupDil30: row.max_sup_dil_30 == null ? null : parseFloat(row.max_sup_dil_30), maxSupDil90: row.max_sup_dil_90 == null ? null : parseFloat(row.max_sup_dil_90),
+          maxFundDilLive: row.max_fund_dil_live == null ? null : parseFloat(row.max_fund_dil_live), maxFundDil30: row.max_fund_dil_30 == null ? null : parseFloat(row.max_fund_dil_30), maxFundDil90: row.max_fund_dil_90 == null ? null : parseFloat(row.max_fund_dil_90),
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
@@ -1430,8 +1430,8 @@ async function reloadFundingPrograms() {
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
           thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
-          maxSupDilLive: parseFloat(row.max_sup_dil_live) || 0, maxSupDil30: parseFloat(row.max_sup_dil_30) || 0, maxSupDil90: parseFloat(row.max_sup_dil_90) || 0,
-          maxFundDilLive: parseFloat(row.max_fund_dil_live) || 0, maxFundDil30: parseFloat(row.max_fund_dil_30) || 0, maxFundDil90: parseFloat(row.max_fund_dil_90) || 0,
+          maxSupDilLive: row.max_sup_dil_live == null ? null : parseFloat(row.max_sup_dil_live), maxSupDil30: row.max_sup_dil_30 == null ? null : parseFloat(row.max_sup_dil_30), maxSupDil90: row.max_sup_dil_90 == null ? null : parseFloat(row.max_sup_dil_90),
+          maxFundDilLive: row.max_fund_dil_live == null ? null : parseFloat(row.max_fund_dil_live), maxFundDil30: row.max_fund_dil_30 == null ? null : parseFloat(row.max_fund_dil_30), maxFundDil90: row.max_fund_dil_90 == null ? null : parseFloat(row.max_fund_dil_90),
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
           eligibleBuyerJurisdictions: row.eligible_buyer_jurisdictions || [], eligibleSupplierJurisdictions: row.eligible_supplier_jurisdictions || [],
           createdDate: row.created_date,
@@ -1528,8 +1528,8 @@ async function savePersistedData() {
         threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
         threshold_recovery: fp.thresholdRecovery || 30,
         threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
-        max_sup_dil_live: fp.maxSupDilLive || 0, max_sup_dil_30: fp.maxSupDil30 || 0, max_sup_dil_90: fp.maxSupDil90 || 0,
-        max_fund_dil_live: fp.maxFundDilLive || 0, max_fund_dil_30: fp.maxFundDil30 || 0, max_fund_dil_90: fp.maxFundDil90 || 0,
+        max_sup_dil_live: fp.maxSupDilLive == null ? null : fp.maxSupDilLive, max_sup_dil_30: fp.maxSupDil30 == null ? null : fp.maxSupDil30, max_sup_dil_90: fp.maxSupDil90 == null ? null : fp.maxSupDil90,
+        max_fund_dil_live: fp.maxFundDilLive == null ? null : fp.maxFundDilLive, max_fund_dil_30: fp.maxFundDil30 == null ? null : fp.maxFundDil30, max_fund_dil_90: fp.maxFundDil90 == null ? null : fp.maxFundDil90,
         eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
         eligible_buyer_jurisdictions: fp.eligibleBuyerJurisdictions || [], eligible_supplier_jurisdictions: fp.eligibleSupplierJurisdictions || [],
         created_date: fp.createdDate || null,
@@ -16285,12 +16285,12 @@ export default function FactoringDashboard() {
                   thresholdDisputeRecovery: parseInt(pf.thresholdDisputeRecovery) || 14,
                   minInvoiceTenor: parseInt(pf.minInvoiceTenor) || 0,
                   minInvoiceSize: r2(parseFloat(pf.minInvoiceSize) || 0),
-                  maxSupDilLive: parseFloat(pf.maxSupDilLive) || 0,
-                  maxSupDil30: parseFloat(pf.maxSupDil30) || 0,
-                  maxSupDil90: parseFloat(pf.maxSupDil90) || 0,
-                  maxFundDilLive: parseFloat(pf.maxFundDilLive) || 0,
-                  maxFundDil30: parseFloat(pf.maxFundDil30) || 0,
-                  maxFundDil90: parseFloat(pf.maxFundDil90) || 0,
+                  maxSupDilLive: (pf.maxSupDilLive === "" || pf.maxSupDilLive == null) ? null : parseFloat(pf.maxSupDilLive),
+                  maxSupDil30: (pf.maxSupDil30 === "" || pf.maxSupDil30 == null) ? null : parseFloat(pf.maxSupDil30),
+                  maxSupDil90: (pf.maxSupDil90 === "" || pf.maxSupDil90 == null) ? null : parseFloat(pf.maxSupDil90),
+                  maxFundDilLive: (pf.maxFundDilLive === "" || pf.maxFundDilLive == null) ? null : parseFloat(pf.maxFundDilLive),
+                  maxFundDil30: (pf.maxFundDil30 === "" || pf.maxFundDil30 == null) ? null : parseFloat(pf.maxFundDil30),
+                  maxFundDil90: (pf.maxFundDil90 === "" || pf.maxFundDil90 == null) ? null : parseFloat(pf.maxFundDil90),
                   eligibleBuyerJurisdictions: pf.eligibleBuyerJurisdictions || [],
                   eligibleSupplierJurisdictions: pf.eligibleSupplierJurisdictions || []
                 };
@@ -16329,12 +16329,12 @@ export default function FactoringDashboard() {
                   thresholdDisputeRecovery: String(p.thresholdDisputeRecovery !== undefined ? p.thresholdDisputeRecovery : "14"),
                   minInvoiceTenor: String(p.minInvoiceTenor || ""),
                   minInvoiceSize: String(p.minInvoiceSize || ""),
-                  maxSupDilLive: String(p.maxSupDilLive || ""),
-                  maxSupDil30: String(p.maxSupDil30 || ""),
-                  maxSupDil90: String(p.maxSupDil90 || ""),
-                  maxFundDilLive: String(p.maxFundDilLive || ""),
-                  maxFundDil30: String(p.maxFundDil30 || ""),
-                  maxFundDil90: String(p.maxFundDil90 || ""),
+                  maxSupDilLive: p.maxSupDilLive == null ? "" : String(p.maxSupDilLive),
+                  maxSupDil30: p.maxSupDil30 == null ? "" : String(p.maxSupDil30),
+                  maxSupDil90: p.maxSupDil90 == null ? "" : String(p.maxSupDil90),
+                  maxFundDilLive: p.maxFundDilLive == null ? "" : String(p.maxFundDilLive),
+                  maxFundDil30: p.maxFundDil30 == null ? "" : String(p.maxFundDil30),
+                  maxFundDil90: p.maxFundDil90 == null ? "" : String(p.maxFundDil90),
                   eligibleBuyerJurisdictions: p.eligibleBuyerJurisdictions || [],
                   eligibleSupplierJurisdictions: p.eligibleSupplierJurisdictions || []
                 });
@@ -18180,3 +18180,5 @@ export default function FactoringDashboard() {
     </div>
   );
 }
+
+    
