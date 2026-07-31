@@ -168,6 +168,16 @@ function supplierIdInScope(rowSupplierId, sf) {
   if (sf.isBranch) return rowSupplierId === sf.supplierId;
   return parseEntityId(rowSupplierId).supplierId === sf.parentId;
 }
+// Buyer visibility scope. Exact mirror of supplierIdInScope, and it takes an
+// ENTITY id for the same reason: buyer_id is FK-constrained to buyers(id) and
+// can never hold a branch, so a branch buyer compared against it matches nothing.
+//   Parent buyer (BUY-0001)     -> own invoices + every branch's.
+//   Branch buyer (BUY-0001:BR1) -> that branch only.
+function buyerIdInScope(rowEntity, bf) {
+  if (!rowEntity || !bf) return false;
+  if (bf.isBranch) return rowEntity === bf.buyerId;
+  return parseEntityId(rowEntity).supplierId === bf.parentId;
+}
 function getSupplierById(entityId) {
   if (!entityId) return null;
   var parsed = parseEntityId(entityId);
@@ -1215,6 +1225,48 @@ function supabaseErrorToast(res, context) {
 }
 
 
+var _buyerLoaded = false;
+var _buyerFilter = null; // { buyerName, buyerId, parentId, isBranch, invIds }
+
+// Buyer-scoped load. Deliberately narrower than reloadForSupplier: a buyer has no
+// payment queue, no holdbacks and no payment allocations - those are supplier-side
+// mechanics. Invoices and the audit trail are what a buyer is entitled to see.
+async function reloadForBuyer(buyerId) {
+  if (_buyerLoaded) return;
+  _buyerLoaded = true;
+  var _parsedBuy = parseEntityId(buyerId);
+  var parentId = _parsedBuy.supplierId || buyerId;
+  var isBranch = !!_parsedBuy.branchId;
+  var buyerName = "";
+  BUYERS_DB.forEach(function(b) { if (b.id === parentId) buyerName = b.name; });
+  if (!buyerName) { _buyerLoaded = false; return; }
+
+  // Same shape as the supplier filter: every row for the group carries
+  // buyer_id = parent, so the parent case is a plain equality.
+  var scopeFilter = isBranch
+    ? { column: "buyer_entity_id", value: buyerId }
+    : { column: "buyer_id", value: parentId };
+
+  var invData = await fetchAllRows("invoices", scopeFilter, { strict: true });
+  var seen = {};
+  INVOICES_DB.length = 0;
+  invData.forEach(function(row) {
+    if (seen[row.id]) return;
+    seen[row.id] = true;
+    INVOICES_DB.push(mapInvoiceRow(row));
+  });
+  var invIdSet = {};
+  INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
+  _buyerFilter = { buyerName: buyerName, buyerId: buyerId, parentId: parentId, isBranch: isBranch, invIds: invIdSet };
+  console.log("[Buyer Load] " + buyerName + ": " + INVOICES_DB.length + " invoices loaded");
+
+  // No audit load. The buyer portal is read-only and does not display activity,
+  // so fetching it would cost a round trip to populate an array nothing reads.
+  // If a buyer activity feed is added later, query it scoped rather than
+  // reusing the supplier path's fetch-everything-then-filter-in-JS approach.
+  AUDIT_LOG.length = 0;
+}
+
 async function reloadForSupplier(supplierId) {
   if (_supplierLoaded) return;
   _supplierLoaded = true;
@@ -2240,6 +2292,26 @@ export default function FactoringDashboard() {
               console.error("[Supplier Load] aborted:", err && err.message);
               setLoadError({ ok: false, failedCore: [(err && err._table) || "supplier data"], failedOther: [] });
             });
+          }
+        }
+        // Buyer users: same two-step as suppliers - reference data first, then scope.
+        if (result.data.role === "buyer") {
+          var runBuyerLoad = function() {
+            reloadForBuyer(profileEntityId(result.data)).then(function() {
+              setDataVer(function(v) { return v + 1; });
+            }).catch(function(err) {
+              _buyerLoaded = false;
+              console.error("[Buyer Load] aborted:", err && err.message);
+              setLoadError({ ok: false, failedCore: [(err && err._table) || "buyer data"], failedOther: [] });
+            });
+          };
+          if (BUYERS_DB.length === 0) {
+            loadPersistedData().then(function(res) {
+              if (res && res.ok === false) { setLoadError(res); return; }
+              runBuyerLoad();
+            });
+          } else {
+            runBuyerLoad();
           }
         }
       }
@@ -6093,6 +6165,78 @@ export default function FactoringDashboard() {
             )
           ),
           React.createElement("style", { dangerouslySetInnerHTML: { __html: "\n@media (max-width: 768px) { .ff-sidebar-desktop { display: none !important; } }\n@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }\n.sp-table tr:hover td { background: #16213A !important; }\n.sp-table tr { transition: background 0.1s ease; }\ninput:focus, select:focus { border-color: #0EA5E9 !important; }\n::-webkit-scrollbar { width: 6px; height: 6px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: #3D4760; border-radius: 3px; }\n::-webkit-scrollbar-thumb:hover { background: #4F5A75; }\n" } })
+        );
+      })() : userProfile && userProfile.role === "buyer" ? (function() {
+        /* ====================================================================
+           BUYER PORTAL - first cut, read-only.
+           A gate as much as a feature: without this branch, buyer users render
+           the admin portal. Scope comes from reloadForBuyer, so INVOICES_DB
+           already holds only this entity's rows.
+           ==================================================================== */
+        var byEntityId = profileEntityId(userProfile);
+        var byLabel = getBuyerEntityDisplayName(byEntityId) || byEntityId;
+        var byInvs = INVOICES_DB.slice().sort(function(a, b) {
+          return String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || ""));
+        });
+        var byCcy = byInvs.length > 0 ? byInvs[0].currency : "GBP";
+        var byTotal = byInvs.reduce(function(t, i) { return t + (i.amount || 0); }, 0);
+        var thS = { textAlign: "left", padding: "8px 12px", fontSize: 11, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", borderBottom: "1px solid var(--border)" };
+        var tdS = { padding: "10px 12px", fontSize: 13, color: "var(--text)", borderBottom: "1px solid var(--border)" };
+        var cardS = { padding: "14px 18px", borderRadius: 10, border: "1px solid var(--border)", minWidth: 150 };
+        return (
+          <div style={{ minHeight: "100vh", background: "var(--bg)", padding: "32px 24px" }}>
+            <div style={{ maxWidth: 1040, margin: "0 auto" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{byLabel}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>Buyer portal</div>
+                </div>
+                <button onClick={handleLogout} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, cursor: "pointer" }}>Sign out</button>
+              </div>
+              <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+                <div style={cardS}>
+                  <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Invoices</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>{byInvs.length}</div>
+                </div>
+                <div style={cardS}>
+                  <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Total value</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", marginTop: 4 }}>{money(byTotal, byCcy)}</div>
+                </div>
+              </div>
+              {byInvs.length === 0 ? (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--muted)", fontSize: 13, border: "1px solid var(--border)", borderRadius: 10 }}>No invoices are recorded against this entity.</div>
+              ) : (
+                <div style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        <th style={thS}>Invoice</th>
+                        <th style={thS}>Supplier</th>
+                        <th style={thS}>Invoice date</th>
+                        <th style={thS}>Due date</th>
+                        <th style={thS}>Status</th>
+                        <th style={Object.assign({}, thS, { textAlign: "right" })}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byInvs.map(function(inv) {
+                        return (
+                          <tr key={inv.id}>
+                            <td style={tdS}>{inv.invoiceReference || inv.id}</td>
+                            <td style={tdS}>{inv.supplierName || "\u2014"}</td>
+                            <td style={tdS}>{inv.invoiceDate || "\u2014"}</td>
+                            <td style={tdS}>{inv.dueDate || "\u2014"}</td>
+                            <td style={tdS}>{inv.invoiceStatus || "\u2014"}</td>
+                            <td style={Object.assign({}, tdS, { textAlign: "right" })}>{money(inv.amount || 0, inv.currency)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         );
       })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
@@ -15074,6 +15218,7 @@ export default function FactoringDashboard() {
               var det = manageDetail;
               var isSup = det.type === "supplier";
               var isSp = det.type === "service_provider";
+              var isBuy = !isSup && !isSp;
               var detEntity = isSup ? SUPPLIERS_DB.find(function(s) { return s.name === det.name; }) : isSp ? SERVICE_PROVIDERS_DB.find(function(s) { return s.name === det.name; }) : BUYERS_DB.find(function(b) { return b.name === det.name; });
               if (detEntity) det = Object.assign({}, det, detEntity);
               var entityInvs = viewData.invoices.filter(function(inv) { return isSup ? inv.supplierName === det.name : inv.buyerName === det.name; });
@@ -15216,7 +15361,8 @@ export default function FactoringDashboard() {
                     tabs.push({ key: "directors", label: "Directors & Officers" + (det.directors && det.directors.length > 0 ? " (" + det.directors.length + ")" : "") });
                     tabs.push({ key: "monitoring", label: "Monitoring" });
                     tabs.push({ key: "ch", label: "Companies House" });
-                    tabs.push({ key: "branches", label: "Branches" + (det.branches && det.branches.length > 0 ? " (" + det.branches.length + ")" : "") });
+                    // Suppliers and buyers only - service_providers have no branch concept.
+                    if (isSup || isBuy) tabs.push({ key: "branches", label: "Branches" + (det.branches && det.branches.length > 0 ? " (" + det.branches.length + ")" : "") });
                     tabs.push({ key: "auditlog", label: "Audit Log" });
                     return tabs;
                   })().map(function(t) {
@@ -15595,6 +15741,12 @@ export default function FactoringDashboard() {
                 {/* Tab: Branches */}
                 {manageDetailTab === "branches" && (function() {
                   var branches = det.branches || [];
+                  // Persist to the right table. The tab is shared, so calling
+                  // saveSupplier unconditionally silently discarded buyer branches.
+                  function persistBranches() {
+                    if (isSup) { saveSupplier(selectedSupplier); }
+                    else if (isBuy && det.id) { saveBuyer(det.id); }
+                  }
                   var editingBranch = managePopup && managePopup.type === "branchEdit" ? managePopup : null;
                   var ebIdx = editingBranch ? editingBranch.idx : -1;
                   var ebData = editingBranch ? editingBranch.data : null;
@@ -15640,7 +15792,7 @@ export default function FactoringDashboard() {
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
                     } else {
                       detEntity.branches.push(ebData);
-                      saveSupplier(selectedSupplier);
+                      persistBranches();
                     auditLog("Branch Created", "Branch \"" + ebData.branchName + "\" added to " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: ebData.branchName });
                     }
                     setManagePopup(null);
@@ -15650,7 +15802,7 @@ export default function FactoringDashboard() {
                     if (!detEntity || !detEntity.branches) return;
                     var removed = detEntity.branches[idx];
                     detEntity.branches.splice(idx, 1);
-                    saveSupplier(selectedSupplier);
+                    persistBranches();
                         auditLog("Branch Removed", "Branch \"" + (removed.branchName || "Unnamed") + "\" removed from " + det.id + " (" + det.name + ")", { entityId: det.id, branchName: removed.branchName });
                     setDataVer(function(v) { return v + 1; });
                   }
@@ -15687,7 +15839,7 @@ export default function FactoringDashboard() {
                               </td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
                                 <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
-                                <button onClick={function() { br.paused = !br.paused; saveSupplier(selectedSupplier); auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
+                                <button onClick={function() { br.paused = !br.paused; persistBranches(); auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
                               </td>
                             </tr>;
@@ -17668,15 +17820,20 @@ export default function FactoringDashboard() {
                 { value: "operations", label: "Operations", desc: "Operational access to admin portal" },
                 { value: "supervisor", label: "Supervisor", desc: "Read-only admin portal access (approval rights in future)" },
                 { value: "supplier", label: "Supplier", desc: "Parent-level supplier portal access" },
-                { value: "supplier_branch", label: "Branch User", desc: "Branch-level supplier portal access" }
+                { value: "supplier_branch", label: "Branch User", desc: "Branch-level supplier portal access" },
+                { value: "buyer", label: "Buyer", desc: "Parent-level buyer portal access" },
+                { value: "buyer_branch", label: "Buyer Branch User", desc: "Branch-level buyer portal access" }
               ];
               function getRoleLabel(role) {
                 var r = ROLE_OPTIONS.find(function(o) { return o.value === role; });
                 return r ? r.label : role || "—";
               }
-              var roleColors = { admin: "#EF4444", operations: "#0EA5E9", supervisor: "#8B5CF6", supplier: "#059669", supplier_branch: "#D97706" };
+              var roleColors = { admin: "#EF4444", operations: "#0EA5E9", supervisor: "#8B5CF6", supplier: "#059669", supplier_branch: "#D97706", buyer: "#2563EB", buyer_branch: "#7C3AED" };
 
               // All supplier entities for the dropdown — split into parents and branches
+              var allBuyerEntities = getAllBuyerEntities();
+              var buyerParentEntities = allBuyerEntities.filter(function(e) { return !e.isBranch; });
+              var buyerBranchEntities = allBuyerEntities.filter(function(e) { return e.isBranch; });
               var allEntities = getAllSupplierEntities();
               var parentEntities = [];
               var branchEntities = [];
@@ -17695,7 +17852,11 @@ export default function FactoringDashboard() {
                 var role = user.role;
                 // Map stored role: if role is "supplier" but supplier_id has ":", it's a branch user
                 if (role === "supplier" && user.branch_id) role = "supplier_branch";
-                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only", supplier_id: profileEntityId(user), status: user.status || "active" });
+                if (role === "buyer" && user.branch_id) role = "buyer_branch";
+                setUserFields({ full_name: user.full_name || "", email: user.email || "", role: role || "read_only",
+                  supplier_id: user.supplier_id ? profileEntityId(user) : "",
+                  buyer_id: user.buyer_id ? profileEntityId(user) : "",
+                  status: user.status || "active" });
                 setUserEdit(user);
                 setUserSaveMsg("");
               }
@@ -17711,14 +17872,21 @@ export default function FactoringDashboard() {
                 if (!f.email) { setUserSaveMsg("Email is required."); return; }
                 if (!f.role) { setUserSaveMsg("Role is required."); return; }
                 if ((f.role === "supplier" || f.role === "supplier_branch") && !f.supplier_id) { setUserSaveMsg("Supplier/Branch must be selected for this role."); return; }
+                if ((f.role === "buyer" || f.role === "buyer_branch") && !f.buyer_id) { setUserSaveMsg("Buyer/Branch must be selected for this role."); return; }
                 if (userEdit === "new" && (!f.password || f.password.length < 8)) { setUserSaveMsg("Password must be at least 8 characters."); return; }
 
                 // Determine the stored role and supplier_id
-                var storedRole = f.role === "supplier_branch" ? "supplier" : f.role;
+                var storedRole = f.role === "supplier_branch" ? "supplier" : (f.role === "buyer_branch" ? "buyer" : f.role);
                 // The picker yields an entity id; the columns take it split apart.
-                var storedEntityId = (f.role === "supplier" || f.role === "supplier_branch") ? (f.supplier_id || null) : null;
-                var storedSupplierId = storedEntityId ? (getParentEntityId(storedEntityId) || null) : null;
+                // Exactly one of supplier_id / buyer_id is ever set - user_profiles_one_entity
+                // enforces that in the database.
+                var isSupRole = (f.role === "supplier" || f.role === "supplier_branch");
+                var isBuyRole = (f.role === "buyer" || f.role === "buyer_branch");
+                var storedEntityId = isSupRole ? (f.supplier_id || null) : (isBuyRole ? (f.buyer_id || null) : null);
+                var storedSupplierId = (isSupRole && storedEntityId) ? (getParentEntityId(storedEntityId) || null) : null;
+                var storedBuyerId = (isBuyRole && storedEntityId) ? (getParentEntityId(storedEntityId) || null) : null;
                 var storedBranchId = storedEntityId ? (parseEntityId(storedEntityId).branchId || null) : null;
+                var storedEntityLabel = storedEntityId ? (isBuyRole ? getBuyerEntityDisplayName(storedEntityId) : getEntityDisplayName(storedEntityId)) : "";
 
                 setUserSaveMsg("Saving...");
 
@@ -17738,11 +17906,11 @@ export default function FactoringDashboard() {
                     restoreAndUpsert.then(function() {
                       return supabase.from("user_profiles").upsert({
                         id: newUserId, email: f.email, full_name: f.full_name, role: storedRole,
-                        supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active"
+                        supplier_id: storedSupplierId, buyer_id: storedBuyerId, branch_id: storedBranchId, status: f.status || "active"
                       });
                     }).then(function(r2) {
                       if (r2.error) { setUserSaveMsg("Profile error: " + r2.error.message); return; }
-                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedEntityId ? " — " + getEntityDisplayName(storedEntityId) : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
+                      auditLog("User Created", f.full_name + " (" + f.email + ") created with role " + getRoleLabel(f.role) + (storedEntityId ? " — " + storedEntityLabel : ""), { userId: newUserId, email: f.email, role: storedRole, supplier_id: storedSupplierId });
                       setUserSaveMsg("");
                       setUserEdit(null);
                       loadUsers();
@@ -17750,10 +17918,10 @@ export default function FactoringDashboard() {
                   });
                 } else {
                   // Update existing user profile
-                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, branch_id: storedBranchId, status: f.status || "active" };
+                  var updates = { full_name: f.full_name, role: storedRole, supplier_id: storedSupplierId, buyer_id: storedBuyerId, branch_id: storedBranchId, status: f.status || "active" };
                   supabase.from("user_profiles").update(updates).eq("id", userEdit.id).then(function(r2) {
                     if (r2.error) { setUserSaveMsg("Error: " + r2.error.message); return; }
-                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedEntityId ? ", entity: " + getEntityDisplayName(storedEntityId) : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
+                    auditLog("User Edited", f.full_name + " (" + f.email + ") updated — role: " + getRoleLabel(f.role) + (storedEntityId ? ", entity: " + storedEntityLabel : "") + ", status: " + (f.status || "active"), { userId: userEdit.id, email: f.email, role: storedRole, supplier_id: storedSupplierId, status: f.status });
                     setUserSaveMsg("");
                     setUserEdit(null);
                     loadUsers();
@@ -17809,7 +17977,7 @@ export default function FactoringDashboard() {
                     </div>}
                     <div>
                       <div style={labelStyle}>Role</div>
-                      <select value={userFields.role || ""} onChange={function(e) { var newRole = e.target.value; var updates = { role: newRole }; if (newRole !== "supplier" && newRole !== "supplier_branch") updates.supplier_id = ""; setUserFields(Object.assign({}, userFields, updates)); }} style={fieldStyle}>
+                      <select value={userFields.role || ""} onChange={function(e) { var newRole = e.target.value; var updates = { role: newRole }; if (newRole !== "supplier" && newRole !== "supplier_branch") updates.supplier_id = ""; if (newRole !== "buyer" && newRole !== "buyer_branch") updates.buyer_id = ""; setUserFields(Object.assign({}, userFields, updates)); }} style={fieldStyle}>
                         {ROLE_OPTIONS.map(function(o) { return <option key={o.value} value={o.value}>{o.label}</option>; })}
                       </select>
                       <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>{(ROLE_OPTIONS.find(function(o) { return o.value === userFields.role; }) || {}).desc || ""}</div>
@@ -17819,6 +17987,20 @@ export default function FactoringDashboard() {
                       <select value={userFields.supplier_id || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { supplier_id: e.target.value })); }} style={fieldStyle}>
                         <option value="">— Select Supplier —</option>
                         {parentEntities.map(function(e) { return <option key={e.value} value={e.value}>{e.label} ({e.value})</option>; })}
+                      </select>
+                    </div>}
+                    {userFields.role === "buyer" && <div>
+                      <div style={labelStyle}>Buyer (Parent)</div>
+                      <select value={userFields.buyer_id || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { buyer_id: e.target.value })); }} style={fieldStyle}>
+                        <option value="">— Select Buyer —</option>
+                        {buyerParentEntities.map(function(e) { return <option key={e.value} value={e.value}>{e.label} ({e.value})</option>; })}
+                      </select>
+                    </div>}
+                    {userFields.role === "buyer_branch" && <div>
+                      <div style={labelStyle}>Buyer Branch</div>
+                      <select value={userFields.buyer_id || ""} onChange={function(e) { setUserFields(Object.assign({}, userFields, { buyer_id: e.target.value })); }} style={fieldStyle}>
+                        <option value="">— Select Buyer Branch —</option>
+                        {buyerBranchEntities.map(function(e) { return <option key={e.value} value={e.value}>{e.label} ({e.value})</option>; })}
                       </select>
                     </div>}
                     {userFields.role === "supplier_branch" && <div>
