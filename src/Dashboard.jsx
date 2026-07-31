@@ -155,6 +155,17 @@ function parseEntityId(entityId) {
 function makeEntityId(supplierId, branchId) {
   return branchId ? supplierId + ":" + branchId : supplierId;
 }
+// Supplier visibility scope, in one place.
+//   Parent user (SUP-0001)     -> own invoices + every branch's.
+//   Branch user (SUP-0001:BR1) -> that branch only.
+// Deliberately matches on supplier_id alone. The previous supplier_name match
+// resolved to the PARENT's name for every user, so a branch login received the
+// whole group.
+function supplierIdInScope(rowSupplierId, sf) {
+  if (!rowSupplierId || !sf) return false;
+  if (sf.isBranch) return rowSupplierId === sf.supplierId;
+  return parseEntityId(rowSupplierId).supplierId === sf.parentId;
+}
 function getSupplierById(entityId) {
   if (!entityId) return null;
   var parsed = parseEntityId(entityId);
@@ -505,7 +516,7 @@ async function fetchAllRows(table, filter, opts) {
   var from = 0;
   while (true) {
     var query = supabase.from(table).select("*");
-    if (filter) query = query.eq(filter.column, filter.value);
+    if (filter) query = filter.or ? query.or(filter.or) : query.eq(filter.column, filter.value);
     var res = await query.range(from, from + pageSize - 1);
     if (res.error) {
       console.error("[fetchAllRows] Error loading " + table + ":", res.error.message);
@@ -1135,19 +1146,21 @@ function supabaseErrorToast(res, context) {
 async function reloadForSupplier(supplierId) {
   if (_supplierLoaded) return;
   _supplierLoaded = true;
-  var parentId = parseEntityId(supplierId).supplierId || supplierId;
+  var _parsedSup = parseEntityId(supplierId);
+  var parentId = _parsedSup.supplierId || supplierId;
+  var isBranch = !!_parsedSup.branchId;
   var supplierName = "";
   SUPPLIERS_DB.forEach(function(s) { if (s.id === parentId) supplierName = s.name; });
   if (!supplierName) { _supplierLoaded = false; return; }
   
-  // Load only this supplier's invoices
-  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName }, { strict: true });
-  // Also load by supplier_id for branch matching
-  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId }, { strict: true });
-  // Merge and deduplicate
+  // Load only the invoices this user is entitled to see (see supplierIdInScope).
+  var scopeFilter = isBranch
+    ? { column: "supplier_id", value: supplierId }
+    : { or: "supplier_id.eq." + parentId + ",supplier_id.like." + parentId + ":*" };
+  var invData = await fetchAllRows("invoices", scopeFilter, { strict: true });
   var seen = {};
   INVOICES_DB.length = 0;
-  invData.concat(invDataById).forEach(function(row) {
+  invData.forEach(function(row) {
     if (seen[row.id]) return;
     seen[row.id] = true;
     INVOICES_DB.push({
@@ -1175,13 +1188,13 @@ async function reloadForSupplier(supplierId) {
   });
   var invIdSet = {};
   INVOICES_DB.forEach(function(inv) { invIdSet[inv.id] = true; });
-  _supplierFilter = { supplierName: supplierName, supplierId: supplierId, parentId: parentId, invIds: invIdSet };
+  _supplierFilter = { supplierName: supplierName, supplierId: supplierId, parentId: parentId, isBranch: isBranch, invIds: invIdSet };
   console.log("[Supplier Load] " + supplierName + ": " + INVOICES_DB.length + " invoices loaded");
   
   // Load SPQ entries for this supplier FIRST so we can use them to decide
   // which payments to load (pass-through source payments might not have any
   // allocation to this supplier's invoices but are still relevant).
-  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName }, { strict: true });
+  var spqData = await fetchAllRows("supplier_payment_queue", scopeFilter, { strict: true });
   SUPPLIER_PAYMENT_QUEUE.length = 0;
   var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
@@ -1256,8 +1269,8 @@ async function reloadForSupplier(supplierId) {
   AUDIT_LOG.length = 0;
   auditData.forEach(function(row) {
     var ctx = row.context || {};
-    var relevant = ctx.supplierName === supplierName || ctx.supplier === supplierName ||
-      (ctx.supplierId && (ctx.supplierId === supplierId || parseEntityId(ctx.supplierId).supplierId === parentId)) ||
+    var relevant = supplierIdInScope(ctx.supplierId, { supplierId: supplierId, parentId: parentId, isBranch: isBranch }) ||
+      (!isBranch && (ctx.supplierName === supplierName || ctx.supplier === supplierName)) ||
       (ctx.invoiceId && invIdSet[ctx.invoiceId]);
     if (relevant) {
       AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.event_type, details: row.details, context: ctx });
@@ -2314,8 +2327,7 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var row = payload.new || payload.old;
           if (row) {
-            var matchesSup = row.supplier_name === sf.supplierName ||
-              (row.supplier_id && (row.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(row.supplier_id).supplierId === sf.parentId)));
+            var matchesSup = supplierIdInScope(row.supplier_id, sf);
             if (!matchesSup) return;
             // Keep supplier invoice-id set in sync so later audit-log realtime
             // relevance checks find invoices that arrived after the initial load
@@ -2333,8 +2345,7 @@ export default function FactoringDashboard() {
           var sf = _supplierFilter;
           var spqRow = payload.new || payload.old;
           if (spqRow) {
-            var matches = spqRow.supplier_name === sf.supplierName ||
-              (spqRow.supplier_id && (spqRow.supplier_id === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(spqRow.supplier_id).supplierId === sf.parentId)));
+            var matches = supplierIdInScope(spqRow.supplier_id, sf);
             if (!matches) return;
           }
         }
@@ -2363,8 +2374,8 @@ export default function FactoringDashboard() {
           // If running as a supplier, only accept entries relevant to that supplier
           if (_supplierFilter) {
             var sf = _supplierFilter;
-            var relevant = ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName ||
-              (ctx.supplierId && (ctx.supplierId === sf.supplierId || (typeof parseEntityId === "function" && parseEntityId(ctx.supplierId).supplierId === sf.parentId))) ||
+            var relevant = supplierIdInScope(ctx.supplierId, sf) ||
+              (!sf.isBranch && (ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName)) ||
               (ctx.invoiceId && sf.invIds && sf.invIds[ctx.invoiceId]);
             if (!relevant) return;
           }
