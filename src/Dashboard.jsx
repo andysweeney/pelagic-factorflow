@@ -494,8 +494,12 @@ function nextId(prefix, arr, idField, pad) {
   return prefix + String(maxIdNum(prefix, arr, idField) + 1).padStart(pad, "0");
 }
 
-async function fetchAllRows(table, filter) {
+async function fetchAllRows(table, filter, opts) {
   // filter: optional { column: "col_name", value: "val" }
+  // opts.strict: throw on error instead of returning a silently truncated array.
+  //   Without it a failure on page 1 returns [], and a failure on page 3 returns
+  //   pages 1-2 as though that were the whole table.
+  var strict = !!(opts && opts.strict);
   var all = [];
   var pageSize = 1000;
   var from = 0;
@@ -503,7 +507,11 @@ async function fetchAllRows(table, filter) {
     var query = supabase.from(table).select("*");
     if (filter) query = query.eq(filter.column, filter.value);
     var res = await query.range(from, from + pageSize - 1);
-    if (res.error) { console.error("[fetchAllRows] Error loading " + table + ":", res.error.message); break; }
+    if (res.error) {
+      console.error("[fetchAllRows] Error loading " + table + ":", res.error.message);
+      if (strict) { var fetchErr = new Error(res.error.message); fetchErr._table = table; throw fetchErr; }
+      break;
+    }
     if (!res.data || res.data.length === 0) break;
     all = all.concat(res.data);
     if (res.data.length < pageSize) break;
@@ -766,11 +774,15 @@ async function loadPersistedData() {
     // the whole load — partial data is better than nothing.
     var safeFetch = function(p, label) {
       return p.then(function(res) {
-        if (res && res.error) console.warn("[Load] " + label + " returned error:", res.error.message || res.error);
+        if (res && res.error) {
+          console.warn("[Load] " + label + " returned error:", res.error.message || res.error);
+          return { data: null, error: res.error, _failed: true, _label: label };
+        }
+        if (res) res._label = label;
         return res;
       }).catch(function(err) {
         console.warn("[Load] " + label + " threw:", err && err.message ? err.message : err);
-        return { data: null, error: err, _failed: true };
+        return { data: null, error: err, _failed: true, _label: label };
       });
     };
 
@@ -780,19 +792,44 @@ async function loadPersistedData() {
       safeFetch(supabase.from("buyers").select("*"), "buyers"),                                                                                                    // 1
       safeFetch(supabase.from("service_providers").select("*"), "service_providers"),                                                                              // 2
       safeFetch(supabase.from("funding_programs").select("*"), "funding_programs"),                                                                                // 3
-      safeFetch(fetchAllRows("invoices").then(function(d) { return { data: d }; }), "invoices"),                                                                  // 4
-      safeFetch(fetchAllRows("payments").then(function(d) { return { data: d }; }), "payments"),                                                                  // 5
-      safeFetch(fetchAllRows("payment_allocations").then(function(d) { return { data: d }; }), "payment_allocations"),                                            // 6
+      safeFetch(fetchAllRows("invoices", null, { strict: true }).then(function(d) { return { data: d }; }), "invoices"),                                                                  // 4
+      safeFetch(fetchAllRows("payments", null, { strict: true }).then(function(d) { return { data: d }; }), "payments"),                                                                  // 5
+      safeFetch(fetchAllRows("payment_allocations", null, { strict: true }).then(function(d) { return { data: d }; }), "payment_allocations"),                                            // 6
       safeFetch(supabase.from("holdback_payments").select("*"), "holdback_payments"),                                                                              // 7
       safeFetch(supabase.from("holdback_payment_allocations").select("*"), "holdback_payment_allocations"),                                                        // 8
       safeFetch(supabase.from("supplier_payment_queue").select("*"), "supplier_payment_queue"),                                                                    // 9
       safeFetch(supabase.from("credit_notes").select("*"), "credit_notes"),                                                                                        // 10
-      safeFetch(fetchAllRows("audit_log").then(function(d) { return { data: d }; }), "audit_log"),                                                                // 11
+      safeFetch(fetchAllRows("audit_log", null, { strict: true }).then(function(d) { return { data: d }; }), "audit_log"),                                                                // 11
       safeFetch(supabase.from("entity_notes").select("*").order("created_at", { ascending: true }), "entity_notes"),                                               // 12
       safeFetch(supabase.from("csv_review_queue").select("*").eq("status", "pending").order("created_at", { ascending: true }), "csv_review_queue"),               // 13
       safeFetch(supabase.from("entity_aliases").select("*"), "entity_aliases")                                                                                     // 14
     ]);
     console.log("[Load] Parallel fetches completed in " + (Date.now() - t0) + "ms");
+
+    // Core tables feed numbers on screen. A missing credit note or allocation does
+    // not leave a visible gap -- it silently changes a balance. So any core failure
+    // stops the load rather than rendering a book we could not fully read.
+    var CORE_TABLES = {
+      suppliers: 1, buyers: 1, funding_programs: 1, service_providers: 1,
+      invoices: 1, payments: 1, payment_allocations: 1,
+      holdback_payments: 1, holdback_payment_allocations: 1,
+      credit_notes: 1, supplier_payment_queue: 1
+    };
+    var _loadFailedCore = [];
+    var _loadFailedOther = [];
+    results.forEach(function(r) {
+      if (r && r._failed) {
+        if (CORE_TABLES[r._label]) _loadFailedCore.push(r._label);
+        else _loadFailedOther.push(r._label);
+      }
+    });
+    if (_loadFailedCore.length > 0) {
+      console.error("[Load] Core tables failed, aborting load:", _loadFailedCore.join(", "));
+      return { ok: false, failedCore: _loadFailedCore, failedOther: _loadFailedOther };
+    }
+    if (_loadFailedOther.length > 0) {
+      console.warn("[Load] Non-core tables failed, continuing:", _loadFailedOther.join(", "));
+    }
 
     var supRes = results[0], buyRes = results[1], spRes = results[2], fpRes = results[3];
     var invRes = results[4], payRes = results[5], allocRes = results[6];
@@ -1025,9 +1062,11 @@ async function loadPersistedData() {
       });
     }
 
-    if (SUPPLIERS_DB.length > 0 || INVOICES_DB.length > 0) return true;
-  } catch (e) { console.error("Supabase load error:", e); }
-  return false;
+    return { ok: true, failedCore: [], failedOther: _loadFailedOther };
+  } catch (e) {
+    console.error("Supabase load error:", e);
+    return { ok: false, failedCore: ["unexpected"], failedOther: [], error: e };
+  }
 }
 
 var _realtimeUpdate = 0; // Counter to prevent save loops when realtime triggers a reload
@@ -1102,9 +1141,9 @@ async function reloadForSupplier(supplierId) {
   if (!supplierName) { _supplierLoaded = false; return; }
   
   // Load only this supplier's invoices
-  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName });
+  var invData = await fetchAllRows("invoices", { column: "supplier_name", value: supplierName }, { strict: true });
   // Also load by supplier_id for branch matching
-  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId });
+  var invDataById = await fetchAllRows("invoices", { column: "supplier_id", value: supplierId }, { strict: true });
   // Merge and deduplicate
   var seen = {};
   INVOICES_DB.length = 0;
@@ -1142,7 +1181,7 @@ async function reloadForSupplier(supplierId) {
   // Load SPQ entries for this supplier FIRST so we can use them to decide
   // which payments to load (pass-through source payments might not have any
   // allocation to this supplier's invoices but are still relevant).
-  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName });
+  var spqData = await fetchAllRows("supplier_payment_queue", { column: "supplier_name", value: supplierName }, { strict: true });
   SUPPLIER_PAYMENT_QUEUE.length = 0;
   var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
@@ -1170,7 +1209,7 @@ async function reloadForSupplier(supplierId) {
   // Load payments that have allocations to this supplier's invoices
   // OR are the source of a pass-through remittance to this supplier.
   // For now load all payments (they're usually fewer) and filter client-side.
-  var payData = await fetchAllRows("payments");
+  var payData = await fetchAllRows("payments", null, { strict: true });
   PAYMENTS_DB.length = 0;
   for (var pi = 0; pi < payData.length; pi++) {
     var prow = payData[pi];
@@ -1193,7 +1232,7 @@ async function reloadForSupplier(supplierId) {
   console.log("[Supplier Load] " + supplierName + ": " + PAYMENTS_DB.length + " relevant payments loaded");
 
   // Load holdback payments for this supplier's invoices
-  var hbpData = await fetchAllRows("holdback_payments");
+  var hbpData = await fetchAllRows("holdback_payments", null, { strict: true });
   HOLDBACK_PAYMENTS_DB.length = 0;
   for (var hi = 0; hi < hbpData.length; hi++) {
     var hrow = hbpData[hi];
@@ -1213,7 +1252,7 @@ async function reloadForSupplier(supplierId) {
   // Load audit log entries relevant to this supplier
   // We can't easily filter audit_log by supplier in Supabase (it's in context JSON)
   // So load all and filter client-side — this is acceptable since audit log is read-only for suppliers
-  var auditData = await fetchAllRows("audit_log");
+  var auditData = await fetchAllRows("audit_log", null, { strict: true });
   AUDIT_LOG.length = 0;
   auditData.forEach(function(row) {
     var ctx = row.context || {};
@@ -2048,6 +2087,7 @@ export default function FactoringDashboard() {
   var authS = useState(null), session = authS[0], setSession = authS[1];
   var upS = useState(null), userProfile = upS[0], setUserProfile = upS[1];
   var alS = useState(true), authLoading = alS[0], setAuthLoading = alS[1];
+  var leS = useState(null), loadError = leS[0], setLoadError = leS[1];
   var leS = useState(""), loginEmail = leS[0], setLoginEmail = leS[1];
   var lpS = useState(""), loginPassword = lpS[0], setLoginPassword = lpS[1];
   var lrS = useState(""), loginError = lrS[0], setLoginError = lrS[1];
@@ -2090,14 +2130,25 @@ export default function FactoringDashboard() {
         // If supplier user and suppliers not loaded yet, force a reload
         if (result.data.role === "supplier") {
           if (SUPPLIERS_DB.length === 0) {
-            loadPersistedData().then(function() {
+            loadPersistedData().then(function(res) {
+              if (res && res.ok === false) { setLoadError(res); return; }
               reloadForSupplier(result.data.supplier_id).then(function() {
                 setDataVer(function(v) { return v + 1; });
+              }).catch(function(err) {
+                // A supplier's own load failed part-way. Show the failure screen
+                // rather than an empty or partly-filled portfolio.
+                _supplierLoaded = false;
+                console.error("[Supplier Load] aborted:", err && err.message);
+                setLoadError({ ok: false, failedCore: [(err && err._table) || "supplier data"], failedOther: [] });
               });
             });
           } else {
             reloadForSupplier(result.data.supplier_id).then(function() {
               setDataVer(function(v) { return v + 1; });
+            }).catch(function(err) {
+              _supplierLoaded = false;
+              console.error("[Supplier Load] aborted:", err && err.message);
+              setLoadError({ ok: false, failedCore: [(err && err._table) || "supplier data"], failedOther: [] });
             });
           }
         }
@@ -2180,7 +2231,14 @@ export default function FactoringDashboard() {
   useEffect(function() {
     if (!_loadUserId) return;
     if (_dataLoaded) { setStorageLoading(false); return; }
-    loadPersistedData().then(function() {
+    loadPersistedData().then(function(res) {
+      if (res && res.ok === false) {
+        // Core tables refused or unreachable. Deliberately do NOT set _dataLoaded
+        // and do NOT clear storageLoading -- the dashboard must not render a book
+        // we could not fully read.
+        setLoadError(res);
+        return;
+      }
       _dataLoaded = true;
       setStorageLoading(false);
       // Re-sync state with loaded data
@@ -4075,6 +4133,14 @@ export default function FactoringDashboard() {
           </div>
         </div>
       </div>}
+      {session && loadError ? <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 24, textAlign: "center", background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+        <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, opacity: 0.9 }} />
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#F1F5F9" }}>We couldn't load your data</div>
+        <div style={{ fontSize: 13, color: "#94A3B8", maxWidth: 460, lineHeight: 1.6 }}>Something went wrong retrieving your portfolio, so we've stopped rather than show you an incomplete picture.</div>
+        <button onClick={function() { supabase.auth.signOut().then(function() { window.location.reload(); }); }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#0EA5E9", color: "#FFFFFF", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Sign in again</button>
+        <div style={{ fontSize: 11, color: "#64748B" }}>If this keeps happening, please contact support.</div>
+        <div style={{ fontSize: 10, color: "#475569", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>{(loadError.failedCore || []).join(", ")}</div>
+      </div> : null}
       {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
         <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
