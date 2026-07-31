@@ -3920,7 +3920,7 @@ export default function FactoringDashboard() {
     if (!raw.notes) raw.notes = [];
     var now = new Date();
     raw.notes.push({ timestamp: now.toISOString(), display: now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }), text: text.trim() });
-    saveInvoice(noteInv.id);
+    saveInvoice(invId);
           auditLog("Invoice Note Added", invId + ": " + text.trim(), { invoiceId: invId, note: text.trim() });
     setNoteText("");
     setDataVer(function(v) { return v + 1; });
