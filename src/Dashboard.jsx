@@ -720,6 +720,40 @@ async function savePayment(paymentId) {
   _isSaving = false;
 }
 
+// Rename propagation. Scoped by ID only: a child row whose name never resolved
+// to an id (unmatched CSV import) is not confirmed to belong to this entity and
+// is deliberately left alone. Peripheral per handover section 3.1 - a failure
+// here is logged and surfaced but does not block the parent save, which has
+// already succeeded by the time this runs.
+async function propagateEntityRename(kind, entityId, oldName, newName) {
+  if (!entityId || !oldName || !newName || oldName === newName) return;
+  var col = kind === "buyer" ? "buyer_name" : "supplier_name";
+  var idCol = kind === "buyer" ? "buyer_id" : "supplier_id";
+  var tables = ["invoices", "credit_notes"];
+  var updated = 0;
+  for (var i = 0; i < tables.length; i++) {
+    var patch = {}; patch[col] = newName;
+    var res = await supabase.from(tables[i]).update(patch).eq(idCol, entityId).eq(col, oldName).select("id");
+    if (res && res.error) {
+      console.error("[Rename] " + tables[i] + " propagation failed:", res.error);
+      toast.error("Rename partially applied", "Historic " + tables[i] + " still show the previous name.");
+    } else if (res && res.data) {
+      updated += res.data.length;
+    }
+  }
+  // Keep the in-memory mirrors consistent so the UI does not need a reload.
+  INVOICES_DB.forEach(function(inv) {
+    if (kind === "buyer") { if (getParentEntityId(inv.buyerId) === entityId && inv.buyerName === oldName) inv.buyerName = newName; }
+    else { if (getParentEntityId(inv.supplierId) === entityId && inv.supplierName === oldName) inv.supplierName = newName; }
+  });
+  CREDIT_NOTES_DB.forEach(function(cn) {
+    if (kind === "buyer") { if (getParentEntityId(cn.buyerId) === entityId && cn.buyerName === oldName) cn.buyerName = newName; }
+    else { if (getParentEntityId(cn.supplierId) === entityId && cn.supplierName === oldName) cn.supplierName = newName; }
+  });
+  console.log("[Rename] " + entityId + ": \"" + oldName + "\" -> \"" + newName + "\", " + updated + " child row(s) updated");
+  auditLog("Entity Renamed", entityId + " renamed from \"" + oldName + "\" to \"" + newName + "\" (" + updated + " historic record(s) updated)", { entityId: entityId, oldName: oldName, newName: newName, rowsUpdated: updated });
+}
+
 async function saveSupplier(supId) {
   var s = SUPPLIERS_DB.find(function(x) { return x.id === supId; });
   if (!s) return;
@@ -742,7 +776,12 @@ async function saveSupplier(supId) {
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
     };
+    // Read the stored name before upserting: SUPPLIERS_DB already holds the new one.
+    var prevSupName = null;
+    var prevSupRes = await supabase.from("suppliers").select("name").eq("id", s.id).maybeSingle();
+    if (prevSupRes && !prevSupRes.error && prevSupRes.data) prevSupName = prevSupRes.data.name;
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
+    if (!supRes || !supRes.error) { await propagateEntityRename("supplier", s.id, prevSupName, s.name); }
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
   } catch (e) { console.error("[SaveSupplier] Error:", e); toast.error("Supplier save error", e.message || String(e)); }
   _isSaving = false;
@@ -767,7 +806,11 @@ async function saveBuyer(buyId) {
       branches: b.branches || [],
       paused: b.paused || false
     };
+    var prevBuyName = null;
+    var prevBuyRes = await supabase.from("buyers").select("name").eq("id", b.id).maybeSingle();
+    if (prevBuyRes && !prevBuyRes.error && prevBuyRes.data) prevBuyName = prevBuyRes.data.name;
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
+    if (!buyRes || !buyRes.error) { await propagateEntityRename("buyer", b.id, prevBuyName, b.name); }
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
   } catch (e) { console.error("[SaveBuyer] Error:", e); toast.error("Buyer save error", e.message || String(e)); }
   _isSaving = false;
@@ -6768,7 +6811,7 @@ export default function FactoringDashboard() {
           if (bf !== "all") activeFilters.push("buyer");
           var hasActive = activeFilters.length > 0;
           // Unfiltered row count — we need to compare. Use the prefilter source.
-          var scopedInvs = viewData.invoices.filter(function(inv) { if (isB) return inv.buyerName === (BUYERS_DB.find(function(b) { return b.id === selectedBuyer; }) || {}).name; if (isS) { var selBrId = parseEntityId(selectedSupplier).branchId; return selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); } return true; });
+          var scopedInvs = viewData.invoices.filter(function(inv) { if (isB) return getParentEntityId(inv.buyerId) === selectedBuyer || inv.buyerName === (BUYERS_DB.find(function(b) { return b.id === selectedBuyer; }) || {}).name; if (isS) { var selBrId = parseEntityId(selectedSupplier).branchId; return selBrId ? (inv.supplierId === selectedSupplier || inv.supplierName === getEntityDisplayName(selectedSupplier)) : (getParentEntityId(inv.supplierId) === selectedSupplier || getParentSupplierName(inv.supplierName) === getEntityDisplayName(selectedSupplier)); } return true; });
           var totalCount = scopedInvs.length;
           // Per-buyer counts for the buyer filter dropdown (only counts within current supplier scope)
           var buyerCounts = {};
@@ -15221,7 +15264,11 @@ export default function FactoringDashboard() {
               var isBuy = !isSup && !isSp;
               var detEntity = isSup ? SUPPLIERS_DB.find(function(s) { return s.name === det.name; }) : isSp ? SERVICE_PROVIDERS_DB.find(function(s) { return s.name === det.name; }) : BUYERS_DB.find(function(b) { return b.name === det.name; });
               if (detEntity) det = Object.assign({}, det, detEntity);
-              var entityInvs = viewData.invoices.filter(function(inv) { return isSup ? inv.supplierName === det.name : inv.buyerName === det.name; });
+              // Match on id first; the stored name is a fallback for CSV rows whose entity
+              // never resolved to an id, and it goes stale if the entity is renamed.
+              var entityInvs = viewData.invoices.filter(function(inv) { return isSup
+                ? (getParentEntityId(inv.supplierId) === det.id || inv.supplierName === det.name)
+                : (getParentEntityId(inv.buyerId) === det.id || inv.buyerName === det.name); });
               var totalAmt = 0, totalOS = 0;
               entityInvs.forEach(function(inv) { totalAmt += inv.amount; totalOS += inv.totalOutstanding; });
 
@@ -15720,18 +15767,18 @@ export default function FactoringDashboard() {
                 {manageDetailTab === "monitoring" && <div>
                   <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", padding: "28px 32px" }}>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>External Monitoring Services</div>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 18 }}>Select services to enable ongoing monitoring for this entity. Services will be configured when available.</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 18 }}>Planned integrations. These are not yet available and cannot currently be enabled.</div>
                     {[{ key: "monitorRefinitiv", label: "Refinitiv", desc: "Credit risk, ESG, sanctions and compliance screening" }, { key: "monitorDnB", label: "Dun & Bradstreet", desc: "Business credit reports, D-U-N-S number verification, trade payment data" }, { key: "monitorWSJ", label: "WSJ", desc: "Wall Street Journal news alerts and market intelligence" }].map(function(svc) {
-                      var checked = !!(detEntity && detEntity[svc.key]);
-                      return <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 10, border: "1px solid " + (checked ? "var(--accent)30" : "var(--border)"), background: checked ? "var(--accent)08" : "transparent", marginBottom: 10, cursor: "pointer" }} onClick={function() { if (detEntity) { detEntity[svc.key] = !checked; saveSupplier(selectedSupplier);
-                    saveSupplier(selectedSupplier);
-                        auditLog("Monitoring " + (checked ? "Disabled" : "Enabled"), svc.label + " monitoring " + (checked ? "disabled" : "enabled") + " for " + det.id + " (" + det.name + ")", { entityId: det.id, service: svc.key, enabled: !checked }); setDataVer(function(v) { return v + 1; }); } }}>
-                        <div style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid " + (checked ? "var(--accent)" : "var(--border)"), background: checked ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{checked ? "\u2713" : ""}</div>
+                      // Not interactive: these fields have no column and no persistence.
+                      // Re-enabling means adding storage first, then routing the save by
+                      // entity type - the panel is shared with buyers and service providers.
+                      return <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", borderRadius: 10, border: "1px solid var(--border)", background: "transparent", marginBottom: 10, opacity: 0.6 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, border: "2px solid var(--border)", background: "transparent", flexShrink: 0 }}></div>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{svc.label}</div>
                           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{svc.desc}</div>
                         </div>
-                        <Badge label={checked ? "Enabled" : "Not Active"} bg={checked ? "#2E8B5714" : "#6B728014"} color={checked ? "#059669" : "#6B7280"} border={checked ? "#2E8B5730" : "#6B728030"} />
+                        <Badge label="Planned" bg="#6B728014" color="#6B7280" border="#6B728030" />
                       </div>;
                     })}
                     <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, fontStyle: "italic" }}>Note: These integrations are not yet functional. Enabling them will record the preference for future implementation.</div>
@@ -15974,6 +16021,8 @@ export default function FactoringDashboard() {
                     if (d.indexOf(det.name) >= 0) return true;
                     // Match on context fields — check all name variants
                     if (c.entityId === det.id || c.entityName === det.name) return true;
+                    if (getParentEntityId(c.supplierId) === det.id || getParentEntityId(c.buyerId) === det.id) return true;
+
                     if (c.supplierName === det.name || c.buyerName === det.name) return true;
                     if (c.supplier === det.name || c.buyer === det.name) return true;
                     if (c.serviceProvider === det.name) return true;
