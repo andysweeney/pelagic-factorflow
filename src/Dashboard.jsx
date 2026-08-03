@@ -212,6 +212,16 @@ function buyerIdInScope(rowEntity, bf) {
   if (bf.isBranch) return rowEntity === bf.buyerId;
   return parseEntityId(rowEntity).supplierId === bf.parentId;
 }
+// Build a buyer scope object from a selected entity id, so callers can use
+// buyerIdInScope without assembling the shape by hand at every site.
+function buyerScopeFor(selectedEntityId) {
+  if (!selectedEntityId) return null;
+  return {
+    isBranch: !!parseEntityId(selectedEntityId).branchId,
+    buyerId:  selectedEntityId,
+    parentId: getParentEntityId(selectedEntityId)
+  };
+}
 function getSupplierById(entityId) {
   if (!entityId) return null;
   var parsed = parseEntityId(entityId);
@@ -1564,7 +1574,7 @@ async function reloadForSupplier(supplierId) {
   auditData.forEach(function(row) {
     var ctx = row.context || {};
     var relevant = supplierIdInScope(ctx.supplierId, { supplierId: supplierId, parentId: parentId, isBranch: isBranch }) ||
-      (!isBranch && (ctx.supplierName === supplierName || ctx.supplier === supplierName)) ||
+      (!isBranch && (supplierIdForStoredName(ctx.supplierName) === parentId || supplierIdForStoredName(ctx.supplier) === parentId)) ||
       (ctx.invoiceId && invIdSet[ctx.invoiceId]);
     if (relevant) {
       AUDIT_LOG.push({ timestamp: row.timestamp, displayTime: row.display_time, action: row.event_type, details: row.details, context: ctx });
@@ -2098,15 +2108,19 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       allocated += a.amount;
     });
     var unalloc = r2(cn.amount - allocated);
-    if (unalloc > 0.01 && cn.supplierName) {
-      var cnParent = getParentSupplierName(cn.supplierName);
+      // Keyed on parent entity id, never on name. A credit note raised under an
+      // old supplier or branch name must still count towards the same supplier,
+      // and names on credit_notes are frozen at creation.
+      var cnParent = getParentEntityId(cn.supplierId) || getParentSupplierName(cn.supplierName);
+      var cnBuyer  = getParentEntityId(cn.buyerId)    || cn.buyerName;
+      if (unalloc > 0.01 && cnParent) {
       cnUnallocBySupplier.set(cnParent, (cnUnallocBySupplier.get(cnParent) || 0) + unalloc);
-      if (cn.buyerName) {
-        var key = cnParent + "|" + cn.buyerName;
+        if (cnBuyer) {
+        var key = cnParent + "|" + cnBuyer;
         cnUnallocBySupBuyer.set(key, (cnUnallocBySupBuyer.get(key) || 0) + unalloc);
-        cnUnallocByBuyer.set(cn.buyerName, (cnUnallocByBuyer.get(cn.buyerName) || 0) + unalloc);
+        cnUnallocByBuyer.set(cnBuyer, (cnUnallocByBuyer.get(cnBuyer) || 0) + unalloc);
+        }
       }
-    }
   });
   // Build holdback disbursement/application maps per invoice
   var hbDisbursedByInvoice = new Map();
@@ -2702,7 +2716,7 @@ export default function FactoringDashboard() {
           if (_supplierFilter) {
             var sf = _supplierFilter;
             var relevant = supplierIdInScope(ctx.supplierId, sf) ||
-              (!sf.isBranch && (ctx.supplierName === sf.supplierName || ctx.supplier === sf.supplierName)) ||
+              (!sf.isBranch && (supplierIdForStoredName(ctx.supplierName) === sf.parentId || supplierIdForStoredName(ctx.supplier) === sf.parentId)) ||
               (ctx.invoiceId && sf.invIds && sf.invIds[ctx.invoiceId]);
             if (!relevant) return;
           }
@@ -3166,12 +3180,14 @@ export default function FactoringDashboard() {
     viewData.invoices.forEach(function(inv) {
       var parentName = getParentSupplierName(inv.supplierName);
       var parentId = getParentEntityId(inv.supplierId) || parentName;
-      if (!bySupplier[parentName]) bySupplier[parentName] = [];
-      bySupplier[parentName].push(inv);
-      // Also track by ID for ID-based lookups
-      if (parentId !== parentName) {
-        if (!bySupplier[parentId]) bySupplier[parentId] = bySupplier[parentName];
-      }
+        // Group on the id. Grouping on the name would split one supplier across
+        // its old and new names, and the previous id alias pointed at whichever
+        // name group happened to be built first -- so an id lookup saw a fragment.
+        if (!bySupplier[parentId]) bySupplier[parentId] = [];
+        bySupplier[parentId].push(inv);
+        // Every name this supplier has ever used aliases the same array, so a
+        // lookup by any historic name returns the complete set.
+        if (parentName && parentName !== parentId) bySupplier[parentName] = bySupplier[parentId];
     });
     var badStatuses = { "Disputed": true, "Cancelled": true, "Declined": true, "Buyer Default": true };
     var dilElig = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
@@ -3183,7 +3199,7 @@ export default function FactoringDashboard() {
       var dN = 0, dD = 0;
       invs.forEach(function(inv) { if (!dilElig[inv.invoiceStatus]) return; var a = inv.amount || 0; dD += a; dN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) dN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") dN += a; });
       // Add unallocated credit note amounts for this supplier
-      var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(sup) || 0) : 0;
+      var supUnalloc = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(supplierIdForStoredName(sup) || sup) || 0) : 0;
       if (supUnalloc > 0) dN += supUnalloc;
       // Current funded dilution
       var fN = 0, fD = 0;
@@ -3218,7 +3234,7 @@ export default function FactoringDashboard() {
       }
     }
     if (isB && selectedBuyer) {
-      d = d.filter(function(x) { return x.buyerId === selectedBuyer || x.buyerName === selectedBuyer; });
+      d = d.filter(function(x) { return buyerIdInScope(x.buyerId, buyerScopeFor(selectedBuyer)); });
     }
     if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
@@ -7402,7 +7418,7 @@ export default function FactoringDashboard() {
             if (inv.invoiceStatus === "Disputed") dilNumerator += invAmt;
           });
           // Include unallocated credit notes in dilution numerator
-          var supUnallocCN = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(getEntityDisplayName(selectedSupplier) || getParentSupplierName(selectedSupplier)) || 0) : 0;
+          var supUnallocCN = viewData.cnUnallocBySupplier ? (viewData.cnUnallocBySupplier.get(getParentEntityId(selectedSupplier)) || 0) : 0;
           if (supUnallocCN > 0) dilNumerator += supUnallocCN;
           var dilutionRate = dilDenominator > 0.01 ? (dilNumerator / dilDenominator) * 100 : 0;
 
@@ -8933,7 +8949,7 @@ export default function FactoringDashboard() {
 
         {/* Buyer Overview Tab */}
         {isB && buyTab === "overview" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
+          var buyInvs = viewData.invoices.filter(function(inv) { return buyerIdInScope(inv.buyerId, buyerScopeFor(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
           var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
           var buyer = BUYERS_DB.find(function(b) { return b.id === selectedBuyer; });
 
@@ -9085,7 +9101,7 @@ export default function FactoringDashboard() {
                   var dilEligible = { "Received": true, "Approved in Full": true, "Approved in Part": true, "Disputed": true };
                   var bdN = 0, bdD = 0;
                   buyInvs.forEach(function(inv) { if (!dilEligible[inv.invoiceStatus]) return; var a = inv.amount || 0; bdD += a; bdN += inv.dilutionTotal || 0; if (inv.partialApprovedAmount > 0 && inv.partialApprovedAmount < a) bdN += (a - inv.partialApprovedAmount); if (inv.invoiceStatus === "Disputed") bdN += a; });
-                  var buyUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(buyName(selectedBuyer)) || 0) : 0;
+                  var buyUnalloc = viewData.cnUnallocByBuyer ? (viewData.cnUnallocByBuyer.get(getParentEntityId(selectedBuyer)) || 0) : 0;
                   if (buyUnalloc > 0) bdN += buyUnalloc;
                   var bdRate = bdD > 0.01 ? (bdN / bdD) * 100 : 0;
                   // Period dilution
@@ -9287,7 +9303,7 @@ export default function FactoringDashboard() {
 
         {/* Buyer Invoices Tab */}
         {isB && buyTab === "invoices" && (function() {
-          var allBuyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
+          var allBuyInvs = viewData.invoices.filter(function(inv) { return buyerIdInScope(inv.buyerId, buyerScopeFor(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
           var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
 
           // Filter
@@ -9489,7 +9505,7 @@ export default function FactoringDashboard() {
 
         {/* Buyer Payment Allocations Tab */}
         {isB && buyTab === "allocations" && (function() {
-          var buyInvs = viewData.invoices.filter(function(inv) { return (inv.buyerId === selectedBuyer || inv.buyerName === buyName(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
+          var buyInvs = viewData.invoices.filter(function(inv) { return buyerIdInScope(inv.buyerId, buyerScopeFor(selectedBuyer)) && (buyCurrency === "all" || inv.currency === buyCurrency); });
           var displayCcy = buyCurrency !== "all" ? buyCurrency : "GBP";
           var buyInvIds = {};
           buyInvs.forEach(function(inv) { buyInvIds[inv.id] = true; });
@@ -9743,7 +9759,7 @@ export default function FactoringDashboard() {
               });
               // Include unallocated credit notes from all suppliers in this program
               var progSuppliers = {};
-              allProgInvs.forEach(function(inv) { progSuppliers[getParentSupplierName(inv.supplierName)] = true; });
+              allProgInvs.forEach(function(inv) { progSuppliers[getParentEntityId(inv.supplierId) || getParentSupplierName(inv.supplierName)] = true; });
               var progUnallocCN = 0;
               if (viewData.cnUnallocBySupplier) Object.keys(progSuppliers).forEach(function(s) { progUnallocCN += viewData.cnUnallocBySupplier.get(s) || 0; });
               if (progUnallocCN > 0) dilNum += progUnallocCN;
