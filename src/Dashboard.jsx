@@ -39,6 +39,40 @@ function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); retur
 // default state rather than an event. Bare "Approved" is not canonical but
 // is retained so older rows still resolve.
 var REAL_STATUSES = ["Approved", "Approved in Full", "Approved in Part", "Cancelled", "Declined", "Disputed", "Settled", "Buyer Default"];
+// ---------------------------------------------------------------------------
+// Admin portal gate.
+//
+// The render chain is supplier -> buyer -> everything else. Without an
+// explicit whitelist the final branch is a fallthrough, so ANY role value
+// FactorFlow does not recognise renders the admin portal. RLS still limits
+// what data loads, but the interface renders.
+//
+// user_profiles.role is unconstrained text -- there is no check constraint on
+// it (see handover §6). The app normalises "supplier_branch"/"buyer_branch"
+// to "supplier"/"buyer" on save, so those two never reach the column by way
+// of this UI; nothing stops them arriving by any other route, and either one
+// would land in the fallthrough.
+//
+// This list is FactorFlow's internal roles only. It is deliberately a literal
+// and not derived from ROLE_OPTIONS: ROLE_OPTIONS is what may be ALLOCATED,
+// this is what may render the admin portal. They are separate questions and
+// should not move together by accident.
+var INTERNAL_ROLES = ["admin", "operations", "supervisor"];
+function isInternalRole(role) { return INTERNAL_ROLES.indexOf(role) !== -1; }
+
+// Deny screen for a signed-in user whose role is not internal and not one of
+// the portal roles. Sign-out only -- there is nothing here for them to do.
+function NoAccessScreen(props) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 24, textAlign: "center", background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+      <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 48, opacity: 0.9 }} />
+      <div style={{ fontSize: 20, fontWeight: 700, color: "#F1F5F9" }}>No access</div>
+      <div style={{ fontSize: 13, color: "#94A3B8", maxWidth: 460, lineHeight: 1.6 }}>This account is signed in but has no FactorFlow portal assigned to it. If you believe this is wrong, please contact your administrator.</div>
+      <button onClick={function() { supabase.auth.signOut().then(function() { window.location.reload(); }); }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#0EA5E9", color: "#FFFFFF", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Sign out</button>
+      <div style={{ fontSize: 10, color: "#475569", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>{props.role ? "role: " + props.role : "role: none"}</div>
+    </div>
+  );
+}
 // An approval with no approved amount is an approval in full.
 function approvedStatusFor(amount, approvedAmount) {
   var ap = approvedAmount || 0;
@@ -720,36 +754,20 @@ async function savePayment(paymentId) {
   _isSaving = false;
 }
 
-// Rename propagation. Scoped by ID only: a child row whose name never resolved
-// to an id (unmatched CSV import) is not confirmed to belong to this entity and
-// is deliberately left alone. Peripheral per handover section 3.1 - a failure
-// here is logged and surfaced but does not block the parent save, which has
-// already succeeded by the time this runs.
-async function propagateEntityRename(kind, entityId, oldName, newName) {
+// Rename recording.
+//
+// The name columns on invoices and credit_notes are deliberately NOT rewritten
+// when an entity is renamed: they are the record of the entity as it stood when
+// the row was created, and overwriting them destroys that with no copy kept.
+// (v6.3 did rewrite them. That was wrong and this reverses it.)
+//
+// The consequence is that a filter dropdown built from those rows can contain
+// several names for one supplier. That is handled at the point of filtering --
+// see rowMatchesSupplierName, which resolves a stored name to an id so either
+// name returns the supplier's whole history.
+async function recordEntityRename(kind, entityId, oldName, newName) {
   if (!entityId || !oldName || !newName || oldName === newName) return;
-  var col = kind === "buyer" ? "buyer_name" : "supplier_name";
-  var idCol = kind === "buyer" ? "buyer_id" : "supplier_id";
-  var tables = ["invoices", "credit_notes"];
-  var updated = 0;
-  for (var i = 0; i < tables.length; i++) {
-    var patch = {}; patch[col] = newName;
-    var res = await supabase.from(tables[i]).update(patch).eq(idCol, entityId).eq(col, oldName).select("id");
-    if (res && res.error) {
-      console.error("[Rename] " + tables[i] + " propagation failed:", res.error);
-      toast.error("Rename partially applied", "Historic " + tables[i] + " still show the previous name.");
-    } else if (res && res.data) {
-      updated += res.data.length;
-    }
-  }
-  // Keep the in-memory mirrors consistent so the UI does not need a reload.
-  INVOICES_DB.forEach(function(inv) {
-    if (kind === "buyer") { if (getParentEntityId(inv.buyerId) === entityId && inv.buyerName === oldName) inv.buyerName = newName; }
-    else { if (getParentEntityId(inv.supplierId) === entityId && inv.supplierName === oldName) inv.supplierName = newName; }
-  });
-  CREDIT_NOTES_DB.forEach(function(cn) {
-    if (kind === "buyer") { if (getParentEntityId(cn.buyerId) === entityId && cn.buyerName === oldName) cn.buyerName = newName; }
-    else { if (getParentEntityId(cn.supplierId) === entityId && cn.supplierName === oldName) cn.supplierName = newName; }
-  });
+  var updated = 0;  // historic rows are intentionally left as they were
   console.log("[Rename] " + entityId + ": \"" + oldName + "\" -> \"" + newName + "\", " + updated + " child row(s) updated");
   auditLog("Entity Renamed", entityId + " renamed from \"" + oldName + "\" to \"" + newName + "\" (" + updated + " historic record(s) updated)", { entityId: entityId, oldName: oldName, newName: newName, rowsUpdated: updated });
 }
@@ -781,7 +799,7 @@ async function saveSupplier(supId) {
     var prevSupRes = await supabase.from("suppliers").select("name").eq("id", s.id).maybeSingle();
     if (prevSupRes && !prevSupRes.error && prevSupRes.data) prevSupName = prevSupRes.data.name;
     var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
-    if (!supRes || !supRes.error) { await propagateEntityRename("supplier", s.id, prevSupName, s.name); }
+    if (!supRes || !supRes.error) { await recordEntityRename("supplier", s.id, prevSupName, s.name); }
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
   } catch (e) { console.error("[SaveSupplier] Error:", e); toast.error("Supplier save error", e.message || String(e)); }
   _isSaving = false;
@@ -810,7 +828,7 @@ async function saveBuyer(buyId) {
     var prevBuyRes = await supabase.from("buyers").select("name").eq("id", b.id).maybeSingle();
     if (prevBuyRes && !prevBuyRes.error && prevBuyRes.data) prevBuyName = prevBuyRes.data.name;
     var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
-    if (!buyRes || !buyRes.error) { await propagateEntityRename("buyer", b.id, prevBuyName, b.name); }
+    if (!buyRes || !buyRes.error) { await recordEntityRename("buyer", b.id, prevBuyName, b.name); }
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
   } catch (e) { console.error("[SaveBuyer] Error:", e); toast.error("Buyer save error", e.message || String(e)); }
   _isSaving = false;
@@ -1255,6 +1273,112 @@ var toast = {
   info:    function(msg, detail) { return pushToast("info",    msg, detail); },
   warning: function(msg, detail) { return pushToast("warning", msg, detail); }
 };
+// ---------------------------------------------------------------------------
+// Drill-through resolution.
+//
+// Clicking an entity name anywhere in the admin portal resolves that name
+// back to a record before navigating. Fifteen copies of the supplier lookup
+// and eight of the buyer lookup did this inline as a bare name match with no
+// else branch, so a name that no longer matched produced a click that did
+// nothing at all -- no navigation, no message, nothing in the console.
+//
+// Names on invoices and credit_notes are frozen at creation, so a name passed
+// in from any row may be an older one, and a branch name never matched a parent
+// record to begin with. Hence: exact match, then parent-name fallback, then
+// report rather than fail silently.
+//
+// These return the record or null. Callers keep their own navigation bodies --
+// the copies are not identical (they land on different tabs) and this patch
+// deliberately does not unify that.
+function resolveSupplierForDrill(supplierName) {
+  if (!supplierName) return null;
+  var m = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+  if (!m) {
+    var parentName = getParentSupplierName(supplierName);
+    if (parentName && parentName !== supplierName) {
+      m = SUPPLIERS_DB.find(function(s) { return s.name === parentName; });
+    }
+  }
+  if (!m) {
+    console.warn("[Drill] supplier not resolved: \"" + supplierName + "\"");
+    toast.error("Couldn't open that supplier", "\"" + supplierName + "\" no longer matches a supplier record. It may have been renamed \u2014 try opening it from the Suppliers list.");
+  }
+  return m;
+}
+function resolveBuyerForDrill(buyerName) {
+  if (!buyerName) return null;
+  var m = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+  if (!m) {
+    console.warn("[Drill] buyer not resolved: \"" + buyerName + "\"");
+    toast.error("Couldn't open that buyer", "\"" + buyerName + "\" no longer matches a buyer record. It may have been renamed \u2014 try opening it from the Buyers list.");
+  }
+  return m;
+}
+// ---------------------------------------------------------------------------
+// Supplier filter identity.
+//
+// Because names on invoices and credit_notes are frozen at creation, a filter
+// dropdown built from those rows can hold several names for one supplier after
+// a rename. Matching is therefore done on the id a name resolves to, never on
+// the name text, so selecting any of them returns the full history.
+function supplierIdForStoredName(name) {
+  if (!name) return null;
+  var cur = SUPPLIERS_DB.find(function(s) { return s.name === name; });
+  if (cur) return cur.id;
+  // Not a current name: it can only be a historic one, so find a row carrying it.
+  var inv = INVOICES_DB.find(function(x) { return x.supplierName === name && x.supplierId; });
+  if (inv) return getParentEntityId(inv.supplierId);
+  var cn = CREDIT_NOTES_DB.find(function(x) { return x.supplierName === name && x.supplierId; });
+  if (cn) return getParentEntityId(cn.supplierId);
+  return null;
+}
+// Does this row belong to the supplier the selected name refers to? Falls back
+// to name equality only when the name resolves to no id at all (an unmatched
+// CSV import), which is the same rule rename propagation used to apply.
+function rowMatchesSupplierName(row, selectedName) {
+  if (!selectedName) return true;
+  if (!row) return false;
+  var selId = supplierIdForStoredName(selectedName);
+  if (!selId) return row.supplierName === selectedName;
+  var rowId = getParentEntityId(row.supplierId);
+  return rowId ? rowId === selId : row.supplierName === selectedName;
+}
+// Buyer equivalents of the supplier helpers above. Same reasoning: buyer names
+// on invoices and credit_notes are frozen at creation, so a dropdown built from
+// those rows can hold several names for one buyer after a rename, and selecting
+// any of them must return that buyer's whole history.
+function buyerIdForStoredName(name) {
+  if (!name) return null;
+  var cur = BUYERS_DB.find(function(b) { return b.name === name; });
+  if (cur) return cur.id;
+  var inv = INVOICES_DB.find(function(x) { return x.buyerName === name && x.buyerId; });
+  if (inv) return getParentEntityId(inv.buyerId);
+  var cn = CREDIT_NOTES_DB.find(function(x) { return x.buyerName === name && x.buyerId; });
+  if (cn) return getParentEntityId(cn.buyerId);
+  return null;
+}
+function rowMatchesBuyerName(row, selectedName) {
+  if (!selectedName) return true;
+  if (!row) return false;
+  var selId = buyerIdForStoredName(selectedName);
+  if (!selId) return row.buyerName === selectedName;
+  var rowId = getParentEntityId(row.buyerId);
+  return rowId ? rowId === selId : row.buyerName === selectedName;
+}
+function isCurrentBuyerName(name) {
+  return BUYERS_DB.some(function(b) { return b.name === name; });
+}
+function buyerOptionLabel(name) {
+  return isCurrentBuyerName(name) ? name : name + " (old name)";
+}
+function isCurrentSupplierName(name) {
+  return SUPPLIERS_DB.some(function(s) { return s.name === name; });
+}
+// Dropdown label. A name no longer held by any supplier is marked so the two
+// entries for one renamed supplier are not mistaken for two suppliers.
+function supplierOptionLabel(name) {
+  return isCurrentSupplierName(name) ? name : name + " (old name)";
+}
 // Helper: inspect a Supabase response ({data, error}) and toast on error.
 // Returns true if there was an error (so callers can `if (supabaseErrorToast(res, "context")) return;`).
 function supabaseErrorToast(res, context) {
@@ -2271,6 +2395,10 @@ export default function FactoringDashboard() {
   // Auth state
   var authS = useState(null), session = authS[0], setSession = authS[1];
   var upS = useState(null), userProfile = upS[0], setUserProfile = upS[1];
+  // A signed-in user with no user_profiles row never resolves: the loader only
+  // acts on a successful lookup, so userProfile stays null and the loading gate
+  // below waits forever. Bound the wait and let the access gate handle it.
+  var pwS = useState(false), profileWaitExpired = pwS[0], setProfileWaitExpired = pwS[1];
   var alS = useState(true), authLoading = alS[0], setAuthLoading = alS[1];
   var leS = useState(null), loadError = leS[0], setLoadError = leS[1];
   var leS = useState(""), loginEmail = leS[0], setLoginEmail = leS[1];
@@ -2287,6 +2415,13 @@ export default function FactoringDashboard() {
 
   // Toast subscriber — pulls from module-level TOAST_QUEUE so any save function can push
   var toastS = useState([]), toasts = toastS[0], setToasts = toastS[1];
+  React.useEffect(function() {
+    if (!session) { setProfileWaitExpired(false); return; }
+    if (userProfile) { setProfileWaitExpired(false); return; }
+    var t = setTimeout(function() { setProfileWaitExpired(true); }, 8000);
+    return function() { clearTimeout(t); };
+  }, [session, userProfile]);
+
   React.useEffect(function() {
     _toastSubscribers.push(setToasts);
     // initial sync
@@ -3088,7 +3223,7 @@ export default function FactoringDashboard() {
     if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
-    if (bf !== "all") d = d.filter(function(x) { return x.buyerName === bf; });
+    if (bf !== "all") d = d.filter(function(x) { return rowMatchesBuyerName(x, bf); });
     if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0; }); }
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
@@ -4344,7 +4479,7 @@ export default function FactoringDashboard() {
         <div style={{ fontSize: 11, color: "#64748B" }}>If this keeps happening, please contact support.</div>
         <div style={{ fontSize: 10, color: "#475569", fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>{(loadError.failedCore || []).join(", ")}</div>
       </div> : null}
-      {authLoading || (session && (storageLoading || !userProfile)) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
+      {authLoading || (session && (storageLoading || (!userProfile && !profileWaitExpired))) ? <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", flexDirection: "column", gap: 22, background: "radial-gradient(ellipse at center, #162036 0%, #0F172A 70%)" }}>
         <img src={LOGO_URL} alt="Pelagic Solutions" style={{ height: 56, animation: "ffLogoPulse 2.4s ease-in-out infinite" }} />
         <div style={{ width: 180, height: 3, background: "#1E293B", borderRadius: 2, overflow: "hidden", position: "relative" }}>
           <div style={{ position: "absolute", top: 0, left: 0, height: "100%", width: "40%", background: "linear-gradient(90deg, transparent 0%, #0EA5E9 50%, transparent 100%)", animation: "ffShimmer 1.6s ease-in-out infinite" }} />
@@ -5049,7 +5184,7 @@ export default function FactoringDashboard() {
               var filteredSpInvs = spInvs;
               if (spUnallocOnly) filteredSpInvs = filteredSpInvs.filter(function(inv) { return !inv.fundingProgram; });
               if (spFsFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.fundingStatus === spFsFilter; });
-              if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.buyerName === spBuyerFilter; });
+              if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return rowMatchesBuyerName(inv, spBuyerFilter); });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
                 filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) > -1 || inv.buyerName.toLowerCase().indexOf(s) > -1 || inv.invoiceStatus.toLowerCase().indexOf(s) > -1 || (inv.fundingStatus || "").toLowerCase().indexOf(s) > -1; });
@@ -5092,7 +5227,7 @@ export default function FactoringDashboard() {
                   ),
                   React.createElement("select", { value: spBuyerFilter, onChange: function(e) { setSpBuyerFilter(e.target.value); setSpPage(0); }, style: filterSel },
                     React.createElement("option", { value: "all" }, "All Buyers"),
-                    spBuyers.map(function(b) { return React.createElement("option", { key: b, value: b }, b); })
+                    spBuyers.map(function(b) { return React.createElement("option", { key: b, value: b }, buyerOptionLabel(b)); })
                   ),
                   React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderRadius: 6, border: "1px solid " + (spUnallocOnly ? spAccent : spBorder), background: spUnallocOnly ? spAccent + "15" : spCard, color: spUnallocOnly ? spAccent : spMuted, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: spFont, userSelect: "none" } },
                     React.createElement("input", { type: "checkbox", checked: spUnallocOnly, onChange: function(e) { setSpUnallocOnly(e.target.checked); setSpPage(0); }, style: { margin: 0, cursor: "pointer" } }),
@@ -6281,7 +6416,9 @@ export default function FactoringDashboard() {
             </div>
           </div>
         );
-      })() : <><div style={{ display: "flex", minHeight: "100vh" }}>
+      })() : !isInternalRole(userProfile && userProfile.role) ? (
+        <NoAccessScreen role={userProfile && userProfile.role} />
+      ) : <><div style={{ display: "flex", minHeight: "100vh" }}>
         {/* Sidebar */}
         <div style={{ width: 240, background: "var(--sidebar-bg)", display: "flex", flexDirection: "column", position: "fixed", top: 0, left: sidebarOpen ? 0 : -240, height: "100vh", zIndex: 50, transition: "left 0.3s ease", boxShadow: sidebarOpen ? "4px 0 24px rgba(0,0,0,0.3)" : "none" }} className="ff-sidebar-mobile">
           <div style={{ padding: "24px 20px 20px", borderBottom: "1px solid #1E293B" }}>
@@ -6823,7 +6960,7 @@ export default function FactoringDashboard() {
             <input type="text" placeholder="Search..." value={q} onChange={function(e) { setQ(e.target.value); setPg(0); }} style={Object.assign({}, sel, { width: 200, borderColor: q ? "var(--accent)" : undefined })} />
             <select value={isf} onChange={function(e) { setIsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: isf !== "all" ? "var(--accent)" : undefined, color: isf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Inv Status</option>{INV_STATUSES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
             <select value={fsf} onChange={function(e) { setFsf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: fsf !== "all" ? "var(--accent)" : undefined, color: fsf !== "all" ? "var(--accent)" : undefined })}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
-            <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{b + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+            <select value={bf} disabled={buyerFilterDisabled} onChange={function(e) { setBf(e.target.value); setPg(0); }} style={Object.assign({}, sel, { borderColor: bf !== "all" ? "var(--accent)" : undefined, color: bf !== "all" ? "var(--accent)" : undefined, opacity: buyerFilterDisabled ? 0.45 : 1, cursor: buyerFilterDisabled ? "not-allowed" : "pointer" })} title={buyerFilterDisabled ? "Only one buyer represented in these invoices" : undefined}><option value="all">{isS ? ("All Buyers (" + buyerChoices.length + ")") : "All Buyers"}</option>{isS ? buyerChoices.sort().map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b) + " (" + buyerCounts[b] + ")"}</option>; }) : BUYERS.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
             {hasActive && <button onClick={clearAll} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters ({activeFilters.length})</button>}
             {isS && <button onClick={function() { setNewInvFields(function(p) { return Object.assign({}, p, { supplier: selectedSupplier || p.supplier, amount: "", invoiceDate: REF_DATE, dueDate: addDays(REF_DATE, 60), invoiceReference: "", buyerRef: "", supplierRef: "", purchaseOrder: "", doNotFund: false }); }); setView("invoices"); }} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ New Invoice</button>}
             <div style={{ marginLeft: isS ? 0 : "auto", fontSize: 11.5, color: hasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: hasActive ? 600 : 400 }}>{hasActive && filtered.length !== totalCount ? filtered.length + " of " + totalCount : filtered.length} invoices</div>
@@ -9158,7 +9295,7 @@ export default function FactoringDashboard() {
           if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
           if (biIsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === biIsf; });
           if (biFsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.fundingStatus === biFsf; });
-          if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.supplierName === biSupFilter; });
+          if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return rowMatchesSupplierName(inv, biSupFilter); });
 
           // Sort
           buyInvs.sort(function(a, b) {
@@ -9198,7 +9335,7 @@ export default function FactoringDashboard() {
           // Supplier drill-in — jumps to Suppliers tab → Invoices, filtered by supplier
           function drillToSupplier(supplierName) {
             // Find supplier entity by name and set selectedSupplier
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) {
               setView("supplier");
               setSelectedSupplier(match.id);
@@ -9236,7 +9373,7 @@ export default function FactoringDashboard() {
               <input type="text" placeholder="Search..." value={biSearch} onChange={function(e) { setBiSearch(e.target.value); setBiPage(0); }} style={activeStyle(!!biSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
               <select value={biIsf} onChange={function(e) { setBiIsf(e.target.value); setBiPage(0); }} style={activeStyle(biIsf !== "all", fltSel)}><option value="all">All Inv Status</option>{INV_STATUSES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
               <select value={biFsf} onChange={function(e) { setBiFsf(e.target.value); setBiPage(0); }} style={activeStyle(biFsf !== "all", fltSel)}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
-              <select value={biSupFilter} disabled={supFilterDisabled} onChange={function(e) { setBiSupFilter(e.target.value); setBiPage(0); }} style={Object.assign({}, activeStyle(biSupFilter !== "all", fltSel), { opacity: supFilterDisabled ? 0.45 : 1, cursor: supFilterDisabled ? "not-allowed" : "pointer" })} title={supFilterDisabled ? "Only one supplier represented" : undefined}><option value="all">All Suppliers ({supChoices.length})</option>{supChoices.map(function(s) { return <option key={s} value={s}>{s + " (" + supCounts[s] + ")"}</option>; })}</select>
+              <select value={biSupFilter} disabled={supFilterDisabled} onChange={function(e) { setBiSupFilter(e.target.value); setBiPage(0); }} style={Object.assign({}, activeStyle(biSupFilter !== "all", fltSel), { opacity: supFilterDisabled ? 0.45 : 1, cursor: supFilterDisabled ? "not-allowed" : "pointer" })} title={supFilterDisabled ? "Only one supplier represented" : undefined}><option value="all">All Suppliers ({supChoices.length})</option>{supChoices.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s) + " (" + supCounts[s] + ")"}</option>; })}</select>
               {biHasActive && <button onClick={function() { setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               <div style={{ marginLeft: "auto", fontSize: 11.5, color: biHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: biHasActive ? 600 : 400 }}>{biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " of " + allBuyInvs.length : buyInvs.length} invoices</div>
             </div>
@@ -9402,7 +9539,7 @@ export default function FactoringDashboard() {
             setBuyTab("invoices");
           }
           function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
           }
 
@@ -9530,7 +9667,7 @@ export default function FactoringDashboard() {
             var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; });
             if (!prog) return null;
             var allProgInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
-            var progInvs = progSupFilter ? allProgInvs.filter(function(inv) { var selBr = getBranchName(progSupFilter); return selBr ? inv.supplierName === progSupFilter : getParentSupplierName(inv.supplierName) === progSupFilter; }) : allProgInvs;
+            var progInvs = progSupFilter ? allProgInvs.filter(function(inv) { var selBr = getBranchName(progSupFilter); return selBr ? inv.supplierName === progSupFilter : rowMatchesSupplierName(inv, progSupFilter); }) : allProgInvs;
             var displayCcy = prog.currency;
 
             // Overview
@@ -10408,8 +10545,8 @@ export default function FactoringDashboard() {
               var fInvs = allProgInvsTab.slice();
               // Apply filters
               if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
-              if (piSupFilter) fInvs = fInvs.filter(function(inv) { return inv.supplierName === piSupFilter; });
-              if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return inv.buyerName === piBuyFilter; });
+              if (piSupFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesSupplierName(inv, piSupFilter); });
+              if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesBuyerName(inv, piBuyFilter); });
               if (piInvStFilter) fInvs = fInvs.filter(function(inv) { return inv.invoiceStatus === piInvStFilter; });
               if (piFundStFilter) fInvs = fInvs.filter(function(inv) { return inv.fundingStatus === piFundStFilter; });
 
@@ -10471,11 +10608,11 @@ export default function FactoringDashboard() {
 
               // M: Drill-in helpers
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
               }
               function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+                var match = resolveBuyerForDrill(buyerName);
                 if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
               }
 
@@ -10491,8 +10628,8 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={piSearch} onChange={function(e) { setPiSearch(e.target.value); setPiPage(0); }} placeholder="Search invoices..." style={activeStyle(!!piSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
-                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piSupFilter, fltSel)}><option value="">All Suppliers</option>{piSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piBuyFilter, fltSel)}><option value="">All Buyers</option>{piBuys.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piSupFilter, fltSel)}><option value="">All Suppliers</option>{piSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piBuyFilter, fltSel)}><option value="">All Buyers</option>{piBuys.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                   <select value={piInvStFilter} onChange={function(e) { setPiInvStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piInvStFilter, fltSel)}><option value="">All Inv Status</option>{piInvSts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
                   <select value={piFundStFilter} onChange={function(e) { setPiFundStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piFundStFilter, fltSel)}><option value="">All Fund Status</option>{piFundSts.map(function(s) { var f = FST[s] || FST.funded; return <option key={s} value={s}>{f.label}</option>; })}</select>
                   {piHasActive && <button onClick={function() { setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
@@ -11060,7 +11197,7 @@ export default function FactoringDashboard() {
               // Filter + sort + paginate
               var progPays = allProgPays.slice();
               if (paSearch) progPays = progPays.filter(function(ep) { var s = paSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
-              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && inv.supplierName === paSupFilter; }); });
+              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && rowMatchesSupplierName(inv, paSupFilter); }); });
               if (paDateFilter) progPays = progPays.filter(function(ep) { return ep.pay.date === paDateFilter; });
               progPays.sort(function(a, b) {
                 var av, bv;
@@ -11093,11 +11230,11 @@ export default function FactoringDashboard() {
                 setProgTab("invoices");
               }
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
               }
               function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+                var match = resolveBuyerForDrill(buyerName);
                 if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
               }
 
@@ -11122,7 +11259,7 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={paSearch} onChange={function(e) { setPaSearch(e.target.value); setPaPage(0); }} placeholder="Search payments..." style={activeStyle(!!paSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
-                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); setPaPage(0); }} style={activeStyle(!!paSupFilter, fltSel)}><option value="">All Suppliers</option>{paSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); setPaPage(0); }} style={activeStyle(!!paSupFilter, fltSel)}><option value="">All Suppliers</option>{paSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
                   <input type="date" value={paDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPaDateFilter(v); setPaPage(0); } }} style={activeStyle(!!paDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
                   {paHasActive && <button onClick={function() { setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPaPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
                   <span style={{ marginLeft: "auto", fontSize: 11.5, color: paHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: paHasActive ? 600 : 400 }}>{paHasActive && progPays.length !== allProgPays.length ? progPays.length + " of " + allProgPays.length : progPays.length} payment{progPays.length === 1 ? "" : "s"}</span>
@@ -11213,7 +11350,7 @@ export default function FactoringDashboard() {
               // Filter + sort + paginate
               var progHbps = allProgHbps.slice();
               if (phSearch) progHbps = progHbps.filter(function(hbp) { var s = phSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
-              if (phSupFilter) progHbps = progHbps.filter(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); return inv && inv.supplierName === phSupFilter; });
+              if (phSupFilter) progHbps = progHbps.filter(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); return inv && rowMatchesSupplierName(inv, phSupFilter); });
               if (phDateFilter) progHbps = progHbps.filter(function(hbp) { return hbp.date === phDateFilter; });
               progHbps.sort(function(a, b) {
                 var av, bv;
@@ -11246,7 +11383,7 @@ export default function FactoringDashboard() {
                 setProgTab("invoices");
               }
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
               }
 
@@ -11272,7 +11409,7 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={phSearch} onChange={function(e) { setPhSearch(e.target.value); setPhPage(0); }} placeholder="Search HBP ID or source invoice..." style={activeStyleH(!!phSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 240 })} />
-                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); setPhPage(0); }} style={activeStyleH(!!phSupFilter, fltSel2)}><option value="">All Suppliers</option>{phSups.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
+                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); setPhPage(0); }} style={activeStyleH(!!phSupFilter, fltSel2)}><option value="">All Suppliers</option>{phSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
                   <input type="date" value={phDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPhDateFilter(v); setPhPage(0); } }} style={activeStyleH(!!phDateFilter, Object.assign({}, fltSel2, { fontFamily: "'JetBrains Mono', monospace" }))} />
                   {phHasActive && <button onClick={function() { setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPhPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
                   <span style={{ marginLeft: "auto", fontSize: 11.5, color: phHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: phHasActive ? 600 : 400 }}>{phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " of " + allProgHbps.length : progHbps.length} HBP{progHbps.length === 1 ? "" : "s"}</span>
@@ -11490,7 +11627,7 @@ export default function FactoringDashboard() {
               setProgTab("invoices");
             }
             function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              var match = resolveSupplierForDrill(supplierName);
               if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
             }
 
@@ -11794,11 +11931,11 @@ export default function FactoringDashboard() {
               setProgTab("invoices");
             }
             function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              var match = resolveSupplierForDrill(supplierName);
               if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("invoices"); setPg(0); }
             }
             function drillToBuyer(buyerName) {
-              var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+              var match = resolveBuyerForDrill(buyerName);
               if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("invoices"); setPg(0); }
             }
 
@@ -12075,7 +12212,7 @@ export default function FactoringDashboard() {
                 if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
               }
               function drillToProgram(programId) {
@@ -12830,7 +12967,7 @@ export default function FactoringDashboard() {
                 if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
               }
               function drillToProgram(programId) {
@@ -13032,7 +13169,7 @@ export default function FactoringDashboard() {
               if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
             }
             function drillToSupplier(supplierName) {
-              var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+              var match = resolveSupplierForDrill(supplierName);
               if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
             }
             function drillToProgram(programId) {
@@ -13240,11 +13377,11 @@ export default function FactoringDashboard() {
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
           function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            var match = resolveBuyerForDrill(buyerName);
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
           function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
           }
           // Filter-aware stat cards
@@ -13978,11 +14115,11 @@ export default function FactoringDashboard() {
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
           function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
           }
           function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            var match = resolveBuyerForDrill(buyerName);
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
 
@@ -14054,8 +14191,8 @@ export default function FactoringDashboard() {
               function applyCnlFilters(list) {
                 var r = list;
                 if (cnlCcyFilter) r = r.filter(function(cn) { return cn.currency === cnlCcyFilter; });
-                if (cnlSupFilter) r = r.filter(function(cn) { return cn.supplierName === cnlSupFilter; });
-                if (cnlBuyFilter) r = r.filter(function(cn) { return cn.buyerName === cnlBuyFilter; });
+                if (cnlSupFilter) r = r.filter(function(cn) { return rowMatchesSupplierName(cn, cnlSupFilter); });
+                if (cnlBuyFilter) r = r.filter(function(cn) { return rowMatchesBuyerName(cn, cnlBuyFilter); });
                 if (cnlStatusFilter) r = r.filter(function(cn) { return cnStatus(cn) === cnlStatusFilter; });
                 if (cnlDateFrom) r = r.filter(function(cn) { return (cn.date || "") >= cnlDateFrom; });
                 if (cnlDateTo) r = r.filter(function(cn) { return (cn.date || "") <= cnlDateTo; });
@@ -14122,8 +14259,8 @@ export default function FactoringDashboard() {
               {CREDIT_NOTES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={cnlSearch} onChange={function(e) { setCnlSearch(e.target.value); setCnlPage(0); }} placeholder="Search CN, ref, supplier, buyer..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
                 <select value={cnlCcyFilter} onChange={function(e) { setCnlCcyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlCcyFilter ? "var(--accent)" : "var(--border)"), background: cnlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-                <select value={cnlSupFilter} onChange={function(e) { setCnlSupFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlSupFilter ? "var(--accent)" : "var(--border)"), background: cnlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{cnSupplierOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                <select value={cnlBuyFilter} onChange={function(e) { setCnlBuyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlBuyFilter ? "var(--accent)" : "var(--border)"), background: cnlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{cnBuyerOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={cnlSupFilter} onChange={function(e) { setCnlSupFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlSupFilter ? "var(--accent)" : "var(--border)"), background: cnlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{cnSupplierOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={cnlBuyFilter} onChange={function(e) { setCnlBuyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlBuyFilter ? "var(--accent)" : "var(--border)"), background: cnlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{cnBuyerOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={cnlStatusFilter} onChange={function(e) { setCnlStatusFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlStatusFilter ? "var(--accent)" : "var(--border)"), background: cnlStatusFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
                   <option value="">All status</option>
                   <option value="unallocated">Unallocated</option>
@@ -14347,11 +14484,11 @@ export default function FactoringDashboard() {
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
           function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
           }
           function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            var match = resolveBuyerForDrill(buyerName);
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
           function drillToProgram(programId) {
@@ -14390,8 +14527,8 @@ export default function FactoringDashboard() {
           function applyInvlFilters(list) {
             var r = list;
             if (invlCcyFilter) r = r.filter(function(inv) { return inv.currency === invlCcyFilter; });
-            if (invlSupFilter) r = r.filter(function(inv) { return (inv.supplierName === invlSupFilter) || (inv.supplierId === invlSupFilter); });
-            if (invlBuyFilter) r = r.filter(function(inv) { return (inv.buyerName === invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
+            if (invlSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierName(inv, invlSupFilter) || (inv.supplierId === invlSupFilter); });
+            if (invlBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerName(inv, invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
             if (invlProgFilter) {
               if (invlProgFilter === "__none__") r = r.filter(function(inv) { return !inv.fundingProgram; });
               else r = r.filter(function(inv) { return inv.fundingProgram === invlProgFilter; });
@@ -14545,8 +14682,8 @@ export default function FactoringDashboard() {
               {INVOICES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={invlSearch} onChange={function(e) { setInvlSearch(e.target.value); setInvlPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
                 <select value={invlCcyFilter} onChange={function(e) { setInvlCcyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlCcyFilter ? "var(--accent)" : "var(--border)"), background: invlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-                <select value={invlSupFilter} onChange={function(e) { setInvlSupFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlSupFilter ? "var(--accent)" : "var(--border)"), background: invlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                <select value={invlBuyFilter} onChange={function(e) { setInvlBuyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlBuyFilter ? "var(--accent)" : "var(--border)"), background: invlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={invlSupFilter} onChange={function(e) { setInvlSupFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlSupFilter ? "var(--accent)" : "var(--border)"), background: invlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={invlBuyFilter} onChange={function(e) { setInvlBuyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlBuyFilter ? "var(--accent)" : "var(--border)"), background: invlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={invlProgFilter} onChange={function(e) { setInvlProgFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlProgFilter ? "var(--accent)" : "var(--border)"), background: invlProgFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All programs</option><option value="__none__">Unpurchased (no program)</option>{FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>
                 <select value={invlInvStFilter} onChange={function(e) { setInvlInvStFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlInvStFilter ? "var(--accent)" : "var(--border)"), background: invlInvStFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
                   <option value="">All invoice status</option>
@@ -14629,11 +14766,11 @@ export default function FactoringDashboard() {
             if (sup) { setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
           }
           function drillToSupplier(supplierName) {
-            var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+            var match = resolveSupplierForDrill(supplierName);
             if (match) { setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
           }
           function drillToBuyer(buyerName) {
-            var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+            var match = resolveBuyerForDrill(buyerName);
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
           // Source data: ALL pending invoices (including DNP'd ones — they are visible but dimmed and ineligible for allocation)
@@ -14645,8 +14782,8 @@ export default function FactoringDashboard() {
           function applyUpiFilters(list) {
             var r = list;
             if (upiCcyFilter) r = r.filter(function(inv) { return inv.currency === upiCcyFilter; });
-            if (upiSupFilter) r = r.filter(function(inv) { return inv.supplierName === upiSupFilter; });
-            if (upiBuyFilter) r = r.filter(function(inv) { return inv.buyerName === upiBuyFilter; });
+            if (upiSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierName(inv, upiSupFilter); });
+            if (upiBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerName(inv, upiBuyFilter); });
             if (upiDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= upiDateFrom; });
             if (upiDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= upiDateTo; });
             if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
@@ -14907,8 +15044,8 @@ export default function FactoringDashboard() {
               </div>
               {unpurchasedAll.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={upiSearch} onChange={function(e) { setUpiSearch(e.target.value); setUpiPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
-                <select value={upiSupFilter} onChange={function(e) { setUpiSupFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiSupFilter ? "var(--accent)" : "var(--border)"), background: upiSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
-                <select value={upiBuyFilter} onChange={function(e) { setUpiBuyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiBuyFilter ? "var(--accent)" : "var(--border)"), background: upiBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{b}</option>; })}</select>
+                <select value={upiSupFilter} onChange={function(e) { setUpiSupFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiSupFilter ? "var(--accent)" : "var(--border)"), background: upiSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={upiBuyFilter} onChange={function(e) { setUpiBuyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiBuyFilter ? "var(--accent)" : "var(--border)"), background: upiBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={upiCcyFilter} onChange={function(e) { setUpiCcyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiCcyFilter ? "var(--accent)" : "var(--border)"), background: upiCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                 <input type="date" value={upiDateFrom} onChange={function(e) { setUpiDateFrom(e.target.value); setUpiPage(0); }} title="From" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateFrom ? "var(--accent)" : "var(--border)"), background: upiDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={upiDateTo} onChange={function(e) { setUpiDateTo(e.target.value); setUpiPage(0); }} title="To" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateTo ? "var(--accent)" : "var(--border)"), background: upiDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
@@ -17987,10 +18124,10 @@ export default function FactoringDashboard() {
               }
 
               function deleteUser(user) {
-                if (!confirm("Deactivate user " + (user.full_name || user.email) + "? They will no longer be able to log in.")) return;
+                if (!confirm("Flag " + (user.full_name || user.email) + " as deactivated?\n\nThis marks the account in this list and removes it from active views. It does NOT stop them signing in -- sign-in is controlled in Supabase, and revoking it there is a separate step.")) return;
                 supabase.from("user_profiles").update({ status: "deactivated" }).eq("id", user.id).then(function(r2) {
                   if (r2.error) { alert("Error: " + r2.error.message); return; }
-                  auditLog("User Deactivated", (user.full_name || user.email) + " deactivated", { userId: user.id, email: user.email });
+                  auditLog("User Flagged Deactivated", (user.full_name || user.email) + " flagged as deactivated in FactorFlow (sign-in not revoked)", { userId: user.id, email: user.email, signInRevoked: false });
                   loadUsers();
                 });
               }
@@ -17998,7 +18135,7 @@ export default function FactoringDashboard() {
               function reactivateUser(user) {
                 supabase.from("user_profiles").update({ status: "active" }).eq("id", user.id).then(function(r2) {
                   if (r2.error) { alert("Error: " + r2.error.message); return; }
-                  auditLog("User Reactivated", (user.full_name || user.email) + " reactivated", { userId: user.id, email: user.email });
+                  auditLog("User Flag Cleared", (user.full_name || user.email) + " deactivated flag cleared in FactorFlow", { userId: user.id, email: user.email });
                   loadUsers();
                 });
               }
@@ -18157,15 +18294,15 @@ export default function FactoringDashboard() {
                             </td>
                             <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{entityName}</td>
                             <td style={{ padding: "10px 12px" }}>
-                              {isDeactivated ? <Badge label="Deactivated" bg="#EF444414" color="#EF4444" border="#EF444430" /> : <Badge label="Active" bg="#10B98114" color="#10B981" border="#10B98130" />}
+                              {isDeactivated ? <Badge label="Flagged" bg="#F59E0B14" color="#F59E0B" border="#F59E0B30" /> : <Badge label="Active" bg="#10B98114" color="#10B981" border="#10B98130" />}{isDeactivated ? <div style={{ fontSize: 9, color: "#94A3B8", marginTop: 3 }}>sign-in not revoked</div> : null}
                             </td>
                             <td style={{ padding: "10px 12px" }}>
                               <div style={{ display: "flex", gap: 6 }}>
                                 <button onClick={function() { openEditUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Edit</button>
                                 <button onClick={function() { sendPasswordReset(user.email); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #D9770640", background: "#D9770608", color: "#D97706", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Reset Pwd</button>
                                 {isDeactivated ?
-                                  <button onClick={function() { reactivateUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #05966940", background: "#05966908", color: "#059669", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Reactivate</button> :
-                                  <button onClick={function() { deleteUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #EF444440", background: "#EF444408", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Deactivate</button>
+                                  <button onClick={function() { reactivateUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #05966940", background: "#05966908", color: "#059669", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title="Clears the FactorFlow flag. Does not grant sign-in.">Clear flag</button> :
+                                  <button onClick={function() { deleteUser(user); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #EF444440", background: "#EF444408", color: "#EF4444", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title="Flags the account in FactorFlow. Does not revoke sign-in — do that in Supabase.">Flag as inactive</button>
                                 }
                               </div>
                             </td>
@@ -18190,11 +18327,11 @@ export default function FactoringDashboard() {
                 if (sup) { setAuditPopup(null); setView("supplier"); setSelectedSupplier(sup.id); setSupTab("invoices"); setQ(invoiceId); setPg(0); }
               }
               function drillToSupplier(supplierName) {
-                var match = SUPPLIERS_DB.find(function(s) { return s.name === supplierName; });
+                var match = resolveSupplierForDrill(supplierName);
                 if (match) { setAuditPopup(null); setView("supplier"); setSelectedSupplier(match.id); setSupTab("overview"); setPg(0); }
               }
               function drillToBuyer(buyerName) {
-                var match = BUYERS_DB.find(function(b) { return b.name === buyerName; });
+                var match = resolveBuyerForDrill(buyerName);
                 if (match) { setAuditPopup(null); setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
               }
               function drillToProgram(programIdOrName) {
