@@ -1379,7 +1379,47 @@ function isCurrentBuyerName(name) {
   return BUYERS_DB.some(function(b) { return b.name === name; });
 }
 function buyerOptionLabel(name) {
+  if (isEntityIdValue(name)) return getBuyerEntityDisplayName(name);
   return isCurrentBuyerName(name) ? name : name + " (old name)";
+}
+// Branch entities that actually carry rows, as filter options. Built from the
+// entity id on each row rather than from names, because a branch invoice stores
+// its PARENT's name and would otherwise be invisible in a name-built dropdown.
+function entityBranchOptions(kind) {
+  var idField = kind === "buyer" ? "buyerId" : "supplierId";
+  var seen = {};
+  var add = function(row) {
+    var id = row && row[idField];
+    if (id && parseEntityId(id).branchId) seen[id] = true;
+  };
+  INVOICES_DB.forEach(add);
+  CREDIT_NOTES_DB.forEach(add);
+  return Object.keys(seen).sort();
+}
+// Append branch options to a name-built option list.
+function supplierFilterEntries(names) { return (names || []).concat(entityBranchOptions("supplier")); }
+function buyerFilterEntries(names)    { return (names || []).concat(entityBranchOptions("buyer")); }
+// A filter value is either an entity id (branch option) or a stored name.
+function isEntityIdValue(v) { return typeof v === "string" && /^(SUP|BUY)-/.test(v); }
+function rowMatchesSupplierFilter(row, sel) {
+  if (!sel) return true;
+  if (!row) return false;
+  if (isEntityIdValue(sel)) {
+    return parseEntityId(sel).branchId
+      ? row.supplierId === sel
+      : getParentEntityId(row.supplierId) === sel;
+  }
+  return rowMatchesSupplierName(row, sel);
+}
+function rowMatchesBuyerFilter(row, sel) {
+  if (!sel) return true;
+  if (!row) return false;
+  if (isEntityIdValue(sel)) {
+    return parseEntityId(sel).branchId
+      ? row.buyerId === sel
+      : getParentEntityId(row.buyerId) === sel;
+  }
+  return rowMatchesBuyerName(row, sel);
 }
 function isCurrentSupplierName(name) {
   return SUPPLIERS_DB.some(function(s) { return s.name === name; });
@@ -1387,6 +1427,7 @@ function isCurrentSupplierName(name) {
 // Dropdown label. A name no longer held by any supplier is marked so the two
 // entries for one renamed supplier are not mistaken for two suppliers.
 function supplierOptionLabel(name) {
+  if (isEntityIdValue(name)) return getEntityDisplayName(name);
   return isCurrentSupplierName(name) ? name : name + " (old name)";
 }
 // Helper: inspect a Supabase response ({data, error}) and toast on error.
@@ -3239,7 +3280,7 @@ export default function FactoringDashboard() {
     if (isS && supCurrency !== "all") d = d.filter(function(x) { return x.currency === supCurrency; });
     if (isf !== "all") d = d.filter(function(x) { return x.invoiceStatus === isf; });
     if (fsf !== "all") d = d.filter(function(x) { return x.fundingStatus === fsf; });
-    if (bf !== "all") d = d.filter(function(x) { return rowMatchesBuyerName(x, bf); });
+    if (bf !== "all") d = d.filter(function(x) { return rowMatchesBuyerFilter(x, bf); });
     if (q) { var s = q.toLowerCase(); d = d.filter(function(x) { return x.id.toLowerCase().indexOf(s) >= 0 || x.buyerName.toLowerCase().indexOf(s) >= 0; }); }
     var sorted = d.slice();
     sorted.sort(function(a, b) { var av = a[sf], bv = b[sf]; if (typeof av === "number") return sd === "asc" ? av - bv : bv - av; if (typeof av === "string") { av = av.toLowerCase(); bv = bv.toLowerCase(); } return sd === "asc" ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1); });
@@ -5200,7 +5241,7 @@ export default function FactoringDashboard() {
               var filteredSpInvs = spInvs;
               if (spUnallocOnly) filteredSpInvs = filteredSpInvs.filter(function(inv) { return !inv.fundingProgram; });
               if (spFsFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.fundingStatus === spFsFilter; });
-              if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return rowMatchesBuyerName(inv, spBuyerFilter); });
+              if (spBuyerFilter !== "all") filteredSpInvs = filteredSpInvs.filter(function(inv) { return rowMatchesBuyerFilter(inv, spBuyerFilter); });
               if (spSearch) {
                 var s = spSearch.toLowerCase();
                 filteredSpInvs = filteredSpInvs.filter(function(inv) { return inv.id.toLowerCase().indexOf(s) > -1 || inv.buyerName.toLowerCase().indexOf(s) > -1 || inv.invoiceStatus.toLowerCase().indexOf(s) > -1 || (inv.fundingStatus || "").toLowerCase().indexOf(s) > -1; });
@@ -9311,7 +9352,7 @@ export default function FactoringDashboard() {
           if (biSearch) buyInvs = buyInvs.filter(function(inv) { var s = biSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
           if (biIsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.invoiceStatus === biIsf; });
           if (biFsf !== "all") buyInvs = buyInvs.filter(function(inv) { return inv.fundingStatus === biFsf; });
-          if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return rowMatchesSupplierName(inv, biSupFilter); });
+          if (biSupFilter !== "all") buyInvs = buyInvs.filter(function(inv) { return rowMatchesSupplierFilter(inv, biSupFilter); });
 
           // Sort
           buyInvs.sort(function(a, b) {
@@ -9389,7 +9430,7 @@ export default function FactoringDashboard() {
               <input type="text" placeholder="Search..." value={biSearch} onChange={function(e) { setBiSearch(e.target.value); setBiPage(0); }} style={activeStyle(!!biSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
               <select value={biIsf} onChange={function(e) { setBiIsf(e.target.value); setBiPage(0); }} style={activeStyle(biIsf !== "all", fltSel)}><option value="all">All Inv Status</option>{INV_STATUSES.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
               <select value={biFsf} onChange={function(e) { setBiFsf(e.target.value); setBiPage(0); }} style={activeStyle(biFsf !== "all", fltSel)}><option value="all">All Fund Status</option>{FUND_STATUSES.map(function(s) { return <option key={s} value={s}>{FST[s].label}</option>; })}</select>
-              <select value={biSupFilter} disabled={supFilterDisabled} onChange={function(e) { setBiSupFilter(e.target.value); setBiPage(0); }} style={Object.assign({}, activeStyle(biSupFilter !== "all", fltSel), { opacity: supFilterDisabled ? 0.45 : 1, cursor: supFilterDisabled ? "not-allowed" : "pointer" })} title={supFilterDisabled ? "Only one supplier represented" : undefined}><option value="all">All Suppliers ({supChoices.length})</option>{supChoices.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s) + " (" + supCounts[s] + ")"}</option>; })}</select>
+              <select value={biSupFilter} disabled={supFilterDisabled} onChange={function(e) { setBiSupFilter(e.target.value); setBiPage(0); }} style={Object.assign({}, activeStyle(biSupFilter !== "all", fltSel), { opacity: supFilterDisabled ? 0.45 : 1, cursor: supFilterDisabled ? "not-allowed" : "pointer" })} title={supFilterDisabled ? "Only one supplier represented" : undefined}><option value="all">All Suppliers ({supChoices.length})</option>{supplierFilterEntries(supChoices).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s) + " (" + supCounts[s] + ")"}</option>; })}</select>
               {biHasActive && <button onClick={function() { setBiSearch(""); setBiIsf("all"); setBiFsf("all"); setBiSupFilter("all"); setBiPage(0); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
               <div style={{ marginLeft: "auto", fontSize: 11.5, color: biHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: biHasActive ? 600 : 400 }}>{biHasActive && buyInvs.length !== allBuyInvs.length ? buyInvs.length + " of " + allBuyInvs.length : buyInvs.length} invoices</div>
             </div>
@@ -9683,7 +9724,7 @@ export default function FactoringDashboard() {
             var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === selectedProgram; });
             if (!prog) return null;
             var allProgInvs = viewData.invoices.filter(function(inv) { return inv.fundingProgram === selectedProgram; });
-            var progInvs = progSupFilter ? allProgInvs.filter(function(inv) { var selBr = getBranchName(progSupFilter); return selBr ? inv.supplierName === progSupFilter : rowMatchesSupplierName(inv, progSupFilter); }) : allProgInvs;
+            var progInvs = progSupFilter ? allProgInvs.filter(function(inv) { var selBr = getBranchName(progSupFilter); return selBr ? inv.supplierName === progSupFilter : rowMatchesSupplierFilter(inv, progSupFilter); }) : allProgInvs;
             var displayCcy = prog.currency;
 
             // Overview
@@ -10561,8 +10602,8 @@ export default function FactoringDashboard() {
               var fInvs = allProgInvsTab.slice();
               // Apply filters
               if (piSearch) fInvs = fInvs.filter(function(inv) { var s = piSearch.toLowerCase(); return inv.id.toLowerCase().indexOf(s) > -1 || (inv.supplierName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerName || "").toLowerCase().indexOf(s) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(s) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(s) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(s) > -1; });
-              if (piSupFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesSupplierName(inv, piSupFilter); });
-              if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesBuyerName(inv, piBuyFilter); });
+              if (piSupFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesSupplierFilter(inv, piSupFilter); });
+              if (piBuyFilter) fInvs = fInvs.filter(function(inv) { return rowMatchesBuyerFilter(inv, piBuyFilter); });
               if (piInvStFilter) fInvs = fInvs.filter(function(inv) { return inv.invoiceStatus === piInvStFilter; });
               if (piFundStFilter) fInvs = fInvs.filter(function(inv) { return inv.fundingStatus === piFundStFilter; });
 
@@ -10644,8 +10685,8 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={piSearch} onChange={function(e) { setPiSearch(e.target.value); setPiPage(0); }} placeholder="Search invoices..." style={activeStyle(!!piSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
-                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piSupFilter, fltSel)}><option value="">All Suppliers</option>{piSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
-                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piBuyFilter, fltSel)}><option value="">All Buyers</option>{piBuys.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
+                  <select value={piSupFilter} onChange={function(e) { setPiSupFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piSupFilter, fltSel)}><option value="">All Suppliers</option>{supplierFilterEntries(piSups).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                  <select value={piBuyFilter} onChange={function(e) { setPiBuyFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piBuyFilter, fltSel)}><option value="">All Buyers</option>{buyerFilterEntries(piBuys).map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                   <select value={piInvStFilter} onChange={function(e) { setPiInvStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piInvStFilter, fltSel)}><option value="">All Inv Status</option>{piInvSts.map(function(s) { return <option key={s} value={s}>{s}</option>; })}</select>
                   <select value={piFundStFilter} onChange={function(e) { setPiFundStFilter(e.target.value); setPiPage(0); }} style={activeStyle(!!piFundStFilter, fltSel)}><option value="">All Fund Status</option>{piFundSts.map(function(s) { var f = FST[s] || FST.funded; return <option key={s} value={s}>{f.label}</option>; })}</select>
                   {piHasActive && <button onClick={function() { setPiSearch(""); setPiSupFilter(""); setPiBuyFilter(""); setPiInvStFilter(""); setPiFundStFilter(""); setPiPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
@@ -11213,7 +11254,7 @@ export default function FactoringDashboard() {
               // Filter + sort + paginate
               var progPays = allProgPays.slice();
               if (paSearch) progPays = progPays.filter(function(ep) { var s = paSearch.toLowerCase(); return ep.pay.paymentId.toLowerCase().indexOf(s) > -1 || ep.allocs.some(function(a) { return a.invoiceId.toLowerCase().indexOf(s) > -1; }); });
-              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && rowMatchesSupplierName(inv, paSupFilter); }); });
+              if (paSupFilter) progPays = progPays.filter(function(ep) { return ep.allocs.some(function(a) { var inv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; }); return inv && rowMatchesSupplierFilter(inv, paSupFilter); }); });
               if (paDateFilter) progPays = progPays.filter(function(ep) { return ep.pay.date === paDateFilter; });
               progPays.sort(function(a, b) {
                 var av, bv;
@@ -11275,7 +11316,7 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={paSearch} onChange={function(e) { setPaSearch(e.target.value); setPaPage(0); }} placeholder="Search payments..." style={activeStyle(!!paSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 200 })} />
-                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); setPaPage(0); }} style={activeStyle(!!paSupFilter, fltSel)}><option value="">All Suppliers</option>{paSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                  <select value={paSupFilter} onChange={function(e) { setPaSupFilter(e.target.value); setPaPage(0); }} style={activeStyle(!!paSupFilter, fltSel)}><option value="">All Suppliers</option>{supplierFilterEntries(paSups).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
                   <input type="date" value={paDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPaDateFilter(v); setPaPage(0); } }} style={activeStyle(!!paDateFilter, Object.assign({}, fltSel, { fontFamily: "'JetBrains Mono', monospace" }))} />
                   {paHasActive && <button onClick={function() { setPaSearch(""); setPaSupFilter(""); setPaDateFilter(""); setPaPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
                   <span style={{ marginLeft: "auto", fontSize: 11.5, color: paHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: paHasActive ? 600 : 400 }}>{paHasActive && progPays.length !== allProgPays.length ? progPays.length + " of " + allProgPays.length : progPays.length} payment{progPays.length === 1 ? "" : "s"}</span>
@@ -11366,7 +11407,7 @@ export default function FactoringDashboard() {
               // Filter + sort + paginate
               var progHbps = allProgHbps.slice();
               if (phSearch) progHbps = progHbps.filter(function(hbp) { var s = phSearch.toLowerCase(); return hbp.hbPaymentId.toLowerCase().indexOf(s) > -1 || hbp.sourceInvoiceId.toLowerCase().indexOf(s) > -1; });
-              if (phSupFilter) progHbps = progHbps.filter(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); return inv && rowMatchesSupplierName(inv, phSupFilter); });
+              if (phSupFilter) progHbps = progHbps.filter(function(hbp) { var inv = viewData.invoices.find(function(x) { return x.id === hbp.sourceInvoiceId; }); return inv && rowMatchesSupplierFilter(inv, phSupFilter); });
               if (phDateFilter) progHbps = progHbps.filter(function(hbp) { return hbp.date === phDateFilter; });
               progHbps.sort(function(a, b) {
                 var av, bv;
@@ -11425,7 +11466,7 @@ export default function FactoringDashboard() {
                 {/* Filter bar */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <input type="text" value={phSearch} onChange={function(e) { setPhSearch(e.target.value); setPhPage(0); }} placeholder="Search HBP ID or source invoice..." style={activeStyleH(!!phSearch, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 240 })} />
-                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); setPhPage(0); }} style={activeStyleH(!!phSupFilter, fltSel2)}><option value="">All Suppliers</option>{phSups.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                  <select value={phSupFilter} onChange={function(e) { setPhSupFilter(e.target.value); setPhPage(0); }} style={activeStyleH(!!phSupFilter, fltSel2)}><option value="">All Suppliers</option>{supplierFilterEntries(phSups).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
                   <input type="date" value={phDateFilter} onChange={function(e) { var v = e.target.value; if (!v || !isNaN(new Date(v + "T12:00:00").getTime())) { setPhDateFilter(v); setPhPage(0); } }} style={activeStyleH(!!phDateFilter, Object.assign({}, fltSel2, { fontFamily: "'JetBrains Mono', monospace" }))} />
                   {phHasActive && <button onClick={function() { setPhSearch(""); setPhSupFilter(""); setPhDateFilter(""); setPhPage(0); }} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Clear filters</button>}
                   <span style={{ marginLeft: "auto", fontSize: 11.5, color: phHasActive ? "var(--accent)" : "var(--muted)", fontFamily: "'JetBrains Mono', monospace", fontWeight: phHasActive ? 600 : 400 }}>{phHasActive && progHbps.length !== allProgHbps.length ? progHbps.length + " of " + allProgHbps.length : progHbps.length} HBP{progHbps.length === 1 ? "" : "s"}</span>
@@ -14207,8 +14248,8 @@ export default function FactoringDashboard() {
               function applyCnlFilters(list) {
                 var r = list;
                 if (cnlCcyFilter) r = r.filter(function(cn) { return cn.currency === cnlCcyFilter; });
-                if (cnlSupFilter) r = r.filter(function(cn) { return rowMatchesSupplierName(cn, cnlSupFilter); });
-                if (cnlBuyFilter) r = r.filter(function(cn) { return rowMatchesBuyerName(cn, cnlBuyFilter); });
+                if (cnlSupFilter) r = r.filter(function(cn) { return rowMatchesSupplierFilter(cn, cnlSupFilter); });
+                if (cnlBuyFilter) r = r.filter(function(cn) { return rowMatchesBuyerFilter(cn, cnlBuyFilter); });
                 if (cnlStatusFilter) r = r.filter(function(cn) { return cnStatus(cn) === cnlStatusFilter; });
                 if (cnlDateFrom) r = r.filter(function(cn) { return (cn.date || "") >= cnlDateFrom; });
                 if (cnlDateTo) r = r.filter(function(cn) { return (cn.date || "") <= cnlDateTo; });
@@ -14275,8 +14316,8 @@ export default function FactoringDashboard() {
               {CREDIT_NOTES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={cnlSearch} onChange={function(e) { setCnlSearch(e.target.value); setCnlPage(0); }} placeholder="Search CN, ref, supplier, buyer..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
                 <select value={cnlCcyFilter} onChange={function(e) { setCnlCcyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlCcyFilter ? "var(--accent)" : "var(--border)"), background: cnlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-                <select value={cnlSupFilter} onChange={function(e) { setCnlSupFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlSupFilter ? "var(--accent)" : "var(--border)"), background: cnlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{cnSupplierOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
-                <select value={cnlBuyFilter} onChange={function(e) { setCnlBuyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlBuyFilter ? "var(--accent)" : "var(--border)"), background: cnlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{cnBuyerOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
+                <select value={cnlSupFilter} onChange={function(e) { setCnlSupFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlSupFilter ? "var(--accent)" : "var(--border)"), background: cnlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supplierFilterEntries(cnSupplierOpts).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={cnlBuyFilter} onChange={function(e) { setCnlBuyFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlBuyFilter ? "var(--accent)" : "var(--border)"), background: cnlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyerFilterEntries(cnBuyerOpts).map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={cnlStatusFilter} onChange={function(e) { setCnlStatusFilter(e.target.value); setCnlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (cnlStatusFilter ? "var(--accent)" : "var(--border)"), background: cnlStatusFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
                   <option value="">All status</option>
                   <option value="unallocated">Unallocated</option>
@@ -14543,8 +14584,8 @@ export default function FactoringDashboard() {
           function applyInvlFilters(list) {
             var r = list;
             if (invlCcyFilter) r = r.filter(function(inv) { return inv.currency === invlCcyFilter; });
-            if (invlSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierName(inv, invlSupFilter) || (inv.supplierId === invlSupFilter); });
-            if (invlBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerName(inv, invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
+            if (invlSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierFilter(inv, invlSupFilter) || (inv.supplierId === invlSupFilter); });
+            if (invlBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerFilter(inv, invlBuyFilter) || (inv.buyerId === invlBuyFilter); });
             if (invlProgFilter) {
               if (invlProgFilter === "__none__") r = r.filter(function(inv) { return !inv.fundingProgram; });
               else r = r.filter(function(inv) { return inv.fundingProgram === invlProgFilter; });
@@ -14698,8 +14739,8 @@ export default function FactoringDashboard() {
               {INVOICES_DB.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={invlSearch} onChange={function(e) { setInvlSearch(e.target.value); setInvlPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
                 <select value={invlCcyFilter} onChange={function(e) { setInvlCcyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlCcyFilter ? "var(--accent)" : "var(--border)"), background: invlCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
-                <select value={invlSupFilter} onChange={function(e) { setInvlSupFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlSupFilter ? "var(--accent)" : "var(--border)"), background: invlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
-                <select value={invlBuyFilter} onChange={function(e) { setInvlBuyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlBuyFilter ? "var(--accent)" : "var(--border)"), background: invlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
+                <select value={invlSupFilter} onChange={function(e) { setInvlSupFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlSupFilter ? "var(--accent)" : "var(--border)"), background: invlSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All suppliers</option>{supplierFilterEntries(supOpts).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={invlBuyFilter} onChange={function(e) { setInvlBuyFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlBuyFilter ? "var(--accent)" : "var(--border)"), background: invlBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 160 }}><option value="">All buyers</option>{buyerFilterEntries(buyOpts).map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={invlProgFilter} onChange={function(e) { setInvlProgFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlProgFilter ? "var(--accent)" : "var(--border)"), background: invlProgFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All programs</option><option value="__none__">Unpurchased (no program)</option>{FUNDING_PROGRAMS_DB.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select>
                 <select value={invlInvStFilter} onChange={function(e) { setInvlInvStFilter(e.target.value); setInvlPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (invlInvStFilter ? "var(--accent)" : "var(--border)"), background: invlInvStFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}>
                   <option value="">All invoice status</option>
@@ -14798,8 +14839,8 @@ export default function FactoringDashboard() {
           function applyUpiFilters(list) {
             var r = list;
             if (upiCcyFilter) r = r.filter(function(inv) { return inv.currency === upiCcyFilter; });
-            if (upiSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierName(inv, upiSupFilter); });
-            if (upiBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerName(inv, upiBuyFilter); });
+            if (upiSupFilter) r = r.filter(function(inv) { return rowMatchesSupplierFilter(inv, upiSupFilter); });
+            if (upiBuyFilter) r = r.filter(function(inv) { return rowMatchesBuyerFilter(inv, upiBuyFilter); });
             if (upiDateFrom) r = r.filter(function(inv) { return (inv.invoiceDate || "") >= upiDateFrom; });
             if (upiDateTo) r = r.filter(function(inv) { return (inv.invoiceDate || "") <= upiDateTo; });
             if (upiSearch) { var q = upiSearch.toLowerCase(); r = r.filter(function(inv) { return (inv.id || "").toLowerCase().indexOf(q) > -1 || (inv.supplierName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerName || "").toLowerCase().indexOf(q) > -1 || (inv.buyerRef || "").toLowerCase().indexOf(q) > -1 || (inv.supplierRef || "").toLowerCase().indexOf(q) > -1 || (inv.purchaseOrder || "").toLowerCase().indexOf(q) > -1; }); }
@@ -15060,8 +15101,8 @@ export default function FactoringDashboard() {
               </div>
               {unpurchasedAll.length > 0 && <div style={{ padding: "10px 22px", borderBottom: "1px solid var(--border)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <input type="text" value={upiSearch} onChange={function(e) { setUpiSearch(e.target.value); setUpiPage(0); }} placeholder="Search ID, supplier, buyer, ref..." style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", width: 220 }} />
-                <select value={upiSupFilter} onChange={function(e) { setUpiSupFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiSupFilter ? "var(--accent)" : "var(--border)"), background: upiSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supOpts.map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
-                <select value={upiBuyFilter} onChange={function(e) { setUpiBuyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiBuyFilter ? "var(--accent)" : "var(--border)"), background: upiBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyOpts.map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
+                <select value={upiSupFilter} onChange={function(e) { setUpiSupFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiSupFilter ? "var(--accent)" : "var(--border)"), background: upiSupFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All suppliers</option>{supplierFilterEntries(supOpts).map(function(s) { return <option key={s} value={s}>{supplierOptionLabel(s)}</option>; })}</select>
+                <select value={upiBuyFilter} onChange={function(e) { setUpiBuyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiBuyFilter ? "var(--accent)" : "var(--border)"), background: upiBuyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer", maxWidth: 180 }}><option value="">All buyers</option>{buyerFilterEntries(buyOpts).map(function(b) { return <option key={b} value={b}>{buyerOptionLabel(b)}</option>; })}</select>
                 <select value={upiCcyFilter} onChange={function(e) { setUpiCcyFilter(e.target.value); setUpiPage(0); }} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiCcyFilter ? "var(--accent)" : "var(--border)"), background: upiCcyFilter ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", cursor: "pointer" }}><option value="">All CCY</option>{CURRENCIES.map(function(c) { return <option key={c} value={c}>{c}</option>; })}</select>
                 <input type="date" value={upiDateFrom} onChange={function(e) { setUpiDateFrom(e.target.value); setUpiPage(0); }} title="From" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateFrom ? "var(--accent)" : "var(--border)"), background: upiDateFrom ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
                 <input type="date" value={upiDateTo} onChange={function(e) { setUpiDateTo(e.target.value); setUpiPage(0); }} title="To" style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + (upiDateTo ? "var(--accent)" : "var(--border)"), background: upiDateTo ? "var(--accent)14" : "var(--bg)", color: "var(--text)", fontSize: 11, outline: "none", fontFamily: "'JetBrains Mono', monospace" }} />
