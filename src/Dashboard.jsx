@@ -1624,36 +1624,6 @@ async function reloadForSupplier(supplierId) {
   console.log("[Supplier Load] " + supplierName + ": " + AUDIT_LOG.length + " audit entries loaded");
 }
 
-async function reloadInvoices() {
-  try {
-    var invData = await fetchAllRows("invoices");
-    if (invData) {
-      INVOICES_DB.length = 0;
-      invData.forEach(function(row) {
-        INVOICES_DB.push({
-          id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
-          amount: parseFloat(row.amount) || 0, currency: row.currency,
-          capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
-          interestCharged: parseFloat(row.interest_charged) || 0, deferredPayment: parseFloat(row.deferred_payment) || 0,
-          daysToMaturity: row.days_to_maturity || 0,
-          advanceRate: parseFloat(row.advance_rate) || 0, annualRate: parseFloat(row.annual_rate) || 0, penaltyRate: parseFloat(row.penalty_rate) || 0,
-          invoiceDate: row.invoice_date, dueDate: row.due_date, fundedDate: row.funded_date,
-          createdDate: row.created_date, approvedDate: row.approved_date, fullyRepaidDate: row.fully_repaid_date,
-    cancelledDate: row.cancelled_date, declinedDate: row.declined_date,
-    disputedDate: row.disputed_date, settledDate: row.settled_date,
-    buyerReceivedDate: row.buyer_received_date,
-          invoiceStatus: row.invoice_status, fundingStatus: row.funding_status,
-          fundingProgram: row.funding_program, partialApprovedAmount: parseFloat(row.partial_approved_amount) || 0,
-          invoiceReference: row.invoice_reference, purchaseOrder: row.purchase_order, buyerRef: row.buyer_ref || "", supplierRef: row.supplier_ref || "",
-          invoiceStatusHistory: row.invoice_status_history || [],
-          adjustments: row.adjustments || [],
-          doNotFund: row.do_not_purchase || false, doNotAdvance: row.do_not_advance || false, pendingTopUpAmount: row.pending_top_up_amount || 0, pendingTopUpRate: row.pending_top_up_rate || null, pendingTopUpDate: row.pending_top_up_date || null, tranches: row.tranches || [],
-          notes: row.notes || []
-        });
-      });
-    }
-  } catch (e) { console.error("Realtime reload invoices error:", e); }
-}
 
 var _reloadPaymentsInFlight = null;
 async function reloadPayments() {
@@ -1741,21 +1711,6 @@ async function reloadSPQ() {
   } catch (e) { console.error("Realtime reload SPQ error:", e); }
 }
 
-async function reloadAuditLog() {
-  try {
-    var auditData = await fetchAllRows("audit_log");
-    if (auditData.length > 0) {
-      AUDIT_LOG.length = 0;
-      auditData.forEach(function(row) {
-        AUDIT_LOG.push({
-          timestamp: row.timestamp, displayTime: row.display_time,
-          action: row.event_type, details: row.details, context: row.context || {}
-        });
-      });
-      _lastSavedAuditIndex = AUDIT_LOG.length;
-    }
-  } catch (e) { console.error("Realtime reload audit error:", e); }
-}
 
 async function reloadSuppliers() {
   try {
