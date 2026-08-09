@@ -419,7 +419,9 @@ function getSupplierRate(entityId, asOfTimestamp) {
     supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
   }
   if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
-  var ts = asOfTimestamp || new Date().toISOString();
+  // One clock. Falls back to the app as-of date so a back-dated or scheduled
+  // run resolves the rate that applied on that date, not the rate today.
+  var ts = asOfTimestamp || (appToday() + "T23:59:59Z");
   var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
   var rate = sorted[0];
   for (var i = 0; i < sorted.length; i++) {
@@ -429,52 +431,279 @@ function getSupplierRate(entityId, asOfTimestamp) {
   return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
 }
 
-function getEligiblePrograms(inv, supDilRates) {
-  var supRate = getSupplierRate(inv.supplierId || inv.supplierName);
-  var parentId = getParentEntityId(inv.supplierId || "");
-  var parentSup = getParentSupplierName(inv.supplierName);
-  var term = inv.daysToMaturity || (inv.invoiceDate && inv.dueDate ? daysBetween(inv.invoiceDate, inv.dueDate) : 0);
-  // Ineligible invoice statuses
-  var badInvStatuses = { "Settled": true, "Cancelled": true, "Declined": true, "Disputed": true, "Buyer Default": true };
-  if (badInvStatuses[inv.invoiceStatus]) return [];
-  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
-  return FUNDING_PROGRAMS_DB.filter(function(fp) {
-    // Currency must match — a program in EUR cannot fund a GBP invoice and vice versa
-    if (fp.currency && inv.currency && fp.currency !== inv.currency) return false;
-    // Eligible suppliers check — by ID (parent or entity)
-    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
-      var entityId = inv.supplierId || "";
-      var idMatch = fp.eligibleSuppliers.indexOf(entityId) > -1 || fp.eligibleSuppliers.indexOf(parentId) > -1;
-      if (!idMatch) return false;
-    }
-    // Eligible buyers check — by ID
-    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
-      var buyerId = inv.buyerId || "";
-      if (fp.eligibleBuyers.indexOf(buyerId) === -1) return false;
-    }
-    if (supRate.annualRate < fp.minInterestRate - 0.0001) return false;
-    if (supRate.advanceRate > fp.maxAdvanceRate + 0.0001) return false;
-    if (term > fp.maxInvoiceTerm) return false;
-    if (fp.minInvoiceTenor && term < fp.minInvoiceTenor) return false;
-    if (fp.minInvoiceSize && inv.amount < fp.minInvoiceSize) return false;
-    if (fp.maxSupDilLive != null && dr.dilRate > fp.maxSupDilLive) return false;
-    if (fp.maxSupDil30 != null && dr.dil30 > fp.maxSupDil30) return false;
-    if (fp.maxSupDil90 != null && dr.dil90 > fp.maxSupDil90) return false;
-    if (fp.maxFundDilLive != null && dr.fdilRate > fp.maxFundDilLive) return false;
-    if (fp.maxFundDil30 != null && dr.fdil30 > fp.maxFundDil30) return false;
-    if (fp.maxFundDil90 != null && dr.fdil90 > fp.maxFundDil90) return false;
-    // Single invoice limit per supplier per program
-    var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
-    if (parentSupObj && parentSupObj.singleInvoiceLimits && parentSupObj.singleInvoiceLimits[fp.id]) {
-      if (inv.amount > parentSupObj.singleInvoiceLimits[fp.id]) return false;
-    }
-    return true;
-  });
+var _APP_TODAY = REF_DATE;
+function appToday() { return _APP_TODAY; }
+function setAppToday(d) { _APP_TODAY = d || REF_DATE; }
+
+// ---- Limit helpers ----------------------------------------------------------
+// Lowest defined value wins. null/undefined means "not set" and is skipped;
+// a stored 0 is a genuine limit of zero and will always win.
+function lowestLimit(values) {
+  var out = null;
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    if (v === null || v === undefined || v === "") continue;
+    v = parseFloat(v);
+    if (isNaN(v)) continue;
+    if (out === null || v < out) out = v;
+  }
+  return out;
 }
 
-// Compute the maximum capital any eligible program could offer for this invoice
-function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected) {
-  var eligible = getEligiblePrograms(inv, supDilRates);
+// Null-preserving numeric parse. Distinguishes "not set" (null) from a typed 0.
+// Use for every limit field so blank means unlimited and zero means zero.
+function nz(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+function branchLimitsFor(entityId, key) {
+  var parsed = parseEntityId(entityId || "");
+  if (!parsed.branchId) return null;
+  var parent = getSupplierById(parsed.supplierId);
+  if (!parent || !parent.branches) return null;
+  var br = parent.branches.find(function(b) { return b.branchId === parsed.branchId; });
+  if (!br || !br[key]) return null;
+  return br[key];
+}
+
+// Term = days remaining to maturity, measured from the as-of date.
+// Deliberately does NOT read inv.daysToMaturity: that field is written at
+// funding time and would make the test mean different things before and after.
+function invoiceTermDays(inv, asOf) {
+  if (!inv.dueDate) return null;
+  return daysBetween(asOf, inv.dueDate);
+}
+
+// ---- Reason codes -----------------------------------------------------------
+var ELIG_REASONS = {
+  CURRENCY:          "Invoice currency does not match the programme",
+  SUPPLIER_NOT_ELIG: "Supplier entity is not on the programme's eligible list",
+  BUYER_NOT_ELIG:    "Buyer entity is not on the programme's eligible list",
+  INV_STATUS_BUY:    "Invoice status is blocked from purchase on this programme",
+  INV_STATUS_FUND:   "Invoice status is blocked from funding on this programme",
+  SUPPLIER_PAUSED:   "Supplier is paused",
+  BUYER_PAUSED:      "Buyer is paused",
+  MAX_INV_SIZE:      "Invoice exceeds the maximum invoice size",
+  MIN_INV_SIZE:      "Invoice is below the minimum invoice size",
+  MAX_TERM:          "Days to maturity exceed the maximum term",
+  MIN_TERM:          "Days to maturity are below the minimum term",
+  NO_TERM:           "Invoice has no due date",
+  ADVANCE_RATE:      "Supplier advance rate exceeds the programme maximum",
+  INTEREST_RATE:     "Supplier interest rate is below the programme minimum",
+  DIL_SUP_LIVE:      "Supplier dilution (live) exceeds the programme maximum",
+  DIL_SUP_30:        "Supplier dilution (30d) exceeds the programme maximum",
+  DIL_SUP_90:        "Supplier dilution (90d) exceeds the programme maximum",
+  DIL_FUND_LIVE:     "Funded dilution (live) exceeds the programme maximum",
+  DIL_FUND_30:       "Funded dilution (30d) exceeds the programme maximum",
+  DIL_FUND_90:       "Funded dilution (90d) exceeds the programme maximum"
+};
+
+// Statuses an admin can gate on, per programme.
+var GATEABLE_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Disputed", "Cancelled", "Declined", "Settled", "Buyer Default"];
+var DEFAULT_PURCHASE_BLOCKED = ["Settled"];
+var DEFAULT_FUNDING_BLOCKED  = ["Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
+
+function _mk(code, detail) {
+  return { code: code, label: ELIG_REASONS[code] || code, detail: detail || null };
+}
+
+// Explicit entity picker for programme eligibility.
+//
+// Parent and each branch are independent chips and the stored list is an explicit
+// snapshot of entity ids. A branch created after the programme was configured is
+// NOT eligible until somebody toggles it on. The "all" chip is a convenience that
+// writes the same explicit list; it is not a wildcard.
+function entityChips(db, selected, onChange, chipStyle, accent) {
+  // toggleArr is component-scoped, so keep an equivalent local one here.
+  function tog(arr, v) { return arr.indexOf(v) > -1 ? arr.filter(function(x) { return x !== v; }) : arr.concat([v]); }
+  var items = [];
+  (db || []).forEach(function(ent) {
+    var branches = ent.branches || [];
+    var ids = [ent.id].concat(branches.map(function(br) { return makeEntityId(ent.id, br.branchId); }));
+    var onCount = ids.filter(function(id) { return selected.indexOf(id) > -1; }).length;
+    var allOn = onCount === ids.length;
+    if (branches.length > 0) {
+      items.push(React.createElement("span", {
+        key: ent.id + "-grp",
+        title: allOn ? "Clear " + ent.name + " and all branches" : "Select " + ent.name + " and all " + branches.length + " branches as they exist now",
+        onClick: function() {
+          var next = selected.filter(function(id) { return ids.indexOf(id) === -1; });
+          if (!allOn) next = next.concat(ids);
+          onChange(next);
+        },
+        style: Object.assign({}, chipStyle, { background: "transparent", color: "var(--muted)", borderStyle: "dashed", fontSize: 9 })
+      }, (allOn ? "\u2212" : "+") + " all (" + onCount + "/" + ids.length + ")"));
+    }
+    var parentOn = selected.indexOf(ent.id) > -1;
+    items.push(React.createElement("span", {
+      key: ent.id,
+      onClick: function() { onChange(tog(selected, ent.id)); },
+      style: Object.assign({}, chipStyle, { background: parentOn ? accent + "20" : "transparent", color: parentOn ? accent : "var(--muted)", borderColor: parentOn ? accent : "var(--border)", fontWeight: parentOn ? 700 : 400 })
+    }, ent.name));
+    branches.forEach(function(br) {
+      var bid = makeEntityId(ent.id, br.branchId);
+      var on = selected.indexOf(bid) > -1;
+      items.push(React.createElement("span", {
+        key: bid,
+        onClick: function() { onChange(tog(selected, bid)); },
+        style: Object.assign({}, chipStyle, { background: on ? "#567EBB20" : "transparent", color: on ? "#38BDF8" : "var(--muted)", borderColor: on ? "#38BDF8" : "var(--border)", fontWeight: on ? 700 : 400, fontSize: 10, paddingLeft: 16 })
+      }, "\u2514 " + br.branchName));
+    });
+  });
+  return items;
+}
+
+// ---- Main evaluator ---------------------------------------------------------
+// Returns { purchasable: [fp], fundable: [fp], rejected: [{programId, programName,
+// stage, reasons:[{code,label,detail}]}] }.
+//
+// stage === "purchase" -> the invoice cannot be bought onto this programme.
+// stage === "funding"  -> it can be bought, but no advance can be made.
+//
+// Every failing test is collected, not short-circuited, so the admin tooltip can
+// show all reasons rather than only the first.
+function getProgramEligibility(inv, supDilRates, asOf) {
+  asOf = asOf || appToday();
+  var supRate = getSupplierRate(inv.supplierId || inv.supplierName, asOf);
+  var entityId = inv.supplierId || "";
+  var parentId = getParentEntityId(entityId);
+  var parentSup = getParentSupplierName(inv.supplierName);
+  var buyerId = inv.buyerId || "";
+  var term = invoiceTermDays(inv, asOf);
+  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
+  var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
+
+  var supPaused = isEntityPaused(entityId);
+  var buyPaused = isBuyerPaused(buyerId);
+
+  var out = { purchasable: [], fundable: [], rejected: [] };
+
+  FUNDING_PROGRAMS_DB.forEach(function(fp) {
+    var buyReasons = [], fundReasons = [];
+
+    // ---- Purchase gates ----------------------------------------------------
+    if (fp.currency && inv.currency && fp.currency !== inv.currency) {
+      buyReasons.push(_mk("CURRENCY", inv.currency + " vs " + fp.currency));
+    }
+    // Exact entity match only. The old parent-id fallback made every future
+    // branch eligible automatically; the list is now an explicit snapshot.
+    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
+      if (fp.eligibleSuppliers.indexOf(entityId) === -1) {
+        buyReasons.push(_mk("SUPPLIER_NOT_ELIG", entityId));
+      }
+    }
+    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
+      if (fp.eligibleBuyers.indexOf(buyerId) === -1) {
+        buyReasons.push(_mk("BUYER_NOT_ELIG", buyerId));
+      }
+    }
+    var buyBlocked = fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED;
+    if (buyBlocked.indexOf(inv.invoiceStatus) > -1) {
+      buyReasons.push(_mk("INV_STATUS_BUY", inv.invoiceStatus));
+    }
+
+    // ---- Funding gates -----------------------------------------------------
+    var fundBlocked = fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED;
+    if (fundBlocked.indexOf(inv.invoiceStatus) > -1) {
+      fundReasons.push(_mk("INV_STATUS_FUND", inv.invoiceStatus));
+    }
+    if (supPaused) fundReasons.push(_mk("SUPPLIER_PAUSED", entityId));
+    if (buyPaused) fundReasons.push(_mk("BUYER_PAUSED", buyerId));
+
+    // Max invoice size — lowest of programme / parent / branch.
+    var maxSize = lowestLimit([
+      fp.maxInvoiceSize,
+      parentSupObj && parentSupObj.singleInvoiceLimits ? parentSupObj.singleInvoiceLimits[fp.id] : null,
+      (function() { var m = branchLimitsFor(entityId, "singleInvoiceLimits"); return m ? m[fp.id] : null; })()
+    ]);
+    if (maxSize !== null && inv.amount > maxSize) {
+      fundReasons.push(_mk("MAX_INV_SIZE", inv.amount + " > " + maxSize));
+    }
+
+    // Legacy programme minimum invoice size. Superseded by Minimum Payment Size
+    // but retained until that ships.
+    if (fp.minInvoiceSize != null && inv.amount < fp.minInvoiceSize) {
+      fundReasons.push(_mk("MIN_INV_SIZE", inv.amount + " < " + fp.minInvoiceSize));
+    }
+
+    // Term — lowest of programme / parent / branch for the maximum.
+    if (term === null) {
+      fundReasons.push(_mk("NO_TERM"));
+    } else {
+      var maxTerm = lowestLimit([
+        fp.maxInvoiceTerm,
+        parentSupObj && parentSupObj.maxTermLimits ? parentSupObj.maxTermLimits[fp.id] : null,
+        (function() { var m = branchLimitsFor(entityId, "maxTermLimits"); return m ? m[fp.id] : null; })()
+      ]);
+      if (maxTerm !== null && term > maxTerm) {
+        fundReasons.push(_mk("MAX_TERM", term + "d > " + maxTerm + "d"));
+      }
+      var minTerm = (fp.minInvoiceTerm != null) ? fp.minInvoiceTerm : fp.minInvoiceTenor;
+      if (minTerm != null && term < minTerm) {
+        fundReasons.push(_mk("MIN_TERM", term + "d < " + minTerm + "d"));
+      }
+    }
+
+    if (fp.minInterestRate != null && supRate.annualRate < fp.minInterestRate - 0.0001) {
+      fundReasons.push(_mk("INTEREST_RATE"));
+    }
+    if (fp.maxAdvanceRate != null && supRate.advanceRate > fp.maxAdvanceRate + 0.0001) {
+      fundReasons.push(_mk("ADVANCE_RATE"));
+    }
+
+    if (fp.maxSupDilLive  != null && dr.dilRate  > fp.maxSupDilLive)  fundReasons.push(_mk("DIL_SUP_LIVE"));
+    if (fp.maxSupDil30    != null && dr.dil30    > fp.maxSupDil30)    fundReasons.push(_mk("DIL_SUP_30"));
+    if (fp.maxSupDil90    != null && dr.dil90    > fp.maxSupDil90)    fundReasons.push(_mk("DIL_SUP_90"));
+    if (fp.maxFundDilLive != null && dr.fdilRate > fp.maxFundDilLive) fundReasons.push(_mk("DIL_FUND_LIVE"));
+    if (fp.maxFundDil30   != null && dr.fdil30   > fp.maxFundDil30)   fundReasons.push(_mk("DIL_FUND_30"));
+    if (fp.maxFundDil90   != null && dr.fdil90   > fp.maxFundDil90)   fundReasons.push(_mk("DIL_FUND_90"));
+
+    // ---- Collect -----------------------------------------------------------
+    if (buyReasons.length > 0) {
+      out.rejected.push({ programId: fp.id, programName: fp.name, stage: "purchase", reasons: buyReasons });
+      return;
+    }
+    out.purchasable.push(fp);
+    if (fundReasons.length > 0) {
+      out.rejected.push({ programId: fp.id, programName: fp.name, stage: "funding", reasons: fundReasons });
+      return;
+    }
+    out.fundable.push(fp);
+  });
+
+  return out;
+}
+
+// Back-compat: existing call sites expect a plain array of fundable programmes.
+function getEligiblePrograms(inv, supDilRates, asOf) {
+  return getProgramEligibility(inv, supDilRates, asOf).fundable;
+}
+
+function getPurchasablePrograms(inv, asOf) {
+  return getProgramEligibility(inv, null, asOf).purchasable;
+}
+
+// Flatten rejection reasons into a single tooltip string for the admin UI.
+// One line per programme, reasons comma-separated, purchase blocks marked.
+function rejectionTooltip(rej) {
+  if (!rej || rej.length === 0) return "";
+  return rej.map(function(r) {
+    var head = (r.programName || r.programId) + (r.stage === "purchase" ? " (cannot purchase)" : " (cannot fund)");
+    return head + ": " + r.reasons.map(function(x) { return x.label + (x.detail ? " [" + x.detail + "]" : ""); }).join("; ");
+  }).join("\n");
+}
+
+// Reasons a given programme was refused, for the admin tooltip.
+function getRejectionReasons(inv, supDilRates, asOf) {
+  return getProgramEligibility(inv, supDilRates, asOf).rejected;
+}
+
+// Compute the maximum capital any fundable program could offer for this invoice.
+// NOTE: callers that have a view date should pass it; otherwise appToday() is used.
+function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected, asOf) {
+  var eligible = getEligiblePrograms(inv, supDilRates, asOf);
   if (eligible.length === 0) return 0;
   // Effective fundable base:
   //  - cap at invoice amount (always)
@@ -726,7 +955,14 @@ async function saveFundingProgram(progId) {
       id: fp.id, name: fp.name, currency: fp.currency,
       max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
       max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
-      max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
+      max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
+      min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
+      // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
+      min_invoice_tenor: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : (fp.minInvoiceTenor || 0),
+      max_invoice_size: fp.maxInvoiceSize != null ? fp.maxInvoiceSize : null,
+      min_payment_size: fp.minPaymentSize != null ? fp.minPaymentSize : null,
+      purchase_blocked_statuses: fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED,
+      funding_blocked_statuses: fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED,
       min_invoice_size: fp.minInvoiceSize || 0,
       threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
       threshold_recovery: fp.thresholdRecovery || 30,
@@ -800,7 +1036,7 @@ async function saveSupplier(supId) {
       contact5_name: s.contact5Name || null, contact5_email: s.contact5Email || null, contact5_phone: s.contact5Phone || null, contact5_signatory: s.contact5Signatory || false,
       bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
       account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
-      credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {},
+      credit_limits: s.creditLimits || {}, single_invoice_limits: s.singleInvoiceLimits || {}, max_term_limits: s.maxTermLimits || {},
       program_bank_accounts: s.programBankAccounts || {},
       rates: s.rates || [], branches: s.branches || [], paused: s.paused || false
     };
@@ -1026,6 +1262,7 @@ async function loadPersistedData() {
           bankVerified: false,
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          maxTermLimits: row.max_term_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
           rates: row.rates || [{ effectiveDate: "2025-01-01", advanceRate: 0.9, annualRate: 0.15, penaltyRate: 0.225 }],
           branches: row.branches || [],
@@ -1075,7 +1312,14 @@ async function loadPersistedData() {
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
           maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
-          maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
+          maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
+          // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
+          minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
+          minInvoiceTenor: row.min_invoice_tenor || 0,
+          maxInvoiceSize: nz(row.max_invoice_size),
+          minPaymentSize: nz(row.min_payment_size),
+          purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
+          fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
@@ -1732,6 +1976,7 @@ async function reloadSuppliers() {
           accountNumber: row.account_number || "", iban: row.iban || "", bic: row.bic || "",
           creditLimits: row.credit_limits || {},
           singleInvoiceLimits: row.single_invoice_limits || {},
+          maxTermLimits: row.max_term_limits || {},
           programBankAccounts: row.program_bank_accounts || {},
           rates: row.rates || [], branches: row.branches || [],
           entitySource: row.entity_source || null, directors: row.directors || [], companyStatus: row.company_status || "",
@@ -1778,7 +2023,14 @@ async function reloadFundingPrograms() {
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
           maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
-          maxInvoiceTerm: row.max_invoice_term || 90, minInvoiceTenor: row.min_invoice_tenor || 0,
+          maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
+          // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
+          minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
+          minInvoiceTenor: row.min_invoice_tenor || 0,
+          maxInvoiceSize: nz(row.max_invoice_size),
+          minPaymentSize: nz(row.min_payment_size),
+          purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
+          fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
           thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
           thresholdRecovery: row.threshold_recovery || 30,
@@ -1831,7 +2083,7 @@ async function savePersistedData() {
         bank_name: s.bankName || null, account_name: s.accountName || null, sort_code: s.sortCode || null,
         account_number: s.accountNumber || null, iban: s.iban || null, bic: s.bic || null,
         credit_limits: s.creditLimits || {},
-        single_invoice_limits: s.singleInvoiceLimits || {},
+        single_invoice_limits: s.singleInvoiceLimits || {}, max_term_limits: s.maxTermLimits || {},
         program_bank_accounts: s.programBankAccounts || {},
         rates: s.rates || [], branches: s.branches || [],
         paused: s.paused || false
@@ -1877,7 +2129,14 @@ async function savePersistedData() {
         id: fp.id, name: fp.name, currency: fp.currency,
         max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
         max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
-        max_invoice_term: fp.maxInvoiceTerm || 90, min_invoice_tenor: fp.minInvoiceTenor || 0,
+        max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
+        min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
+        // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
+        min_invoice_tenor: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : (fp.minInvoiceTenor || 0),
+        max_invoice_size: fp.maxInvoiceSize != null ? fp.maxInvoiceSize : null,
+        min_payment_size: fp.minPaymentSize != null ? fp.minPaymentSize : null,
+        purchase_blocked_statuses: fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED,
+        funding_blocked_statuses: fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED,
         min_invoice_size: fp.minInvoiceSize || 0,
         threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
         threshold_recovery: fp.thresholdRecovery || 30,
@@ -2338,9 +2597,13 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
       if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
     }
     // For unfunded invoices, compute max available capital from eligible programs.
+    // supDilRates is deliberately undefined here: dilution rates are derived FROM
+    // this function's output, so they cannot be an input to it. The figure therefore
+    // ignores dilution ceilings and can overstate what is actually fundable.
+    // Known limitation — do not "fix" by passing a variable that does not exist.
     // buyerCollected reduces fundable headroom — the portion already paid by the buyer
     // is no longer a receivable, so we can't advance against it.
-    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv, undefined, cnDilutionByInvoice.get(rawInv.id) || 0, totalBuyerPaid) : 0;
+    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv, undefined, cnDilutionByInvoice.get(rawInv.id) || 0, totalBuyerPaid, viewDate) : 0;
     // Funding headroom for purchased/funded invoices with a current program — used by the top-up workflow
     var fundingHeadroom = 0;
     if (rawInv.fundingProgram && (rawInv.fundingStatus === "purchased" || rawInv.fundingStatus === "funded" || rawInv.fundingStatus === "at_risk" || rawInv.fundingStatus === "overdue")) {
@@ -3110,7 +3373,7 @@ export default function FactoringDashboard() {
   var sel1 = useState({}), selectedInvs = sel1[0], setSelectedInvs = sel1[1]; // {invoiceId: true} for bulk actions
   var isC = view === "company", isS = view === "supplier", isB = view === "buyer", isF = view === "program", isP = view === "payments", isCN = view === "creditnotes", isI = view === "invoices", isUI = view === "unpurchased", isM = view === "manage";
 
-  var viewData = useMemo(function() { return processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB); }, [viewDate, dataVer]);
+  var viewData = useMemo(function() { setAppToday(viewDate); return processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB); }, [viewDate, dataVer]);
 
   // Drill-in focus: when pendingFocusPayId is set and we're on the payments
   // view + incoming/outgoing tab, compute which page the payment lives on,
@@ -4323,9 +4586,32 @@ export default function FactoringDashboard() {
     setTimeout(function() { setHbSuccessMsg(null); }, 12000);
   }
 
+  // Net amount actually leaving, after deductions. This is the figure the
+  // Minimum Payment Size is tested against — not the gross.
+  function spqNetAmount(item) {
+    var gross = (item.grossAmount != null) ? item.grossAmount : (item.amount || 0);
+    return r2(gross - (item.deductionTotal || 0));
+  }
+
+  // Returns a warning string when the payment is uneconomic, or "" when it is fine.
+  // Deliberately a warning and not a block: small payments must remain achievable.
+  function minPaymentWarning(item) {
+    if (!item) return "";
+    var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === item.programId; });
+    var floor = prog ? prog.minPaymentSize : null;
+    if (floor == null) return "";
+    var net = spqNetAmount(item);
+    if (net >= floor) return "";
+    return "Cost of Payment Exceeds Revenue \u2014 " + money(net, item.currency) +
+           " is below the " + money(floor, item.currency) + " minimum for " +
+           (prog.name || item.programId) + ". Bundle with another payment, or proceed anyway.";
+  }
+
   function executeQueuedPayment(spqId) {
     var item = SUPPLIER_PAYMENT_QUEUE.find(function(x) { return x.id === spqId; });
     if (!item || item.status !== "Pending") return;
+    var mpWarn = minPaymentWarning(item);
+    if (mpWarn && !confirm(mpWarn)) return;
     var now = new Date();
     item.status = "Completed";
     item.executedAt = now.toISOString();
@@ -7657,12 +7943,14 @@ export default function FactoringDashboard() {
                     <thead><tr>{["Invoice", "Amount", "Due", "Program", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{pendingInvs.map(function(inv) {
                       var selProg = fundProgSelections[inv.id] || "";
-                      var eligProgs = getEligiblePrograms(inv, supDilRates);
+                      var eligRes = getProgramEligibility(inv, supDilRates);
+                      var eligProgs = eligRes.fundable;
+                      var eligWhy = rejectionTooltip(eligRes.rejected);
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={Object.assign({}, mc, { padding: "6px 8px", color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
                         <td style={Object.assign({}, mc, { padding: "6px 8px", fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
-                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : <span style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic" }}>No eligible programs</span>}</td>
+                        <td style={{ padding: "6px 8px" }}>{eligProgs.length > 0 ? <select value={selProg} onChange={function(e) { var iid = inv.id; setFundProgSelections(function(p) { var n = Object.assign({}, p); n[iid] = e.target.value; return n; }); }} style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 10, outline: "none", cursor: "pointer", minWidth: 100 }}><option value="">Select...</option>{eligProgs.map(function(fp) { return <option key={fp.id} value={fp.id}>{fp.name}</option>; })}</select> : <span title={eligWhy} style={{ fontSize: 10, color: "#DC2626", fontStyle: "italic", borderBottom: eligWhy ? "1px dotted #DC2626" : "none", cursor: eligWhy ? "help" : "default" }}>No eligible programs{eligWhy ? " \u24d8" : ""}</span>}</td>
                         <td style={{ padding: "6px 8px" }}><button onClick={function() { fundInvoice(inv.id, selProg); }} disabled={!selProg} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: selProg ? "#38BDF8" : "var(--border)", color: selProg ? "#fff" : "var(--muted)", fontSize: 10, fontWeight: 600, cursor: selProg ? "pointer" : "default" }}>Approve</button></td>
                       </tr>;
                     })}</tbody>
@@ -15957,6 +16245,7 @@ export default function FactoringDashboard() {
                     if (ebIdx >= 0) {
                       // Track changes for audit log
                       var oldBr = branches[ebIdx];
+                      // NOTE: limit maps are diffed separately below, not via brTrack (which is scalar-only).
                       var brTrack = { branchName: "Branch Name", street1: "Street 1", street2: "Street 2", city: "City", state: "State/County", country: "Country", zip: "Postcode", bankName: "Bank Name", bankDetails: "Bank Details", bankVerified: "Bank Verified", primaryContact: "Primary Contact", primaryEmail: "Primary Email", primaryPhone: "Primary Phone", primarySignatory: "Primary Signatory", secondaryContact: "Contact 2", secondaryEmail: "Contact 2 Email", secondaryPhone: "Contact 2 Phone", secondarySignatory: "Contact 2 Signatory", contact3Name: "Contact 3", contact3Email: "Contact 3 Email", contact3Phone: "Contact 3 Phone", contact3Signatory: "Contact 3 Signatory", contact4Name: "Contact 4", contact4Email: "Contact 4 Email", contact4Phone: "Contact 4 Phone", contact4Signatory: "Contact 4 Signatory", contact5Name: "Contact 5", contact5Email: "Contact 5 Email", contact5Phone: "Contact 5 Phone", contact5Signatory: "Contact 5 Signatory" };
                       var brChanges = [];
                       Object.keys(brTrack).forEach(function(k) { var ov = oldBr[k] !== undefined && oldBr[k] !== null ? String(oldBr[k]) : ""; var nv = ebData[k] !== undefined && ebData[k] !== null ? String(ebData[k]) : ""; if (ov !== nv) brChanges.push(brTrack[k] + ": \"" + (ov || "\u2014") + "\" \u2192 \"" + (nv || "\u2014") + "\""); });
@@ -16078,6 +16367,36 @@ export default function FactoringDashboard() {
                           <div style={{ display: "flex", gap: 8, alignItems: "end" }}><div style={{ flex: 1 }}>{bfld("Contact 5 Phone", "contact5Phone", "tel")}</div><label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", paddingBottom: 8 }}><input type="checkbox" checked={ebData.contact5Signatory || false} onChange={function() { setManagePopup(function(p) { return Object.assign({}, p, { data: Object.assign({}, p.data, { contact5Signatory: !p.data.contact5Signatory }) }); }); }} style={{ width: 14, height: 14, accentColor: "#059669" }} /><span style={{ fontSize: 9, fontWeight: 600, color: ebData.contact5Signatory ? "#059669" : "var(--muted)", whiteSpace: "nowrap" }}>Signatory</span></label></div>
                         </div>
                         {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 6 }}>Program Limits (this branch)</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Overrides for this branch only. Blank = inherit. 0 = a genuine limit of zero. The lowest of programme, parent supplier and branch governs.</div>
+                          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 18 }}>
+                            <thead><tr>
+                              {["Program", "CCY", "Max Invoice Size", "Max Term (days)"].map(function(h) {
+                                return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>;
+                              })}
+                            </tr></thead>
+                            <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
+                              function brLimInput(field, step) {
+                                var cur = (ebData[field] || {})[fp.id];
+                                return <input type="number" step={step} value={cur !== undefined ? String(cur) : ""} placeholder="Inherit" onChange={function(e) {
+                                  var v = e.target.value;
+                                  setManagePopup(function(pp) {
+                                    var lim = Object.assign({}, (pp.data || {})[field] || {});
+                                    var n = nz(v);
+                                    if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; }
+                                    var o = {}; o[field] = lim;
+                                    return Object.assign({}, pp, { data: Object.assign({}, pp.data, o) });
+                                  });
+                                }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" }} />;
+                              }
+                              return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                                <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
+                                <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--muted)" }}>{fp.currency}</td>
+                                <td style={{ padding: "6px 10px" }}>{brLimInput("singleInvoiceLimits", "0.01")}</td>
+                                <td style={{ padding: "6px 10px" }}>{brLimInput("maxTermLimits", "1")}</td>
+                              </tr>;
+                            })}</tbody>
+                          </table>
                           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 10 }}>Bank Accounts by Program</div>
                           {FUNDING_PROGRAMS_DB.map(function(fp) {
                             var brPba = (ebData.programBankAccounts || {})[fp.id] || {};
@@ -16532,21 +16851,25 @@ export default function FactoringDashboard() {
               </div>
               {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Blank = no limit. 0 = a genuine limit of zero, which will stop funding on that programme. Max Invoice Size and Max Term also apply at branch level; the lowest of programme, supplier and branch governs.</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
                   <thead><tr>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Program</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>CCY</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Term (days)</th>
                   </tr></thead>
                   <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
                     var cl = (f.creditLimits || {})[fp.id];
                     var sil = (f.singleInvoiceLimits || {})[fp.id];
+                    var mtl = (f.maxTermLimits || {})[fp.id];
                     return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
                       <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--muted)" }}>{fp.currency}</td>
-                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
-                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); if (v === "" || v === "0") { delete lim[fp.id]; } else { lim[fp.id] = parseFloat(v) || 0; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="1" value={mtl !== undefined ? String(mtl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.maxTermLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { maxTermLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%" }} /></td>
                     </tr>;
                   })}</tbody>
                 </table>
@@ -16798,7 +17121,12 @@ export default function FactoringDashboard() {
                   thresholdRecovery: parseInt(pf.thresholdRecovery) || 30,
                   thresholdDisputeAtRisk: parseInt(pf.thresholdDisputeAtRisk) || 1,
                   thresholdDisputeRecovery: parseInt(pf.thresholdDisputeRecovery) || 14,
-                  minInvoiceTenor: parseInt(pf.minInvoiceTenor) || 0,
+                  minInvoiceTerm: nz(pf.minInvoiceTerm),
+                  minInvoiceTenor: nz(pf.minInvoiceTerm) != null ? nz(pf.minInvoiceTerm) : 0,
+                  maxInvoiceSize: nz(pf.maxInvoiceSize),
+                  minPaymentSize: nz(pf.minPaymentSize),
+                  purchaseBlockedStatuses: pf.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED.slice(),
+                  fundingBlockedStatuses: pf.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED.slice(),
                   minInvoiceSize: r2(parseFloat(pf.minInvoiceSize) || 0),
                   maxSupDilLive: (pf.maxSupDilLive === "" || pf.maxSupDilLive == null) ? null : parseFloat(pf.maxSupDilLive),
                   maxSupDil30: (pf.maxSupDil30 === "" || pf.maxSupDil30 == null) ? null : parseFloat(pf.maxSupDil30),
@@ -16842,7 +17170,11 @@ export default function FactoringDashboard() {
                   thresholdRecovery: String(p.thresholdRecovery !== undefined ? p.thresholdRecovery : "30"),
                   thresholdDisputeAtRisk: String(p.thresholdDisputeAtRisk !== undefined ? p.thresholdDisputeAtRisk : "1"),
                   thresholdDisputeRecovery: String(p.thresholdDisputeRecovery !== undefined ? p.thresholdDisputeRecovery : "14"),
-                  minInvoiceTenor: String(p.minInvoiceTenor || ""),
+                  minInvoiceTerm: String(p.minInvoiceTerm != null ? p.minInvoiceTerm : (p.minInvoiceTenor != null ? p.minInvoiceTenor : "")),
+                  maxInvoiceSize: String(p.maxInvoiceSize != null ? p.maxInvoiceSize : ""),
+                  minPaymentSize: String(p.minPaymentSize != null ? p.minPaymentSize : ""),
+                  purchaseBlockedStatuses: (p.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED).slice(),
+                  fundingBlockedStatuses: (p.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED).slice(),
                   minInvoiceSize: String(p.minInvoiceSize || ""),
                   maxSupDilLive: p.maxSupDilLive == null ? "" : String(p.maxSupDilLive),
                   maxSupDil30: p.maxSupDil30 == null ? "" : String(p.maxSupDil30),
@@ -16920,14 +17252,47 @@ export default function FactoringDashboard() {
                     <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10 }}>Invoice Eligibility Criteria</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Tenor (days)</label>
-                        <input type="number" step="1" value={pf.minInvoiceTenor !== undefined ? pf.minInvoiceTenor : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceTenor: e.target.value }); }); }} placeholder="0" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Term (days)</label>
+                        <input type="number" step="1" value={pf.minInvoiceTerm !== undefined ? pf.minInvoiceTerm : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceTerm: e.target.value }); }); }} placeholder="0" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Size</label>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Size (legacy)</label>
                         <input type="number" step="0.01" value={pf.minInvoiceSize !== undefined ? pf.minInvoiceSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceSize: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
                       </div>
                     </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Max Invoice Size</label>
+                        <input type="number" step="0.01" value={pf.maxInvoiceSize !== undefined ? pf.maxInvoiceSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxInvoiceSize: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <div style={{ fontSize: 9, color: "var(--muted)" }}>Blank = no limit. 0 = nothing fundable. Lowest of programme / supplier / branch applies.</div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Payment Size</label>
+                        <input type="number" step="0.01" value={pf.minPaymentSize !== undefined ? pf.minPaymentSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minPaymentSize: e.target.value }); }); }} placeholder="No minimum" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <div style={{ fontSize: 9, color: "var(--muted)" }}>Warns when a supplier or holdback payment falls below this, net of deductions.</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6, marginTop: 8 }}>Blocked Invoice Statuses</div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 8 }}>Purchase blocks acquiring the receivable at all. Funding blocks the advance but still allows the invoice to be bought.</div>
+                    {[{ key: "purchaseBlockedStatuses", label: "Blocked from purchase", col: "#EF4444", def: DEFAULT_PURCHASE_BLOCKED },
+                      { key: "fundingBlockedStatuses", label: "Blocked from funding", col: "#D97706", def: DEFAULT_FUNDING_BLOCKED }].map(function(grp) {
+                      var sel = pf[grp.key] || grp.def;
+                      return <div key={grp.key} style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: grp.col, marginBottom: 5 }}>{grp.label}</div>
+                        <div style={{ display: "flex", flexWrap: "wrap" }}>{GATEABLE_STATUSES.map(function(st) {
+                          var on = sel.indexOf(st) > -1;
+                          return <span key={st} onClick={function() {
+                            setProgFields(function(p) {
+                              var cur = (p[grp.key] || grp.def).slice();
+                              var i = cur.indexOf(st);
+                              if (i > -1) cur.splice(i, 1); else cur.push(st);
+                              var o = {}; o[grp.key] = cur;
+                              return Object.assign({}, p, o);
+                            });
+                          }} style={Object.assign({}, multiSelStyle, { background: on ? grp.col + "20" : "transparent", color: on ? grp.col : "var(--muted)", borderColor: on ? grp.col : "var(--border)", fontWeight: on ? 700 : 400 })}>{st}</span>;
+                        })}</div>
+                      </div>;
+                    })}
                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "#D97706", marginBottom: 6, marginTop: 8 }}>Max Supplier Dilution Rates (%)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px", marginBottom: 10 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -16962,47 +17327,13 @@ export default function FactoringDashboard() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{BUYERS_DB.map(function(b) { var sel = (pf.eligibleBuyers || []).indexOf(b.id) > -1; return <span key={b.id} onClick={function() { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: toggleArr(p.eligibleBuyers || [], b.id) }); }); }} style={Object.assign({}, multiSelStyle, { background: sel ? "#2B4C7E20" : "transparent", color: sel ? "#0EA5E9" : "var(--muted)", borderColor: sel ? "#0EA5E9" : "var(--border)", fontWeight: sel ? 700 : 400 })}>{b.name}</span>; })}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", maxHeight: 120, overflowY: "auto" }}>{entityChips(BUYERS_DB, pf.eligibleBuyers || [], function(arr) { setProgFields(function(p) { return Object.assign({}, p, { eligibleBuyers: arr }); }); }, multiSelStyle, "#8B5CF6")}</div>
+                      <div style={{ fontSize: 9, color: "var(--muted)" }}>Empty = every entity. Otherwise each entity is listed explicitly \u2014 a branch created later is not eligible until toggled on.</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Suppliers</label>
-                      <div style={{ display: "flex", flexWrap: "wrap" }}>{(function() {
-                        var items = [];
-                        SUPPLIERS_DB.forEach(function(s) {
-                          var parentSel = (pf.eligibleSuppliers || []).indexOf(s.id) > -1;
-                          items.push(React.createElement("span", { key: s.id, onClick: function() {
-                            setProgFields(function(p) {
-                              var arr = (p.eligibleSuppliers || []).slice();
-                              if (parentSel) {
-                                // Deselect parent and all its branches
-                                arr = arr.filter(function(n) { return n !== s.id && !n.startsWith(s.id + ":"); });
-                              } else {
-                                // Select parent (which means all branches eligible)
-                                arr = arr.filter(function(n) { return !n.startsWith(s.id + ":"); });
-                                arr.push(s.id);
-                              }
-                              return Object.assign({}, p, { eligibleSuppliers: arr });
-                            });
-                          }, style: Object.assign({}, multiSelStyle, { background: parentSel ? "#0EA5E920" : "transparent", color: parentSel ? "#E2E8F0" : "var(--muted)", borderColor: parentSel ? "#E2E8F0" : "var(--border)", fontWeight: parentSel ? 700 : 400 }) }, s.name));
-                          // Show branches indented if parent is NOT selected (individual branch selection)
-                          if (s.branches && s.branches.length > 0 && !parentSel) {
-                            s.branches.forEach(function(br) {
-                              var brEntityId = makeEntityId(s.id, br.branchId);
-                              var brSel = (pf.eligibleSuppliers || []).indexOf(brEntityId) > -1;
-                              items.push(React.createElement("span", { key: brEntityId, onClick: function() {
-                                setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: toggleArr(p.eligibleSuppliers || [], brEntityId) }); });
-                              }, style: Object.assign({}, multiSelStyle, { background: brSel ? "#567EBB20" : "transparent", color: brSel ? "#38BDF8" : "var(--muted)", borderColor: brSel ? "#38BDF8" : "var(--border)", fontWeight: brSel ? 700 : 400, fontSize: 10, paddingLeft: 16 }) }, "\u2514 " + br.branchName));
-                            });
-                          }
-                          // Show branches as auto-included if parent IS selected
-                          if (s.branches && s.branches.length > 0 && parentSel) {
-                            s.branches.forEach(function(br) {
-                              items.push(React.createElement("span", { key: s.id + ":" + (br.branchId || br.branchName) + "-auto", style: Object.assign({}, multiSelStyle, { background: "#0EA5E910", color: "var(--muted)", borderColor: "var(--border)", fontWeight: 400, fontSize: 10, paddingLeft: 16, cursor: "default" }) }, "\u2514 " + br.branchName + " (auto)"));
-                            });
-                          }
-                        });
-                        return items;
-                      })()}</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", maxHeight: 120, overflowY: "auto" }}>{entityChips(SUPPLIERS_DB, pf.eligibleSuppliers || [], function(arr) { setProgFields(function(p) { return Object.assign({}, p, { eligibleSuppliers: arr }); }); }, multiSelStyle, "#0EA5E9")}</div>
+                      <div style={{ fontSize: 9, color: "var(--muted)" }}>Empty = every entity. Otherwise each entity is listed explicitly \u2014 a branch created later is not eligible until toggled on.</div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Eligible Buyer Jurisdictions</label>
