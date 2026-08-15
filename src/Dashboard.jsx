@@ -3979,7 +3979,7 @@ export default function FactoringDashboard() {
       changes.push("Approved Amount: " + money(oldApproved, raw.currency) + " \u2192 " + money(newApproved, raw.currency));
       raw.partialApprovedAmount = newApproved;
       if (newApproved > 0) {
-        var today = new Date().toISOString().split("T")[0];
+        var today = appToday(); // business date, not real time (REF_DATE puts the app in the past)
         if (!raw.approvedDate) { raw.approvedDate = today; changes.push("Approval Date: \u2192 " + today); }
         var newStatus = newApproved >= raw.amount ? "Approved in Full" : "Approved in Part";
         if (raw.invoiceStatus !== newStatus) {
@@ -8346,9 +8346,14 @@ export default function FactoringDashboard() {
                   if (!newRateAdvance || !newRateAnnual || !newRatePenalty) return;
                   if (!supplier.rates) supplier.rates = [];
                   var now = new Date();
-                  var effectiveTs = now.toISOString();
-                  var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                  supplier.rates.push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
+                  // Stamp against the APP as-of date, not real time. REF_DATE puts the
+                  // app in the past, so a rate stamped "now" is in the future relative to
+                  // appToday() and getSupplierRate filters it out \u2014 the rate saved but
+                  // never appeared. Honour the typed effective date when supplied.
+                  var effDate = newRateDate || appToday();
+                  var effectiveTs = effDate + "T00:00:01Z";
+                  var effectiveDisplay = new Date(effectiveTs).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+                  supplier.rates.push({ effectiveDate: effDate, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
                   // selectedSupplier may be a branch-qualified id (SUP-x:BR-y), which
                   // saveSupplier cannot resolve. `supplier` is already the parent.
                   saveSupplier(supplier.id);
