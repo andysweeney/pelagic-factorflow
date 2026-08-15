@@ -16520,14 +16520,31 @@ export default function FactoringDashboard() {
                         </div>
                         {FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginBottom: 14 }}>
                           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 6 }}>Program Limits (this branch)</div>
-                          <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Overrides for this branch only. Blank = inherit. 0 = a genuine limit of zero. The lowest of programme, parent supplier and branch governs.</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Overrides for this branch only. Blank leaves this level unset; a typed 0 is a real ceiling of zero and blocks. "In force" shows which of programme, parent supplier or branch actually governs.</div>
                           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 18 }}>
                             <thead><tr>
-                              {["Program", "CCY", "Max Invoice Size", "Max Term (days)"].map(function(h) {
-                                return <th key={h} style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>;
+                              {["Program", "CCY", "Max Invoice Size", "In force", "Max Term (days)", "In force"].map(function(h, hi) {
+                                return <th key={h + hi} style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>;
                               })}
                             </tr></thead>
                             <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
+                              // What actually governs for this branch: lowest of programme,
+                              // parent supplier and this branch. Without it an operator editing
+                              // a branch cannot see what they are overriding.
+                              function brInForce(field, progField, fmtDays) {
+                                var parentMap = (detEntity && detEntity[field]) || {};
+                                var best = lowestLimitSource([
+                                  { label: "programme", value: fp[progField] },
+                                  { label: "parent supplier", value: parentMap[fp.id] },
+                                  { label: "this branch", value: (ebData[field] || {})[fp.id] }
+                                ]);
+                                if (!best) return <div style={{ fontSize: 10, color: "var(--muted)" }}>No limit</div>;
+                                var isZero = best.value === 0;
+                                return <div>
+                                  <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: isZero ? "#D97706" : "var(--text)", fontWeight: 500 }}>{fmtDays ? best.value + "d" : money(best.value, fp.currency)}</div>
+                                  <div style={{ fontSize: 10, color: isZero ? "#D97706" : "var(--muted)", marginTop: 2 }}>{isZero ? "blocked \u2014 from " + best.label : "from " + best.label}</div>
+                                </div>;
+                              }
                               function brLimInput(field, step) {
                                 var cur = (ebData[field] || {})[fp.id];
                                 return <div><input type="number" step={step} value={cur !== undefined ? String(cur) : ""} placeholder="Not set" onChange={function(e) {
@@ -16545,7 +16562,9 @@ export default function FactoringDashboard() {
                                 <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
                                 <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--muted)" }}>{fp.currency}</td>
                                 <td style={{ padding: "6px 10px" }}>{brLimInput("singleInvoiceLimits", "0.01")}</td>
+                                <td style={{ padding: "6px 10px" }}>{brInForce("singleInvoiceLimits", "maxInvoiceSize", false)}</td>
                                 <td style={{ padding: "6px 10px" }}>{brLimInput("maxTermLimits", "1")}</td>
+                                <td style={{ padding: "6px 10px" }}>{brInForce("maxTermLimits", "maxInvoiceTerm", true)}</td>
                               </tr>;
                             })}</tbody>
                           </table>
