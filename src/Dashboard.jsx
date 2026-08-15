@@ -438,6 +438,58 @@ function setAppToday(d) { _APP_TODAY = d || REF_DATE; }
 // ---- Limit helpers ----------------------------------------------------------
 // Lowest defined value wins. null/undefined means "not set" and is skipped;
 // a stored 0 is a genuine limit of zero and will always win.
+
+// ---- Limit field UX helpers (9 August 2026) --------------------------------
+// Three states must be distinguishable at a glance:
+//   blank -> this level sets nothing
+//   0     -> a genuine zero ceiling; blocks
+//   n     -> a ceiling of n
+// Blank and 0 differ by one character in a number box, so 0 is given its own
+// fill and border, and every field carries a read-back line that (unlike a
+// placeholder) does not vanish the moment the operator types.
+
+// Which level actually governs. Mirrors lowestLimit(), but reports the source.
+// levels: [{ label, value }] in precedence-neutral order; lowest defined wins.
+function lowestLimitSource(levels) {
+  var best = null;
+  for (var i = 0; i < levels.length; i++) {
+    var v = levels[i].value;
+    if (v === null || v === undefined || v === "") continue;
+    v = parseFloat(v);
+    if (isNaN(v)) continue;
+    if (best === null || v < best.value) best = { value: v, label: levels[i].label };
+  }
+  return best;
+}
+
+var FIELD_NOTE_BASE = { fontSize: 10, marginTop: 4, lineHeight: 1.3 };
+
+// Read-back line under a limit/threshold input.
+//   blankText  what an empty box means here ("Not set here" / "No limit")
+//   zeroText   what a typed 0 means here ("Blocks all funding" / "Overdue immediately")
+//   fmt        function(n) -> string, for a normal value
+function fieldNote(v, blankText, zeroText, fmt) {
+  var isBlank = (v === "" || v === null || v === undefined);
+  var n = isBlank ? null : parseFloat(v);
+  if (isBlank || n === null || isNaN(n)) {
+    return React.createElement("div", { style: Object.assign({}, FIELD_NOTE_BASE, { color: "var(--muted)" }) }, blankText);
+  }
+  if (n === 0) {
+    return React.createElement("div", { style: Object.assign({}, FIELD_NOTE_BASE, { color: "#D97706", fontWeight: 700 }) }, "\u26a0 " + zeroText);
+  }
+  return React.createElement("div", { style: Object.assign({}, FIELD_NOTE_BASE, { color: "var(--text-secondary)" }) }, fmt(n));
+}
+
+// Amber treatment for an input holding a genuine zero.
+function zeroFieldStyle(v, base) {
+  var isBlank = (v === "" || v === null || v === undefined);
+  var n = isBlank ? null : parseFloat(v);
+  if (!isBlank && n !== null && !isNaN(n) && n === 0) {
+    return Object.assign({}, base, { border: "1px solid #D97706", background: "#F59E0B14", color: "#D97706", fontWeight: 700 });
+  }
+  return base;
+}
+
 function lowestLimit(values) {
   var out = null;
   for (var i = 0; i < values.length; i++) {
@@ -452,10 +504,44 @@ function lowestLimit(values) {
 
 // Null-preserving numeric parse. Distinguishes "not set" (null) from a typed 0.
 // Use for every limit field so blank means unlimited and zero means zero.
+
+// Parse a stored numeric where 0 is a legitimate value. Only blank, null,
+// undefined or unparseable fall back to the default. Replaces `parseFloat(x) || d`,
+// which silently turned a stored 0 into the default (handover 7.3).
+function nzd(v, dflt) {
+  if (v === "" || v === null || v === undefined) return dflt;
+  var n = parseFloat(v);
+  return isNaN(n) ? dflt : n;
+}
+
 function nz(v) {
   if (v === "" || v === null || v === undefined) return null;
   var n = parseFloat(v);
   return isNaN(n) ? null : n;
+}
+
+// Diff a per-programme limit map ({ programId: value }) into `out` for the audit log.
+// Absent key and 0 are DISTINCT: absent = no limit, 0 = a genuine zero ceiling (v6.14).
+// fmt: "money" (default) or "days".
+function diffLimitMap(oldMap, newMap, label, out, fmt) {
+  var om = oldMap || {}, nm = newMap || {};
+  var ids = {};
+  Object.keys(om).forEach(function(k) { ids[k] = true; });
+  Object.keys(nm).forEach(function(k) { ids[k] = true; });
+  Object.keys(ids).forEach(function(fpId) {
+    var ov = om[fpId], nv = nm[fpId];
+    var oHas = ov !== undefined && ov !== null;
+    var nHas = nv !== undefined && nv !== null;
+    if (oHas === nHas && (!oHas || ov === nv)) return;
+    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
+    var pName = prog ? prog.name : fpId;
+    var ccy = prog ? prog.currency : "GBP";
+    function show(has, v) {
+      if (!has) return "No limit";
+      return fmt === "days" ? String(v) + " days" : money(v, ccy);
+    }
+    out.push(label + " (" + pName + "): " + show(oHas, ov) + " \u2192 " + show(nHas, nv));
+  });
 }
 
 function branchLimitsFor(entityId, key) {
@@ -490,7 +576,7 @@ var ELIG_REASONS = {
   MAX_TERM:          "Days to maturity exceed the maximum term",
   MIN_TERM:          "Days to maturity are below the minimum term",
   NO_TERM:           "Invoice has no due date",
-  ADVANCE_RATE:      "Supplier advance rate exceeds the programme maximum",
+  ADVANCE_RATE:      "Supplier advance rate exceeds the programme maximum", // RETIRED 9 Aug 2026: ceiling now caps, not excludes. Label kept for historic audit rows.
   INTEREST_RATE:     "Supplier interest rate is below the programme minimum",
   DIL_SUP_LIVE:      "Supplier dilution (live) exceeds the programme maximum",
   DIL_SUP_30:        "Supplier dilution (30d) exceeds the programme maximum",
@@ -649,9 +735,9 @@ function getProgramEligibility(inv, supDilRates, asOf) {
     if (fp.minInterestRate != null && supRate.annualRate < fp.minInterestRate - 0.0001) {
       fundReasons.push(_mk("INTEREST_RATE"));
     }
-    if (fp.maxAdvanceRate != null && supRate.advanceRate > fp.maxAdvanceRate + 0.0001) {
-      fundReasons.push(_mk("ADVANCE_RATE"));
-    }
+    // Max Advance Rate no longer excludes: a supplier contracted above the
+    // programme ceiling is funded AT the ceiling. See effectiveAdvanceRate().
+    // Decided 9 August 2026 (handover 7.1).
 
     if (fp.maxSupDilLive  != null && dr.dilRate  > fp.maxSupDilLive)  fundReasons.push(_mk("DIL_SUP_LIVE"));
     if (fp.maxSupDil30    != null && dr.dil30    > fp.maxSupDil30)    fundReasons.push(_mk("DIL_SUP_30"));
@@ -702,6 +788,27 @@ function getRejectionReasons(inv, supDilRates, asOf) {
 
 // Compute the maximum capital any fundable program could offer for this invoice.
 // NOTE: callers that have a view date should pass it; otherwise appToday() is used.
+
+// Effective advance rate for an invoice on a programme: the LOWER of the
+// supplier's contracted advance rate and the programme ceiling.
+// Decided 9 August 2026 (handover 7.1). Consistent with the lowest-wins rule
+// v6.14 established for Max Invoice Size and Max Invoice Term.
+//
+// The programme ceiling CAPS; it no longer excludes. A supplier contracted
+// above the ceiling is funded at the ceiling rather than refused. (Min Interest
+// Rate deliberately does NOT mirror this — it still excludes, because charging
+// above a contracted rate is not the same act as advancing below one.)
+//
+// Blank ceiling (null) = no cap. 0 = a genuine zero: advance nothing.
+function effectiveAdvanceRate(fp, entityId, asOf) {
+  var progAR = (fp && fp.maxAdvanceRate != null) ? fp.maxAdvanceRate : null;
+  var sr = getSupplierRate(entityId, asOf);
+  var supAR = (sr && sr.advanceRate != null) ? sr.advanceRate : null;
+  if (supAR == null && progAR == null) return 0;
+  if (supAR == null) return progAR;
+  if (progAR == null) return supAR;
+  return Math.min(supAR, progAR);
+}
 function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected, asOf) {
   var eligible = getEligiblePrograms(inv, supDilRates, asOf);
   if (eligible.length === 0) return 0;
@@ -718,7 +825,7 @@ function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollecte
   if (effectiveBase <= 0) return 0;
   var maxCap = 0;
   eligible.forEach(function(fp) {
-    var cap = r2(effectiveBase * fp.maxAdvanceRate);
+    var cap = r2(effectiveBase * effectiveAdvanceRate(fp, inv.supplierId || inv.supplierName, asOf));
     if (cap > maxCap) maxCap = cap;
   });
   return maxCap;
@@ -954,7 +1061,7 @@ async function saveFundingProgram(progId) {
     var row = {
       id: fp.id, name: fp.name, currency: fp.currency,
       max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
-      max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
+      max_advance_rate: fp.maxAdvanceRate != null ? fp.maxAdvanceRate : 0.9, min_interest_rate: fp.minInterestRate != null ? fp.minInterestRate : 0.15,
       max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
       min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
       // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
@@ -964,9 +1071,9 @@ async function saveFundingProgram(progId) {
       purchase_blocked_statuses: fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED,
       funding_blocked_statuses: fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED,
       min_invoice_size: fp.minInvoiceSize || 0,
-      threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
-      threshold_recovery: fp.thresholdRecovery || 30,
-      threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
+      threshold_overdue: nzd(fp.thresholdOverdue, 1), threshold_at_risk: nzd(fp.thresholdAtRisk, 7),
+      threshold_recovery: nzd(fp.thresholdRecovery, 30),
+      threshold_dispute_at_risk: nzd(fp.thresholdDisputeAtRisk, 1), threshold_dispute_recovery: nzd(fp.thresholdDisputeRecovery, 14),
       max_sup_dil_live: fp.maxSupDilLive == null ? null : fp.maxSupDilLive, max_sup_dil_30: fp.maxSupDil30 == null ? null : fp.maxSupDil30, max_sup_dil_90: fp.maxSupDil90 == null ? null : fp.maxSupDil90,
       max_fund_dil_live: fp.maxFundDilLive == null ? null : fp.maxFundDilLive, max_fund_dil_30: fp.maxFundDil30 == null ? null : fp.maxFundDil30, max_fund_dil_90: fp.maxFundDil90 == null ? null : fp.maxFundDil90,
       eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
@@ -1311,7 +1418,7 @@ async function loadPersistedData() {
         FUNDING_PROGRAMS_DB.push({
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
-          maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
+          maxAdvanceRate: nzd(row.max_advance_rate, 0.9), minInterestRate: nzd(row.min_interest_rate, 0.15),
           maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
           // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
           minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
@@ -1321,9 +1428,9 @@ async function loadPersistedData() {
           purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
           fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
-          thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
-          thresholdRecovery: row.threshold_recovery || 30,
-          thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
+          thresholdOverdue: nzd(row.threshold_overdue, 1), thresholdAtRisk: nzd(row.threshold_at_risk, 7),
+          thresholdRecovery: nzd(row.threshold_recovery, 30),
+          thresholdDisputeAtRisk: nzd(row.threshold_dispute_at_risk, 1), thresholdDisputeRecovery: nzd(row.threshold_dispute_recovery, 14),
           maxSupDilLive: row.max_sup_dil_live == null ? null : parseFloat(row.max_sup_dil_live), maxSupDil30: row.max_sup_dil_30 == null ? null : parseFloat(row.max_sup_dil_30), maxSupDil90: row.max_sup_dil_90 == null ? null : parseFloat(row.max_sup_dil_90),
           maxFundDilLive: row.max_fund_dil_live == null ? null : parseFloat(row.max_fund_dil_live), maxFundDil30: row.max_fund_dil_30 == null ? null : parseFloat(row.max_fund_dil_30), maxFundDil90: row.max_fund_dil_90 == null ? null : parseFloat(row.max_fund_dil_90),
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
@@ -2022,7 +2129,7 @@ async function reloadFundingPrograms() {
         FUNDING_PROGRAMS_DB.push({
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
-          maxAdvanceRate: parseFloat(row.max_advance_rate) || 0.9, minInterestRate: parseFloat(row.min_interest_rate) || 0.15,
+          maxAdvanceRate: nzd(row.max_advance_rate, 0.9), minInterestRate: nzd(row.min_interest_rate, 0.15),
           maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
           // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
           minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
@@ -2032,9 +2139,9 @@ async function reloadFundingPrograms() {
           purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
           fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
-          thresholdOverdue: row.threshold_overdue || 1, thresholdAtRisk: row.threshold_at_risk || 7,
-          thresholdRecovery: row.threshold_recovery || 30,
-          thresholdDisputeAtRisk: row.threshold_dispute_at_risk || 1, thresholdDisputeRecovery: row.threshold_dispute_recovery || 14,
+          thresholdOverdue: nzd(row.threshold_overdue, 1), thresholdAtRisk: nzd(row.threshold_at_risk, 7),
+          thresholdRecovery: nzd(row.threshold_recovery, 30),
+          thresholdDisputeAtRisk: nzd(row.threshold_dispute_at_risk, 1), thresholdDisputeRecovery: nzd(row.threshold_dispute_recovery, 14),
           maxSupDilLive: row.max_sup_dil_live == null ? null : parseFloat(row.max_sup_dil_live), maxSupDil30: row.max_sup_dil_30 == null ? null : parseFloat(row.max_sup_dil_30), maxSupDil90: row.max_sup_dil_90 == null ? null : parseFloat(row.max_sup_dil_90),
           maxFundDilLive: row.max_fund_dil_live == null ? null : parseFloat(row.max_fund_dil_live), maxFundDil30: row.max_fund_dil_30 == null ? null : parseFloat(row.max_fund_dil_30), maxFundDil90: row.max_fund_dil_90 == null ? null : parseFloat(row.max_fund_dil_90),
           eligibleBuyers: row.eligible_buyers || [], eligibleSuppliers: row.eligible_suppliers || [],
@@ -2128,7 +2235,7 @@ async function savePersistedData() {
       return {
         id: fp.id, name: fp.name, currency: fp.currency,
         max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
-        max_advance_rate: fp.maxAdvanceRate || 0.9, min_interest_rate: fp.minInterestRate || 0.15,
+        max_advance_rate: fp.maxAdvanceRate != null ? fp.maxAdvanceRate : 0.9, min_interest_rate: fp.minInterestRate != null ? fp.minInterestRate : 0.15,
         max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
         min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
         // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
@@ -2138,9 +2245,9 @@ async function savePersistedData() {
         purchase_blocked_statuses: fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED,
         funding_blocked_statuses: fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED,
         min_invoice_size: fp.minInvoiceSize || 0,
-        threshold_overdue: fp.thresholdOverdue || 1, threshold_at_risk: fp.thresholdAtRisk || 7,
-        threshold_recovery: fp.thresholdRecovery || 30,
-        threshold_dispute_at_risk: fp.thresholdDisputeAtRisk || 1, threshold_dispute_recovery: fp.thresholdDisputeRecovery || 14,
+        threshold_overdue: nzd(fp.thresholdOverdue, 1), threshold_at_risk: nzd(fp.thresholdAtRisk, 7),
+        threshold_recovery: nzd(fp.thresholdRecovery, 30),
+        threshold_dispute_at_risk: nzd(fp.thresholdDisputeAtRisk, 1), threshold_dispute_recovery: nzd(fp.thresholdDisputeRecovery, 14),
         max_sup_dil_live: fp.maxSupDilLive == null ? null : fp.maxSupDilLive, max_sup_dil_30: fp.maxSupDil30 == null ? null : fp.maxSupDil30, max_sup_dil_90: fp.maxSupDil90 == null ? null : fp.maxSupDil90,
         max_fund_dil_live: fp.maxFundDilLive == null ? null : fp.maxFundDilLive, max_fund_dil_30: fp.maxFundDil30 == null ? null : fp.maxFundDil30, max_fund_dil_90: fp.maxFundDil90 == null ? null : fp.maxFundDil90,
         eligible_buyers: fp.eligibleBuyers || [], eligible_suppliers: fp.eligibleSuppliers || [],
@@ -2613,7 +2720,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
         var hPostDil = rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0);
         var hPostCol = rawInv.amount - totalBuyerPaid;
         var hEffBase = Math.max(0, Math.min(rawInv.amount, hPartial, hPostDil, hPostCol));
-        var hMaxCap = r2(hEffBase * currentProg.maxAdvanceRate);
+        var hMaxCap = r2(hEffBase * effectiveAdvanceRate(currentProg, rawInv.supplierId || rawInv.supplierName));
         var hCommitted = (rawInv.capitalDue || 0) + (rawInv.pendingTopUpAmount || 0);
         fundingHeadroom = r2(Math.max(0, hMaxCap - hCommitted));
       }
@@ -3771,8 +3878,8 @@ export default function FactoringDashboard() {
     } else {
       var newPendId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
-      saveSPQEntry(item.id);
-    auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
+      saveSPQEntry(newPendId);
+      auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
     }
 
     item.status = "Failed";
@@ -4149,7 +4256,7 @@ export default function FactoringDashboard() {
     var freshBuyerPaid = (raw.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
     var freshPostCol = raw.amount - freshBuyerPaid;
     var freshEffBase = Math.max(0, Math.min(raw.amount, freshPartial, freshPostDil, freshPostCol));
-    var freshMaxCap = r2(freshEffBase * prog.maxAdvanceRate);
+    var freshMaxCap = r2(freshEffBase * effectiveAdvanceRate(prog, raw.supplierId || raw.supplierName));
     var freshCommitted = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var freshHeadroom = r2(Math.max(0, freshMaxCap - freshCommitted));
     if (newCap > freshHeadroom + 0.01) { alert("Capital exceeds available headroom.\n\nMax cap @ " + (prog.maxAdvanceRate * 100).toFixed(0) + "%: " + money(freshMaxCap, inv.currency) + "\nAlready committed: " + money(freshCommitted, inv.currency) + "\nMax additional advance: " + money(freshHeadroom, inv.currency) + "\nRequested: " + money(newCap, inv.currency)); return; }
@@ -4244,7 +4351,7 @@ export default function FactoringDashboard() {
     var buyerPaid = (invProc.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
     var postCol = raw.amount - buyerPaid;
     var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
-    var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+    var maxCap = r2(effectiveBase * effectiveAdvanceRate(prog, raw.supplierId || raw.supplierName));
     // Committed = executed capital + any queued top-up not yet executed
     var currentCap = r2((raw.capitalDue || 0) + (raw.pendingTopUpAmount || 0));
     var headroom = r2(Math.max(0, maxCap - currentCap));
@@ -4252,7 +4359,9 @@ export default function FactoringDashboard() {
     var defaultNewCap = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, headroom);
     if (defaultNewCap < 0) defaultNewCap = 0;
     setFundPopup({ inv: raw, prog: prog, isTopup: currentCap > 0 || raw.fundingStatus === "purchased" || raw.fundingStatus === "funded", currentCapital: currentCap, effectiveBase: effectiveBase });
-    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds });
+    var effAR = effectiveAdvanceRate(prog, raw.supplierId || raw.supplierName);
+    var capped = supRate.advanceRate != null && effAR < supRate.advanceRate - 0.0001;
+    setFundPopupFields({ capitalDue: String(defaultNewCap), annualRate: String((supRate.annualRate * 100).toFixed(2)), maxCap: headroom, minRate: prog.minInterestRate, paymentDate: viewDate, programId: prog.id, eligibleProgIds: eligibleProgIds, rateCapSup: capped ? supRate.advanceRate : null, rateCapEff: capped ? effAR : null });
   }
 
   function toggleDoNotAdvance(invId, value) {
@@ -4332,7 +4441,7 @@ export default function FactoringDashboard() {
       var postCol = raw.amount - buyerPaid;
       var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
       if (effectiveBase <= 0.01) { skipped.push({ id: invId, reason: "no fundable base (already paid down or fully diluted)" }); return; }
-      var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+      var maxCap = r2(effectiveBase * effectiveAdvanceRate(prog, raw.supplierId || raw.supplierName));
       if (maxCap <= 0.01) { skipped.push({ id: invId, reason: "max cap is zero" }); return; }
       eligible.push({ raw: raw, prog: prog, maxCap: maxCap, effectiveBase: effectiveBase });
     });
@@ -4351,7 +4460,10 @@ export default function FactoringDashboard() {
       // Fund at max
       var supRate = getSupplierRate(e.raw.supplierId || e.raw.supplierName);
       var rate = supRate.annualRate;
-      if (rate < e.prog.minInterestRate) rate = e.prog.minInterestRate;
+      // Min Interest Rate is a GATE at eligibility, not a price. A supplier
+      // contracted below the floor is refused the programme outright, so this
+      // can never fire; silently raising the rate would charge above contract.
+      // Decided 9 August 2026 (handover 7.1).
       var fundingDate = viewDate;
       var term = daysBetween(fundingDate, e.raw.dueDate);
       if (term < 1) term = 1;
@@ -4703,14 +4815,16 @@ export default function FactoringDashboard() {
                 if (!newProg) return;
                 // Recompute headroom + default capital under new program
                 var effectiveBase = fundPopup.effectiveBase || fundPopup.inv.amount;
-                var newMaxCap = r2(effectiveBase * newProg.maxAdvanceRate);
+                var newMaxCap = r2(effectiveBase * effectiveAdvanceRate(newProg, fundPopup.inv.supplierId || fundPopup.inv.supplierName));
                 var currentCap = fundPopup.currentCapital || 0;
                 var newHeadroom = r2(Math.max(0, newMaxCap - currentCap));
                 var supRate = getSupplierRate(fundPopup.inv.supplierId || fundPopup.inv.supplierName);
                 var newDefault = Math.min(r2(effectiveBase * supRate.advanceRate) - currentCap, newHeadroom);
                 if (newDefault < 0) newDefault = 0;
                 setFundPopup(function(p) { return Object.assign({}, p, { prog: newProg }); });
-                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault) }); });
+                var newEffAR = effectiveAdvanceRate(newProg, fundPopup.inv.supplierId || fundPopup.inv.supplierName);
+                var newCapped = supRate.advanceRate != null && newEffAR < supRate.advanceRate - 0.0001;
+                setFundPopupFields(function(f) { return Object.assign({}, f, { programId: newProgId, maxCap: newHeadroom, minRate: newProg.minInterestRate, capitalDue: String(newDefault), rateCapSup: newCapped ? supRate.advanceRate : null, rateCapEff: newCapped ? newEffAR : null }); });
               }} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontWeight: 600, outline: "none", cursor: "pointer", boxSizing: "border-box" }}>
                 {eligIds.map(function(pid) { var p = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === pid; }); if (!p) return null; var avail = getProgramAvailableBalance(p.id); return <option key={p.id} value={p.id}>{p.name} {"\u00b7"} {(p.maxAdvanceRate * 100).toFixed(0)}% max {"\u00b7"} {money(avail, p.currency)} avail</option>; })}
               </select>
@@ -4719,6 +4833,7 @@ export default function FactoringDashboard() {
           })()}
           {fundPopup.isTopup && fundPopup.currentCapital > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>Existing capital: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(fundPopup.currentCapital, fundPopup.inv.currency)}</strong> {"\u2014"} the amount below will be advanced on top of this</div>}
           {fundPopup.isTopup && fundPopup.currentCapital === 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#7B5EA720", border: "1px solid #7B5EA740", marginBottom: 14, fontSize: 11, color: "#8B5CF6" }}>This invoice is currently <strong>Purchased</strong> with zero capital advanced. Enter the amount to advance now.</div>}
+          {fundPopupFields.rateCapSup > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Advance capped by programme {"\u2014"} this supplier is contracted at {(fundPopupFields.rateCapSup * 100).toFixed(0)}%, but {fundPopup.prog.name} allows {(fundPopupFields.rateCapEff * 100).toFixed(0)}%. Maximum advance is reduced accordingly.</div>}
           {fundPopupFields.creditLimitApplied > 0 && <div style={{ padding: "8px 14px", borderRadius: 8, background: "#F59E0B10", border: "1px solid #F59E0B30", marginBottom: 14, fontSize: 11, color: "#D97706" }}>Credit limit of {money(fundPopupFields.creditLimitApplied, fundPopup.inv.currency)} applies {"\u2014"} max advance capped at {money(fundPopupFields.maxCap, fundPopup.inv.currency)}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 20px", marginBottom: 18 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "var(--bg)" }}>
@@ -15090,7 +15205,16 @@ export default function FactoringDashboard() {
             return r;
           }
           // Build eligible programs per-invoice (intersection driver for bulk allocate)
+          // Programmes this invoice can be BOUGHT onto. Purchase must remain possible
+          // when funding is blocked \u2014 that is the whole point of allocate-at-zero.
           function invEligibleProgramIds(inv) {
+            var rawInv = INVOICES_DB.find(function(x) { return x.id === inv.id; });
+            if (!rawInv) return [];
+            return getPurchasablePrograms(rawInv, null).map(function(p) { return p.id; });
+          }
+
+          // Programmes this invoice can also be FUNDED on. Strict subset.
+          function invFundableProgramIds(inv) {
             var rawInv = INVOICES_DB.find(function(x) { return x.id === inv.id; });
             if (!rawInv) return [];
             return getEligiblePrograms(rawInv, null).map(function(p) { return p.id; });
@@ -15183,13 +15307,18 @@ export default function FactoringDashboard() {
           }
           // Compute program eligibility intersection across selected (only for non-DNP allocate workflow)
           var intersectedProgIds = null;
+          var intersectedFundIds = null;
           var selectedByProgCcy = {};
           selectedNonDnp.forEach(function(inv) {
             var elig = invEligibleProgramIds(inv);
             if (intersectedProgIds === null) intersectedProgIds = elig.slice();
             else intersectedProgIds = intersectedProgIds.filter(function(pid) { return elig.indexOf(pid) > -1; });
+            var fund = invFundableProgramIds(inv);
+            if (intersectedFundIds === null) intersectedFundIds = fund.slice();
+            else intersectedFundIds = intersectedFundIds.filter(function(pid) { return fund.indexOf(pid) > -1; });
           });
           if (intersectedProgIds === null) intersectedProgIds = [];
+          if (intersectedFundIds === null) intersectedFundIds = [];
           // Compute selection totals per currency (needed for capacity check, non-DNP only)
           selectedNonDnp.forEach(function(inv) {
             selectedByProgCcy[inv.currency] = (selectedByProgCcy[inv.currency] || 0) + (inv.amount || 0);
@@ -15212,11 +15341,12 @@ export default function FactoringDashboard() {
               var buyerCollected = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
               var postCol = inv.amount - buyerCollected;
               var effectiveBase = Math.max(0, Math.min(inv.amount, partial, postDil, postCol));
-              potentialAtMax += effectiveBase * fp.maxAdvanceRate;
+              potentialAtMax += effectiveBase * effectiveAdvanceRate(fp, inv.supplierId || inv.supplierName);
             });
             potentialAtMax = r2(potentialAtMax);
-            var fundBlocked = potentialAtMax > avail + 0.01;
-            bulkProgOpts.push({ fp: fp, avail: avail, potentialAtMax: potentialAtMax, fundBlocked: fundBlocked });
+            var notFundable = intersectedFundIds.indexOf(fp.id) === -1;
+            var fundBlocked = notFundable || potentialAtMax > avail + 0.01;
+            bulkProgOpts.push({ fp: fp, avail: avail, potentialAtMax: potentialAtMax, fundBlocked: fundBlocked, notFundable: notFundable });
           });
           bulkProgOpts.sort(function(a, b) { return (a.fp.name || "").localeCompare(b.fp.name || ""); });
           var selectedBulkOpt = bulkProgOpts.find(function(o) { return o.fp.id === upiBulkProg; });
@@ -15224,7 +15354,32 @@ export default function FactoringDashboard() {
           function bulkAllocate(fundAtMax) {
             if (!selectedBulkOpt || selectedInvs.length === 0) return;
             var fp = selectedBulkOpt.fp;
+            if (fundAtMax && selectedBulkOpt.notFundable) { alert("These invoices can be purchased onto " + fp.name + ", but not funded on it.\n\nUse Allocate to buy the receivable at \u00a30 capital. Funding stays blocked until the reason clears."); return; }
             if (fundAtMax && selectedBulkOpt.fundBlocked) { alert("Insufficient program balance for Allocate & Fund at max.\n\nAvailable: " + money(selectedBulkOpt.avail, fp.currency) + "\nRequired: " + money(selectedBulkOpt.potentialAtMax, fp.currency)); return; }
+            // Warn when the programme ceiling will advance less than a supplier is
+            // contracted for. Bulk has no per-invoice review, so this is the only
+            // point at which an operator can see it. Requested 9 August 2026.
+            if (fundAtMax) {
+              var cappedList = [];
+              selectedInvs.forEach(function(ip) {
+                var r0 = INVOICES_DB.find(function(x) { return x.id === ip.id; });
+                if (!r0 || r0.fundingStatus !== "pending") return;
+                var sr0 = getSupplierRate(r0.supplierId || r0.supplierName);
+                var eff0 = effectiveAdvanceRate(fp, r0.supplierId || r0.supplierName);
+                if (sr0.advanceRate != null && eff0 < sr0.advanceRate - 0.0001) {
+                  cappedList.push(r0.id + " (" + (r0.supplierName || r0.supplierId) + "): contracted "
+                    + (sr0.advanceRate * 100).toFixed(0) + "% \u2192 funded at " + (eff0 * 100).toFixed(0) + "%");
+                }
+              });
+              if (cappedList.length > 0) {
+                var shown = cappedList.slice(0, 12).join("\n");
+                var more = cappedList.length > 12 ? "\n\n...and " + (cappedList.length - 12) + " more." : "";
+                if (!confirm("Advance capped by programme for " + cappedList.length + " invoice(s).\n\n"
+                  + "These suppliers are contracted at a higher advance rate than " + fp.name + " allows, "
+                  + "so they will be funded at the programme ceiling:\n\n" + shown + more
+                  + "\n\nProceed?")) return;
+              }
+            }
             var allocated = [], funded = [];
             var now = new Date();
             var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -15238,16 +15393,17 @@ export default function FactoringDashboard() {
                 var buyerCollected = (invProc.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
                 var postCol = raw.amount - buyerCollected;
                 var effectiveBase = Math.max(0, Math.min(raw.amount, partial, postDil, postCol));
-                var cap = r2(effectiveBase * fp.maxAdvanceRate);
+                var cap = r2(effectiveBase * effectiveAdvanceRate(fp, raw.supplierId || raw.supplierName));
                 raw.capitalDue = cap;
                 raw.holdback = r2(raw.amount - cap);
-                raw.annualRate = fp.minInterestRate;
-                raw.penaltyRate = fp.minInterestRate * 1.5;
+                var bulkRate = getSupplierRate(raw.supplierId || raw.supplierName);
+                raw.annualRate = bulkRate.annualRate;
+                raw.penaltyRate = bulkRate.penaltyRate;
                 var fundingDate = viewDate;
                 var term = daysBetween(fundingDate, raw.dueDate);
                 if (term < 1) term = 1;
                 raw.daysToMaturity = term;
-                raw.interestCharged = r2(cap * (fp.minInterestRate / 360) * term);
+                raw.interestCharged = r2(cap * (bulkRate.annualRate / 360) * term);
                 raw.deferredPayment = r2(raw.holdback - raw.interestCharged);
                 raw.advanceRate = raw.amount > 0 ? cap / raw.amount : 0;
                 raw.intendedPaymentDate = fundingDate;
@@ -15256,8 +15412,9 @@ export default function FactoringDashboard() {
                 // Allocate only — stay at capitalDue=0
                 raw.capitalDue = 0;
                 raw.holdback = 0;
-                raw.annualRate = fp.minInterestRate;
-                raw.penaltyRate = fp.minInterestRate * 1.5;
+                var bulkRate2 = getSupplierRate(raw.supplierId || raw.supplierName);
+                raw.annualRate = bulkRate2.annualRate;
+                raw.penaltyRate = bulkRate2.penaltyRate;
                 raw.daysToMaturity = daysBetween(viewDate, raw.dueDate);
                 raw.interestCharged = 0;
                 raw.deferredPayment = 0;
@@ -15295,12 +15452,14 @@ export default function FactoringDashboard() {
             var buyerPaid = (inv.payments || []).reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0);
             var invPostCol = rawInv.amount - buyerPaid;
             var effectiveBase = Math.max(0, Math.min(rawInv.amount, invPartial, invPostDil, invPostCol));
-            var maxCap = r2(effectiveBase * prog.maxAdvanceRate);
+            var maxCap = r2(effectiveBase * effectiveAdvanceRate(prog, rawInv.supplierId || rawInv.supplierName));
             var defaultCap = r2(effectiveBase * supRate.advanceRate);
             var defaultRate = supRate.annualRate;
             if (defaultCap > maxCap) defaultCap = maxCap;
             setFundPopup({ inv: rawInv, prog: prog, isTopup: false, currentCapital: 0, effectiveBase: effectiveBase });
-            setFundPopupFields({ capitalDue: String(defaultCap), annualRate: String((defaultRate * 100).toFixed(2)), maxCap: maxCap, minRate: prog.minInterestRate, paymentDate: viewDate, programId: progId, eligibleProgIds: elig });
+            var effAR2 = effectiveAdvanceRate(prog, rawInv.supplierId || rawInv.supplierName);
+            var capped2 = supRate.advanceRate != null && effAR2 < supRate.advanceRate - 0.0001;
+            setFundPopupFields({ capitalDue: String(defaultCap), annualRate: String((defaultRate * 100).toFixed(2)), maxCap: maxCap, minRate: prog.minInterestRate, paymentDate: viewDate, programId: progId, eligibleProgIds: elig, rateCapSup: capped2 ? supRate.advanceRate : null, rateCapEff: capped2 ? effAR2 : null });
           }
           // Checkbox select-all behaviour — selects only eligible rows on current page
           var pageEligibleIds = upiPageItems.filter(function(inv) { return inv.doNotFund || invEligibleProgramIds(inv).length > 0; }).map(function(inv) { return inv.id; });
@@ -15428,7 +15587,7 @@ export default function FactoringDashboard() {
               {/* Allocation actions: only when ALL selected are non-DNP */}
               {selNonDnpOnly && (bulkProgOpts.length === 0 ? <span style={{ fontSize: 11, color: "#EF4444", fontStyle: "italic", maxWidth: 280 }}>{selectionCurrencies.length > 1 ? "Cannot bulk-allocate: selection mixes currencies" : "No program is eligible for all selected invoices"}</span> : <select value={upiBulkProg} onChange={function(e) { setUpiBulkProg(e.target.value); }} style={{ padding: "7px 10px", borderRadius: 7, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", cursor: "pointer", minWidth: 280 }}>
                 <option value="">Select program...</option>
-                {bulkProgOpts.map(function(o) { return <option key={o.fp.id} value={o.fp.id}>{o.fp.name} {"\u00b7"} {money(o.avail, o.fp.currency)} avail{o.fundBlocked ? " (insufficient for fund-at-max)" : ""}</option>; })}
+                {bulkProgOpts.map(function(o) { return <option key={o.fp.id} value={o.fp.id}>{o.fp.name} {"\u00b7"} {money(o.avail, o.fp.currency)} avail{o.notFundable ? " (purchase only \u2014 funding blocked)" : (o.fundBlocked ? " (insufficient for fund-at-max)" : "")}</option>; })}
               </select>)}
               {selNonDnpOnly && selectedBulkOpt && <React.Fragment>
                 <button onClick={function() { bulkAllocate(false); }} style={{ padding: "8px 16px", borderRadius: 7, border: "1px solid #8B5CF6", background: "transparent", color: "#8B5CF6", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }} title="Allocate to program as collateral, no cash advanced">Allocate</button>
@@ -15526,38 +15685,12 @@ export default function FactoringDashboard() {
                 if (oldDirCount !== newDirCount) {
                   changes.push("Directors: " + oldDirCount + " \u2192 " + newDirCount);
                 }
-                // Track per-program credit limit changes
-                var oldCLs = ent.creditLimits || {};
-                var newCLs = f.creditLimits || {};
-                var clProgIds = {};
-                Object.keys(oldCLs).forEach(function(k) { clProgIds[k] = true; });
-                Object.keys(newCLs).forEach(function(k) { clProgIds[k] = true; });
-                Object.keys(clProgIds).forEach(function(fpId) {
-                  var oldV = oldCLs[fpId] || 0;
-                  var newV = newCLs[fpId] || 0;
-                  if (oldV !== newV) {
-                    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
-                    var pName = prog ? prog.name : fpId;
-                    var ccy = prog ? prog.currency : "GBP";
-                    changes.push("Credit Limit (" + pName + "): " + (oldV > 0 ? money(oldV, ccy) : "No limit") + " \u2192 " + (newV > 0 ? money(newV, ccy) : "No limit"));
-                  }
-                });
-                // Track single invoice limit changes
-                var oldSIL = ent.singleInvoiceLimits || {};
-                var newSIL = f.singleInvoiceLimits || {};
-                var allProgIds = {};
-                Object.keys(oldSIL).forEach(function(k) { allProgIds[k] = true; });
-                Object.keys(newSIL).forEach(function(k) { allProgIds[k] = true; });
-                Object.keys(allProgIds).forEach(function(fpId) {
-                  var oldV = oldSIL[fpId] || 0;
-                  var newV = newSIL[fpId] || 0;
-                  if (oldV !== newV) {
-                    var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === fpId; });
-                    var pName = prog ? prog.name : fpId;
-                    var ccy = prog ? prog.currency : "GBP";
-                    changes.push("Invoice Limit (" + pName + "): " + (oldV > 0 ? money(oldV, ccy) : "No limit") + " \u2192 " + (newV > 0 ? money(newV, ccy) : "No limit"));
-                  }
-                });
+                // Per-programme limit maps. Uses diffLimitMap so that a stored 0 is
+                // reported as a genuine zero ceiling rather than as "No limit"; the
+                // previous inline version used `|| 0` and mis-reported it.
+                diffLimitMap(ent.creditLimits, f.creditLimits, "Credit Limit", changes, "money");
+                diffLimitMap(ent.singleInvoiceLimits, f.singleInvoiceLimits, "Invoice Limit", changes, "money");
+                diffLimitMap(ent.maxTermLimits, f.maxTermLimits, "Max Term", changes, "days");
                 // Track program bank account changes
                 var oldPBA = ent.programBankAccounts || {};
                 var newPBA = f.programBankAccounts || {};
@@ -16272,6 +16405,10 @@ export default function FactoringDashboard() {
                           });
                         });
                       });
+                      // Limit maps at branch level. Previously undiffed entirely, so a
+                      // branch limit change reached the audit log nowhere at all.
+                      diffLimitMap(oldBr.singleInvoiceLimits, ebData.singleInvoiceLimits, "Invoice Limit", brChanges, "money");
+                      diffLimitMap(oldBr.maxTermLimits, ebData.maxTermLimits, "Max Term", brChanges, "days");
                       var brDetail = brChanges.length > 0 ? brChanges.join("; ") : "No field changes";
                       detEntity.branches[ebIdx] = ebData;
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
@@ -16378,7 +16515,7 @@ export default function FactoringDashboard() {
                             <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
                               function brLimInput(field, step) {
                                 var cur = (ebData[field] || {})[fp.id];
-                                return <input type="number" step={step} value={cur !== undefined ? String(cur) : ""} placeholder="Inherit" onChange={function(e) {
+                                return <div><input type="number" step={step} value={cur !== undefined ? String(cur) : ""} placeholder="Not set" onChange={function(e) {
                                   var v = e.target.value;
                                   setManagePopup(function(pp) {
                                     var lim = Object.assign({}, (pp.data || {})[field] || {});
@@ -16387,7 +16524,7 @@ export default function FactoringDashboard() {
                                     var o = {}; o[field] = lim;
                                     return Object.assign({}, pp, { data: Object.assign({}, pp.data, o) });
                                   });
-                                }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" }} />;
+                                }} style={zeroFieldStyle(cur, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%", boxSizing: "border-box" })} />{fieldNote(cur, "Not set here", "Zero \u2014 blocks all funding", function(n) { return field === "maxTermLimits" ? "Ceiling of " + n + " days" : "Ceiling of " + money(n, fp.currency); })}</div>;
                               }
                               return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
                                 <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
@@ -16851,14 +16988,15 @@ export default function FactoringDashboard() {
               </div>
               {isSupLike && FUNDING_PROGRAMS_DB.length > 0 && <div style={{ borderTop: "1px solid var(--border)", margin: "16px 0", paddingTop: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-secondary)", marginBottom: 12 }}>Program Limits</div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Blank = no limit. 0 = a genuine limit of zero, which will stop funding on that programme. Max Invoice Size and Max Term also apply at branch level; the lowest of programme, supplier and branch governs.</div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 10 }}>Each field shows what it means as you type. Blank leaves the level unset; a typed 0 is a real ceiling of zero and blocks funding. Max Invoice Size and Max Term also apply at branch level {"\u2014"} \"In force\" shows which level actually governs.</div>
                 <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 8 }}>
                   <thead><tr>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Program</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>CCY</th>
-                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Credit Limit <span style={{ textTransform: "none", fontWeight: 400, color: "#D97706" }}>(not enforced)</span></th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Invoice Size</th>
                     <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>Max Term (days)</th>
+                    <th style={{ textAlign: "left", padding: "6px 10px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>In force</th>
                   </tr></thead>
                   <tbody>{FUNDING_PROGRAMS_DB.map(function(fp) {
                     var cl = (f.creditLimits || {})[fp.id];
@@ -16867,9 +17005,23 @@ export default function FactoringDashboard() {
                     return <tr key={fp.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "8px 10px", fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{fp.name}</td>
                       <td style={{ padding: "8px 10px", fontSize: 11, color: "var(--muted)" }}>{fp.currency}</td>
-                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
-                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" }} /></td>
-                      <td style={{ padding: "6px 10px" }}><input type="number" step="1" value={mtl !== undefined ? String(mtl) : ""} placeholder="No limit" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.maxTermLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { maxTermLimits: lim }); }); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%" }} /></td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={cl !== undefined ? String(cl) : ""} placeholder="Not set" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.creditLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { creditLimits: lim }); }); }} style={zeroFieldStyle(cl, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" })} />{fieldNote(cl, "Not set here", "Zero \u2014 shown to supplier, not enforced", function(n) { return "Shown to supplier, not enforced"; })}</td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="0.01" value={sil !== undefined ? String(sil) : ""} placeholder="Not set" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.singleInvoiceLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { singleInvoiceLimits: lim }); }); }} style={zeroFieldStyle(sil, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: "100%", boxSizing: "border-box" })} />{fieldNote(sil, "Not set here", "Zero \u2014 blocks all funding", function(n) { return "Ceiling of " + money(n, fp.currency); })}</td>
+                      <td style={{ padding: "6px 10px" }}><input type="number" step="1" value={mtl !== undefined ? String(mtl) : ""} placeholder="Not set" onChange={function(e) { var v = e.target.value; setManageFields(function(p) { var lim = Object.assign({}, p.maxTermLimits || {}); var n = nz(v); if (n === null) { delete lim[fp.id]; } else { lim[fp.id] = n; } return Object.assign({}, p, { maxTermLimits: lim }); }); }} style={zeroFieldStyle(mtl, { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", width: "100%" })} />{fieldNote(mtl, "Not set here", "Zero \u2014 blocks all funding", function(n) { return "Ceiling of " + n + " days"; })}</td>
+                      <td style={{ padding: "6px 10px" }}>{(function() {
+                        var brLows = [];
+                        (f.branches || []).forEach(function(br) {
+                          var m = br.singleInvoiceLimits || {};
+                          if (m[fp.id] !== undefined && m[fp.id] !== null) brLows.push({ label: "branch " + (br.branchName || br.branchId), value: m[fp.id] });
+                        });
+                        var best = lowestLimitSource([{ label: "programme", value: fp.maxInvoiceSize }, { label: "this supplier", value: sil }].concat(brLows));
+                        if (!best) return <div style={{ fontSize: 10, color: "var(--muted)" }}>No limit</div>;
+                        var isZero = best.value === 0;
+                        return <div>
+                          <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: isZero ? "#D97706" : "var(--text)", fontWeight: 500 }}>{money(best.value, fp.currency)}</div>
+                          <div style={{ fontSize: 10, color: isZero ? "#D97706" : "var(--muted)", marginTop: 2 }}>{isZero ? "blocked \u2014 from " + best.label : "from " + best.label}</div>
+                        </div>;
+                      })()}</td>
                     </tr>;
                   })}</tbody>
                 </table>
@@ -17113,14 +17265,14 @@ export default function FactoringDashboard() {
                   name: pf.name, currency: pf.currency,
                   eligibleBuyers: pf.eligibleBuyers || [], eligibleSuppliers: pf.eligibleSuppliers || [],
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
-                  maxAdvanceRate: parseFloat(pf.maxAdvanceRate) / 100 || ADVANCE_RATE,
-                  minInterestRate: parseFloat(pf.minInterestRate) / 100 || ANNUAL_RATE,
-                  maxInvoiceTerm: parseInt(pf.maxInvoiceTerm) || 90,
-                  thresholdOverdue: parseInt(pf.thresholdOverdue) || 1,
-                  thresholdAtRisk: parseInt(pf.thresholdAtRisk) || 7,
-                  thresholdRecovery: parseInt(pf.thresholdRecovery) || 30,
-                  thresholdDisputeAtRisk: parseInt(pf.thresholdDisputeAtRisk) || 1,
-                  thresholdDisputeRecovery: parseInt(pf.thresholdDisputeRecovery) || 14,
+                  maxAdvanceRate: nzd(pf.maxAdvanceRate, ADVANCE_RATE * 100) / 100,
+                  minInterestRate: nzd(pf.minInterestRate, ANNUAL_RATE * 100) / 100,
+                  maxInvoiceTerm: nzd(pf.maxInvoiceTerm, 90),
+                  thresholdOverdue: nzd(pf.thresholdOverdue, 1),
+                  thresholdAtRisk: nzd(pf.thresholdAtRisk, 7),
+                  thresholdRecovery: nzd(pf.thresholdRecovery, 30),
+                  thresholdDisputeAtRisk: nzd(pf.thresholdDisputeAtRisk, 1),
+                  thresholdDisputeRecovery: nzd(pf.thresholdDisputeRecovery, 14),
                   minInvoiceTerm: nz(pf.minInvoiceTerm),
                   minInvoiceTenor: nz(pf.minInvoiceTerm) != null ? nz(pf.minInvoiceTerm) : 0,
                   maxInvoiceSize: nz(pf.maxInvoiceSize),
@@ -17212,15 +17364,15 @@ export default function FactoringDashboard() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Max Advance Rate %</label>
-                      <input type="number" step="1" value={pf.maxAdvanceRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxAdvanceRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      <input type="number" step="1" value={pf.maxAdvanceRate !== undefined && pf.maxAdvanceRate !== null ? pf.maxAdvanceRate : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxAdvanceRate: e.target.value }); }); }} style={zeroFieldStyle(pf.maxAdvanceRate, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxAdvanceRate, "Programme default 90%", "Advance nothing on this programme", function(n) { return n + "% of invoice"; })}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Interest Rate % p.a.</label>
-                      <input type="number" step="0.1" value={pf.minInterestRate || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInterestRate: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      <input type="number" step="0.1" value={pf.minInterestRate !== undefined && pf.minInterestRate !== null ? pf.minInterestRate : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInterestRate: e.target.value }); }); }} style={zeroFieldStyle(pf.minInterestRate, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.minInterestRate, "Programme default 15%", "No interest floor", function(n) { return n + "% floor"; })}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Max Invoice Term (days)</label>
-                      <input type="number" step="1" value={pf.maxInvoiceTerm || ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxInvoiceTerm: e.target.value }); }); }} style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                      <input type="number" step="1" value={pf.maxInvoiceTerm !== undefined && pf.maxInvoiceTerm !== null ? pf.maxInvoiceTerm : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxInvoiceTerm: e.target.value }); }); }} style={zeroFieldStyle(pf.maxInvoiceTerm, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxInvoiceTerm, "No limit", "Blocks all funding", function(n) { return n + " days"; })}
                     </div>
                   </div>
                   <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0", paddingTop: 14 }}>
@@ -17228,23 +17380,23 @@ export default function FactoringDashboard() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#EF4444" }}>Overdue After</label>
-                        <input type="number" step="1" value={pf.thresholdOverdue !== undefined ? pf.thresholdOverdue : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdOverdue: e.target.value }); }); }} placeholder="1" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="1" value={pf.thresholdOverdue !== undefined ? pf.thresholdOverdue : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdOverdue: e.target.value }); }); }} placeholder="1" style={zeroFieldStyle(pf.thresholdOverdue, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.thresholdOverdue, "Default 1 day", "Overdue immediately", function(n) { return "After " + n + " days"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#8B5CF6" }}>At Risk After</label>
-                        <input type="number" step="1" value={pf.thresholdAtRisk !== undefined ? pf.thresholdAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdAtRisk: e.target.value }); }); }} placeholder="7" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="1" value={pf.thresholdAtRisk !== undefined ? pf.thresholdAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdAtRisk: e.target.value }); }); }} placeholder="7" style={zeroFieldStyle(pf.thresholdAtRisk, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.thresholdAtRisk, "Default 7 days", "At risk immediately", function(n) { return "After " + n + " days"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#DC2626" }}>Recovery After</label>
-                        <input type="number" step="1" value={pf.thresholdRecovery !== undefined ? pf.thresholdRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdRecovery: e.target.value }); }); }} placeholder="30" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="1" value={pf.thresholdRecovery !== undefined ? pf.thresholdRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdRecovery: e.target.value }); }); }} placeholder="30" style={zeroFieldStyle(pf.thresholdRecovery, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.thresholdRecovery, "Default 30 days", "Recovery immediately", function(n) { return "After " + n + " days"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#8B5CF6" }}>Dispute At Risk</label>
-                        <input type="number" step="1" value={pf.thresholdDisputeAtRisk !== undefined ? pf.thresholdDisputeAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeAtRisk: e.target.value }); }); }} placeholder="1" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="1" value={pf.thresholdDisputeAtRisk !== undefined ? pf.thresholdDisputeAtRisk : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeAtRisk: e.target.value }); }); }} placeholder="1" style={zeroFieldStyle(pf.thresholdDisputeAtRisk, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.thresholdDisputeAtRisk, "Default 1 day", "At risk immediately", function(n) { return "After " + n + " days"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "#DC2626" }}>Dispute Recovery</label>
-                        <input type="number" step="1" value={pf.thresholdDisputeRecovery !== undefined ? pf.thresholdDisputeRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeRecovery: e.target.value }); }); }} placeholder="14" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="1" value={pf.thresholdDisputeRecovery !== undefined ? pf.thresholdDisputeRecovery : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { thresholdDisputeRecovery: e.target.value }); }); }} placeholder="14" style={zeroFieldStyle(pf.thresholdDisputeRecovery, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.thresholdDisputeRecovery, "Default 14 days", "Recovery immediately", function(n) { return "After " + n + " days"; })}
                       </div>
                     </div>
                   </div>
@@ -17257,7 +17409,7 @@ export default function FactoringDashboard() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Min Invoice Size (legacy)</label>
-                        <input type="number" step="0.01" value={pf.minInvoiceSize !== undefined ? pf.minInvoiceSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceSize: e.target.value }); }); }} placeholder="0.00" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.01" value={pf.minInvoiceSize !== undefined ? pf.minInvoiceSize : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { minInvoiceSize: e.target.value }); }); }} placeholder="0.00" style={zeroFieldStyle(pf.minInvoiceSize, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.minInvoiceSize, "No minimum", "No minimum", function(n) { return "Minimum " + n; })}
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
@@ -17297,30 +17449,30 @@ export default function FactoringDashboard() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px", marginBottom: 10 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Live</label>
-                        <input type="number" step="0.1" value={pf.maxSupDilLive !== undefined ? pf.maxSupDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDilLive: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxSupDilLive !== undefined ? pf.maxSupDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDilLive: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxSupDilLive, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxSupDilLive, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>30 Day</label>
-                        <input type="number" step="0.1" value={pf.maxSupDil30 !== undefined ? pf.maxSupDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil30: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxSupDil30 !== undefined ? pf.maxSupDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil30: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxSupDil30, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxSupDil30, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>90 Day</label>
-                        <input type="number" step="0.1" value={pf.maxSupDil90 !== undefined ? pf.maxSupDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil90: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxSupDil90 !== undefined ? pf.maxSupDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxSupDil90: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxSupDil90, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxSupDil90, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                     </div>
                     <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", fontWeight: 600, color: "var(--text)", marginBottom: 6, marginTop: 8 }}>Max Funded Dilution Rates (%)</div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 16px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>Live</label>
-                        <input type="number" step="0.1" value={pf.maxFundDilLive !== undefined ? pf.maxFundDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDilLive: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxFundDilLive !== undefined ? pf.maxFundDilLive : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDilLive: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxFundDilLive, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxFundDilLive, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>30 Day</label>
-                        <input type="number" step="0.1" value={pf.maxFundDil30 !== undefined ? pf.maxFundDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil30: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxFundDil30 !== undefined ? pf.maxFundDil30 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil30: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxFundDil30, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxFundDil30, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         <label style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", fontWeight: 600, color: "var(--muted)" }}>90 Day</label>
-                        <input type="number" step="0.1" value={pf.maxFundDil90 !== undefined ? pf.maxFundDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil90: e.target.value }); }); }} placeholder="No limit" style={Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" })} />
+                        <input type="number" step="0.1" value={pf.maxFundDil90 !== undefined ? pf.maxFundDil90 : ""} onChange={function(e) { setProgFields(function(p) { return Object.assign({}, p, { maxFundDil90: e.target.value }); }); }} placeholder="No limit" style={zeroFieldStyle(pf.maxFundDil90, Object.assign({}, inpS, { fontFamily: "'JetBrains Mono', monospace" }))} />{fieldNote(pf.maxFundDil90, "No ceiling", "Any dilution blocks", function(n) { return n + "% ceiling"; })}
                       </div>
                     </div>
                   </div>
