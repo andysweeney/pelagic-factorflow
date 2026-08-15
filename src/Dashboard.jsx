@@ -1062,7 +1062,7 @@ async function saveFundingProgram(progId) {
       id: fp.id, name: fp.name, currency: fp.currency,
       max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
       max_advance_rate: fp.maxAdvanceRate != null ? fp.maxAdvanceRate : 0.9, min_interest_rate: fp.minInterestRate != null ? fp.minInterestRate : 0.15,
-      max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
+      max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : null,
       min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
       // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
       min_invoice_tenor: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : (fp.minInvoiceTenor || 0),
@@ -1419,7 +1419,7 @@ async function loadPersistedData() {
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
           maxAdvanceRate: nzd(row.max_advance_rate, 0.9), minInterestRate: nzd(row.min_interest_rate, 0.15),
-          maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
+          maxInvoiceTerm: nz(row.max_invoice_term),
           // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
           minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
           minInvoiceTenor: row.min_invoice_tenor || 0,
@@ -2130,7 +2130,7 @@ async function reloadFundingPrograms() {
           id: row.id, name: row.name, currency: row.currency,
           maxSize: parseFloat(row.max_size) || 0, currentFundedBalance: parseFloat(row.current_funded_balance) || 0,
           maxAdvanceRate: nzd(row.max_advance_rate, 0.9), minInterestRate: nzd(row.min_interest_rate, 0.15),
-          maxInvoiceTerm: row.max_invoice_term != null ? row.max_invoice_term : 90,
+          maxInvoiceTerm: nz(row.max_invoice_term),
           // min_invoice_term supersedes min_invoice_tenor; fall back for rows written before v6.13
           minInvoiceTerm: row.min_invoice_term != null ? row.min_invoice_term : (row.min_invoice_tenor != null ? row.min_invoice_tenor : null),
           minInvoiceTenor: row.min_invoice_tenor || 0,
@@ -2236,7 +2236,7 @@ async function savePersistedData() {
         id: fp.id, name: fp.name, currency: fp.currency,
         max_size: fp.maxSize || 0, current_funded_balance: fp.currentFundedBalance || 0,
         max_advance_rate: fp.maxAdvanceRate != null ? fp.maxAdvanceRate : 0.9, min_interest_rate: fp.minInterestRate != null ? fp.minInterestRate : 0.15,
-        max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : 90,
+        max_invoice_term: fp.maxInvoiceTerm != null ? fp.maxInvoiceTerm : null,
         min_invoice_term: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : null,
         // min_invoice_tenor kept in sync for rollback safety; min_invoice_term is authoritative
         min_invoice_tenor: fp.minInvoiceTerm != null ? fp.minInvoiceTerm : (fp.minInvoiceTenor || 0),
@@ -10708,7 +10708,7 @@ export default function FactoringDashboard() {
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px 24px", marginBottom: 20 }}>
                           <div><div style={fieldLbl}>Max Advance Rate</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{(prog.maxAdvanceRate * 100).toFixed(0)}%</div></div>
                           <div><div style={fieldLbl}>Min Interest Rate</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(prog.minInterestRate * 100).toFixed(1)}%</div></div>
-                          <div><div style={fieldLbl}>Max Invoice Term</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>{prog.maxInvoiceTerm}d</div></div>
+                          <div><div style={fieldLbl}>Max Invoice Term</div><div style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)", fontWeight: 600 }}>{prog.maxInvoiceTerm != null ? prog.maxInvoiceTerm + "d" : "No limit"}</div></div>
                         </div>
 
                         {/* STATUS THRESHOLDS */}
@@ -15718,9 +15718,19 @@ export default function FactoringDashboard() {
                 var changeDetail = changes.length > 0 ? changes.join("; ") : "No field changes detected";
                 auditLog("Entity Edited", entityLabel + " " + manageEdit + " (" + f.name + ") edited. Changes: " + changeDetail, { entityType: entityLabel, entityId: manageEdit, name: f.name, changes: changes });
                 Object.assign(ent, f);
-                // If company number was added or changed, auto-fetch from CH
+                // If company number was added or changed, auto-fetch from CH.
+                // chFetchAndUpdateEntity persists the entity itself, so avoid a
+                // duplicate write in that case.
                 if (newCoNum && newCoNum !== oldCoNum) {
                   chFetchAndUpdateEntity(ent, newCoNum);
+                } else {
+                  // Persist the edit. Previously absent entirely: editing an existing
+                  // entity updated only the in-memory object, so every change was lost
+                  // on reload while still being written to the audit log. Creating a
+                  // new entity always saved correctly. Pre-existing in v6.14.
+                  if (manageTab === "suppliers") saveSupplier(ent.id);
+                  else if (manageTab === "service_providers") saveServiceProvider(ent.id);
+                  else if (manageTab === "buyers") saveBuyer(ent.id);
                 }
               }
             } else {
@@ -17267,7 +17277,7 @@ export default function FactoringDashboard() {
                   maxSize: r2(parseFloat(pf.maxSize) || 0), currentFundedBalance: 0,
                   maxAdvanceRate: nzd(pf.maxAdvanceRate, ADVANCE_RATE * 100) / 100,
                   minInterestRate: nzd(pf.minInterestRate, ANNUAL_RATE * 100) / 100,
-                  maxInvoiceTerm: nzd(pf.maxInvoiceTerm, 90),
+                  maxInvoiceTerm: nz(pf.maxInvoiceTerm),
                   thresholdOverdue: nzd(pf.thresholdOverdue, 1),
                   thresholdAtRisk: nzd(pf.thresholdAtRisk, 7),
                   thresholdRecovery: nzd(pf.thresholdRecovery, 30),
@@ -17314,9 +17324,9 @@ export default function FactoringDashboard() {
                 setProgFields({
                   name: p.name, currency: p.currency,
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
-                  maxSize: String(p.maxSize || ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
+                  maxSize: String(p.maxSize != null ? p.maxSize : ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
                   minInterestRate: String((p.minInterestRate * 100).toFixed(1)),
-                  maxInvoiceTerm: String(p.maxInvoiceTerm || ""),
+                  maxInvoiceTerm: String(p.maxInvoiceTerm != null ? p.maxInvoiceTerm : ""),
                   thresholdOverdue: String(p.thresholdOverdue !== undefined ? p.thresholdOverdue : "1"),
                   thresholdAtRisk: String(p.thresholdAtRisk !== undefined ? p.thresholdAtRisk : "7"),
                   thresholdRecovery: String(p.thresholdRecovery !== undefined ? p.thresholdRecovery : "30"),
@@ -17327,7 +17337,6 @@ export default function FactoringDashboard() {
                   minPaymentSize: String(p.minPaymentSize != null ? p.minPaymentSize : ""),
                   purchaseBlockedStatuses: (p.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED).slice(),
                   fundingBlockedStatuses: (p.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED).slice(),
-                  minInvoiceSize: String(p.minInvoiceSize || ""),
                   maxSupDilLive: p.maxSupDilLive == null ? "" : String(p.maxSupDilLive),
                   maxSupDil30: p.maxSupDil30 == null ? "" : String(p.maxSupDil30),
                   maxSupDil90: p.maxSupDil90 == null ? "" : String(p.maxSupDil90),
@@ -17532,7 +17541,7 @@ export default function FactoringDashboard() {
                     if (mgProgSort === "available") return x.avail || 0;
                     if (mgProgSort === "advRate") return p.maxAdvanceRate || 0;
                     if (mgProgSort === "intRate") return p.minInterestRate || 0;
-                    if (mgProgSort === "maxTerm") return p.maxInvoiceTerm || 0;
+                    if (mgProgSort === "maxTerm") return p.maxInvoiceTerm != null ? p.maxInvoiceTerm : 999999;
                     return "";
                   }
                   filteredProgs = filteredProgs.slice().sort(function(a, b) { var ka = mpKey(a), kb = mpKey(b); if (ka < kb) return mgProgDir === "asc" ? -1 : 1; if (ka > kb) return mgProgDir === "asc" ? 1 : -1; return 0; });
@@ -17563,7 +17572,7 @@ export default function FactoringDashboard() {
                           <td style={Object.assign({}, mc, { color: avail > 0 ? "#059669" : "#DC2626", fontWeight: 600 })}>{money(avail, prog.currency)}</td>
                           <td style={Object.assign({}, mc, { color: "#0EA5E9" })}>{(prog.maxAdvanceRate * 100).toFixed(0)}%</td>
                           <td style={Object.assign({}, mc, { color: "#D97706" })}>{(prog.minInterestRate * 100).toFixed(1)}%</td>
-                          <td style={Object.assign({}, mc)}>{prog.maxInvoiceTerm}d</td>
+                          <td style={Object.assign({}, mc)}>{prog.maxInvoiceTerm != null ? prog.maxInvoiceTerm + "d" : "No limit"}</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{(prog.eligibleBuyers || []).length > 0 ? prog.eligibleBuyers.join(", ") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>All</span>}</td>
                           <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{(prog.eligibleSuppliers || []).length > 0 ? prog.eligibleSuppliers.map(function(eid) { return getEntityDisplayName(eid) || eid; }).join(", ") : <span style={{ color: "var(--muted)", fontStyle: "italic" }}>All</span>}</td>
                           <td style={{ padding: "8px 8px" }}><button onClick={function() { startEditProgram(idx); }} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button></td>
