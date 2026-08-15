@@ -16421,6 +16421,11 @@ export default function FactoringDashboard() {
                       diffLimitMap(oldBr.maxTermLimits, ebData.maxTermLimits, "Max Term", brChanges, "days");
                       var brDetail = brChanges.length > 0 ? brChanges.join("; ") : "No field changes";
                       detEntity.branches[ebIdx] = ebData;
+                      // Persist. Previously absent: editing a branch updated only the
+                      // in-memory object, so changes were lost on reload while still
+                      // being audited. Creating and removing a branch both persisted.
+                      // Pre-existing in v6.14.
+                      persistBranches();
                       auditLog("Branch Edited", "Branch \"" + ebData.branchName + "\" edited on " + det.id + " (" + det.name + "). Changes: " + brDetail, { entityId: det.id, branchName: ebData.branchName, changes: brChanges });
                     } else {
                       detEntity.branches.push(ebData);
