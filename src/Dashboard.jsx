@@ -266,6 +266,20 @@ function getEntityDisplayName(entityId) {
 // buyers.branches is jsonb on the parent row, same shape as suppliers.branches.
 // invoices/credit_notes carry buyer_entity_id alongside the FK-safe buyer_id.
 // Note supplier_payment_queue has no buyer_entity_id: it is supplier-side only.
+// Display name for any record carrying supplierName + supplierId.
+// Branch records previously showed the PARENT name only throughout the app,
+// because supplier_name holds the parent and the branch lives in the entity id.
+// Falls back to the stored name when the entity cannot be resolved.
+function supplierDisplay(rec) {
+  if (!rec) return "";
+  var eid = rec.supplierId || "";
+  if (eid) {
+    var nm = getEntityDisplayName(eid);
+    if (nm && nm !== eid) return nm;
+  }
+  return rec.supplierName || "";
+}
+// ---- Buyer entity helpers: exact mirror of the supplier set above. ----
 function getBuyerById(entityId) {
   if (!entityId) return null;
   var parsed = parseEntityId(entityId);
@@ -285,6 +299,16 @@ function getBuyerEntityDisplayName(entityId) {
   if (!buy) return entityId;
   var br = getBuyerBranchById(entityId);
   return br ? buy.name + " \u2014 " + br.branchName : buy.name;
+}
+// Mirror of supplierDisplay for buyer-side records.
+function buyerDisplay(rec) {
+  if (!rec) return "";
+  var eid = rec.buyerId || "";
+  if (eid) {
+    var nm = getBuyerEntityDisplayName(eid);
+    if (nm && nm !== eid) return nm;
+  }
+  return rec.buyerName || "";
 }
 function getAllBuyerEntities() {
   var result = [];
@@ -7233,7 +7257,7 @@ export default function FactoringDashboard() {
                       {eligibleInvoices.map(function(inv) {
                         return <tr key={inv.id} onClick={function() { setUpiSearch(""); setUpiSupFilter(""); setUpiBuyFilter(""); setUpiCcyFilter(""); setUpiDateFrom(""); setUpiDateTo(""); setUpiPage(0); setPendingFocusInvId(inv.id); setView("unpurchased"); }} style={{ cursor: "pointer", transition: "background 0.1s ease" }} onMouseEnter={function(e) { e.currentTarget.style.background = "var(--card-hover)"; }} onMouseLeave={function(e) { e.currentTarget.style.background = "transparent"; }}>
                           <td style={Object.assign({}, attnTdMono, { color: "var(--accent)", fontWeight: 500 })}>{inv.id}</td>
-                          <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{inv.supplierName}</td>
+                          <td style={Object.assign({}, attnTd, { color: "var(--text-secondary)" })}>{supplierDisplay(inv)}</td>
                           <td style={Object.assign({}, attnTdMono, { textAlign: "right", fontWeight: 600, color: "var(--text)" })}>{money(r2(inv.maxAvailableCapital), inv.currency)}</td>
                         </tr>;
                       })}
@@ -7466,10 +7490,10 @@ export default function FactoringDashboard() {
                     <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
                       {isS && <td style={{ padding: "8px 8px", width: 36 }}>{inv.fundingStatus === "pending" ? <input type="checkbox" checked={!!selectedInvs[inv.id]} onChange={function(e) { var checked = e.target.checked; setSelectedInvs(function(p) { var n = Object.assign({}, p); if (checked) n[inv.id] = true; else delete n[inv.id]; return n; }); }} style={{ accentColor: "var(--accent)", cursor: "pointer" }} /> : <span style={{ fontSize: 10, color: "var(--muted)" }}></span>}</td>}
                       <td style={Object.assign({}, mc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                      {isS && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
-                      {isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.supplierName}</td>}
-                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontWeight: 500 })}>{inv.supplierName}</td>}
-                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{inv.buyerName}</td>}
+                      {isS && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{buyerDisplay(inv)}</td>}
+                      {isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{supplierDisplay(inv)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text-secondary)", fontWeight: 500 })}>{supplierDisplay(inv)}</td>}
+                      {!isS && !isB && <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })}>{buyerDisplay(inv)}</td>}
                       <td style={Object.assign({}, mc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       {(isS || isB) && <td style={Object.assign({}, mc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>}
                       {(isS || isB) && <td style={Object.assign({}, mc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>}
@@ -7521,8 +7545,8 @@ export default function FactoringDashboard() {
                                         var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 8, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
                                         return <div>
                                           <div style={Object.assign({}, sectionHeader, { marginTop: 0 })}>Parties</div>
-                                          <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
-                                          <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                          <div style={row}><span style={lbl}>Supplier</span><span style={val}>{supplierDisplay(inv)}</span></div>
+                                          <div style={row}><span style={lbl}>Buyer</span><span style={val}>{buyerDisplay(inv)}</span></div>
                                           <div style={sectionHeader}>References</div>
                                           <div style={row}><span style={lbl}>System Invoice Ref</span><span style={valA}>{inv.id}</span></div>
                                           <div style={row}><span style={lbl}>3rd Party ID</span>{isEditing ? eField("invoiceReference") : <span style={valA}>{inv.invoiceReference || "\u2014"}</span>}</div>
@@ -8775,7 +8799,7 @@ export default function FactoringDashboard() {
                             var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
                             return <tr key={"inv-" + ai} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: "#0EA5E920", color: "#38BDF8", border: "1px solid #0EA5E940", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Invoice</span></td>
-                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}{aInv ? <span style={{ color: "var(--muted)", marginLeft: 6 }}>{aInv.buyerName}</span> : null}</td>
+                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{a.invoiceId}{aInv ? <span style={{ color: "var(--muted)", marginLeft: 6 }}>{buyerDisplay(aInv)}</span> : null}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
                             </tr>;
@@ -8783,7 +8807,7 @@ export default function FactoringDashboard() {
                           {passthroughs.map(function(spq, ri) {
                             return <tr key={"rem-" + ri} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: "#8B5CF620", color: "#A78BFA", border: "1px solid #8B5CF640", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Pass-through</span></td>
-                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#A78BFA" }}>{spq.id} {"\u00b7"} {spq.supplierName}</td>
+                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#A78BFA" }}>{spq.id} {"\u00b7"} {supplierDisplay(spq)}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{spq.executedDisplay || spq.createdDisplay || "\u2014"}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                             </tr>;
@@ -8791,7 +8815,7 @@ export default function FactoringDashboard() {
                           {holdbacks.map(function(spq, ri) {
                             return <tr key={"hb-" + ri} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "5px 8px", fontSize: 11 }}><span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>Holdback Return</span></td>
-                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#F59E0B" }}>{spq.hbPaymentId || spq.id} {"\u00b7"} {spq.supplierName}</td>
+                              <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#F59E0B" }}>{spq.hbPaymentId || spq.id} {"\u00b7"} {supplierDisplay(spq)}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{spq.executedDisplay || spq.createdDisplay || "\u2014"}</td>
                               <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                             </tr>;
@@ -9450,7 +9474,7 @@ export default function FactoringDashboard() {
                           {invs.slice(0, 6).map(function(inv) {
                             return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { drillInvoice(inv.id); }}>
                               <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>{inv.id}</td>
-                              <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                              <td style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{supplierDisplay(inv)}</td>
                               <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: accent, fontWeight: 600, whiteSpace: "nowrap", textAlign: "right" }}>{money(r2(inv.balanceOwed || inv.amount || 0), inv.currency)}</td>
                             </tr>;
                           })}
@@ -9838,7 +9862,7 @@ export default function FactoringDashboard() {
                     return <React.Fragment key={inv.id}>
                     <tr style={{ borderBottom: isBuyExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: isBuyExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(isBuyExp ? null : "buy-" + inv.id); }}>
                       <td style={Object.assign({}, bmc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{inv.supplierName}</span></td>
+                      <td style={Object.assign({}, tc, { color: "var(--text)", fontWeight: 500 })} onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} title={"Drill into " + inv.supplierName}><span style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }}>{supplierDisplay(inv)}</span></td>
                       <td style={Object.assign({}, bmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: (inv.fundingStatus === "pending" || inv.fundingStatus === "purchased") && !inv.fundedDate ? "var(--muted)" : "var(--accent)" })}>{(inv.fundingStatus === "pending" && !inv.fundedDate) ? (inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014") : money(inv.capitalDue, inv.currency)}</td>
                       <td style={Object.assign({}, bmc, { color: inv.totalOutstanding > 0 ? "var(--text)" : "#059669" })}>{money(inv.totalOutstanding, inv.currency)}</td>
@@ -9860,8 +9884,8 @@ export default function FactoringDashboard() {
                             return <div style={{ background: "var(--card)", borderRadius: 10, border: "1px solid var(--border)", padding: "16px 18px" }}>
                               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--accent)", marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid var(--accent)" }}>Invoice Information</div>
                               <div style={Object.assign({}, sectionHeader, { marginTop: 0 })}>Parties</div>
-                              <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
-                              <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                              <div style={row}><span style={lbl}>Supplier</span><span style={val}>{supplierDisplay(inv)}</span></div>
+                              <div style={row}><span style={lbl}>Buyer</span><span style={val}>{buyerDisplay(inv)}</span></div>
                               <div style={sectionHeader}>References</div>
                               <div style={row}><span style={lbl}>Invoice ID</span><span style={Object.assign({}, val, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</span></div>
                               {inv.buyerRef && <div style={row}><span style={lbl}>Buyer Invoice Ref</span><span style={val}>{inv.buyerRef}</span></div>}
@@ -10040,7 +10064,7 @@ export default function FactoringDashboard() {
                           var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
                           return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.invoiceId}</span></td>
-                            <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{aInv.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                            <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{supplierDisplay(aInv)}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
                             <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
                             <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
                           </tr>;
@@ -10294,7 +10318,7 @@ export default function FactoringDashboard() {
                     {miniTable("Overdue Invoices", overdueInvs, overdueSum, "#EF4444", "No overdue invoices", function(inv) {
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }} onClick={function() { drillToInvoice(inv.id); }}>
                         <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600, whiteSpace: "nowrap" }}>{inv.id}</td>
-                        <td style={{ padding: "6px 8px", fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{inv.supplierName}</td>
+                        <td style={{ padding: "6px 8px", fontSize: 10, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{supplierDisplay(inv)}</td>
                         <td style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#EF4444", fontWeight: 600, whiteSpace: "nowrap", textAlign: "right" }}>{money(r2(inv.balanceOwed || 0), inv.currency)}</td>
                       </tr>;
                     }, drillToInvoicesTab)}
@@ -11129,8 +11153,8 @@ export default function FactoringDashboard() {
                                   }} style={{ width: 16, height: 16, borderRadius: 3, border: "2px solid " + (progPurchSelected[inv.id] ? "var(--accent)" : "var(--border)"), background: progPurchSelected[inv.id] ? "var(--accent)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 10, fontWeight: 700 }}>{progPurchSelected[inv.id] ? "\u2713" : ""}</div>
                                 </td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                                <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
-                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
+                                <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{supplierDisplay(inv)}</span></td>
+                                <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{buyerDisplay(inv)}</span></td>
                                 <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                                 <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                                 <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -11155,8 +11179,8 @@ export default function FactoringDashboard() {
                                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px", fontSize: 12 }}>
                                         <div><span style={{ color: "var(--muted)" }}>Invoice: </span><span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{inv.id}</span></div>
                                         <div><span style={{ color: "var(--muted)" }}>Amount: </span><strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</strong></div>
-                                        <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{inv.supplierName}</div>
-                                        <div><span style={{ color: "var(--muted)" }}>Buyer: </span>{inv.buyerName}</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{supplierDisplay(inv)}</div>
+                                        <div><span style={{ color: "var(--muted)" }}>Buyer: </span>{buyerDisplay(inv)}</div>
                                         <div><span style={{ color: "var(--muted)" }}>Invoice Date: </span>{fmt(inv.invoiceDate)}</div>
                                         <div><span style={{ color: "var(--muted)" }}>Due Date: </span><span style={{ color: aDp ? "#EF4444" : "var(--text)", fontWeight: aDp ? 600 : 400 }}>{fmt(inv.dueDate)}</span></div>
                                         <div><span style={{ color: "var(--muted)" }}>Term: </span>{aTerm}d</div>
@@ -11293,8 +11317,8 @@ export default function FactoringDashboard() {
                           <tbody key={inv.id}>
                             <tr style={{ borderBottom: isExp ? "none" : "1px solid var(--border)", background: isExp ? "var(--card-hover)" : "transparent" }}>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)", fontWeight: 600 })}>{inv.id}</td>
-                              <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{inv.supplierName}</span></td>
-                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{inv.buyerName}</span></td>
+                              <td style={{ padding: "8px 8px", fontSize: 12 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.supplierName}>{supplierDisplay(inv)}</span></td>
+                              <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}><span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + inv.buyerName}>{buyerDisplay(inv)}</span></td>
                               <td style={Object.assign({}, pimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                               <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                               <td style={Object.assign({}, pimc, { color: "var(--accent)" })}>{money(inv.capitalDue, inv.currency)}</td>
@@ -11342,8 +11366,8 @@ export default function FactoringDashboard() {
                                         var sectionHeader = { fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--muted)", marginTop: 10, marginBottom: 4, paddingBottom: 3, borderBottom: "1px solid var(--border)" };
                                         return <div>
                                           <div style={Object.assign({}, sectionHeader, { marginTop: 0 })}>Parties</div>
-                                          <div style={row}><span style={lbl}>Supplier</span><span style={val}>{inv.supplierName}</span></div>
-                                          <div style={row}><span style={lbl}>Buyer</span><span style={val}>{inv.buyerName}</span></div>
+                                          <div style={row}><span style={lbl}>Supplier</span><span style={val}>{supplierDisplay(inv)}</span></div>
+                                          <div style={row}><span style={lbl}>Buyer</span><span style={val}>{buyerDisplay(inv)}</span></div>
                                           <div style={sectionHeader}>References</div>
                                           <div style={row}><span style={lbl}>3rd Party ID</span>{isEditing ? eField("invoiceReference") : <span style={valA}>{inv.invoiceReference || "\u2014"}</span>}</div>
                                           <div style={row}><span style={lbl}>Buyer Invoice Ref</span>{isEditing ? eField("buyerRef") : <span style={val}>{inv.buyerRef || "\u2014"}</span>}</div>
@@ -11736,8 +11760,8 @@ export default function FactoringDashboard() {
                               var isBackdated = a.allocDate && a.allocDate !== ep.pay.date;
                               return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ color: "var(--accent)", cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{a.invoiceId}</span></td>
-                                <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{aInv.supplierName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
-                                <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.buyerName}>{aInv.buyerName}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11 }}>{aInv && aInv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(aInv.supplierName); }} style={{ color: "var(--text)", cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.supplierName}>{supplierDisplay(aInv)}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
+                                <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + aInv.buyerName}>{buyerDisplay(aInv)}</span> : <span style={{ color: "var(--muted)" }}>{"\u2014"}</span>}</td>
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: isBackdated ? "#D97706" : "var(--text-secondary)" }}>{fmt(effDate)}{isBackdated && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: "#D9770620", color: "#F59E0B", border: "1px solid #D9770640", letterSpacing: "0.05em", textTransform: "uppercase" }} title={"Original payment date: " + fmt(ep.pay.date)}>Backdated</span>}</td>
                                 <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, ep.pay.currency)}</td>
                               </tr>;
@@ -11941,7 +11965,7 @@ export default function FactoringDashboard() {
         {writeOffInv && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setWriteOffInv(null); }}>
           <div style={{ background: "var(--card)", borderRadius: 16, padding: "28px", maxWidth: 500, width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={function(e) { e.stopPropagation(); }}>
             <div style={{ fontSize: 16, fontWeight: 700, fontWeight: 600, color: "#6B7280", marginBottom: 4 }}>Write-Off: {writeOffInv.id}</div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>{writeOffInv.supplierName} / {writeOffInv.buyerName} — {money(writeOffInv.amount, writeOffInv.currency)}</div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 18 }}>{supplierDisplay(writeOffInv)} / {buyerDisplay(writeOffInv)} — {money(writeOffInv.amount, writeOffInv.currency)}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: "14px 10px", alignItems: "end", marginBottom: 18 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -12129,7 +12153,7 @@ export default function FactoringDashboard() {
                             <td style={Object.assign({}, pfmc, { color: "var(--accent)" })} title={invTitle || undefined}>
                               {fp.invoiceId ? <span onClick={function(e) { e.stopPropagation(); drillToInvoice(fp.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title="Drill into invoice">{fp.invoiceId}</span> : <span>{invDisplay}</span>}
                             </td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(fp.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + fp.supplierName}>{fp.supplierName}</span> : <span>{"\u2014"}</span>}</td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{fp.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(fp.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--muted)" }} title={"Drill into " + fp.supplierName}>{supplierDisplay(fp)}</span> : <span>{"\u2014"}</span>}</td>
                             <td style={Object.assign({}, pfmc, { fontWeight: 600 })}>
                               {money(fp.amount, fp.currency)}
                               {fp.deductionTotal > 0 && <span style={{ marginLeft: 4, fontSize: 9, color: "#DC2626" }} title={"Net of " + money(fp.deductionTotal, fp.currency) + " deductions"}>{"\u2212"}</span>}
@@ -12598,7 +12622,7 @@ export default function FactoringDashboard() {
             <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, fontWeight: 600 }}>Disburse Holdback: {srcInv.id}</div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Available: {money(pool, srcInv.currency)} from {srcInv.buyerName}</div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>Available: {money(pool, srcInv.currency)} from {buyerDisplay(srcInv)}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div>
@@ -12617,7 +12641,7 @@ export default function FactoringDashboard() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <input type="number" step="0.01" min="0" max={pool} value={hbSupplierAmt} placeholder="0.00" onChange={function(e) { var val = Math.min(parseFloat(e.target.value) || 0, pool); setHbSupplierAmt(val > 0.001 ? String(r2(val)) : ""); }} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #2E8B5740", background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", outline: "none", width: 140 }} />
                     {remaining > 0.01 && supAmt < 0.01 && <button onClick={function() { setHbSupplierAmt(String(r2(pool))); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>All available</button>}
-                    {supAmt > 0 && <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>{money(supAmt, srcInv.currency)} to {srcInv.supplierName}</span>}
+                    {supAmt > 0 && <span style={{ fontSize: 12, color: "#059669", fontWeight: 600 }}>{money(supAmt, srcInv.currency)} to {supplierDisplay(srcInv)}</span>}
                   </div>
                   <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Deductions against recovery/overdue invoices can be made when executing from the Payment Queue.</div>
                 </div>
@@ -12629,7 +12653,7 @@ export default function FactoringDashboard() {
               <div style={{ fontSize: 13 }}>
                 <span style={{ color: "var(--muted)" }}>Disbursing: </span>
                 <span style={{ color: "#059669", fontWeight: 600 }}>{money(supAmt, srcInv.currency)}</span>
-                <span style={{ color: "var(--muted)" }}> of {money(pool, srcInv.currency)} to {srcInv.supplierName}</span>
+                <span style={{ color: "var(--muted)" }}> of {money(pool, srcInv.currency)} to {supplierDisplay(srcInv)}</span>
               </div>
               <button onClick={executeHbDisburse} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#059669", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 14px #2E8B5740" }}>Confirm Disbursement</button>
             </div>}
@@ -12817,7 +12841,7 @@ export default function FactoringDashboard() {
                             <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
                             <td style={Object.assign({}, aqmc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function(e) { if (row.rowType === "funding") { e.stopPropagation(); drillToInvoice(row.inv.id); } }} style={{ cursor: row.rowType === "funding" ? "pointer" : "default", borderBottom: row.rowType === "funding" ? "1px dotted var(--accent)" : "none" }} title={row.rowType === "funding" ? "Open invoice " + row.inv.id : ""}>{row.rowType === "funding" ? row.inv.id : row.spqItem.id}</span></td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{row.rowType === "funding" ? fmt(row.inv.approvedDate) : row.spqItem.createdDisplay}</td>
-                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(row.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + row.supplierName}>{row.supplierName}</span></td>
+                            <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}><span onClick={function(e) { e.stopPropagation(); drillToSupplier(row.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + row.supplierName}>{supplierDisplay(row)}</span></td>
                             <td style={{ padding: "8px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{row.detail}</td>
                             <td style={Object.assign({}, aqmc, { fontWeight: 700, color: "#0EA5E9" })}>{money(row.amount, row.currency)}</td>
                             <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{row.currency}</td>
@@ -12944,7 +12968,7 @@ export default function FactoringDashboard() {
                             return <tr key={ii} style={{ borderBottom: "1px solid var(--border)" }}>
                               <td style={{ padding: "6px 10px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
                               <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)", fontWeight: 600 }}>{item.rowType === "funding" ? item.inv.id : item.spqItem.id}</td>
-                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{item.supplierName}</td>
+                              <td style={{ padding: "6px 10px", fontSize: 12 }}>{supplierDisplay(item)}</td>
                               <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{item.detail}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: "#0EA5E9" }}>{money(item.amount, item.currency)}</td>
                               <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
@@ -12980,7 +13004,7 @@ export default function FactoringDashboard() {
                           {bankInfo.bankName ? <div>
                             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{bankInfo.bankName}</div>
                             {bankInfo.bankDetails ? <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--text-secondary)" }}>{bankInfo.bankDetails}</div> : null}
-                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Paying: {firstItem.supplierName} via {firstItem.programName}</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>Paying: {supplierDisplay(firstItem)} via {firstItem.programName}</div>
                           </div> : <div style={{ fontSize: 13, color: "#D97706", fontWeight: 600 }}>{"\u26A0"} No bank details on file — payment cannot be executed</div>}
                         </div>;
                       })()}
@@ -13033,7 +13057,7 @@ export default function FactoringDashboard() {
                                 }
                                 return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aa > 0 ? "#C0392B06" : "transparent" }}>
                                   <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                                  <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                                  <td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{buyerDisplay(inv)}</td>
                                   <td style={{ padding: "5px 8px" }}><span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: fst.color }}>{fst.label}</span></td>
                                   <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.penaltyInterest > 0 ? "#DC2626" : "var(--muted)" }}>{inv.penaltyInterest > 0 ? money(inv.penaltyInterest, inv.currency) : "\u2014"}{prP > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prP, inv.currency)}</span>}</td>
                                   <td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.interestOutstanding > 0 ? "#D97706" : "var(--muted)" }}>{inv.interestOutstanding > 0 ? money(inv.interestOutstanding, inv.currency) : "\u2014"}{prI > 0 && <span style={{ color: "#059669", fontSize: 9 }}> -{money(prI, inv.currency)}</span>}</td>
@@ -13324,7 +13348,7 @@ export default function FactoringDashboard() {
                 {bundleDialog && <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={function() { setBundleDialog(null); }}>
                   <div style={{ background: "var(--card)", borderRadius: 16, border: "1px solid var(--border)", padding: "24px 28px", maxWidth: 720, width: "90%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }} onClick={function(e) { e.stopPropagation(); }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                      <div style={{ fontSize: 16, fontWeight: 600 }}>Bundle Payments to {bundleDialog.supplierName}</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>Bundle Payments to {supplierDisplay(bundleDialog)}</div>
                       <button onClick={function() { setBundleDialog(null); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                     </div>
                     <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>{bundleDialog.items.length > 1 ? "There are " + bundleDialog.items.length + " pending payments to this supplier in " + bundleDialog.currency + ". Select which to include in a single consolidated payment." : "Confirm execution of this payment."}</div>
@@ -13535,7 +13559,7 @@ export default function FactoringDashboard() {
                         <tr style={{ borderBottom: isOcExp ? "none" : "1px solid var(--border)", cursor: "pointer" }} onClick={function() { setExp(isOcExp ? null : "oc-" + item.id); }}>
                           <td style={Object.assign({}, qmc, { color: "var(--muted)" })}>{item.id}</td>
                           <td style={{ padding: "8px 8px" }}><Badge label={typeLabel} bg={typeColor + "14"} color={typeColor} border={typeColor + "30"} /></td>
-                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{item.supplierName}</span> : "\u2014"}</td>
+                          <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(item.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View supplier " + item.supplierName}>{supplierDisplay(item)}</span> : "\u2014"}</td>
                           <td style={Object.assign({}, qmc, { fontWeight: 600 })}>{money(item.amount, item.currency)}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{item.currency}</td>
                           <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{item.executedDisplay || "\u2014"}</td>
@@ -13771,7 +13795,7 @@ export default function FactoringDashboard() {
                                   return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)", opacity: isTerm ? 0.6 : 1 }}>
                                     <td style={{ padding: "6px 10px" }}><Badge label="Supplier" bg="var(--accent)14" color="var(--accent)" border="var(--accent)30" /></td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{spq.id}</td>
-                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
+                                    <td style={{ padding: "6px 10px", fontSize: 11 }}>{spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + spq.supplierName}>{supplierDisplay(spq)}</span> : "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
                                     <td style={{ padding: "6px 10px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                                     <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={statusColor + "14"} color={statusColor} border={statusColor + "30"} /></td>
@@ -13955,7 +13979,7 @@ export default function FactoringDashboard() {
                           var inv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
                           return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + a.invoiceId}>{a.invoiceId}</span></td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{buyerDisplay(inv)}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, pay.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{inv ? money(inv.amount, inv.currency) : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{inv ? fmt(inv.dueDate) : "\u2014"}</td>
@@ -13965,7 +13989,7 @@ export default function FactoringDashboard() {
                           var spqStatusColor = spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706";
                           return <tr key={"rem-" + ri} style={{ borderBottom: "1px solid var(--border)", background: "#8B5CF608" }}>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td>
-                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted #8B5CF6" }} title={"View supplier " + spq.supplierName}>{spq.supplierName}</span> : "\u2014"}</td>
+                            <td style={{ padding: "6px 10px", fontSize: 12, color: "#8B5CF6", fontWeight: 600 }}>{spq.type === "remittance" ? "Pass-through" : "Holdback Return"} {"\u2192"} {spq.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(spq.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted #8B5CF6" }} title={"View supplier " + spq.supplierName}>{supplierDisplay(spq)}</span> : "\u2014"}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td>
                             <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td>
                             <td style={{ padding: "6px 10px" }}><Badge label={spq.status} bg={spqStatusColor + "14"} color={spqStatusColor} border={spqStatusColor + "30"} /></td>
@@ -13979,7 +14003,7 @@ export default function FactoringDashboard() {
                         return <div style={{ marginBottom: 12 }}>
                           <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Pass-through Remittances</div>
                           <table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{["SPQ ID", "Supplier", "Amount", "Program", "Status"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "4px 8px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
-                          <tbody>{payRemits.map(function(spq) { return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)" }}>{spq.supplierName}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td><td style={{ padding: "5px 8px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td></tr>; })}</tbody></table>
+                          <tbody>{payRemits.map(function(spq) { return <tr key={spq.id} style={{ borderBottom: "1px solid var(--border)" }}><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#8B5CF6" }}>{spq.id}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text)" }}>{supplierDisplay(spq)}</td><td style={{ padding: "5px 8px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(spq.amount, spq.currency)}</td><td style={{ padding: "5px 8px", fontSize: 11, color: "var(--text-secondary)" }}>{spq.programName || "\u2014"}</td><td style={{ padding: "5px 8px" }}><span style={{ fontSize: 10, fontWeight: 700, color: spq.status === "Completed" ? "#059669" : spq.status === "Failed" ? "#EF4444" : "#D97706" }}>{spq.status}</span></td></tr>; })}</tbody></table>
                         </div>;
                       }
                       return <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic", marginBottom: 12 }}>No allocations yet</div>;
@@ -14058,7 +14082,7 @@ export default function FactoringDashboard() {
                   return <tbody key={inv.id}>
                     <tr style={{ borderBottom: isHbExp ? "none" : "1px solid var(--border)", background: isHbExp ? "var(--card-hover)" : "transparent" }}>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}><span onClick={function() { setExpHbPay(isHbExp ? null : inv.id); }} style={{ color: "var(--accent)", cursor: "pointer", textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: 3 }}>{inv.id}</span></td>
-                      <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                      <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{buyerDisplay(inv)}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{money(inv.holdbackReceived, inv.currency)}</td>
                       <td style={{ padding: "9px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: inv.holdbackDisbursed > 0 ? "#E2E8F0" : "var(--muted)" }}>{inv.holdbackDisbursed > 0 ? money(inv.holdbackDisbursed, inv.currency) : "\u2014"}</td>
@@ -14090,7 +14114,7 @@ export default function FactoringDashboard() {
                               var targetInv = a.type === "invoice" ? INVOICES_DB.find(function(x) { return x.id === a.targetId; }) : null;
                               return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                                 <td style={{ padding: "6px 10px", fontSize: 12 }}>{a.type === "disbursement" ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--text)", display: "inline-block" }}></span><span style={{ color: "var(--text)", fontWeight: 600 }}>Supplier Return</span></span> : <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#D97706", display: "inline-block" }}></span><span style={{ color: "#D97706", fontWeight: 600 }}>Invoice Allocation</span></span>}</td>
-                                <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)" }}>{inv.supplierName}</span> : <span style={{ color: "var(--accent)" }}>{a.targetId}</span>}</td>
+                                <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{a.type === "disbursement" ? <span style={{ color: "var(--text)" }}>{supplierDisplay(inv)}</span> : <span style={{ color: "var(--accent)" }}>{a.targetId}</span>}</td>
                                 <td style={{ padding: "6px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#059669", fontWeight: 600 }}>{money(a.amount, hbp.currency)}</td>
                                 <td style={{ padding: "6px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{a.type === "disbursement" ? "Returned to supplier" : (targetInv ? targetInv.buyerName + " \u2014 Due: " + fmt(targetInv.dueDate) : "\u2014")}</td>
                               </tr>;
@@ -14379,7 +14403,7 @@ export default function FactoringDashboard() {
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>Step 2: Apply to Invoices ({activeRouting + 1}/{payRoutings.length})</div>
-                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{routing.supplierName} via {routing.programName} — {money(routing.amount, allocPay.currency)}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{supplierDisplay(routing)} via {routing.programName} — {money(routing.amount, allocPay.currency)}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <div><div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)" }}>Remaining</div><div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: routingRemaining > 0.01 ? "#F59E0B" : "#10B981" }}>{money(routingRemaining, allocPay.currency)}</div></div>
@@ -14390,7 +14414,7 @@ export default function FactoringDashboard() {
 
               {/* Invoice list for this routing */}
               <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--border)" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Select invoices for {routing.supplierName}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", marginBottom: 10 }}>Select invoices for {supplierDisplay(routing)}</div>
                 <div style={{ maxHeight: 300, overflowY: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Invoice", "Buyer", "Due Date", "Penalty O/S", "Interest O/S", "Capital O/S", "Total O/S", "Allocate", ""].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "6px 6px", fontSize: 9, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--card)" }}>{h}</th>; })}</tr></thead>
@@ -14402,7 +14426,7 @@ export default function FactoringDashboard() {
                       var capOS = inv.capitalOutstanding || 0;
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: currentAmt > 0 ? "#0EA5E908" : "transparent" }}>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{inv.id}</td>
-                        <td style={{ padding: "6px 6px", fontSize: 11, color: "var(--text-secondary)" }}>{inv.buyerName}</td>
+                        <td style={{ padding: "6px 6px", fontSize: 11, color: "var(--text-secondary)" }}>{buyerDisplay(inv)}</td>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: inv.dueDate < viewDate ? "#EF4444" : "var(--text-secondary)" }}>{fmt(inv.dueDate)}</td>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: penOS > 0 ? "#EF4444" : "var(--muted)" }}>{penOS > 0 ? money(penOS, inv.currency) : "\u2014"}</td>
                         <td style={{ padding: "6px 6px", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: intOS > 0 ? "#D97706" : "var(--muted)" }}>{intOS > 0 ? money(intOS, inv.currency) : "\u2014"}</td>
@@ -14730,8 +14754,8 @@ export default function FactoringDashboard() {
                       <tr style={{ borderBottom: cnExp ? "none" : "1px solid var(--border)", cursor: "pointer", background: cnExp ? "var(--card-hover)" : "transparent" }} onClick={function() { setExp(cnExp ? null : "cn-" + cn.creditNoteId); }}>
                       <td style={Object.assign({}, cnmc, { color: "var(--accent)", fontWeight: 600 })}>{cn.creditNoteId}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{fmt(cn.date)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, fontWeight: 600 }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{supplierDisplay(cn)}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + cn.buyerName}>{buyerDisplay(cn)}</span> : "\u2014"}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</td>
                       <td style={Object.assign({}, cnmc, { fontWeight: 600 })}>{money(cn.amount, cn.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 13, color: "var(--muted)" }}>{cn.currency}</td>
@@ -14751,8 +14775,8 @@ export default function FactoringDashboard() {
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px 24px" }}>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Credit Note ID</div><div style={{ fontSize: 13, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}>{cn.creditNoteId}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Date</div><div style={{ fontSize: 13, color: "var(--text)" }}>{fmt(cn.date)}</div></div>
-                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{cn.supplierName}</span> : "\u2014"}</div></div>
-                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + cn.buyerName}>{cn.buyerName}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Supplier</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(cn.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + cn.supplierName}>{supplierDisplay(cn)}</span> : "\u2014"}</div></div>
+                              <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Buyer</div><div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{cn.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(cn.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View buyer " + cn.buyerName}>{buyerDisplay(cn)}</span> : "\u2014"}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Reference</div><div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{cn.reference || "\u2014"}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Amount</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: "var(--text)" }}>{money(cn.amount, cn.currency)}</div></div>
                               <div><div style={{ fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--muted)", marginBottom: 3 }}>Unallocated Balance</div><div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", color: remaining > 0.01 ? "#D97706" : "#059669" }}>{money(remaining, cn.currency)}</div></div>
@@ -14774,7 +14798,7 @@ export default function FactoringDashboard() {
                                 var aInv = viewData.invoices.find(function(x) { return x.id === a.invoiceId; });
                                 return <tr key={ai} style={{ borderBottom: "1px solid var(--border)" }}>
                                   <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(a.invoiceId); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + a.invoiceId}>{a.invoiceId}</span></td>
-                                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + aInv.buyerName}>{aInv.buyerName}</span> : "\u2014"}</td>
+                                  <td style={{ padding: "6px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{aInv && aInv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(aInv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + aInv.buyerName}>{buyerDisplay(aInv)}</span> : "\u2014"}</td>
                                   <td style={{ padding: "6px 8px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#D97706" }}>{money(a.amount, cn.currency)}</td>
                                   <td style={{ padding: "6px 8px" }}><button onClick={function(e) {
                                     e.stopPropagation();
@@ -14867,13 +14891,13 @@ export default function FactoringDashboard() {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 600 }}>Allocate Credit Note: {allocCN.creditNoteId}</div>
-                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{allocCN.supplierName} / {allocCN.buyerName || "All Buyers"} {"\u2014"} {money(allocCN.amount, allocCN.currency)} {"\u2014"} Available: <strong style={{ color: r2(avail - allocTotal) > 0 ? "#059669" : "#DC2626" }}>{money(r2(avail - allocTotal), allocCN.currency)}</strong></div>
+                    <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>{supplierDisplay(allocCN)} / {allocCN.buyerName || "All Buyers"} {"\u2014"} {money(allocCN.amount, allocCN.currency)} {"\u2014"} Available: <strong style={{ color: r2(avail - allocTotal) > 0 ? "#059669" : "#DC2626" }}>{money(r2(avail - allocTotal), allocCN.currency)}</strong></div>
                   </div>
                   <button onClick={function() { setAllocCN(null); setAllocs([]); }} style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>{"\u2715"}</button>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                   <input type="text" value={cnSearch} onChange={function(e) { setCnSearch(e.target.value); }} placeholder="Search invoices..." style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, outline: "none", width: 220 }} />
-                  <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>{eligible.length > 50 ? "Showing first 50 of " + eligible.length + " invoices for " : eligible.length + " invoices for "}{allocCN.supplierName} / {allocCN.buyerName || "All"}</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)", alignSelf: "center" }}>{eligible.length > 50 ? "Showing first 50 of " + eligible.length + " invoices for " : eligible.length + " invoices for "}{supplierDisplay(allocCN)} / {allocCN.buyerName || "All"}</span>
                 </div>
                 <div style={{ maxHeight: 400, overflowY: "auto", marginBottom: 16 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -14886,8 +14910,8 @@ export default function FactoringDashboard() {
                       var fst = FST[inv.fundingStatus] || FST.funded;
                       return <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)", background: aaAmt > 0 ? "#2B4C7E06" : "transparent" }}>
                         <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "var(--accent)" }}><span onClick={function(e) { e.stopPropagation(); drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span></td>
-                        <td style={{ padding: "8px 12px", fontSize: 12 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{supplierDisplay(inv)}</span> : "\u2014"}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{buyerDisplay(inv)}</span> : "\u2014"}</td>
                         <td style={{ padding: "8px 12px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace" }}>{money(inv.amount, inv.currency)}</td>
                         <td style={{ padding: "8px 12px" }}><Badge label={inv.invoiceStatus} bg={ist.bg} color={ist.color} border={ist.border} icon={ist.icon} /></td>
                         <td style={{ padding: "8px 12px" }}><Badge label={fst.label} bg={fst.bg} color={fst.color} border={fst.border} /></td>
@@ -15172,8 +15196,8 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, ilmc, { color: "var(--accent)", fontWeight: 600, cursor: "pointer" })}><span style={{ borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{inv.doNotFund && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}{inv.doNotAdvance && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#6B728020", color: "#94A3B8", border: "1px solid #6B728040" }}>DNA</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.dueDate)}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function(e) { e.stopPropagation(); drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{supplierDisplay(inv)}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function(e) { e.stopPropagation(); drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{buyerDisplay(inv)}</span> : "\u2014"}</td>
                       <td style={Object.assign({}, ilmc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={{ padding: "8px 8px" }}><Badge label={inv.invoiceStatus || "Received"} bg={ist.bg} color={ist.color} border={ist.border} /></td>
@@ -15574,8 +15598,8 @@ export default function FactoringDashboard() {
                       <td style={Object.assign({}, upimc, { color: "var(--accent)", fontWeight: 600 })}><span onClick={function() { drillToInvoice(inv.id); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--accent)" }} title={"Open " + inv.id}>{inv.id}</span>{isDnp && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>DNP</span>}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>{fmt(inv.invoiceDate)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 11, color: daysPending > 30 ? "#EF4444" : daysPending > 7 ? "#D97706" : "var(--text-secondary)", fontFamily: "'JetBrains Mono', monospace" }}>{daysPending}d</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{inv.supplierName}</span> : "\u2014"}</td>
-                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{inv.buyerName}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 600 }}>{inv.supplierName ? <span onClick={function() { drillToSupplier(inv.supplierName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text)" }} title={"View supplier " + inv.supplierName}>{supplierDisplay(inv)}</span> : "\u2014"}</td>
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--text-secondary)" }}>{inv.buyerName ? <span onClick={function() { drillToBuyer(inv.buyerName); }} style={{ cursor: "pointer", borderBottom: "1px dotted var(--text-secondary)" }} title={"View buyer " + inv.buyerName}>{buyerDisplay(inv)}</span> : "\u2014"}</td>
                       <td style={Object.assign({}, upimc, { fontWeight: 600 })}>{money(inv.amount, inv.currency)}</td>
                       <td style={{ padding: "8px 8px", fontSize: 12, color: "var(--muted)" }}>{inv.currency}</td>
                       <td style={Object.assign({}, upimc, { color: inv.maxAvailableCapital > 0 ? "#0EA5E9" : "var(--muted)" })}>{inv.maxAvailableCapital > 0 ? money(inv.maxAvailableCapital, inv.currency) : "\u2014"}</td>
@@ -15917,8 +15941,8 @@ export default function FactoringDashboard() {
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px", marginBottom: 16 }}>
                         <div><span style={{ color: "var(--muted)" }}>Invoice: </span><span style={{ color: "var(--accent)", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{pInv.id}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Face Value: </span><strong>{money(pInv.amount, pInv.currency)}</strong></div>
-                        <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{pInv.supplierName}</div>
-                        <div><span style={{ color: "var(--muted)" }}>Buyer: </span>{pInv.buyerName}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Supplier: </span>{supplierDisplay(pInv)}</div>
+                        <div><span style={{ color: "var(--muted)" }}>Buyer: </span>{buyerDisplay(pInv)}</div>
                         <div><span style={{ color: "var(--muted)" }}>Invoice Date: </span>{fmt(pInv.invoiceDate)}</div>
                         <div><span style={{ color: "var(--muted)" }}>Due Date: </span><span style={{ color: pInv.dueDate < viewDate ? "#EF4444" : "var(--text)" }}>{fmt(pInv.dueDate)}</span></div>
                         <div><span style={{ color: "var(--muted)" }}>Status: </span><Badge label={pInv.invoiceStatus} bg={pist.bg} color={pist.color} border={pist.border} icon={pist.icon} /></div>
