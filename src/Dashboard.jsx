@@ -4138,6 +4138,19 @@ export default function FactoringDashboard() {
     if (!isPurchasedFlow && !isTopupFlow) return;
     var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
     var progName = prog ? prog.name : raw.fundingProgram;
+    // Last gate before cash leaves. The assigned programme is not proof of
+    // fundability \u2014 an invoice can be purchased onto a programme it cannot be
+    // funded on, and limits may have changed since approval. Re-test here rather
+    // than trusting an earlier screen.
+    if (prog) {
+      var eligX = getProgramEligibility(raw, null);
+      if (!eligX.fundable.some(function(p) { return p.id === prog.id; })) {
+        var rejX = eligX.rejected.filter(function(r) { return r.programId === prog.id && r.stage === "funding"; });
+        var whyX = rejX.length > 0 ? rejX[0].reasons.map(function(x) { return "\u2022 " + x.label + (x.detail ? " (" + x.detail + ")" : ""); }).join("\n") : "\u2022 Not currently fundable on this programme.";
+        alert("Cannot release funds for " + raw.id + " on " + progName + ".\n\n" + whyX + "\n\nThe invoice remains purchased.");
+        return;
+      }
+    }
     if (isTopupFlow) {
       // Execute top-up: push a new tranche, queue Completed CPQ.
       // Capital + rate + interest are derived from tranches by viewData processing — no need to set them directly.
@@ -4336,7 +4349,20 @@ export default function FactoringDashboard() {
       prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === raw.fundingProgram; });
       // For purchased/funded invoices, the assigned program is the only valid program for top-ups.
       // (Re-allocating to a different program would require deallocation first.)
-      if (prog) eligibleProgIds = [prog.id];
+      // BUT the assignment is not itself proof of fundability: an invoice may be
+      // purchased onto a programme it cannot be funded on (allocate-at-zero). Funding
+      // must therefore re-test, not trust the stored programme id.
+      if (prog) {
+        var elig2 = getProgramEligibility(raw, null);
+        var stillFundable = elig2.fundable.some(function(p) { return p.id === prog.id; });
+        if (!stillFundable) {
+          var rej = elig2.rejected.filter(function(r) { return r.programId === prog.id && r.stage === "funding"; });
+          var why = rej.length > 0 ? rej[0].reasons.map(function(x) { return "\u2022 " + x.label + (x.detail ? " (" + x.detail + ")" : ""); }).join("\n") : "\u2022 Not currently fundable on this programme.";
+          alert(raw.id + " cannot be funded on " + prog.name + ".\n\n" + why + "\n\nThe invoice remains purchased. Funding is blocked until the reason clears.");
+          return;
+        }
+        eligibleProgIds = [prog.id];
+      }
     }
     if (!prog) {
       // For pending invoices — show all eligible programs, default to first
