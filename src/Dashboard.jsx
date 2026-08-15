@@ -8299,7 +8299,9 @@ export default function FactoringDashboard() {
                   var effectiveTs = now.toISOString();
                   var effectiveDisplay = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                   supplier.rates.push({ effectiveDate: now.toISOString().split("T")[0], effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay, advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100 });
-                  saveSupplier(selectedSupplier);
+                  // selectedSupplier may be a branch-qualified id (SUP-x:BR-y), which
+                  // saveSupplier cannot resolve. `supplier` is already the parent.
+                  saveSupplier(supplier.id);
                     auditLog("Rate Changed", getEntityDisplayName(selectedSupplier) + " rate changed: Advance " + newRateAdvance + "%, Interest " + newRateAnnual + "%, Penalty " + newRatePenalty + "% effective " + effectiveDisplay, { supplierId: selectedSupplier, supplier: getEntityDisplayName(selectedSupplier), advanceRate: parseFloat(newRateAdvance) / 100, annualRate: parseFloat(newRateAnnual) / 100, penaltyRate: parseFloat(newRatePenalty) / 100, effectiveTimestamp: effectiveTs, effectiveDisplay: effectiveDisplay });
                   setShowRateChange(false); setNewRateAdvance(""); setNewRateAnnual(""); setNewRatePenalty(""); setNewRateDate("");
                   setDataVer(function(v) { return v + 1; });
@@ -16371,8 +16373,14 @@ export default function FactoringDashboard() {
                   // Persist to the right table. The tab is shared, so calling
                   // saveSupplier unconditionally silently discarded buyer branches.
                   function persistBranches() {
-                    if (isSup) { saveSupplier(selectedSupplier); }
-                    else if (isBuy && det.id) { saveBuyer(det.id); }
+                    // Must save the entity being edited. This previously used
+                    // `selectedSupplier`, an unrelated dropdown filter defaulting to the
+                    // FIRST supplier in the list \u2014 so branch edits were written to the
+                    // wrong supplier and the intended one was never saved. Pre-existing.
+                    if (!detEntity || !detEntity.id) return;
+                    if (isSup) { saveSupplier(detEntity.id); }
+                    else if (isSp) { saveServiceProvider(detEntity.id); }
+                    else if (isBuy) { saveBuyer(detEntity.id); }
                   }
                   var editingBranch = managePopup && managePopup.type === "branchEdit" ? managePopup : null;
                   var ebIdx = editingBranch ? editingBranch.idx : -1;
