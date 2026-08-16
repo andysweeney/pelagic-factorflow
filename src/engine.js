@@ -11,11 +11,19 @@
 // refDate and remains mutable through setAppToday(), exactly as in the file:
 // processForDate() relies on that side channel in the fundingHeadroom block.
 //
-// KNOWN DEFECT CARRIED OVER VERBATIM — see notes: processForDate() calls
-// auditLog(), which is declared inside the FactoringDashboard component and
-// is therefore not in scope here, exactly as it is not in scope at module
-// scope in Dashboard.jsx. The call throws ReferenceError in both. Left
-// unfixed so the comparison harness measures extraction, not repair.
+// AUDIT LOGGING (fixed v6.39). processForDate() calls auditLog() when an
+// invoice in recovery_mode reaches full repayment — the legal repurchase
+// event. In v6.32 that identifier was declared inside the React component
+// and so was not in scope at module level: the call threw ReferenceError and
+// took down the whole dashboard render.
+//
+// The engine now owns a logger slot. The default is a no-op, which is the
+// correct behaviour for a host that has no audit sink — an Edge Function
+// should install its own writer via setAuditLogger() rather than inherit the
+// browsers. The browser installs the component auditLog at mount.
+//
+// This is the one deliberate behaviour change in the extracted engine: it
+// used to crash, and now it logs. Everything else is byte-identical.
 
 export function createEngine(deps) {
   var INVOICES_DB        = deps.INVOICES_DB;
@@ -31,6 +39,11 @@ export function createEngine(deps) {
   var _APP_TODAY = REF_DATE;
   function appToday() { return _APP_TODAY; }
   function setAppToday(d) { _APP_TODAY = d || REF_DATE; }
+
+  // Audit sink. No-op until a host installs one.
+  var _auditSink = (typeof deps.auditLog === "function") ? deps.auditLog : function () {};
+  function setAuditLogger(fn) { _auditSink = (typeof fn === "function") ? fn : function () {}; }
+  function auditLog(action, details, context) { return _auditSink(action, details, context); }
 
 var ELIG_REASONS = {
   CURRENCY:          "Invoice currency does not match the programme",
@@ -723,6 +736,7 @@ function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
     // ---- the clock ----
     appToday: appToday,
     setAppToday: setAppToday,
+    setAuditLogger: setAuditLogger,
     // ---- helpers the browser UI also calls (639 call sites in v6.32) ----
     r2: r2, addDays: addDays, daysBetween: daysBetween,
     parseEntityId: parseEntityId, lowestLimit: lowestLimit, _mk: _mk,
