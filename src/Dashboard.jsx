@@ -16925,7 +16925,12 @@ export default function FactoringDashboard() {
                   minPaymentSize: nz(pf.minPaymentSize),
                   purchaseBlockedStatuses: pf.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED.slice(),
                   fundingBlockedStatuses: pf.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED.slice(),
-                  minInvoiceSize: r2(parseFloat(pf.minInvoiceSize) || 0),
+                  // undefined means the form never held this field, so keep what is
+                  // stored. Blank is different: that is an operator clearing it, and
+                  // still means zero.
+                  minInvoiceSize: pf.minInvoiceSize === undefined
+                    ? (FUNDING_PROGRAMS_DB[editProg] ? (FUNDING_PROGRAMS_DB[editProg].minInvoiceSize || 0) : 0)
+                    : r2(parseFloat(pf.minInvoiceSize) || 0),
                   maxSupDilLive: (pf.maxSupDilLive === "" || pf.maxSupDilLive == null) ? null : parseFloat(pf.maxSupDilLive),
                   maxSupDil30: (pf.maxSupDil30 === "" || pf.maxSupDil30 == null) ? null : parseFloat(pf.maxSupDil30),
                   maxSupDil90: (pf.maxSupDil90 === "" || pf.maxSupDil90 == null) ? null : parseFloat(pf.maxSupDil90),
@@ -16939,6 +16944,11 @@ export default function FactoringDashboard() {
                   var existing = FUNDING_PROGRAMS_DB[editProg];
                   if (existing) {
                     Object.assign(existing, prog);
+                    // Restore the version this editor opened with. If another
+                    // operator has saved since, this will no longer match the
+                    // database and saveFundingProgram will refuse the write
+                    // rather than silently overwriting them.
+                    if (typeof pf._baseVersion === "number") existing.version = pf._baseVersion;
                     existing.currentFundedBalance = existing.currentFundedBalance || 0;
                     auditLog("Program Edited", prog.name + " updated", { programName: prog.name, fields: prog });
                     saveFundingProgram(existing.id);
@@ -16958,6 +16968,11 @@ export default function FactoringDashboard() {
                 var p = FUNDING_PROGRAMS_DB[idx];
                 setEditProg(idx);
                 setProgFields({
+                  // Version as at the moment this editor opened. Realtime may
+                  // refresh the record underneath an open form, so the version
+                  // at save time is not the version the operator saw. Compare
+                  // against this instead.
+                  _baseVersion: p.version,
                   name: p.name, currency: p.currency,
                   eligibleBuyers: p.eligibleBuyers || [], eligibleSuppliers: p.eligibleSuppliers || [],
                   maxSize: String(p.maxSize != null ? p.maxSize : ""), maxAdvanceRate: String((p.maxAdvanceRate * 100).toFixed(0)),
@@ -16970,6 +16985,9 @@ export default function FactoringDashboard() {
                   thresholdDisputeRecovery: String(p.thresholdDisputeRecovery !== undefined ? p.thresholdDisputeRecovery : "14"),
                   minInvoiceTerm: String(p.minInvoiceTerm != null ? p.minInvoiceTerm : (p.minInvoiceTenor != null ? p.minInvoiceTenor : "")),
                   maxInvoiceSize: String(p.maxInvoiceSize != null ? p.maxInvoiceSize : ""),
+                  // Was missing until v6.38. Absent here meant the editor showed
+                  // blank whatever was stored, and any unrelated save wrote 0.
+                  minInvoiceSize: String(p.minInvoiceSize != null ? p.minInvoiceSize : ""),
                   minPaymentSize: String(p.minPaymentSize != null ? p.minPaymentSize : ""),
                   purchaseBlockedStatuses: (p.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED).slice(),
                   fundingBlockedStatuses: (p.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED).slice(),
