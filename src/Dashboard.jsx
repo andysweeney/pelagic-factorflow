@@ -816,12 +816,20 @@ async function fetchAllRows(table, filter, opts) {
 async function saveVersioned(opts) {
   var v = (opts.obj && typeof opts.obj.version === "number") ? opts.obj.version : null;
 
-  // No version column here (001a not applied). Behave exactly as before.
+  // No version on the in-memory record. Either 001a has not been applied here,
+  // or this record reached memory by a path that does not copy the column — in
+  // which case the guard is silently doing nothing and a stale write will
+  // overwrite a colleague without warning. Say so loudly: a guard that quietly
+  // does not run is worse than no guard, because it is trusted.
   if (v === null) {
+    console.warn("[saveVersioned] UNGUARDED WRITE: " + opts.table + " " + opts.id +
+      " has no version in memory — falling back to an unconditional upsert. " +
+      "If 001a is applied, the loader for this table is not copying the column.");
     var plain = await supabase.from(opts.table).upsert([opts.row], { onConflict: opts.keyCol });
     return { ok: !(plain && plain.error), res: plain };
   }
 
+  console.log("[saveVersioned] " + opts.table + " " + opts.id + " writing from version " + v);
   var next = v + 1;
   var payload = Object.assign({}, opts.row, { version: next });
   var res = await supabase.from(opts.table).update(payload)
