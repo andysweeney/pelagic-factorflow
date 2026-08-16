@@ -813,6 +813,21 @@ async function fetchAllRows(table, filter, opts) {
 // Returns { ok: true, res } or { ok: false, conflict: true } — never retries.
 // A silent retry would write the stale values over whatever the other
 // operator just saved, which is the failure being prevented.
+// Ask the UI to re-render. Module-scope code cannot call a useState setter —
+// setDataVer is declared inside FactoringDashboard — so the component installs
+// a callback here at mount. Defaults to a no-op so a host with no React tree
+// (an Edge Function running these save functions) is unaffected rather than
+// crashing.
+var _uiRefresh = function () {};
+function setUiRefresh(fn) { _uiRefresh = (typeof fn === "function") ? fn : function () {}; }
+
+// Same problem, same shape: recordEntityRename is module-scope but was calling
+// the component's auditLog, which is not in scope there. Renaming a supplier or
+// buyer therefore threw inside saveSupplier's try block and surfaced as a
+// spurious "save error" AFTER the save had already succeeded. Pre-existing.
+var _appAudit = function () {};
+function setAppAudit(fn) { _appAudit = (typeof fn === "function") ? fn : function () {}; }
+
 async function saveVersioned(opts) {
   var v = (opts.obj && typeof opts.obj.version === "number") ? opts.obj.version : null;
 
@@ -891,7 +906,7 @@ async function saveInvoice(invId) {
     var _sv = await saveVersioned({ table: "invoices", keyCol: "id",
       id: inv.id, row: row, obj: inv,
       reload: null, label: ("Invoice " + inv.id) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var upRes = _sv.res;
     if (upRes && upRes.error) { console.error("[SaveInvoice] Supabase error:", upRes.error); toast.error("Invoice save failed", upRes.error.message || "Database rejected the invoice record."); }
   } catch (e) { console.error("[SaveInvoice] Error:", e); toast.error("Invoice save error", e.message || String(e)); }
@@ -928,7 +943,7 @@ async function saveSPQEntry(spqId) {
     var _sv = await saveVersioned({ table: "supplier_payment_queue", keyCol: "id",
       id: item.id, row: row, obj: item,
       reload: reloadSPQ, label: ("Payment queue entry " + item.id) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var result = _sv.res;
     if (result.error) { console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue save failed", result.error.message || "Database rejected the queue entry."); }
   } catch (e) { console.error("[SaveSPQ] Error:", e); toast.error("Payment queue save error", e.message || String(e)); }
@@ -981,7 +996,7 @@ async function saveFundingProgram(progId) {
         // Somebody else saved this programme first. Do not overwrite them.
         _isSaving = false;
         try { await reloadFundingPrograms(); } catch (e) { console.error("[SaveFP] reload failed:", e); }
-        setDataVer(function(v) { return v + 1; });
+        _uiRefresh();
         toast.warning("Programme changed by another operator",
           (fp.name || fp.id) + " was saved by someone else while you were editing. Your change was NOT applied \u2014 the latest version has been loaded. Please redo your edit.");
         return;
@@ -1003,7 +1018,7 @@ async function savePayment(paymentId) {
     var _sv = await saveVersioned({ table: "payments", keyCol: "payment_id",
       id: pay.paymentId, row: row, obj: pay,
       reload: reloadPayments, label: ("Payment " + pay.paymentId) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var upRes = _sv.res;
     if (upRes.error) { console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row); toast.error("Payment save failed", upRes.error.message || "Database rejected the payment record."); }
     // Save allocations
@@ -1033,7 +1048,7 @@ async function recordEntityRename(kind, entityId, oldName, newName) {
   if (!entityId || !oldName || !newName || oldName === newName) return;
   var updated = 0;  // historic rows are intentionally left as they were
   console.log("[Rename] " + entityId + ": \"" + oldName + "\" -> \"" + newName + "\", " + updated + " child row(s) updated");
-  auditLog("Entity Renamed", entityId + " renamed from \"" + oldName + "\" to \"" + newName + "\" (" + updated + " historic record(s) updated)", { entityId: entityId, oldName: oldName, newName: newName, rowsUpdated: updated });
+  _appAudit("Entity Renamed", entityId + " renamed from \"" + oldName + "\" to \"" + newName + "\" (" + updated + " historic record(s) updated)", { entityId: entityId, oldName: oldName, newName: newName, rowsUpdated: updated });
 }
 
 async function saveSupplier(supId) {
@@ -1065,7 +1080,7 @@ async function saveSupplier(supId) {
     var _sv = await saveVersioned({ table: "suppliers", keyCol: "id",
       id: s.id, row: row, obj: s,
       reload: reloadSuppliers, label: (s.name || s.id) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var supRes = _sv.res;
     if (!supRes || !supRes.error) { await recordEntityRename("supplier", s.id, prevSupName, s.name); }
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
@@ -1098,7 +1113,7 @@ async function saveBuyer(buyId) {
     var _sv = await saveVersioned({ table: "buyers", keyCol: "id",
       id: b.id, row: row, obj: b,
       reload: reloadBuyers, label: (b.name || b.id) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var buyRes = _sv.res;
     if (!buyRes || !buyRes.error) { await recordEntityRename("buyer", b.id, prevBuyName, b.name); }
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
@@ -1123,7 +1138,7 @@ async function saveServiceProvider(spId) {
     var _sv = await saveVersioned({ table: "service_providers", keyCol: "id",
       id: sp.id, row: row, obj: sp,
       reload: null, label: (sp.name || sp.id) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var res = _sv.res;
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
   } catch (e) { console.error("[SaveServiceProvider] Error:", e); toast.error("Service provider save error", e.message || String(e)); }
@@ -1144,7 +1159,7 @@ async function saveCreditNote(cnId) {
     var _sv = await saveVersioned({ table: "credit_notes", keyCol: "credit_note_id",
       id: cn.creditNoteId, row: row, obj: cn,
       reload: reloadCreditNotes, label: ("Credit note " + cn.creditNoteId) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var cnRes = _sv.res;
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
   } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
@@ -1160,7 +1175,7 @@ async function saveHoldbackPayment(hbpId) {
     var _sv = await saveVersioned({ table: "holdback_payments", keyCol: "hb_payment_id",
       id: hbp.hbPaymentId, row: row, obj: hbp,
       reload: reloadHoldbackPayments, label: ("Holdback payment " + hbp.hbPaymentId) });
-    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    if (_sv.conflict) { _isSaving = false; _uiRefresh(); return; }
     var hbRes = _sv.res;
     if (hbRes && hbRes.error) { console.error("[SaveHBP] upsert error:", hbRes.error); toast.error("Holdback payment save failed", hbRes.error.message || "Database error."); }
     // Save allocations
@@ -2567,6 +2582,11 @@ export default function FactoringDashboard() {
   // viewDate, and a stale copy would attribute the entry to the wrong user or
   // stamp it with the wrong date.
   ENGINE.setAuditLogger(auditLog);
+
+  // Let module-scope save functions ask for a re-render. Same reason as the
+  // audit sink above: they cannot reach a useState setter on their own.
+  setUiRefresh(function () { setDataVer(function (v) { return v + 1; }); });
+  setAppAudit(auditLog);
   var vws = useState("company"), view = vws[0], setView = vws[1];
   var is1 = useState("all"), isf = is1[0], setIsf = is1[1];
   var fs1 = useState("all"), fsf = fs1[0], setFsf = fs1[1];
