@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import { BarChart3, Users, ShoppingCart, FolderOpen, CreditCard, FileText, Settings, ChevronDown, ChevronRight, Search, Calendar, Menu, X, TrendingUp, AlertTriangle, CheckCircle, XCircle, Clock, Shield, DollarSign, FileCheck, ArrowUpRight, ArrowDownRight, MoreHorizontal, ExternalLink, Filter, RefreshCw, Plus, Download, Upload, Eye, Edit3, Trash2, Copy, Check, Info, AlertCircle, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from "recharts";
+import { createEngine } from "./engine";
 
 var LOGO_URL = "data:image/jpeg;base64,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";
 var FAVICON_SVG = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" fill="#2B4C7E"/><path d="M16 28 Q24 24 32 28 Q40 32 48 28" stroke="#B8C7DB" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 34 Q24 30 32 34 Q40 38 48 34" stroke="#CBD5E1" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M16 40 Q24 36 32 40 Q40 44 48 40" stroke="#E2E8F0" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>');
@@ -30,9 +31,9 @@ var CH_WORKER_URL = "https://companies-house-proxy.pelagic.workers.dev";
 function fmt(d) { if (!d) return "\u2014"; var dt = new Date(d + "T00:00:00"); return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
 function money(v, c) { return (CUR[c] || "") + v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function r6(v) { return Math.round(v * 1000000) / 1000000; }
-function r2(v) { return Math.round(v * 100) / 100; }
-function addDays(s, n) { var p = s.split("-"); var d = new Date(Date.UTC(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]))); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().split("T")[0]; }
-function daysBetween(a, b) { var pa = a.split("-"); var pb = b.split("-"); return Math.round((Date.UTC(parseInt(pb[0]), parseInt(pb[1]) - 1, parseInt(pb[2])) - Date.UTC(parseInt(pa[0]), parseInt(pa[1]) - 1, parseInt(pa[2]))) / 86400000); }
+// r2 — moved to engine.js (v6.33)
+// addDays — moved to engine.js (v6.33)
+// daysBetween — moved to engine.js (v6.33)
 // Entries that are genuine statuses. "Buyer Received" is an event, not a
 // status, and must never become one.
 // The canonical statuses (INV_STATUSES) minus "Received", which is the
@@ -105,87 +106,29 @@ function makeRng(seed) { var s = seed; return function() { s = (s * 16807) % 214
 
 // Synthesize a tranche from legacy invoice fields when tranches is empty/missing.
 // Idempotent — safe to call repeatedly. Returns a new array; does not mutate input.
-function synthesizeTranches(inv) {
-  if (Array.isArray(inv.tranches) && inv.tranches.length > 0) return inv.tranches;
-  if (!inv.fundedDate || !(inv.capitalDue > 0)) return [];
-  var term = daysBetween(inv.fundedDate, inv.dueDate);
-  if (term < 1) term = 1;
-  return [{
-    trancheId: "T1",
-    capital: r2(inv.capitalDue),
-    capitalRepaid: 0,
-    rate: inv.annualRate || 0,
-    advancedDate: inv.fundedDate,
-    term: term,
-    status: "active"
-  }];
-}
+// synthesizeTranches — moved to engine.js (v6.33)
 
 // Sum the active capital across all tranches — i.e. capital that has been
 // advanced but not yet repaid. Equivalent to invoice.capitalDue under the
 // new model.
-function tranchesActiveCapital(tranches) {
-  if (!Array.isArray(tranches)) return 0;
-  return r2(tranches.reduce(function(s, t) { return s + Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0)); }, 0));
-}
+// tranchesActiveCapital — moved to engine.js (v6.33)
 
 // Compute total interest charged across active tranches. Each tranche
 // contributes: outstanding_capital * (rate / 360) * term_days.
-function tranchesInterestCharged(tranches) {
-  if (!Array.isArray(tranches)) return 0;
-  return r2(tranches.reduce(function(s, t) {
-    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
-    if (outstanding <= 0) return s;
-    return s + outstanding * ((t.rate || 0) / 360) * (t.term || 0);
-  }, 0));
-}
+// tranchesInterestCharged — moved to engine.js (v6.33)
 
 // Weighted-average rate across active tranches, by capital outstanding.
 // Used for display purposes only.
-function tranchesWeightedRate(tranches) {
-  if (!Array.isArray(tranches) || tranches.length === 0) return 0;
-  var num = 0, den = 0;
-  tranches.forEach(function(t) {
-    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
-    if (outstanding <= 0) return;
-    num += outstanding * (t.rate || 0);
-    den += outstanding;
-  });
-  return den > 0 ? num / den : 0;
-}
+// tranchesWeightedRate — moved to engine.js (v6.33)
 
 // Apply a capital repayment FIFO across tranches.
 // Mutates tranches array. Returns { applied, remaining }.
 // Older tranches (earlier advancedDate) get paid back first.
-function applyCapitalRepaymentFIFO(tranches, amount) {
-  if (!Array.isArray(tranches) || amount <= 0) return { applied: 0, remaining: amount || 0 };
-  // Sort by advancedDate ascending — oldest first
-  var ordered = tranches.slice().sort(function(a, b) {
-    return (a.advancedDate || "") < (b.advancedDate || "") ? -1 : 1;
-  });
-  var remaining = amount;
-  var applied = 0;
-  for (var i = 0; i < ordered.length && remaining > 0.005; i++) {
-    var t = ordered[i];
-    var outstanding = Math.max(0, (t.capital || 0) - (t.capitalRepaid || 0));
-    if (outstanding <= 0.005) continue;
-    var take = Math.min(remaining, outstanding);
-    t.capitalRepaid = r2((t.capitalRepaid || 0) + take);
-    remaining -= take;
-    applied += take;
-    if (Math.abs((t.capital || 0) - t.capitalRepaid) < 0.005) t.status = "fully_repaid";
-    else t.status = "partially_repaid";
-  }
-  return { applied: r2(applied), remaining: r2(remaining) };
-}
+// applyCapitalRepaymentFIFO — moved to engine.js (v6.33)
 
 // ======== Entity ID helpers ========
 // Entity ID format: "SUP-001" (parent) or "SUP-001:BR-001" (branch)
-function parseEntityId(entityId) {
-  if (!entityId) return { supplierId: null, branchId: null };
-  var parts = entityId.split(":");
-  return { supplierId: parts[0], branchId: parts[1] || null };
-}
+// parseEntityId — moved to engine.js (v6.33)
 function makeEntityId(supplierId, branchId) {
   return branchId ? supplierId + ":" + branchId : supplierId;
 }
@@ -222,23 +165,9 @@ function buyerScopeFor(selectedEntityId) {
     parentId: getParentEntityId(selectedEntityId)
   };
 }
-function getSupplierById(entityId) {
-  if (!entityId) return null;
-  var parsed = parseEntityId(entityId);
-  return SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; }) || null;
-}
-function getBranchById(entityId) {
-  if (!entityId) return null;
-  var parsed = parseEntityId(entityId);
-  if (!parsed.branchId) return null;
-  var sup = SUPPLIERS_DB.find(function(s) { return s.id === parsed.supplierId; });
-  if (!sup || !sup.branches) return null;
-  return sup.branches.find(function(b) { return b.branchId === parsed.branchId; }) || null;
-}
-function getParentEntityId(entityId) {
-  if (!entityId) return entityId;
-  return parseEntityId(entityId).supplierId;
-}
+// getSupplierById — moved to engine.js (v6.33)
+// getBranchById — moved to engine.js (v6.33)
+// getParentEntityId — moved to engine.js (v6.33)
 // ======== Entity column mapping (DB <-> app) ========
 // The DB splits what the app calls supplierId across two columns:
 //   supplier_id         FK -> suppliers(id). Can ONLY ever hold a parent id.
@@ -351,16 +280,7 @@ function getAllSupplierEntities() {
   return result;
 }
 // Backward-compat: name-based helpers (used during migration, eventually removable)
-function getParentSupplierName(nameOrId) {
-  if (!nameOrId) return nameOrId;
-  // If it looks like an ID (SUP-xxx or SUP-xxx:BR-xxx), resolve to name
-  if (nameOrId.match && nameOrId.match(/^SUP-/)) {
-    var sup = getSupplierById(nameOrId);
-    return sup ? sup.name : nameOrId;
-  }
-  var sep = nameOrId.indexOf(" \u2014 ");
-  return sep >= 0 ? nameOrId.substring(0, sep) : nameOrId;
-}
+// getParentSupplierName — moved to engine.js (v6.33)
 function getBranchName(nameOrId) {
   if (!nameOrId) return null;
   if (nameOrId.match && nameOrId.match(/^SUP-/)) {
@@ -370,12 +290,7 @@ function getBranchName(nameOrId) {
   var sep = nameOrId.indexOf(" \u2014 ");
   return sep >= 0 ? nameOrId.substring(sep + 3) : null;
 }
-function getParentSupplier(nameOrId) {
-  if (!nameOrId) return null;
-  if (nameOrId.match && nameOrId.match(/^SUP-/)) return getSupplierById(nameOrId);
-  var pn = getParentSupplierName(nameOrId);
-  return SUPPLIERS_DB.find(function(s) { return s.name === pn; }) || null;
-}
+// getParentSupplier — moved to engine.js (v6.33)
 function isSameParentSupplier(id1, id2) {
   return getParentEntityId(id1) === getParentEntityId(id2);
 }
@@ -391,24 +306,10 @@ function buyName(buyerId) {
 // Get bank details by entity ID and program — cascades: branch program → parent program → branch flat → parent flat
 // Check if a supplier entity (parent or branch) is paused
 // Branch paused OR parent paused = entity is paused
-function isEntityPaused(entityId) {
-  if (!entityId) return false;
-  var sup = getSupplierById(entityId);
-  if (!sup) return false;
-  // Check parent pause first
-  if (sup.paused) return true;
-  // Check branch pause
-  var branch = getBranchById(entityId);
-  if (branch && branch.paused) return true;
-  return false;
-}
+// isEntityPaused — moved to engine.js (v6.33)
 
 // Check if a buyer is paused
-function isBuyerPaused(buyerId) {
-  if (!buyerId) return false;
-  var b = BUYERS_DB.find(function(x) { return x.id === buyerId; });
-  return b ? !!b.paused : false;
-}
+// isBuyerPaused — moved to engine.js (v6.33)
 
 function getSupplierBankDetails(entityId, programId) {
   var sup = getSupplierById(entityId);
@@ -436,28 +337,11 @@ function getSupplierBankDetails(entityId, programId) {
   return { bankName: sup.bankName || "", bankDetails: sup.bankDetails || "", bankVerified: sup.bankVerified || false };
 }
 
-function getSupplierRate(entityId, asOfTimestamp) {
-  var supplier = getSupplierById(entityId);
-  if (!supplier) {
-    // Backward compat: try by name
-    supplier = SUPPLIERS_DB.find(function(s) { return s.name === entityId; });
-  }
-  if (!supplier || !supplier.rates || supplier.rates.length === 0) return { advanceRate: ADVANCE_RATE, annualRate: ANNUAL_RATE, penaltyRate: PENALTY_RATE };
-  // One clock. Falls back to the app as-of date so a back-dated or scheduled
-  // run resolves the rate that applied on that date, not the rate today.
-  var ts = asOfTimestamp || (appToday() + "T23:59:59Z");
-  var sorted = supplier.rates.slice().sort(function(a, b) { return (a.effectiveTimestamp || a.effectiveDate).localeCompare(b.effectiveTimestamp || b.effectiveDate); });
-  var rate = sorted[0];
-  for (var i = 0; i < sorted.length; i++) {
-    var rts = sorted[i].effectiveTimestamp || sorted[i].effectiveDate;
-    if (rts <= ts) rate = sorted[i];
-  }
-  return { advanceRate: rate.advanceRate !== undefined ? rate.advanceRate : ADVANCE_RATE, annualRate: rate.annualRate, penaltyRate: rate.penaltyRate };
-}
+// getSupplierRate — moved to engine.js (v6.33)
 
-var _APP_TODAY = REF_DATE;
-function appToday() { return _APP_TODAY; }
-function setAppToday(d) { _APP_TODAY = d || REF_DATE; }
+// _APP_TODAY — moved to engine.js (v6.33)
+// appToday — moved to engine.js (v6.33)
+// setAppToday — moved to engine.js (v6.33)
 
 // ---- Limit helpers ----------------------------------------------------------
 // Lowest defined value wins. null/undefined means "not set" and is skipped;
@@ -514,17 +398,7 @@ function zeroFieldStyle(v, base) {
   return base;
 }
 
-function lowestLimit(values) {
-  var out = null;
-  for (var i = 0; i < values.length; i++) {
-    var v = values[i];
-    if (v === null || v === undefined || v === "") continue;
-    v = parseFloat(v);
-    if (isNaN(v)) continue;
-    if (out === null || v < out) out = v;
-  }
-  return out;
-}
+// lowestLimit — moved to engine.js (v6.33)
 
 // Null-preserving numeric parse. Distinguishes "not set" (null) from a typed 0.
 // Use for every limit field so blank means unlimited and zero means zero.
@@ -568,56 +442,22 @@ function diffLimitMap(oldMap, newMap, label, out, fmt) {
   });
 }
 
-function branchLimitsFor(entityId, key) {
-  var parsed = parseEntityId(entityId || "");
-  if (!parsed.branchId) return null;
-  var parent = getSupplierById(parsed.supplierId);
-  if (!parent || !parent.branches) return null;
-  var br = parent.branches.find(function(b) { return b.branchId === parsed.branchId; });
-  if (!br || !br[key]) return null;
-  return br[key];
-}
+// branchLimitsFor — moved to engine.js (v6.33)
 
 // Term = days remaining to maturity, measured from the as-of date.
 // Deliberately does NOT read inv.daysToMaturity: that field is written at
 // funding time and would make the test mean different things before and after.
-function invoiceTermDays(inv, asOf) {
-  if (!inv.dueDate) return null;
-  return daysBetween(asOf, inv.dueDate);
-}
+// invoiceTermDays — moved to engine.js (v6.33)
 
 // ---- Reason codes -----------------------------------------------------------
-var ELIG_REASONS = {
-  CURRENCY:          "Invoice currency does not match the programme",
-  SUPPLIER_NOT_ELIG: "Supplier entity is not on the programme's eligible list",
-  BUYER_NOT_ELIG:    "Buyer entity is not on the programme's eligible list",
-  INV_STATUS_BUY:    "Invoice status is blocked from purchase on this programme",
-  INV_STATUS_FUND:   "Invoice status is blocked from funding on this programme",
-  SUPPLIER_PAUSED:   "Supplier is paused",
-  BUYER_PAUSED:      "Buyer is paused",
-  MAX_INV_SIZE:      "Invoice exceeds the maximum invoice size",
-  MIN_INV_SIZE:      "Invoice is below the minimum invoice size",
-  MAX_TERM:          "Days to maturity exceed the maximum term",
-  MIN_TERM:          "Days to maturity are below the minimum term",
-  NO_TERM:           "Invoice has no due date",
-  ADVANCE_RATE:      "Supplier advance rate exceeds the programme maximum", // RETIRED 9 Aug 2026: ceiling now caps, not excludes. Label kept for historic audit rows.
-  INTEREST_RATE:     "Supplier interest rate is below the programme minimum",
-  DIL_SUP_LIVE:      "Supplier dilution (live) exceeds the programme maximum",
-  DIL_SUP_30:        "Supplier dilution (30d) exceeds the programme maximum",
-  DIL_SUP_90:        "Supplier dilution (90d) exceeds the programme maximum",
-  DIL_FUND_LIVE:     "Funded dilution (live) exceeds the programme maximum",
-  DIL_FUND_30:       "Funded dilution (30d) exceeds the programme maximum",
-  DIL_FUND_90:       "Funded dilution (90d) exceeds the programme maximum"
-};
+// ELIG_REASONS — moved to engine.js (v6.33)
 
 // Statuses an admin can gate on, per programme.
 var GATEABLE_STATUSES = ["Received", "Approved in Full", "Approved in Part", "Disputed", "Cancelled", "Declined", "Settled", "Buyer Default"];
-var DEFAULT_PURCHASE_BLOCKED = ["Settled"];
-var DEFAULT_FUNDING_BLOCKED  = ["Settled", "Cancelled", "Declined", "Disputed", "Buyer Default"];
+// DEFAULT_PURCHASE_BLOCKED — moved to engine.js (v6.33)
+// DEFAULT_FUNDING_BLOCKED — moved to engine.js (v6.33)
 
-function _mk(code, detail) {
-  return { code: code, label: ELIG_REASONS[code] || code, detail: detail || null };
-}
+// _mk — moved to engine.js (v6.33)
 
 // Explicit entity picker for programme eligibility.
 //
@@ -674,126 +514,12 @@ function entityChips(db, selected, onChange, chipStyle, accent) {
 //
 // Every failing test is collected, not short-circuited, so the admin tooltip can
 // show all reasons rather than only the first.
-function getProgramEligibility(inv, supDilRates, asOf) {
-  asOf = asOf || appToday();
-  var supRate = getSupplierRate(inv.supplierId || inv.supplierName, asOf);
-  var entityId = inv.supplierId || "";
-  var parentId = getParentEntityId(entityId);
-  var parentSup = getParentSupplierName(inv.supplierName);
-  var buyerId = inv.buyerId || "";
-  var term = invoiceTermDays(inv, asOf);
-  var dr = supDilRates ? (supDilRates[parentId] || supDilRates[parentSup] || {}) : {};
-  var parentSupObj = getSupplierById(parentId) || getParentSupplier(inv.supplierName);
-
-  var supPaused = isEntityPaused(entityId);
-  var buyPaused = isBuyerPaused(buyerId);
-
-  var out = { purchasable: [], fundable: [], rejected: [] };
-
-  FUNDING_PROGRAMS_DB.forEach(function(fp) {
-    var buyReasons = [], fundReasons = [];
-
-    // ---- Purchase gates ----------------------------------------------------
-    if (fp.currency && inv.currency && fp.currency !== inv.currency) {
-      buyReasons.push(_mk("CURRENCY", inv.currency + " vs " + fp.currency));
-    }
-    // Exact entity match only. The old parent-id fallback made every future
-    // branch eligible automatically; the list is now an explicit snapshot.
-    if (fp.eligibleSuppliers && fp.eligibleSuppliers.length > 0) {
-      if (fp.eligibleSuppliers.indexOf(entityId) === -1) {
-        buyReasons.push(_mk("SUPPLIER_NOT_ELIG", entityId));
-      }
-    }
-    if (fp.eligibleBuyers && fp.eligibleBuyers.length > 0) {
-      if (fp.eligibleBuyers.indexOf(buyerId) === -1) {
-        buyReasons.push(_mk("BUYER_NOT_ELIG", buyerId));
-      }
-    }
-    var buyBlocked = fp.purchaseBlockedStatuses || DEFAULT_PURCHASE_BLOCKED;
-    if (buyBlocked.indexOf(inv.invoiceStatus) > -1) {
-      buyReasons.push(_mk("INV_STATUS_BUY", inv.invoiceStatus));
-    }
-
-    // ---- Funding gates -----------------------------------------------------
-    var fundBlocked = fp.fundingBlockedStatuses || DEFAULT_FUNDING_BLOCKED;
-    if (fundBlocked.indexOf(inv.invoiceStatus) > -1) {
-      fundReasons.push(_mk("INV_STATUS_FUND", inv.invoiceStatus));
-    }
-    if (supPaused) fundReasons.push(_mk("SUPPLIER_PAUSED", entityId));
-    if (buyPaused) fundReasons.push(_mk("BUYER_PAUSED", buyerId));
-
-    // Max invoice size — lowest of programme / parent / branch.
-    var maxSize = lowestLimit([
-      fp.maxInvoiceSize,
-      parentSupObj && parentSupObj.singleInvoiceLimits ? parentSupObj.singleInvoiceLimits[fp.id] : null,
-      (function() { var m = branchLimitsFor(entityId, "singleInvoiceLimits"); return m ? m[fp.id] : null; })()
-    ]);
-    if (maxSize !== null && inv.amount > maxSize) {
-      fundReasons.push(_mk("MAX_INV_SIZE", inv.amount + " > " + maxSize));
-    }
-
-    // Legacy programme minimum invoice size. Superseded by Minimum Payment Size
-    // but retained until that ships.
-    if (fp.minInvoiceSize != null && inv.amount < fp.minInvoiceSize) {
-      fundReasons.push(_mk("MIN_INV_SIZE", inv.amount + " < " + fp.minInvoiceSize));
-    }
-
-    // Term — lowest of programme / parent / branch for the maximum.
-    if (term === null) {
-      fundReasons.push(_mk("NO_TERM"));
-    } else {
-      var maxTerm = lowestLimit([
-        fp.maxInvoiceTerm,
-        parentSupObj && parentSupObj.maxTermLimits ? parentSupObj.maxTermLimits[fp.id] : null,
-        (function() { var m = branchLimitsFor(entityId, "maxTermLimits"); return m ? m[fp.id] : null; })()
-      ]);
-      if (maxTerm !== null && term > maxTerm) {
-        fundReasons.push(_mk("MAX_TERM", term + "d > " + maxTerm + "d"));
-      }
-      var minTerm = (fp.minInvoiceTerm != null) ? fp.minInvoiceTerm : fp.minInvoiceTenor;
-      if (minTerm != null && term < minTerm) {
-        fundReasons.push(_mk("MIN_TERM", term + "d < " + minTerm + "d"));
-      }
-    }
-
-    if (fp.minInterestRate != null && supRate.annualRate < fp.minInterestRate - 0.0001) {
-      fundReasons.push(_mk("INTEREST_RATE"));
-    }
-    // Max Advance Rate no longer excludes: a supplier contracted above the
-    // programme ceiling is funded AT the ceiling. See effectiveAdvanceRate().
-    // Decided 9 August 2026 (handover 7.1).
-
-    if (fp.maxSupDilLive  != null && dr.dilRate  > fp.maxSupDilLive)  fundReasons.push(_mk("DIL_SUP_LIVE"));
-    if (fp.maxSupDil30    != null && dr.dil30    > fp.maxSupDil30)    fundReasons.push(_mk("DIL_SUP_30"));
-    if (fp.maxSupDil90    != null && dr.dil90    > fp.maxSupDil90)    fundReasons.push(_mk("DIL_SUP_90"));
-    if (fp.maxFundDilLive != null && dr.fdilRate > fp.maxFundDilLive) fundReasons.push(_mk("DIL_FUND_LIVE"));
-    if (fp.maxFundDil30   != null && dr.fdil30   > fp.maxFundDil30)   fundReasons.push(_mk("DIL_FUND_30"));
-    if (fp.maxFundDil90   != null && dr.fdil90   > fp.maxFundDil90)   fundReasons.push(_mk("DIL_FUND_90"));
-
-    // ---- Collect -----------------------------------------------------------
-    if (buyReasons.length > 0) {
-      out.rejected.push({ programId: fp.id, programName: fp.name, stage: "purchase", reasons: buyReasons });
-      return;
-    }
-    out.purchasable.push(fp);
-    if (fundReasons.length > 0) {
-      out.rejected.push({ programId: fp.id, programName: fp.name, stage: "funding", reasons: fundReasons });
-      return;
-    }
-    out.fundable.push(fp);
-  });
-
-  return out;
-}
+// getProgramEligibility — moved to engine.js (v6.33)
 
 // Back-compat: existing call sites expect a plain array of fundable programmes.
-function getEligiblePrograms(inv, supDilRates, asOf) {
-  return getProgramEligibility(inv, supDilRates, asOf).fundable;
-}
+// getEligiblePrograms — moved to engine.js (v6.33)
 
-function getPurchasablePrograms(inv, asOf) {
-  return getProgramEligibility(inv, null, asOf).purchasable;
-}
+// getPurchasablePrograms — moved to engine.js (v6.33)
 
 // Flatten rejection reasons into a single tooltip string for the admin UI.
 // One line per programme, reasons comma-separated, purchase blocks marked.
@@ -824,36 +550,8 @@ function getRejectionReasons(inv, supDilRates, asOf) {
 // above a contracted rate is not the same act as advancing below one.)
 //
 // Blank ceiling (null) = no cap. 0 = a genuine zero: advance nothing.
-function effectiveAdvanceRate(fp, entityId, asOf) {
-  var progAR = (fp && fp.maxAdvanceRate != null) ? fp.maxAdvanceRate : null;
-  var sr = getSupplierRate(entityId, asOf);
-  var supAR = (sr && sr.advanceRate != null) ? sr.advanceRate : null;
-  if (supAR == null && progAR == null) return 0;
-  if (supAR == null) return progAR;
-  if (progAR == null) return supAR;
-  return Math.min(supAR, progAR);
-}
-function getMaxAvailableCapital(inv, supDilRates, cnDilutionTotal, buyerCollected, asOf) {
-  var eligible = getEligiblePrograms(inv, supDilRates, asOf);
-  if (eligible.length === 0) return 0;
-  // Effective fundable base:
-  //  - cap at invoice amount (always)
-  //  - cap at partialApprovedAmount if the invoice is Approved in Part (buyer won't pay more than that)
-  //  - cap at amount minus any credit-note dilutions already applied
-  //  - cap at amount minus any buyer payments already collected (the collected portion is no longer a receivable)
-  // Funding advance rate applies to the lowest of these.
-  var partial = (inv.invoiceStatus === "Approved in Part" && inv.partialApprovedAmount > 0) ? inv.partialApprovedAmount : inv.amount;
-  var postDilutions = inv.amount - (cnDilutionTotal || 0);
-  var postCollected = inv.amount - (buyerCollected || 0);
-  var effectiveBase = Math.max(0, Math.min(inv.amount, partial, postDilutions, postCollected));
-  if (effectiveBase <= 0) return 0;
-  var maxCap = 0;
-  eligible.forEach(function(fp) {
-    var cap = r2(effectiveBase * effectiveAdvanceRate(fp, inv.supplierId || inv.supplierName, asOf));
-    if (cap > maxCap) maxCap = cap;
-  });
-  return maxCap;
-}
+// effectiveAdvanceRate — moved to engine.js (v6.33)
+// getMaxAvailableCapital — moved to engine.js (v6.33)
 
 function generateData(count) {
   var rand = makeRng(42), invoices = [], rawPayments = [], payId = 0;
@@ -963,6 +661,61 @@ var AUDIT_LOG = [];
 var SUPPLIER_PAYMENT_QUEUE = [];
 var CREDIT_NOTES_DB = [];
 var FUNDING_PROGRAMS_DB = [];
+
+// ======== Calculation engine ========
+// The engine lives in engine.js and runs unchanged in this bundle and in a
+// Supabase Edge Function. It is built once, here, because it captures the
+// five collections above by reference and this file only ever mutates them
+// in place — so every reload and every realtime row change is visible to it
+// without re-wiring.
+//
+// The names below were module-scope functions until v6.33. They are rebound
+// at the same scope so that all existing call sites are unchanged.
+var ENGINE = createEngine({
+  INVOICES_DB: INVOICES_DB,
+  FUNDING_PROGRAMS_DB: FUNDING_PROGRAMS_DB,
+  SUPPLIERS_DB: SUPPLIERS_DB,
+  BUYERS_DB: BUYERS_DB,
+  CREDIT_NOTES_DB: CREDIT_NOTES_DB,
+  ADVANCE_RATE: ADVANCE_RATE,
+  ANNUAL_RATE: ANNUAL_RATE,
+  PENALTY_RATE: PENALTY_RATE,
+  REF_DATE: REF_DATE
+});
+var DEFAULT_FUNDING_BLOCKED = ENGINE.DEFAULT_FUNDING_BLOCKED;
+var DEFAULT_PURCHASE_BLOCKED = ENGINE.DEFAULT_PURCHASE_BLOCKED;
+var ELIG_REASONS = ENGINE.ELIG_REASONS;
+var _mk = ENGINE._mk;
+var addDays = ENGINE.addDays;
+var appToday = ENGINE.appToday;
+var applyCapitalRepaymentFIFO = ENGINE.applyCapitalRepaymentFIFO;
+var branchLimitsFor = ENGINE.branchLimitsFor;
+var daysBetween = ENGINE.daysBetween;
+var effectiveAdvanceRate = ENGINE.effectiveAdvanceRate;
+var getBranchById = ENGINE.getBranchById;
+var getEligiblePrograms = ENGINE.getEligiblePrograms;
+var getMaxAvailableCapital = ENGINE.getMaxAvailableCapital;
+var getParentEntityId = ENGINE.getParentEntityId;
+var getParentSupplier = ENGINE.getParentSupplier;
+var getParentSupplierName = ENGINE.getParentSupplierName;
+var getProgramEligibility = ENGINE.getProgramEligibility;
+var getPurchasablePrograms = ENGINE.getPurchasablePrograms;
+var getSupplierById = ENGINE.getSupplierById;
+var getSupplierRate = ENGINE.getSupplierRate;
+var invoiceTermDays = ENGINE.invoiceTermDays;
+var isBuyerPaused = ENGINE.isBuyerPaused;
+var isEntityPaused = ENGINE.isEntityPaused;
+var lowestLimit = ENGINE.lowestLimit;
+var parseEntityId = ENGINE.parseEntityId;
+var processForDate = ENGINE.processForDate;
+var r2 = ENGINE.r2;
+var setAppToday = ENGINE.setAppToday;
+var synthesizeTranches = ENGINE.synthesizeTranches;
+var tranchesActiveCapital = ENGINE.tranchesActiveCapital;
+var tranchesInterestCharged = ENGINE.tranchesInterestCharged;
+var tranchesWeightedRate = ENGINE.tranchesWeightedRate;
+// ======== end calculation engine ========
+
 var ENTITY_NOTES_DB = [];
 var CSV_REVIEW_QUEUE_DB = [];
 var ENTITY_ALIASES_DB = [];
@@ -2468,323 +2221,7 @@ function _auditLog(action, details, context, dateOverride) {
   });
 }
 
-function processForDate(viewDate, paymentsDb, holdbackPaymentsDb) {
-  var processed = [];
-  var allocsByInvoice = new Map();
-  paymentsDb.forEach(function(pay) {
-    pay.allocations.forEach(function(a) {
-      var effDate = a.allocDate || pay.date;
-      if (effDate > viewDate) return;
-      if (!allocsByInvoice.has(a.invoiceId)) allocsByInvoice.set(a.invoiceId, []);
-      allocsByInvoice.get(a.invoiceId).push({
-        paymentId: pay.paymentId, amount: a.amount, date: effDate, currency: pay.currency
-      });
-    });
-  });
-  // Credit notes only reduce invoice amount (dilution) — they do NOT flow through the payment waterfall
-  var cnDilutionByInvoice = new Map();
-  var cnUnallocBySupplier = new Map(); // supplier -> unallocated CN total
-  var cnUnallocBySupBuyer = new Map(); // "supplier|buyer" -> unallocated CN total
-  var cnUnallocByBuyer = new Map(); // buyer -> unallocated CN total
-  CREDIT_NOTES_DB.forEach(function(cn) {
-    if (cn.date > viewDate) return;
-    var allocated = 0;
-    if (cn.allocations) cn.allocations.forEach(function(a) {
-      cnDilutionByInvoice.set(a.invoiceId, (cnDilutionByInvoice.get(a.invoiceId) || 0) + a.amount);
-      allocated += a.amount;
-    });
-    var unalloc = r2(cn.amount - allocated);
-      // Keyed on parent entity id, never on name. A credit note raised under an
-      // old supplier or branch name must still count towards the same supplier,
-      // and names on credit_notes are frozen at creation.
-      var cnParent = getParentEntityId(cn.supplierId) || getParentSupplierName(cn.supplierName);
-      var cnBuyer  = getParentEntityId(cn.buyerId)    || cn.buyerName;
-      if (unalloc > 0.01 && cnParent) {
-      cnUnallocBySupplier.set(cnParent, (cnUnallocBySupplier.get(cnParent) || 0) + unalloc);
-        if (cnBuyer) {
-        var key = cnParent + "|" + cnBuyer;
-        cnUnallocBySupBuyer.set(key, (cnUnallocBySupBuyer.get(key) || 0) + unalloc);
-        cnUnallocByBuyer.set(cnBuyer, (cnUnallocByBuyer.get(cnBuyer) || 0) + unalloc);
-        }
-      }
-  });
-  // Build holdback disbursement/application maps per invoice
-  var hbDisbursedByInvoice = new Map();
-  var hbAppliedToInvoice = new Map();
-  holdbackPaymentsDb.forEach(function(hbp) {
-    if (hbp.date > viewDate) return;
-    hbp.allocations.forEach(function(a) {
-      if (a.type === "disbursement") {
-        var src = hbp.sourceInvoiceId;
-        hbDisbursedByInvoice.set(src, (hbDisbursedByInvoice.get(src) || 0) + a.amount);
-      } else if (a.type === "invoice") {
-        var src2 = hbp.sourceInvoiceId;
-        hbDisbursedByInvoice.set(src2, (hbDisbursedByInvoice.get(src2) || 0) + a.amount);
-        if (!hbAppliedToInvoice.has(a.targetId)) hbAppliedToInvoice.set(a.targetId, []);
-        hbAppliedToInvoice.get(a.targetId).push({
-          hbPaymentId: hbp.hbPaymentId, sourceInvoiceId: src2, amount: a.amount, date: hbp.date, currency: hbp.currency
-        });
-      }
-    });
-  });
-  INVOICES_DB.forEach(function(rawInv) {
-    if (rawInv.invoiceDate > viewDate) return;
-    // Backfill tranches array for legacy invoices that pre-date the tranche model.
-    // Idempotent — re-running is safe. Persisted on next save (tranches field roundtrips through Supabase).
-    if ((!Array.isArray(rawInv.tranches) || rawInv.tranches.length === 0) && rawInv.fundedDate && rawInv.capitalDue > 0) {
-      rawInv.tranches = synthesizeTranches(rawInv);
-    }
-    // Derive capitalDue and interestCharged from tranches (tranches are source of truth).
-    // For invoices not yet funded (no tranches), keep the legacy values from the raw record.
-    if (Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
-      rawInv.capitalDue = tranchesActiveCapital(rawInv.tranches);
-      rawInv.interestCharged = tranchesInterestCharged(rawInv.tranches);
-      rawInv.annualRate = tranchesWeightedRate(rawInv.tranches);
-      rawInv.holdback = r2((rawInv.amount || 0) - rawInv.capitalDue);
-      rawInv.deferredPayment = r2(rawInv.holdback - rawInv.interestCharged);
-      rawInv.advanceRate = rawInv.amount > 0 ? rawInv.capitalDue / rawInv.amount : 0;
-    }
-    var statusAsOfDate = "Received", histAsOfDate = [];
-    for (var hi = 0; hi < rawInv.invoiceStatusHistory.length; hi++) {
-      var hh = rawInv.invoiceStatusHistory[hi];
-      if (hh.date <= viewDate) { statusAsOfDate = hh.status; histAsOfDate.push(hh); }
-    }
-    var paysForInv = (allocsByInvoice.get(rawInv.id) || []).slice().sort(function(a, b) { return a.date < b.date ? -1 : 1; });
-    var pastDue = rawInv.dueDate < viewDate;
-    var decEntry = histAsOfDate.find(function(x) { return x.status === "Declined"; });
-    var dispEntry = histAsOfDate.find(function(x) { return x.status === "Disputed"; });
-    var declinedDate = decEntry ? decEntry.date : null;
-    var disputedDate = dispEntry ? dispEntry.date : null;
-    var daysOverdue = pastDue ? daysBetween(rawInv.dueDate, viewDate) : 0;
-    var daysDisputed = (statusAsOfDate === "Disputed" && disputedDate) ? daysBetween(disputedDate, viewDate) : 0;
-    // Capital/interest/holdback balances only apply once the invoice is actually funded (money advanced)
-    var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
-    var intBal = isFunded ? rawInv.interestCharged : 0, penBal = 0, capBal = isFunded ? rawInv.capitalDue : 0;
-    var hbBal = isFunded ? (rawInv.deferredPayment !== undefined && rawInv.deferredPayment !== null ? rawInv.deferredPayment : r2((rawInv.holdback || 0) - (rawInv.interestCharged || 0))) : 0;
-    var hbRecd = 0;
-    var penaltyAccrued = 0;
-    var annotatedPays = [];
-    var penaltyStartDate = null;
-    if (declinedDate && declinedDate < viewDate) penaltyStartDate = declinedDate;
-    else if (rawInv.dueDate < viewDate) penaltyStartDate = rawInv.dueDate;
-    var penaltyDays = penaltyStartDate ? daysBetween(penaltyStartDate, viewDate) : 0;
-    function cleanBal() { if (Math.abs(penBal) < 0.01) penBal = 0; if (Math.abs(intBal) < 0.01) intBal = 0; if (Math.abs(capBal) < 0.01) capBal = 0; if (Math.abs(hbBal) < 0.01) hbBal = 0; }
-    // Reset tranche repayment state — viewData recomputes it deterministically from payments
-    if (Array.isArray(rawInv.tranches)) {
-      rawInv.tranches.forEach(function(t) { t.capitalRepaid = 0; t.status = "active"; });
-    }
-    function applyPay(pay, allowPen) {
-      var rem = pay.amount, toI = 0, toP = 0, toC = 0, toH = 0;
-      if (allowPen && rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
-      if (rem > 0 && intBal > 0.005) { var x2 = Math.min(rem, intBal); intBal -= x2; rem -= x2; toI = x2; }
-      if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
-      if (rem > 0 && hbBal > 0.005) { var x4 = Math.min(rem, hbBal); hbBal -= x4; rem -= x4; toH = x4; hbRecd += x4; }
-      cleanBal();
-      // Apply capital portion to tranches FIFO (oldest first). Updates capitalRepaid and tranche status.
-      if (toC > 0.005 && Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
-        applyCapitalRepaymentFIFO(rawInv.tranches, toC);
-      }
-      annotatedPays.push(Object.assign({}, pay, {
-        appliedToInterest: r2(toI), appliedToPenalty: r2(toP), appliedToCapital: r2(toC), appliedToHoldback: r2(toH),
-        postCapBal: r2(capBal), postIntBal: r2(intBal), postPenBal: r2(penBal), postHbBal: r2(hbBal)
-      }));
-    }
-    var invPenaltyRate = rawInv.penaltyRate || PENALTY_RATE;
-    var invPenaltyDailyRate = invPenaltyRate / 360;
-    // Pre-check write-offs: if all capital+interest+penalty would be written off, skip penalty accrual
-    var preWoP = 0, preWoI = 0, preWoC = 0;
-    if (rawInv.writeOffs) rawInv.writeOffs.forEach(function(wo) { preWoP += wo.penalty || 0; preWoI += wo.interest || 0; preWoC += wo.capital || 0; });
-    var woCoversAll = rawInv.writeOffs && preWoC >= rawInv.capitalDue - 0.01 && preWoI >= rawInv.interestCharged - 0.01;
-    if (penaltyDays > 0 && (intBal + capBal) > 0.01 && !woCoversAll) {
-      var payIdx = 0;
-      while (payIdx < paysForInv.length && paysForInv[payIdx].date <= penaltyStartDate) { applyPay(paysForInv[payIdx], false); payIdx++; }
-      for (var d = 1; d <= penaltyDays; d++) {
-        var today = addDays(penaltyStartDate, d);
-        if (capBal > 0.01) { var dayPen = capBal * invPenaltyDailyRate; penBal += dayPen; penaltyAccrued += dayPen; }
-        while (payIdx < paysForInv.length && paysForInv[payIdx].date <= today) { applyPay(paysForInv[payIdx], true); payIdx++; }
-      }
-      while (payIdx < paysForInv.length) { applyPay(paysForInv[payIdx], true); payIdx++; }
-    } else {
-      paysForInv.forEach(function(p) { applyPay(p, false); });
-    }
-    var fs;
-    cleanBal();
-    // Apply write-offs
-    var woTotalPen = 0, woTotalInt = 0, woTotalCap = 0, woTotalHb = 0;
-    if (rawInv.writeOffs) {
-      rawInv.writeOffs.forEach(function(wo) {
-        woTotalPen += wo.penalty || 0;
-        woTotalInt += wo.interest || 0;
-        woTotalCap += wo.capital || 0;
-        woTotalHb += wo.holdback || 0;
-      });
-      penBal = Math.max(0, penBal - woTotalPen);
-      intBal = Math.max(0, intBal - woTotalInt);
-      capBal = Math.max(0, capBal - woTotalCap);
-      hbBal = Math.max(0, hbBal - woTotalHb);
-    }
-    // Apply adjustments (credits decrease, debits increase)
-    var adjCreditPen = 0, adjCreditInt = 0, adjCreditCap = 0, adjDebitPen = 0, adjDebitInt = 0, adjDebitCap = 0;
-    if (rawInv.adjustments) {
-      rawInv.adjustments.forEach(function(adj) {
-        if (adj.type === "credit") { adjCreditPen += adj.penalty || 0; adjCreditInt += adj.interest || 0; adjCreditCap += adj.capital || 0; }
-        else { adjDebitPen += adj.penalty || 0; adjDebitInt += adj.interest || 0; adjDebitCap += adj.capital || 0; }
-      });
-      penBal = Math.max(0, penBal - adjCreditPen + adjDebitPen);
-      intBal = Math.max(0, intBal - adjCreditInt + adjDebitInt);
-      capBal = Math.max(0, capBal - adjCreditCap + adjDebitCap);
-    }
-    // Compute balance owed AFTER all payments, write-offs, adjustments, and holdback applications
-    var terminalInvStatus = statusAsOfDate === "Cancelled" || statusAsOfDate === "Settled" || statusAsOfDate === "Declined";
-    var hbAppsForInv = (hbAppliedToInvoice.get(rawInv.id) || []).slice().sort(function(a, b) { return a.date < b.date ? -1 : 1; });
-    var annotatedHbPays = [];
-    hbAppsForInv.forEach(function(hbApp) {
-      var rem = hbApp.amount, toP = 0, toI = 0, toC = 0;
-      if (rem > 0 && penBal > 0.005) { var x = Math.min(rem, penBal); penBal -= x; rem -= x; toP = x; }
-      if (rem > 0 && intBal > 0.005) { var x2 = Math.min(rem, intBal); intBal -= x2; rem -= x2; toI = x2; }
-      if (rem > 0 && capBal > 0.005) { var x3 = Math.min(rem, capBal); capBal -= x3; rem -= x3; toC = x3; }
-      cleanBal();
-      // Apply capital portion to tranches FIFO (oldest first)
-      if (toC > 0.005 && Array.isArray(rawInv.tranches) && rawInv.tranches.length > 0) {
-        applyCapitalRepaymentFIFO(rawInv.tranches, toC);
-      }
-      annotatedHbPays.push(Object.assign({}, hbApp, {
-        appliedToPenalty: r2(toP), appliedToInterest: r2(toI), appliedToCapital: r2(toC)
-      }));
-    });
-    cleanBal();
-    var hbDisbursed = r2(hbDisbursedByInvoice.get(rawInv.id) || 0);
-    var hbAvailable = r2(hbRecd - hbDisbursed); // Can go negative if payment unallocated after HBP disbursement
-    var holdbackOverdrawn = r2(Math.max(0, hbDisbursed - hbRecd)); // Supplier owes this back
-    var balOwed = r2(capBal + intBal + penBal + holdbackOverdrawn);
-    var debtBal = r2(capBal + intBal + penBal); // Debt balance excluding holdback — used for funding status
-    var dilTotal = r2(cnDilutionByInvoice.get(rawInv.id) || 0);
-    var amtPostDil = r2(rawInv.amount - dilTotal);
-    var initialCapPlusInt = r2(rawInv.capitalDue + rawInv.interestCharged);
-    var approvedAmt = rawInv.partialApprovedAmount || 0;
-    // Determine the effective approved/diluted amount for status checks
-    var effectiveAmt = rawInv.amount;
-    if (approvedAmt > 0 && approvedAmt < effectiveAmt) effectiveAmt = approvedAmt;
-    if (amtPostDil < effectiveAmt) effectiveAmt = amtPostDil;
-
-    if (rawInv.fundingStatus === "historic") fs = "historic";
-    else if (rawInv.fundingStatus === "pending") fs = "pending";
-    else if (rawInv.fundingStatus === "purchased" && !terminalInvStatus) fs = "purchased";
-    else if (rawInv.fundingStatus === "write_off" && balOwed > 0.01) fs = "write_off";
-    else if (rawInv.fundingStatus === "write_off" && debtBal < 0.005) fs = "fully_repaid";
-    else if (debtBal < 0.005 && !(rawInv.capitalDue === 0 && rawInv.fundedDate)) fs = "fully_repaid";
-    else if ((statusAsOfDate === "Settled" || statusAsOfDate === "Cancelled") && debtBal > 0.01) fs = "recovery_mode";
-    else if (statusAsOfDate === "Declined") fs = "recovery_mode";
-    else if (rawInv.fundedDate && effectiveAmt < initialCapPlusInt - 0.01) fs = "recovery_mode";
-    else if (rawInv.fundedDate && effectiveAmt < rawInv.amount - 0.01) fs = "at_risk";
-    else {
-      // Get thresholds from program if available, otherwise use defaults
-      var prog = rawInv.fundingProgram ? FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === rawInv.fundingProgram; }) : null;
-      var thOverdue = (prog && prog.thresholdOverdue !== undefined) ? prog.thresholdOverdue : 1;
-      var thAtRisk = (prog && prog.thresholdAtRisk !== undefined) ? prog.thresholdAtRisk : 7;
-      var thRecovery = (prog && prog.thresholdRecovery !== undefined) ? prog.thresholdRecovery : 30;
-      var thDisputeAtRisk = (prog && prog.thresholdDisputeAtRisk !== undefined) ? prog.thresholdDisputeAtRisk : 1;
-      var thDisputeRecovery = (prog && prog.thresholdDisputeRecovery !== undefined) ? prog.thresholdDisputeRecovery : 14;
-      if (statusAsOfDate === "Buyer Default" || statusAsOfDate === "Declined" || daysOverdue > thRecovery || daysDisputed > thDisputeRecovery) fs = "recovery_mode";
-      else if (daysOverdue > thAtRisk || (statusAsOfDate === "Disputed" && daysDisputed > thDisputeAtRisk)) fs = "at_risk";
-      else if (pastDue && daysOverdue >= thOverdue) fs = "overdue";
-      else fs = "funded";
-    }
-    // Set fullyRepaidDate when invoice transitions to fully_repaid
-    if (fs === "fully_repaid" && !rawInv.fullyRepaidDate) {
-      // Find the date of the last payment that brought balance to zero
-      var lastPayDate = viewDate;
-      if (paysForInv.length > 0) lastPayDate = paysForInv[paysForInv.length - 1].date;
-      if (hbAppsForInv.length > 0 && hbAppsForInv[hbAppsForInv.length - 1].date > lastPayDate) lastPayDate = hbAppsForInv[hbAppsForInv.length - 1].date;
-      rawInv.fullyRepaidDate = lastPayDate;
-      // If prior status was recovery_mode, log the legal repurchase event
-      if (rawInv.fundingStatus === "recovery_mode" || rawInv.priorFundingStatus === "recovery_mode") {
-        auditLog("Repurchased by Supplier", rawInv.id + " (recovery_mode) reached full repayment \u2014 legally repurchased by supplier " + rawInv.supplierName + " on " + lastPayDate, { invoiceId: rawInv.id, amount: rawInv.amount, currency: rawInv.currency, supplierId: rawInv.supplierId, supplier: rawInv.supplierName, buyerId: rawInv.buyerId, buyer: rawInv.buyerName, fullyRepaidDate: lastPayDate, fundingProgram: rawInv.fundingProgram, priorStatus: "recovery_mode" });
-      }
-    } else if (fs !== "fully_repaid" && rawInv.fullyRepaidDate) {
-      // Clear if no longer fully repaid (e.g. payment unallocated)
-      rawInv.fullyRepaidDate = null;
-    }
-    // Remember status for next tick (used for transition-based audit events)
-    rawInv.priorFundingStatus = fs;
-    var hbApplications = hbAppliedToInvoice.get(rawInv.id) || [];
-    // Auto-settle: if total buyer payments >= min(amount, approvedAmount, amountPostDilutions)
-    var settleThreshold = rawInv.amount;
-    if (rawInv.partialApprovedAmount > 0 && rawInv.partialApprovedAmount < settleThreshold) settleThreshold = rawInv.partialApprovedAmount;
-    if (amtPostDil < settleThreshold) settleThreshold = amtPostDil;
-    var totalBuyerPaid = 0;
-    paysForInv.forEach(function(p) { totalBuyerPaid += p.amount || 0; });
-    if (totalBuyerPaid >= settleThreshold - 0.01 && settleThreshold > 0.01 && statusAsOfDate !== "Settled" && statusAsOfDate !== "Cancelled" && statusAsOfDate !== "Declined") {
-      // Find the date of the payment that crossed the threshold
-      var runningTotal = 0, settlePayDate = viewDate;
-      paysForInv.forEach(function(p) { runningTotal += p.amount || 0; if (runningTotal >= settleThreshold - 0.01 && !rawInv.settledDate) settlePayDate = p.date; });
-      if (!rawInv.settledDate) {
-        rawInv.settledDate = settlePayDate;
-        rawInv.invoiceStatusHistory = rawInv.invoiceStatusHistory || [];
-        rawInv.invoiceStatusHistory.push({ status: "Settled", date: settlePayDate });
-      }
-      statusAsOfDate = "Settled";
-      // Re-evaluate funding status since settled with balance triggers recovery
-      if (fs !== "fully_repaid" && fs !== "write_off" && fs !== "pending" && debtBal > 0.01) fs = "recovery_mode";
-    }
-    // For unfunded invoices, compute max available capital from eligible programs.
-    // supDilRates is deliberately undefined here: dilution rates are derived FROM
-    // this function's output, so they cannot be an input to it. The figure therefore
-    // ignores dilution ceilings and can overstate what is actually fundable.
-    // Known limitation — do not "fix" by passing a variable that does not exist.
-    // buyerCollected reduces fundable headroom — the portion already paid by the buyer
-    // is no longer a receivable, so we can't advance against it.
-    var maxAvailCap = (!isFunded) ? getMaxAvailableCapital(rawInv, undefined, cnDilutionByInvoice.get(rawInv.id) || 0, totalBuyerPaid, viewDate) : 0;
-    // Funding headroom for purchased/funded invoices with a current program — used by the top-up workflow
-    var fundingHeadroom = 0;
-    if (rawInv.fundingProgram && (rawInv.fundingStatus === "purchased" || rawInv.fundingStatus === "funded" || rawInv.fundingStatus === "at_risk" || rawInv.fundingStatus === "overdue")) {
-      var currentProg = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === rawInv.fundingProgram; });
-      if (currentProg) {
-        var hPartial = (rawInv.invoiceStatus === "Approved in Part" && rawInv.partialApprovedAmount > 0) ? rawInv.partialApprovedAmount : rawInv.amount;
-        var hPostDil = rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0);
-        var hPostCol = rawInv.amount - totalBuyerPaid;
-        var hEffBase = Math.max(0, Math.min(rawInv.amount, hPartial, hPostDil, hPostCol));
-        var hMaxCap = r2(hEffBase * effectiveAdvanceRate(currentProg, rawInv.supplierId || rawInv.supplierName));
-        var hCommitted = (rawInv.capitalDue || 0) + (rawInv.pendingTopUpAmount || 0);
-        fundingHeadroom = r2(Math.max(0, hMaxCap - hCommitted));
-      }
-    }
-    var unallocatedPayments = (!isFunded) ? totalBuyerPaid : 0;
-    processed.push(Object.assign({}, rawInv, {
-      invoiceStatus: statusAsOfDate, invoiceStatusHistory: histAsOfDate,
-      fundingStatus: fs, declinedDate: declinedDate, disputedDate: disputedDate,
-      penaltyInterest: r2(penBal), penaltyAccrued: r2(penaltyAccrued), interestOutstanding: r2(intBal),
-      capitalOutstanding: r2(capBal), holdbackReceived: r2(hbRecd),
-      holdbackDisbursed: hbDisbursed, holdbackAvailable: hbAvailable,
-      holdbackOutstanding: r2(hbBal), holdbackOverdrawn: holdbackOverdrawn,
-      totalOutstanding: r2(intBal + penBal + capBal + Math.max(hbBal, holdbackOverdrawn)),
-      balanceOwed: r2(capBal + intBal + penBal + holdbackOverdrawn),
-      maxAvailableCapital: r2(maxAvailCap),
-      fundingHeadroom: r2(fundingHeadroom),
-      unallocatedPayments: r2(unallocatedPayments),
-      writeOffTotal: r2(woTotalPen + woTotalInt + woTotalCap + woTotalHb),
-      writeOffPenalty: r2(woTotalPen), writeOffInterest: r2(woTotalInt), writeOffCapital: r2(woTotalCap), writeOffHoldback: r2(woTotalHb),
-      adjCreditTotal: r2(adjCreditPen + adjCreditInt + adjCreditCap), adjDebitTotal: r2(adjDebitPen + adjDebitInt + adjDebitCap),
-      dilutionTotal: r2(cnDilutionByInvoice.get(rawInv.id) || 0),
-      amountPostDilutions: r2(rawInv.amount - (cnDilutionByInvoice.get(rawInv.id) || 0)),
-      totalFundsApplied: r2(annotatedPays.reduce(function(s, p) { return s + (p.appliedToPenalty || 0) + (p.appliedToInterest || 0) + (p.appliedToCapital || 0) + (p.appliedToHoldback || 0); }, 0)),
-      paymentsToInvoice: r2(Math.min(totalBuyerPaid, settleThreshold)),
-      settlementThreshold: r2(settleThreshold),
-      penaltyDays: penaltyDays, penaltyStartDate: penaltyStartDate, payments: annotatedPays,
-      holdbackApplications: hbApplications, holdbackPayments: annotatedHbPays
-    }));
-  });
-  var t = 0, cap = 0, totPen = 0, counts = {};
-  processed.forEach(function(inv) {
-    t += inv.amount; cap += inv.capitalDue; totPen += inv.penaltyInterest;
-    counts[inv.fundingStatus] = (counts[inv.fundingStatus] || 0) + 1;
-    counts["inv_" + inv.invoiceStatus] = (counts["inv_" + inv.invoiceStatus] || 0) + 1;
-  });
-  var mo = {};
-  processed.forEach(function(inv) { if (!inv.fundedDate) return; var k = inv.fundedDate.substring(0, 7); mo[k] = (mo[k] || 0) + inv.capitalDue; });
-  var chartData = Object.entries(mo).sort(function(a, b) { return a[0].localeCompare(b[0]); }).map(function(e) { return { k: e[0], v: e[1] }; });
-  return { invoices: processed, stats: Object.assign({ total: t, capitalAdvanced: cap, totalPenalty: totPen, n: processed.length }, counts), chartData: chartData, cnUnallocBySupplier: cnUnallocBySupplier, cnUnallocByBuyer: cnUnallocByBuyer, cnUnallocBySupBuyer: cnUnallocBySupBuyer };
-}
+// processForDate — moved to engine.js (v6.33)
 
 var IST = { "Received": { bg: "#8C9AB525", color: "#94A3B8", border: "#8C9AB530", icon: "\u25cb" }, "Approved in Full": { bg: "#2E8B5725", color: "#10B981", border: "#2E8B5730", icon: "\u25cf" }, "Approved in Part": { bg: "#C08B3025", color: "#F59E0B", border: "#C08B3030", icon: "\u25d0" }, "Settled": { bg: "#2E8B5735", color: "#059669", border: "#2E8B5740", icon: "\u2713" }, "Cancelled": { bg: "#6B728025", color: "#6B7280", border: "#6B728030", icon: "\u2298" }, "Declined": { bg: "#C0392B30", color: "#EF4444", border: "#DC262625", icon: "\u2715" }, "Disputed": { bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730", icon: "!" }, "Buyer Default": { bg: "#C0392B35", color: "#DC2626", border: "#DC262630", icon: "\u2716" } };
 var FST = { pending: { label: "Pending", bg: "#C08B3025", color: "#D97706", border: "#C08B3030" }, purchased: { label: "Purchased", bg: "#7B5EA725", color: "#8B5CF6", border: "#7B5EA730" }, funded: { label: "Funded", bg: "#2B4C7E25", color: "#0EA5E9", border: "#0EA5E920" }, fully_repaid: { label: "Fully Repaid", bg: "#2E8B5735", color: "#059669", border: "#2E8B5740" }, at_risk: { label: "At Risk", bg: "#7B5EA730", color: "#8B5CF6", border: "#7B5EA730" }, recovery_mode: { label: "Recovery Mode", bg: "#C0392B35", color: "#DC2626", border: "#DC262630" }, overdue: { label: "Overdue", bg: "#C0392B25", color: "#EF4444", border: "#DC262625" }, write_off: { label: "Write-Off", bg: "#6B728035", color: "#6B7280", border: "#6B728040" }, historic: { label: "Historic", bg: "#64748B25", color: "#94A3B8", border: "#64748B30" } };
@@ -2941,6 +2378,9 @@ export default function FactoringDashboard() {
 
   var lo1 = useState(!_dataLoaded), storageLoading = lo1[0], setStorageLoading = lo1[1];
   var vs = useState(REF_DATE), viewDate = vs[0], setViewDate = vs[1];
+  // Realtime connection state. A dropped channel is otherwise silent: the browser
+  // keeps showing plausible but frozen figures with nothing to say so.
+  var rtc = useState("connecting"), rtStatus = rtc[0], setRtStatus = rtc[1];
   function auditLog(action, details, context) {
     var ctx = Object.assign({}, context || {});
     if (userProfile) {
@@ -3154,9 +2594,10 @@ export default function FactoringDashboard() {
         if (!_isSaving) reloadCreditNotes().then(scheduleRender);
       })
       .subscribe(function(status, err) {
-        // Log-only. A channel that fails to join is otherwise completely silent:
-        // every binding on it dies together and nothing reaches the console.
+        // Surfaced in the UI, not just the console: every binding on this channel
+        // dies together, and stale-but-plausible figures are worse than an error.
         console.log("[realtime]", status, err || "");
+        setRtStatus(status === "SUBSCRIBED" ? "live" : (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") ? "stale" : "connecting");
       });
 
     return function() {
@@ -6898,6 +6339,7 @@ export default function FactoringDashboard() {
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
             {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+            {rtStatus !== "live" && <div style={{ marginTop: 8, padding: "6px 8px", borderRadius: 6, background: rtStatus === "stale" ? "#FCEBEB" : "#FAEEDA", border: "1px solid " + (rtStatus === "stale" ? "#A32D2D" : "#854F0B"), color: rtStatus === "stale" ? "#A32D2D" : "#854F0B", fontSize: 10, fontWeight: 700, lineHeight: 1.3 }}>{rtStatus === "stale" ? "\u26a0 Not receiving live updates \u2014 reload to refresh" : "Connecting\u2026"}</div>}
           </div>
         </div>
         {sidebarOpen && <div onClick={function() { setSidebarOpen(false); }} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 40 }} className="ff-sidebar-overlay" />}
@@ -6914,6 +6356,7 @@ export default function FactoringDashboard() {
             <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, fontWeight: 500 }}>VIEW AS OF</div>
             <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #334155", background: "#1E293B", color: "#E2E8F0", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", boxSizing: "border-box" }} />
             {viewDate !== REF_DATE && <button onClick={function() { setViewDate(REF_DATE); setPg(0); }} style={{ marginTop: 6, padding: "5px 10px", borderRadius: 5, border: "1px solid #334155", background: "transparent", color: "#94A3B8", fontSize: 11, fontWeight: 500, cursor: "pointer", width: "100%" }}>Reset to Today</button>}
+            {rtStatus !== "live" && <div style={{ marginTop: 8, padding: "6px 8px", borderRadius: 6, background: rtStatus === "stale" ? "#FCEBEB" : "#FAEEDA", border: "1px solid " + (rtStatus === "stale" ? "#A32D2D" : "#854F0B"), color: rtStatus === "stale" ? "#A32D2D" : "#854F0B", fontSize: 10, fontWeight: 700, lineHeight: 1.3 }}>{rtStatus === "stale" ? "\u26a0 Not receiving live updates \u2014 reload to refresh" : "Connecting\u2026"}</div>}
           </div>
           <div style={{ padding: "12px 20px", borderTop: "1px solid #1E293B" }}>
             <div style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, marginBottom: 2 }}>{userProfile ? userProfile.full_name || userProfile.email : ""}</div>
@@ -6935,6 +6378,7 @@ export default function FactoringDashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <Calendar size={14} />
                 <input type="date" value={viewDate} onChange={function(e) { var v = e.target.value; if (v && !isNaN(new Date(v + "T12:00:00").getTime())) { setViewDate(v); setPg(0); setExp(null); } }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none", cursor: "pointer" }} />
+                {rtStatus !== "live" && <div style={{ marginTop: 8, padding: "6px 8px", borderRadius: 6, background: rtStatus === "stale" ? "#FCEBEB" : "#FAEEDA", border: "1px solid " + (rtStatus === "stale" ? "#A32D2D" : "#854F0B"), color: rtStatus === "stale" ? "#A32D2D" : "#854F0B", fontSize: 10, fontWeight: 700, lineHeight: 1.3 }}>{rtStatus === "stale" ? "\u26a0 Not receiving live updates \u2014 reload to refresh" : "Connecting\u2026"}</div>}
               </div>
             </div>
           </div>
