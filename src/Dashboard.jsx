@@ -843,6 +843,12 @@ async function saveSPQEntry(spqId) {
       executed_at: item.executedAt || null, executed_display: item.executedDisplay || null,
       source_payment_id: item.sourcePaymentId || null, source_invoice_id: item.sourceInvoiceId || null,
       hb_payment_id: item.hbPaymentId || null, is_bundle: item.isBundle || false,
+      // Disbursals only. Every other queue type leaves these null/empty.
+      // flow_ids is what paymentFailed() needs to revert the covered fund
+      // flows to Pending; without it a failed disbursal leaves them Completed.
+      service_provider: item.serviceProvider || null,
+      service_provider_id: item.serviceProviderId || null,
+      flow_ids: item.flowIds || [],
       holdback_ids: item.holdbackIds || [], gross_amount: item.grossAmount || null,
       deductions: item.deductions || [], deduction_total: item.deductionTotal || 0,
       notes: item.notes || [],
@@ -1342,6 +1348,9 @@ async function loadPersistedData() {
           programId: row.program_id, programName: row.program_name,
           hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
           isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          serviceProvider: row.service_provider || null,
+          serviceProviderId: row.service_provider_id || null,
+          flowIds: row.flow_ids || [],
           grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
           deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
           notes: row.notes || [],
@@ -1730,6 +1739,9 @@ async function reloadForSupplier(supplierId) {
       programId: row.program_id, programName: row.program_name,
       hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
       isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          serviceProvider: row.service_provider || null,
+          serviceProviderId: row.service_provider_id || null,
+          flowIds: row.flow_ids || [],
       grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
       deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
       notes: row.notes || [],
@@ -1876,6 +1888,9 @@ async function reloadSPQ() {
           programId: row.program_id, programName: row.program_name,
           hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
           isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          serviceProvider: row.service_provider || null,
+          serviceProviderId: row.service_provider_id || null,
+          flowIds: row.flow_ids || [],
           grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
           deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
           notes: row.notes || [],
@@ -2592,6 +2607,9 @@ export default function FactoringDashboard() {
             programId: row.program_id, programName: row.program_name,
             hbPaymentId: row.hb_payment_id || null, sourceInvoiceId: row.source_invoice_id || null,
             isBundle: row.is_bundle || false, holdbackIds: row.holdback_ids || [],
+          serviceProvider: row.service_provider || null,
+          serviceProviderId: row.service_provider_id || null,
+          flowIds: row.flow_ids || [],
             grossAmount: row.gross_amount ? parseFloat(row.gross_amount) : null,
             deductions: row.deductions || [], deductionTotal: parseFloat(row.deduction_total) || 0,
             notes: row.notes || [],
@@ -12897,7 +12915,10 @@ export default function FactoringDashboard() {
                             var firstDis = batchConfirm.items[0];
                             SUPPLIER_PAYMENT_QUEUE.push({
                               id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
+                              // Id as well as name: names are frozen at creation, so a
+                              // renamed service provider would stop matching its payments.
                               serviceProvider: firstDis.serviceProvider,
+                              serviceProviderId: firstDis.serviceProviderId || null,
                               programId: firstDis.programId, programName: firstDis.programName,
                               amount: r2(disTotalAmt), currency: firstDis.currency, status: "Completed",
                               createdAt: now.toISOString(), createdDisplay: nowDisp,
