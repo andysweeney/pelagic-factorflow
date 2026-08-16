@@ -8426,9 +8426,16 @@ export default function FactoringDashboard() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead><tr>{["Effective From", "Advance Rate", "Interest Rate", "Penalty Rate"].map(function(h) { return <th key={h} style={{ textAlign: "left", padding: "5px 10px", fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>{h}</th>; })}</tr></thead>
                     <tbody>{rateHistory.map(function(r, ri) {
-                      var isCurrent = ri === 0;
+                      // The rate actually IN FORCE as at the app date \u2014 not simply the
+                      // newest row. A future-dated rate is scheduled, not current, and
+                      // labelling it "current" contradicts what the app is using.
+                      var _rts = r.effectiveTimestamp || r.effectiveDate;
+                      var _asOf = appToday() + "T23:59:59Z";
+                      var _inForce = rateHistory.filter(function(x) { return (x.effectiveTimestamp || x.effectiveDate) <= _asOf; })[0];
+                      var isCurrent = _inForce ? (_inForce === r) : false;
+                      var isFuture = _rts > _asOf;
                       return <tr key={ri} style={{ borderBottom: "1px solid var(--border)", background: isCurrent ? "#2B4C7E08" : "transparent" }}>
-                        <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}{isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}</td>
+                        <td style={{ padding: "5px 10px", fontSize: 12, color: "var(--text-secondary)" }}>{r.effectiveDisplay || fmt(r.effectiveDate)}{isCurrent && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#0EA5E9" }}>Current</span>}{isFuture && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: "#D97706" }}>Scheduled \u2014 not yet in force</span>}</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#0EA5E9", fontWeight: 600 }}>{r.advanceRate !== undefined ? (r.advanceRate * 100).toFixed(0) + "%" : (ADVANCE_RATE * 100).toFixed(0) + "%"}</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#D97706", fontWeight: 600 }}>{(r.annualRate * 100).toFixed(1)}%</td>
                         <td style={{ padding: "5px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color: "#DC2626", fontWeight: 600 }}>{(r.penaltyRate * 100).toFixed(1)}%</td>
