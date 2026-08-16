@@ -3268,7 +3268,7 @@ export default function FactoringDashboard() {
     }
     executeAllocation(later, aff);
   }
-  function executeAllocation(later, aff) {
+  async function executeAllocation(later, aff) {
     later.forEach(function(l) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === l.pid; }); if (p) { auditLog("Payment Unallocated", l.pid + " unallocated from " + l.invs.join(", ") + " (superseded by " + allocPay.paymentId + ")", { paymentId: l.pid, invoiceIds: l.invs, reason: "superseded", supersededBy: allocPay.paymentId }); p.allocations = p.allocations.filter(function(a) { return !aff[a.invoiceId]; }); } });
     var pay = PAYMENTS_DB.find(function(p) { return p.paymentId === allocPay.paymentId; });
     if (pay) {
@@ -3293,16 +3293,21 @@ export default function FactoringDashboard() {
     var allocSnapshot = activeAllocs.map(function(a) { var snap = { invoiceId: a.invoiceId, amount: a.amount }; if (a.allocDate && a.allocDate !== allocPay.date) snap.allocDate = a.allocDate; return snap; });
     if (activeAllocs.length > 0) auditLog("Payment Allocated", allocPay.paymentId + " allocated " + money(activeAllocs.reduce(function(s, a) { return s + a.amount; }, 0), allocPay.currency) + " to " + activeAllocs.length + " invoice(s)", { paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency, date: allocPay.date, allocations: allocSnapshot, displacedPayments: later.map(function(l) { return { paymentId: l.pid, invoiceIds: l.invs }; }) });
     // Create outbound payment queue entries for allocations to unfunded invoices
-    activeAllocs.forEach(function(a) {
+    // for-loop rather than forEach: the body awaits a reference allocation,
+    // and a forEach callback cannot await — it would fire them all off and
+    // carry on, so the code after this loop would run before the queue
+    // entries existed.
+    for (var _ai = 0; _ai < activeAllocs.length; _ai++) {
+      var a = activeAllocs[_ai];
       var rawInv = INVOICES_DB.find(function(x) { return x.id === a.invoiceId; });
-      if (!rawInv) return;
+      if (!rawInv) continue;
       var isFunded = rawInv.fundingStatus !== "pending" && rawInv.fundingStatus !== "purchased" && rawInv.fundedDate;
-      if (isFunded) return;
+      if (isFunded) continue;
       // Unfunded invoice — funds should be remitted to the supplier
       var supplierEntityId = rawInv.supplierId || "";
       var displayName = getEntityDisplayName(supplierEntityId) || rawInv.supplierName || supplierEntityId;
       var bankInfo = getSupplierBankDetails(supplierEntityId, rawInv.fundingProgram);
-      var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+      var spqId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       var now = new Date();
       SUPPLIER_PAYMENT_QUEUE.push({
         id: spqId, type: "remittance", invoiceId: a.invoiceId, invoiceIds: [a.invoiceId],
@@ -3316,18 +3321,18 @@ export default function FactoringDashboard() {
       });
       saveSPQEntry(spqId);
       auditLog("Remittance Queued", spqId + ": " + money(r2(a.amount), allocPay.currency) + " from unfunded " + a.invoiceId + " queued for remittance to " + displayName, { paymentId: allocPay.paymentId, invoiceId: a.invoiceId, supplierId: supplierEntityId, supplierName: displayName, amount: r2(a.amount), currency: allocPay.currency, spqId: spqId, unfunded: true, bankName: bankInfo.bankName, bankDetails: bankInfo.bankDetails, bankVerified: bankInfo.bankVerified });
-    });
+    }
     setSuccessMsg({ payId: allocPay.paymentId, lines: allocs, currency: allocPay.currency, later: later });
     setAllocPay(null); setAllocs([]); setAllocSearch(""); setConfirmData(null); setDataVer(function(v) { return v + 1; });
     setTimeout(function() { setSuccessMsg(null); }, 12000);
   }
   function unallocatePayment(pid) { var p = PAYMENTS_DB.find(function(x) { return x.paymentId === pid; }); if (p) { var oldAllocs = p.allocations.map(function(a) { return { invoiceId: a.invoiceId, amount: a.amount }; }); var old = oldAllocs.map(function(a) { return a.invoiceId; }).join(", "); auditLog("Payment Unallocated", pid + " unallocated from " + (old || "none"), { paymentId: pid, amount: p.amount, currency: p.currency, previousAllocations: oldAllocs }); oldAllocs.forEach(function(a) { auditLog("Payment Unallocated", pid + " (" + money(a.amount, p.currency) + ") unallocated from " + a.invoiceId, { paymentId: pid, invoiceId: a.invoiceId, amount: a.amount, currency: p.currency }); }); p.allocations = []; savePayment(pid); setDataVer(function(v) { return v + 1; }); } }
-  function createPayment() {
+  async function createPayment() {
     if (!newPayAmt || parseFloat(newPayAmt) <= 0) return;
     var payAmt = r2(parseFloat(newPayAmt));
-    var maxNum = 0;
-    PAYMENTS_DB.forEach(function(p) { var m = p.paymentId.match(/PAY-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxNum) maxNum = n; } });
-    var payId = "PAY-" + String(maxNum + 1).padStart(7, "0");
+    // Reference from the database. allocRef falls back to the same scan this
+    // replaced if the RPC is unreachable.
+    var payId = await allocRef("PAY-", PAYMENTS_DB, "paymentId", 7);
     var newPayObj = { paymentId: payId, amount: payAmt, date: newPayDate, currency: newPayCcy, reference: newPayRef.trim() || "", allocations: [], direction: newPayDirection };
     PAYMENTS_DB.push(newPayObj);
     savePayment(payId);
@@ -3369,7 +3374,7 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
-  function paymentFailed(item) {
+  async function paymentFailed(item) {
     if (!item) return;
     var now = new Date();
     var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -3405,7 +3410,7 @@ export default function FactoringDashboard() {
       // getPayRemaining excludes Failed entries automatically — no allocation cleanup needed
       auditLog("Remittance Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Funds returned to source payment " + (item.sourcePaymentId || ""), { completedPaymentId: item.id, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, sourcePaymentId: item.sourcePaymentId, programId: item.programId, programName: item.programName });
     } else {
-      var newPendId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+      var newPendId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       SUPPLIER_PAYMENT_QUEUE.push(Object.assign({}, item, { id: newPendId, status: "Pending", executedAt: null, executedDisplay: null, createdAt: now.toISOString(), createdDisplay: nowDisp }));
       saveSPQEntry(newPendId);
       auditLog("Holdback Payment Failed", item.id + " failed: " + money(item.amount, item.currency) + " to " + item.supplierName + ". Returned as " + newPendId + " to Pending Payments.", { completedPaymentId: item.id, newPendingId: newPendId, amount: item.amount, currency: item.currency, supplierName: item.supplierName, supplierId: item.supplierId, programId: item.programId, programName: item.programName });
@@ -4260,18 +4265,18 @@ export default function FactoringDashboard() {
     setHbSupplierAmt("");
   }
   function cancelHbDisburse() { setHbDisburseInv(null); setHbAllocs([]); setHbSupplierAmt(""); }
-  function executeHbDisburse() {
+  async function executeHbDisburse() {
     if (!hbDisburseInv) return;
     var supAmt = r2(parseFloat(hbSupplierAmt) || 0);
     if (supAmt <= 0) return;
-    var maxHbpNum = 0;
-    HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
-    var hbpCounter = maxHbpNum + 1;
-    var hbId = "HBP-" + String(hbpCounter).padStart(7, "0");
+    // Reference from the database, not from this tab's copy of the table.
+    // allocRef falls back to the same local scan this replaced if the RPC is
+    // unreachable, so behaviour is unchanged where 001a is not applied.
+    var hbId = await allocRef("HBP-", HOLDBACK_PAYMENTS_DB, "hbPaymentId", 7);
     var allocations = [{ type: "disbursement", targetId: null, amount: supAmt }];
     var supplier = getParentSupplier(hbDisburseInv.supplierName);
     var bankInfo = getSupplierBankDetails(hbDisburseInv.supplierId || hbDisburseInv.supplierName, hbDisburseInv.fundingProgram);
-    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+    var spqId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: spqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: hbDisburseInv.id,
       supplierName: hbDisburseInv.supplierName, supplierId: hbDisburseInv.supplierId || (supplier ? supplier.id : ""),
@@ -13836,17 +13841,22 @@ export default function FactoringDashboard() {
                   {balanceWarnings.map(function(w, wi) { return <div key={wi} style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{w}</div>; })}
                 </div>}
                 <div style={{ textAlign: "right" }}>
-                <button onClick={function() {
+                <button onClick={async function() {
                   var now = new Date();
                   var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
                   if (isOutbound) {
                     // OUTBOUND FLOW: create Pending SPQ remittances (for supplier routings)
                     // and Pending fund_flows outflows (for SP routings). No invoice allocation.
-                    payRoutings.forEach(function(r) {
+                    // for-loop: the body awaits an SPQ- allocation in the else
+                    // branch, and a forEach callback cannot await. Everything
+                    // after this loop — the audit entry, the toast, the form
+                    // reset — must run once every routing has been queued.
+                    for (var _pr = 0; _pr < payRoutings.length; _pr++) {
+                      var r = payRoutings[_pr];
                       if (r.counterpartyType === "service_provider") {
                         var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === r.programId; });
-                        if (!prog) return;
+                        if (!prog) continue;
                         if (!prog.fundFlows) prog.fundFlows = [];
                         var flowId = nextId("DIS-", prog.fundFlows, "flowId", 6);
                         prog.fundFlows.push({
@@ -13866,7 +13876,7 @@ export default function FactoringDashboard() {
                         });
                       } else {
                         // Supplier routing: create Pending SPQ remittance (like pass-through but user-initiated)
-                        var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                        var spqId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                         var bankInfo = getSupplierBankDetails(r.supplierId, r.programId);
                         SUPPLIER_PAYMENT_QUEUE.push({
                           id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
@@ -13884,7 +13894,7 @@ export default function FactoringDashboard() {
                           programId: r.programId, programName: r.programName, direction: "outbound"
                         });
                       }
-                    });
+                    }
                     auditLog("Payment Fully Processed", allocPay.paymentId + " routed outbound: " + money(allocPay.amount, allocPay.currency) + " across " + payRoutings.length + " routing(s)", {
                       paymentId: allocPay.paymentId, amount: allocPay.amount, currency: allocPay.currency,
                       routingCount: payRoutings.length, direction: "outbound"
@@ -14022,7 +14032,7 @@ export default function FactoringDashboard() {
                   {routingRemaining > 0.01 && allocs.length > 0 ? " — " + money(routingRemaining, allocPay.currency) + " will be passed through to supplier" : ""}
                   {routingRemaining > 0.01 && allocs.length === 0 ? "Full amount will be passed through to supplier" : ""}
                 </div>
-                <button onClick={function() {
+                <button onClick={async function() {
                   // Confirm this routing's allocation
                   var prog = FUNDING_PROGRAMS_DB.find(function(fp) { return fp.id === routing.programId; });
                   var now = new Date();
@@ -14035,16 +14045,16 @@ export default function FactoringDashboard() {
 
                     // Check for holdback returns: if allocation fully repays an invoice, auto-create holdback disbursement
                     var refreshedData = processForDate(viewDate, PAYMENTS_DB, HOLDBACK_PAYMENTS_DB);
-                    activeAllocs.forEach(function(a) {
+                    // for-loop: the body awaits HBP- and SPQ- allocations.
+                    for (var _aa = 0; _aa < activeAllocs.length; _aa++) {
+                      var a = activeAllocs[_aa];
                       var updatedInv = refreshedData.invoices.find(function(x) { return x.id === a.invoiceId; });
                       if (updatedInv && updatedInv.fundingStatus === "fully_repaid" && updatedInv.holdbackAvailable > 0.01) {
                         // Auto-create holdback return
-                        var maxHbpNum = 0;
-                        HOLDBACK_PAYMENTS_DB.forEach(function(h) { var m = h.hbPaymentId.match(/HBP-(\d+)/); if (m) { var n = parseInt(m[1]); if (n > maxHbpNum) maxHbpNum = n; } });
-                        var hbId = "HBP-" + String(maxHbpNum + 1).padStart(7, "0");
+                        var hbId = await allocRef("HBP-", HOLDBACK_PAYMENTS_DB, "hbPaymentId", 7);
                         var hbAmt = r2(updatedInv.holdbackAvailable);
                         var hbBankInfo = getSupplierBankDetails(updatedInv.supplierId || updatedInv.supplierName, updatedInv.fundingProgram);
-                        var hbSpqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                        var hbSpqId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                         HOLDBACK_PAYMENTS_DB.push({ hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, amount: hbAmt, date: viewDate, currency: updatedInv.currency, allocations: [{ type: "disbursement", targetId: null, amount: hbAmt }] });
                         SUPPLIER_PAYMENT_QUEUE.push({
                           id: hbSpqId, type: "holdback", hbPaymentId: hbId, sourceInvoiceId: updatedInv.id,
@@ -14059,7 +14069,7 @@ export default function FactoringDashboard() {
                         saveSPQEntry(hbSpqId);
                         auditLog("Holdback Return Queued", hbId + ": " + money(hbAmt, updatedInv.currency) + " holdback from " + updatedInv.id + " queued for return to " + updatedInv.supplierName + " (" + hbSpqId + ")", { hbPaymentId: hbId, sourceInvoiceId: updatedInv.id, supplierName: updatedInv.supplierName, amount: hbAmt, currency: updatedInv.currency, spqId: hbSpqId, programId: updatedInv.fundingProgram, autoGenerated: true });
                       }
-                    });
+                    }
 
                     // Note: Program balance is credited automatically via the buyer payment allocation
                     // showing in the bank statement — no separate fund flow entry needed
@@ -14069,7 +14079,7 @@ export default function FactoringDashboard() {
 
                   // Pass-through remainder to supplier
                   if (routingRemaining > 0.01) {
-                    var spqId = nextId("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                    var spqId = await allocRef("SPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                     var bankInfo = getSupplierBankDetails(routing.supplierId, routing.programId);
                     SUPPLIER_PAYMENT_QUEUE.push({
                       id: spqId, type: "remittance", invoiceId: null, invoiceIds: [],
