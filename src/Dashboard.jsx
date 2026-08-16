@@ -2442,6 +2442,18 @@ export default function FactoringDashboard() {
     }
     _auditLog(action, details, ctx, viewDate !== REF_DATE ? viewDate : undefined);
   }
+
+  // Hand the engine a way to write audit entries.
+  //
+  // processForDate logs the legal repurchase event when a recovery_mode
+  // invoice is repaid in full. Until v6.39 that call resolved to nothing —
+  // auditLog is declared here, inside the component, and processForDate runs
+  // at module scope — so it threw ReferenceError and took down the render.
+  //
+  // Reassigned every render on purpose: auditLog closes over userProfile and
+  // viewDate, and a stale copy would attribute the entry to the wrong user or
+  // stamp it with the wrong date.
+  ENGINE.setAuditLogger(auditLog);
   var vws = useState("company"), view = vws[0], setView = vws[1];
   var is1 = useState("all"), isf = is1[0], setIsf = is1[1];
   var fs1 = useState("all"), fsf = fs1[0], setFsf = fs1[1];
