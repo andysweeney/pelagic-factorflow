@@ -742,6 +742,31 @@ function nextId(prefix, arr, idField, pad) {
   return prefix + String(maxIdNum(prefix, arr, idField) + 1).padStart(pad, "0");
 }
 
+// Allocate a reference from the database rather than from this browser tab.
+//
+// nextId() below counts the highest number THIS TAB can see. Twenty operators
+// means twenty separate counts, and two of them minting the same reference is
+// only a matter of timing. pf_alloc_ref() (migration 001a) increments a single
+// counter row and returns the formatted reference; the increment is one atomic
+// UPDATE, so concurrent callers cannot be handed the same number.
+//
+// Falls back to the local mint if the call fails, so an environment without
+// 001a applied still works exactly as it did before.
+async function allocRef(prefix, arr, idField, pad) {
+  try {
+    var res = await supabase.rpc("pf_alloc_ref", { p_prefix: prefix });
+    if (res && !res.error && typeof res.data === "string" && res.data.indexOf(prefix) === 0) {
+      return res.data;
+    }
+    console.warn("[allocRef] server allocation unavailable for " + prefix +
+      " — falling back to local mint.", res && res.error);
+  } catch (e) {
+    console.warn("[allocRef] server allocation threw for " + prefix +
+      " — falling back to local mint.", e);
+  }
+  return nextId(prefix, arr, idField, pad);
+}
+
 async function fetchAllRows(table, filter, opts) {
   // filter: optional { column: "col_name", value: "val" }
   // opts.strict: throw on error instead of returning a silently truncated array.
@@ -833,6 +858,13 @@ async function saveSPQEntry(spqId) {
 async function saveFundingProgram(progId) {
   var fp = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
   if (!fp) return;
+
+  // Fund flows (FF- / DIS-) are a jsonb list on this row, so two operators
+  // editing one programme overwrite each other wholesale — the loser's flow
+  // simply disappears. Write only if the row has not moved since we read it.
+  // If the version column is missing (001a not applied here), fall through to
+  // the old unconditional upsert rather than blocking the save.
+  var _v = (typeof fp.version === "number") ? fp.version : null;
   _isSaving = true;
   try {
     var row = {
@@ -858,7 +890,25 @@ async function saveFundingProgram(progId) {
       created_date: fp.createdDate || null,
       fund_flows: fp.fundFlows || []
     };
-    var progRes = await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
+    var progRes;
+    if (_v === null) {
+      progRes = await supabase.from("funding_programs").upsert([row], { onConflict: "id" });
+    } else {
+      row.version = _v + 1;
+      var _sel = await supabase.from("funding_programs").update(row)
+        .eq("id", fp.id).eq("version", _v).select("id");
+      if (!_sel.error && (!_sel.data || _sel.data.length !== 1)) {
+        // Somebody else saved this programme first. Do not overwrite them.
+        _isSaving = false;
+        try { await reloadFundingPrograms(); } catch (e) { console.error("[SaveFP] reload failed:", e); }
+        setDataVer(function(v) { return v + 1; });
+        toast.warning("Programme changed by another operator",
+          (fp.name || fp.id) + " was saved by someone else while you were editing. Your change was NOT applied \u2014 the latest version has been loaded. Please redo your edit.");
+        return;
+      }
+      if (!_sel.error) fp.version = _v + 1;
+      progRes = _sel;
+    }
     if (progRes && progRes.error) { console.error("[SaveProgram] Supabase error:", progRes.error); toast.error("Funding program save failed", progRes.error.message || "Database rejected the program record."); }
   } catch (e) { console.error("[SaveProgram] Error:", e); toast.error("Funding program save error", e.message || String(e)); }
   _isSaving = false;
@@ -1202,6 +1252,7 @@ async function loadPersistedData() {
           minInvoiceTenor: row.min_invoice_tenor || 0,
           maxInvoiceSize: nz(row.max_invoice_size),
           minPaymentSize: nz(row.min_payment_size),
+          version: row.version,
           purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
           fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
@@ -1913,6 +1964,7 @@ async function reloadFundingPrograms() {
           minInvoiceTenor: row.min_invoice_tenor || 0,
           maxInvoiceSize: nz(row.max_invoice_size),
           minPaymentSize: nz(row.min_payment_size),
+          version: row.version,
           purchaseBlockedStatuses: row.purchase_blocked_statuses || DEFAULT_PURCHASE_BLOCKED.slice(),
           fundingBlockedStatuses: row.funding_blocked_statuses || DEFAULT_FUNDING_BLOCKED.slice(),
           minInvoiceSize: parseFloat(row.min_invoice_size) || 0,
@@ -3595,7 +3647,7 @@ export default function FactoringDashboard() {
     setDataVer(function(v) { return v + 1; });
   }
 
-  function executeFunding(invId) {
+  async function executeFunding(invId) {
     var raw = INVOICES_DB.find(function(x) { return x.id === invId; });
     if (!raw) return;
     var isPurchasedFlow = raw.fundingStatus === "purchased";
@@ -3615,6 +3667,45 @@ export default function FactoringDashboard() {
         alert("Cannot release funds for " + raw.id + " on " + progName + ".\n\n" + whyX + "\n\nThe invoice remains purchased.");
         return;
       }
+    }
+
+    // ---- Atomic claim -----------------------------------------------------
+    // The database decides who funds this invoice, not the browser. A stale
+    // tab loses here even if its own copy still says "purchased".
+    var _claimErr = null, _claimed = 0;
+    try {
+      var _q = supabase.from("invoices");
+      var _res = isPurchasedFlow
+        ? await _q.update({ funding_status: "funded" })
+            .eq("id", invId).eq("funding_status", "purchased").select("id")
+        : await _q.update({ pending_top_up_amount: 0 })
+            .eq("id", invId).gt("pending_top_up_amount", 0).select("id");
+      if (_res && _res.error) _claimErr = _res.error;
+      else _claimed = (_res && _res.data) ? _res.data.length : 0;
+    } catch (e) { _claimErr = e; }
+
+    if (_claimErr) {
+      console.error("[executeFunding] claim failed:", _claimErr);
+      toast.error("Could not reach the database",
+        "Funding for " + invId + " was NOT executed. Nothing has changed. Please retry.");
+      return { ok: false, reason: "error" };
+    }
+
+    if (_claimed !== 1) {
+      // Somebody else got there first. Pull the true row back so this screen
+      // stops showing a state that no longer exists.
+      try {
+        var _fresh = await supabase.from("invoices").select("*").eq("id", invId).single();
+        if (_fresh && _fresh.data) {
+          var _ix = INVOICES_DB.findIndex(function(x) { return x.id === invId; });
+          if (_ix >= 0) INVOICES_DB[_ix] = mapInvoiceRow(_fresh.data);
+        }
+      } catch (e) { console.error("[executeFunding] refresh failed:", e); }
+      setDataVer(function(v) { return v + 1; });
+      toast.warning("Already actioned by another operator",
+        invId + " was " + (isPurchasedFlow ? "funded" : "topped up") +
+        " by someone else. Nothing was advanced twice. The screen has been refreshed.");
+      return { ok: false, reason: "conflict" };
     }
     if (isTopupFlow) {
       // Execute top-up: push a new tranche, queue Completed CPQ.
@@ -3647,7 +3738,7 @@ export default function FactoringDashboard() {
       var bankInfoTU = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
       var nowTU = new Date();
       var useDispTU = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : nowTU.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-      var cpIdTU = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+      var cpIdTU = await allocRef("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
       SUPPLIER_PAYMENT_QUEUE.push({
         id: cpIdTU, type: "funding", invoiceId: invId, invoiceIds: [invId],
         supplierName: raw.supplierName, supplierId: raw.supplierId || (supplierTU ? supplierTU.id : ""),
@@ -3700,7 +3791,7 @@ export default function FactoringDashboard() {
     var bankInfo = getSupplierBankDetails(raw.supplierId || raw.supplierName, raw.fundingProgram);
     var now = new Date();
     var useDisplay = viewDate !== REF_DATE ? new Date(viewDate + "T12:00:00").toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + " (as of)" : now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-    var cpId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+    var cpId = await allocRef("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
     SUPPLIER_PAYMENT_QUEUE.push({
       id: cpId, type: "funding", invoiceId: invId, invoiceIds: [invId],
       supplierName: raw.supplierName, supplierId: raw.supplierId || (supplier ? supplier.id : ""),
@@ -12575,7 +12666,7 @@ export default function FactoringDashboard() {
                             var prog = FUNDING_PROGRAMS_DB.find(function(p) { return p.id === progId; });
                             if (prog) { var availBal = getProgramAvailableBalance(progId); insuffBal = totalCapNeeded > availBal + 0.01; }
                           }
-                          return <button disabled={insuffBal} onClick={function() {
+                          return <button disabled={insuffBal} onClick={async function() {
                           var now = new Date();
                           var nowDisp = now.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
                           if (batchConfirm.type === "outbound") {
@@ -12617,10 +12708,19 @@ export default function FactoringDashboard() {
                             var spqIdsBeforeFunding = {};
                             SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { spqIdsBeforeFunding[q.id] = true; });
                             var fundingInvIds = [];
-                            (batchConfirm.fundingItems || []).forEach(function(inv) {
-                              executeFunding(inv.id);
-                              fundingInvIds.push(inv.id);
-                            });
+                            // Sequential and awaited: each claim must settle before the next,
+                            // and all of them before createdFundingSpqIds is computed below.
+                            var _blockedFunding = [];
+                            var _fundItems = batchConfirm.fundingItems || [];
+                            for (var _fi = 0; _fi < _fundItems.length; _fi++) {
+                              var _r = await executeFunding(_fundItems[_fi].id);
+                              if (_r && _r.ok === false) { _blockedFunding.push(_fundItems[_fi].id); continue; }
+                              fundingInvIds.push(_fundItems[_fi].id);
+                            }
+                            if (_blockedFunding.length > 0) {
+                              toast.warning("Some invoices were not funded",
+                                _blockedFunding.join(", ") + " were already actioned elsewhere and have been skipped.");
+                            }
                             var createdFundingSpqIds = [];
                             SUPPLIER_PAYMENT_QUEUE.forEach(function(q) { if (!spqIdsBeforeFunding[q.id]) createdFundingSpqIds.push(q.id); });
                             // Is this batch entirely pass-throughs? Used by deduction allocation and bundle-skip logic below.
@@ -12730,7 +12830,7 @@ export default function FactoringDashboard() {
                               // can hand back an id that collides with one we're simultaneously DELETE-ing
                               // from Supabase, producing a race where the bundle upsert loses to the delete
                               // (or vice versa, leaving stale individual rows in the DB).
-                              var bundleId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                              var bundleId = await allocRef("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                               individualIds.forEach(function(rid) {
                                 var idx = SUPPLIER_PAYMENT_QUEUE.findIndex(function(q) { return q.id === rid; });
                                 if (idx >= 0) SUPPLIER_PAYMENT_QUEUE.splice(idx, 1);
@@ -12776,7 +12876,7 @@ export default function FactoringDashboard() {
                                 auditLog("Disbursal Executed", dis.flowId + " executed: " + money(dis.amount, dis.currency) + " to " + dis.serviceProvider + " from " + dis.programName, { programId: dis.programId, flowId: dis.flowId, amount: dis.amount, currency: dis.currency, serviceProvider: dis.serviceProvider });
                               }
                             });
-                            var disId = nextId("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
+                            var disId = await allocRef("CPQ-", SUPPLIER_PAYMENT_QUEUE, "id");
                             var firstDis = batchConfirm.items[0];
                             SUPPLIER_PAYMENT_QUEUE.push({
                               id: disId, type: "disbursal", isBundle: batchConfirm.items.length > 1, flowIds: disFlowIds,
@@ -14046,10 +14146,10 @@ export default function FactoringDashboard() {
             if (match) { setView("buyer"); setSelectedBuyer(match.id); setBuyTab("overview"); setPg(0); }
           }
 
-          function createCreditNote() {
+          async function createCreditNote() {
             var amt = r2(parseFloat(cnf.amount) || 0);
             if (amt <= 0 || !cnf.date || !cnf.currency || !cnf.supplier || !cnf.buyer) return;
-            var cnId = nextId("CN-", CREDIT_NOTES_DB, "creditNoteId", 7);
+            var cnId = await allocRef("CN-", CREDIT_NOTES_DB, "creditNoteId", 7);
             var supDisplay = getEntityDisplayName(cnf.supplier) || cnf.supplier;
             var supParentNameCN = getParentSupplierName(cnf.supplier) || supDisplay;
             var buyDisplay = buyName(cnf.buyer) || cnf.buyer;
@@ -14418,9 +14518,9 @@ export default function FactoringDashboard() {
             if (!programId) return;
             setView("program"); setSelectedProgram(programId); setProgTab("overview");
           }
-          function createInvoice() {
+          async function createInvoice() {
             if (!nf.supplier || !nf.buyer || amt <= 0 || !nf.invoiceDate || !nf.dueDate) return;
-            var newId = nextId("INV-", INVOICES_DB, "id", 7);
+            var newId = await allocRef("INV-", INVOICES_DB, "id", 7);
             var hist = [{ status: "Received", date: nf.invoiceDate }];
             var supRate = getSupplierRate(nf.supplier);
             var supDisplayName = getEntityDisplayName(nf.supplier) || nf.supplier;
@@ -15169,7 +15269,7 @@ export default function FactoringDashboard() {
             }).catch(function() { /* silent fail — entity was already saved with the number */ });
           }
 
-          function saveEntity() {
+          async function saveEntity() {
             var f = manageFields;
             if (!f.name) return;
             if (manageEdit) {
@@ -15242,7 +15342,7 @@ export default function FactoringDashboard() {
                 }
               }
             } else {
-              var newId = nextId(prefix + "-", db, "id", 6);
+              var newId = await allocRef(prefix + "-", db, "id", 6);
               var newEnt = Object.assign({ id: newId }, EMPTY_ADDR, isSupLike ? { bankName: "", bankDetails: "" } : {}, f);
               db.push(newEnt);
               if (!isSupLike) { BUYERS = BUYERS_DB.map(function(b) { return b.name; }); }
@@ -15892,7 +15992,7 @@ export default function FactoringDashboard() {
                   var ebIdx = editingBranch ? editingBranch.idx : -1;
                   var ebData = editingBranch ? editingBranch.data : null;
 
-                  function startBranchEdit(idx) {
+                  async function startBranchEdit(idx) {
                     var br = idx >= 0 ? Object.assign({}, branches[idx], { programBankAccounts: branches[idx].programBankAccounts ? JSON.parse(JSON.stringify(branches[idx].programBankAccounts)) : {} }) : { branchId: nextId("BR-", branches, "branchId", 4), branchName: "", street1: "", street2: "", city: "", state: "", country: "United Kingdom", zip: "", bankName: "", bankDetails: "", bankVerified: false, programBankAccounts: {}, primaryContact: "", primaryEmail: "", primaryPhone: "", primarySignatory: false, secondaryContact: "", secondaryEmail: "", secondaryPhone: "", secondarySignatory: false, contact3Name: "", contact3Email: "", contact3Phone: "", contact3Signatory: false, contact4Name: "", contact4Email: "", contact4Phone: "", contact4Signatory: false, contact5Name: "", contact5Email: "", contact5Phone: "", contact5Signatory: false };
                     setManagePopup({ type: "branchEdit", idx: idx, data: br });
                   }
@@ -15971,7 +16071,7 @@ export default function FactoringDashboard() {
                     <div style={{ background: "var(--card)", borderRadius: 12, border: "1px solid var(--border)", overflow: "hidden" }}>
                       <div style={{ padding: "18px 28px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>Branches ({branches.length})</div>
-                        <button onClick={function() { startBranchEdit(-1); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Add Branch</button>
+                        <button onClick={async function() { await startBranchEdit(-1); }} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>+ Add Branch</button>
                       </div>
                       {branches.length === 0 && <div style={{ padding: "24px 22px", color: "var(--muted)", fontSize: 12, textAlign: "center", fontStyle: "italic" }}>No branches added. Click "+ Add Branch" to create one.</div>}
                       {branches.length > 0 && <div style={{ maxHeight: 400, overflowY: "auto" }}>
@@ -15989,7 +16089,7 @@ export default function FactoringDashboard() {
                                 {br.paused ? <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#EF444414", color: "#EF4444", border: "1px solid #EF444430" }}>{"\u23F8"} Paused</span> : <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#05966914", color: "#059669", border: "1px solid #05966930" }}>Active</span>}
                               </td>
                               <td style={{ padding: "8px 8px", display: "flex", gap: 6 }}>
-                                <button onClick={function() { startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
+                                <button onClick={async function() { await startBranchEdit(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>Edit</button>
                                 <button onClick={function() { br.paused = !br.paused; persistBranches(); auditLog(br.paused ? "Branch Paused" : "Branch Unpaused", "Branch \"" + br.branchName + "\" on " + det.id + " (" + det.name + ") " + (br.paused ? "paused" : "unpaused"), { entityId: det.id, branchName: br.branchName, branchId: br.branchId, paused: br.paused }); setDataVer(function(v) { return v + 1; }); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid " + (br.paused ? "#05966940" : "#EF444440"), background: br.paused ? "#05966908" : "#EF444408", color: br.paused ? "#059669" : "#EF4444", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{br.paused ? "\u25B6 Unpause" : "\u23F8 Pause"}</button>
                                 <button onClick={function() { removeBranch(bi); }} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--muted)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>{"\u2715"}</button>
                               </td>
