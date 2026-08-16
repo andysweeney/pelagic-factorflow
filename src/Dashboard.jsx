@@ -796,6 +796,64 @@ async function fetchAllRows(table, filter, opts) {
 
 
 
+// Conditional write. The database decides whether this save is based on a
+// current copy of the row; the browser cannot know on its own.
+//
+//   update <table> set ..., version = v + 1 where <key> = id and version = v
+//
+// One operator matches one row. A second, working from a copy loaded before
+// the first save landed, matches zero and is told so. There is no window
+// between checking and writing because there is no separate check.
+//
+// opts: { table, keyCol, id, row, obj, reload, label }
+//   obj    the in-memory record, so the new version can be recorded on it
+//   reload the table reloader, run on conflict so the screen self-corrects
+//   label  what the operator is told was changed underneath them
+//
+// Returns { ok: true, res } or { ok: false, conflict: true } — never retries.
+// A silent retry would write the stale values over whatever the other
+// operator just saved, which is the failure being prevented.
+async function saveVersioned(opts) {
+  var v = (opts.obj && typeof opts.obj.version === "number") ? opts.obj.version : null;
+
+  // No version column here (001a not applied). Behave exactly as before.
+  if (v === null) {
+    var plain = await supabase.from(opts.table).upsert([opts.row], { onConflict: opts.keyCol });
+    return { ok: !(plain && plain.error), res: plain };
+  }
+
+  var next = v + 1;
+  var payload = Object.assign({}, opts.row, { version: next });
+  var res = await supabase.from(opts.table).update(payload)
+    .eq(opts.keyCol, opts.id).eq("version", v).select(opts.keyCol);
+  if (res && res.error) return { ok: false, res: res };
+
+  if (res && res.data && res.data.length === 1) {
+    opts.obj.version = next;
+    return { ok: true, res: res };
+  }
+
+  // Zero rows means one of two things: the row is new, or somebody else has
+  // written it since this copy was loaded. These need opposite responses, so
+  // ask which it is rather than guessing.
+  var probe = await supabase.from(opts.table).select(opts.keyCol).eq(opts.keyCol, opts.id).maybeSingle();
+  if (probe && !probe.error && !probe.data) {
+    var ins = await supabase.from(opts.table).insert([Object.assign({}, opts.row, { version: 1 })]);
+    if (!(ins && ins.error)) opts.obj.version = 1;
+    return { ok: !(ins && ins.error), res: ins };
+  }
+
+  // Genuine conflict. Do not write.
+  _isSaving = false;
+  try { if (typeof opts.reload === "function") await opts.reload(); }
+  catch (e) { console.error("[saveVersioned] reload failed:", e); }
+  toast.warning("Changed by another operator",
+    (opts.label || opts.id) + " was updated by someone else while you were working on it. " +
+    "Your change was NOT saved \u2014 the latest version has been loaded. Please redo it.");
+  console.warn("[saveVersioned] conflict on " + opts.table + " " + opts.id + " (had version " + v + ")");
+  return { ok: false, conflict: true };
+}
+
 async function saveInvoice(invId) {
   var inv = INVOICES_DB.find(function(x) { return x.id === invId; });
   if (!inv) return;
@@ -822,7 +880,11 @@ async function saveInvoice(invId) {
       do_not_purchase: inv.doNotFund || false, do_not_advance: inv.doNotAdvance || false, pending_top_up_amount: inv.pendingTopUpAmount || 0, pending_top_up_rate: inv.pendingTopUpRate || null, pending_top_up_date: inv.pendingTopUpDate || null, tranches: inv.tranches || [],
       notes: inv.notes || []
     };
-    var upRes = await supabase.from("invoices").upsert([row], { onConflict: "id" });
+    var _sv = await saveVersioned({ table: "invoices", keyCol: "id",
+      id: inv.id, row: row, obj: inv,
+      reload: null, label: ("Invoice " + inv.id) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var upRes = _sv.res;
     if (upRes && upRes.error) { console.error("[SaveInvoice] Supabase error:", upRes.error); toast.error("Invoice save failed", upRes.error.message || "Database rejected the invoice record."); }
   } catch (e) { console.error("[SaveInvoice] Error:", e); toast.error("Invoice save error", e.message || String(e)); }
   _isSaving = false;
@@ -855,7 +917,11 @@ async function saveSPQEntry(spqId) {
       cancelled_at: item.cancelledAt || null, cancelled_display: item.cancelledDisplay || null,
       failed_at: item.failedAt || null, failed_display: item.failedDisplay || null
     };
-    var result = await supabase.from("supplier_payment_queue").upsert([row], { onConflict: "id" });
+    var _sv = await saveVersioned({ table: "supplier_payment_queue", keyCol: "id",
+      id: item.id, row: row, obj: item,
+      reload: reloadSPQ, label: ("Payment queue entry " + item.id) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var result = _sv.res;
     if (result.error) { console.error("[SaveSPQ] Supabase error:", result.error.message, result.error.details); toast.error("Payment queue save failed", result.error.message || "Database rejected the queue entry."); }
   } catch (e) { console.error("[SaveSPQ] Error:", e); toast.error("Payment queue save error", e.message || String(e)); }
   _isSaving = false;
@@ -926,7 +992,11 @@ async function savePayment(paymentId) {
   _isSaving = true;
   try {
     var row = { payment_id: pay.paymentId, amount: pay.amount, date: pay.date, currency: pay.currency, reference: pay.reference || "", direction: pay.direction || "inbound" };
-    var upRes = await supabase.from("payments").upsert([row], { onConflict: "payment_id" });
+    var _sv = await saveVersioned({ table: "payments", keyCol: "payment_id",
+      id: pay.paymentId, row: row, obj: pay,
+      reload: reloadPayments, label: ("Payment " + pay.paymentId) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var upRes = _sv.res;
     if (upRes.error) { console.error("[SavePayment] payments upsert error:", upRes.error, "row:", row); toast.error("Payment save failed", upRes.error.message || "Database rejected the payment record."); }
     // Save allocations
     var delRes = await supabase.from("payment_allocations").delete().eq("payment_id", pay.paymentId);
@@ -984,7 +1054,11 @@ async function saveSupplier(supId) {
     var prevSupName = null;
     var prevSupRes = await supabase.from("suppliers").select("name").eq("id", s.id).maybeSingle();
     if (prevSupRes && !prevSupRes.error && prevSupRes.data) prevSupName = prevSupRes.data.name;
-    var supRes = await supabase.from("suppliers").upsert([row], { onConflict: "id" });
+    var _sv = await saveVersioned({ table: "suppliers", keyCol: "id",
+      id: s.id, row: row, obj: s,
+      reload: reloadSuppliers, label: (s.name || s.id) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var supRes = _sv.res;
     if (!supRes || !supRes.error) { await recordEntityRename("supplier", s.id, prevSupName, s.name); }
     if (supRes && supRes.error) { console.error("[SaveSupplier] Supabase error:", supRes.error); toast.error("Supplier save failed", supRes.error.message || "Database rejected the supplier record."); }
   } catch (e) { console.error("[SaveSupplier] Error:", e); toast.error("Supplier save error", e.message || String(e)); }
@@ -1013,7 +1087,11 @@ async function saveBuyer(buyId) {
     var prevBuyName = null;
     var prevBuyRes = await supabase.from("buyers").select("name").eq("id", b.id).maybeSingle();
     if (prevBuyRes && !prevBuyRes.error && prevBuyRes.data) prevBuyName = prevBuyRes.data.name;
-    var buyRes = await supabase.from("buyers").upsert([row], { onConflict: "id" });
+    var _sv = await saveVersioned({ table: "buyers", keyCol: "id",
+      id: b.id, row: row, obj: b,
+      reload: reloadBuyers, label: (b.name || b.id) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var buyRes = _sv.res;
     if (!buyRes || !buyRes.error) { await recordEntityRename("buyer", b.id, prevBuyName, b.name); }
     if (buyRes && buyRes.error) { console.error("[SaveBuyer] Supabase error:", buyRes.error); toast.error("Buyer save failed", buyRes.error.message || "Database rejected the buyer record."); }
   } catch (e) { console.error("[SaveBuyer] Error:", e); toast.error("Buyer save error", e.message || String(e)); }
@@ -1034,7 +1112,11 @@ async function saveServiceProvider(spId) {
       primary_contact: sp.primaryContact || null, primary_email: sp.primaryEmail || null, primary_phone: sp.primaryPhone || null, primary_signatory: sp.primarySignatory || false,
       secondary_contact: sp.secondaryContact || null, secondary_email: sp.secondaryEmail || null, secondary_phone: sp.secondaryPhone || null, secondary_signatory: sp.secondarySignatory || false
     };
-    var res = await supabase.from("service_providers").upsert([row], { onConflict: "id" });
+    var _sv = await saveVersioned({ table: "service_providers", keyCol: "id",
+      id: sp.id, row: row, obj: sp,
+      reload: null, label: (sp.name || sp.id) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var res = _sv.res;
     if (res && res.error) { console.error("[SaveServiceProvider] Error:", res.error, "row:", row); toast.error("Service provider save failed", res.error.message || "Database rejected the SP record."); }
   } catch (e) { console.error("[SaveServiceProvider] Error:", e); toast.error("Service provider save error", e.message || String(e)); }
   _isSaving = false;
@@ -1051,7 +1133,11 @@ async function saveCreditNote(cnId) {
       buyer_name: cn.buyerName, buyer_id: getParentEntityId(cn.buyerId) || "", buyer_entity_id: branchEntityId(cn.buyerId),
       allocations: cn.allocations || [], notes: cn.notes || []
     };
-    var cnRes = await supabase.from("credit_notes").upsert([row], { onConflict: "credit_note_id" });
+    var _sv = await saveVersioned({ table: "credit_notes", keyCol: "credit_note_id",
+      id: cn.creditNoteId, row: row, obj: cn,
+      reload: reloadCreditNotes, label: ("Credit note " + cn.creditNoteId) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var cnRes = _sv.res;
     if (cnRes && cnRes.error) { console.error("[SaveCN] Supabase error:", cnRes.error); toast.error("Credit note save failed", cnRes.error.message || "Database rejected the credit note."); }
   } catch (e) { console.error("[SaveCN] Error:", e); toast.error("Credit note save error", e.message || String(e)); }
   _isSaving = false;
@@ -1063,7 +1149,11 @@ async function saveHoldbackPayment(hbpId) {
   _isSaving = true;
   try {
     var row = { hb_payment_id: hbp.hbPaymentId, source_invoice_id: hbp.sourceInvoiceId, amount: hbp.amount, date: hbp.date, currency: hbp.currency };
-    var hbRes = await supabase.from("holdback_payments").upsert([row], { onConflict: "hb_payment_id" });
+    var _sv = await saveVersioned({ table: "holdback_payments", keyCol: "hb_payment_id",
+      id: hbp.hbPaymentId, row: row, obj: hbp,
+      reload: reloadHoldbackPayments, label: ("Holdback payment " + hbp.hbPaymentId) });
+    if (_sv.conflict) { _isSaving = false; setDataVer(function(v) { return v + 1; }); return; }
+    var hbRes = _sv.res;
     if (hbRes && hbRes.error) { console.error("[SaveHBP] upsert error:", hbRes.error); toast.error("Holdback payment save failed", hbRes.error.message || "Database error."); }
     // Save allocations
     var hbDelRes = await supabase.from("holdback_payment_allocations").delete().eq("hb_payment_id", hbp.hbPaymentId);
@@ -1078,7 +1168,7 @@ async function saveHoldbackPayment(hbpId) {
 }
 
 function mapInvoiceRow(row) {
-  return {
+  return { version: row.version,
     id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
     amount: parseFloat(row.amount) || 0, currency: row.currency,
     capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
@@ -1187,7 +1277,7 @@ async function loadPersistedData() {
     if (supRes.data && supRes.data.length > 0) {
       SUPPLIERS_DB.length = 0;
       supRes.data.forEach(function(row) {
-        SUPPLIERS_DB.push({
+        SUPPLIERS_DB.push({ version: row.version,
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
@@ -1214,7 +1304,7 @@ async function loadPersistedData() {
     if (buyRes.data && buyRes.data.length > 0) {
       BUYERS_DB.length = 0;
       buyRes.data.forEach(function(row) {
-        BUYERS_DB.push({
+        BUYERS_DB.push({ version: row.version,
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
@@ -1279,7 +1369,7 @@ async function loadPersistedData() {
     if (invData.length > 0) {
       INVOICES_DB.length = 0;
       invData.forEach(function(row) {
-        INVOICES_DB.push({
+        INVOICES_DB.push({ version: row.version,
           id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
           amount: parseFloat(row.amount) || 0, currency: row.currency,
           capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
@@ -1340,7 +1430,7 @@ async function loadPersistedData() {
     if (spqRes.data && spqRes.data.length > 0) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
+        SUPPLIER_PAYMENT_QUEUE.push({ version: row.version,
           id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
           supplierName: row.supplier_name, supplierId: rowEntityId(row),
           bankName: row.bank_name, bankDetails: row.bank_details,
@@ -1366,7 +1456,7 @@ async function loadPersistedData() {
     if (cnRes.data && cnRes.data.length > 0) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
+        CREDIT_NOTES_DB.push({ version: row.version,
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
           supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
@@ -1696,7 +1786,7 @@ async function reloadForSupplier(supplierId) {
   invData.forEach(function(row) {
     if (seen[row.id]) return;
     seen[row.id] = true;
-    INVOICES_DB.push({
+    INVOICES_DB.push({ version: row.version,
       id: row.id, supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
       amount: parseFloat(row.amount) || 0, currency: row.currency,
       capitalDue: parseFloat(row.capital_due) || 0, holdback: parseFloat(row.holdback) || 0,
@@ -1731,7 +1821,7 @@ async function reloadForSupplier(supplierId) {
   SUPPLIER_PAYMENT_QUEUE.length = 0;
   var passThroughSourcePayIds = {};
   spqData.forEach(function(row) {
-    SUPPLIER_PAYMENT_QUEUE.push({
+    SUPPLIER_PAYMENT_QUEUE.push({ version: row.version,
       id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
       supplierName: row.supplier_name, supplierId: rowEntityId(row),
       bankName: row.bank_name, bankDetails: row.bank_details,
@@ -1880,7 +1970,7 @@ async function reloadSPQ() {
     if (spqRes.data) {
       SUPPLIER_PAYMENT_QUEUE.length = 0;
       spqRes.data.forEach(function(row) {
-        SUPPLIER_PAYMENT_QUEUE.push({
+        SUPPLIER_PAYMENT_QUEUE.push({ version: row.version,
           id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
           supplierName: row.supplier_name, supplierId: rowEntityId(row),
           bankName: row.bank_name, bankDetails: row.bank_details,
@@ -1912,7 +2002,7 @@ async function reloadSuppliers() {
     if (supRes.data) {
       SUPPLIERS_DB.length = 0;
       supRes.data.forEach(function(row) {
-        SUPPLIERS_DB.push({
+        SUPPLIERS_DB.push({ version: row.version,
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
@@ -1944,7 +2034,7 @@ async function reloadBuyers() {
     if (buyRes.data) {
       BUYERS_DB.length = 0;
       buyRes.data.forEach(function(row) {
-        BUYERS_DB.push({
+        BUYERS_DB.push({ version: row.version,
           id: row.id, name: row.name, companyNumber: row.company_number, vatNumber: row.vat_number,
           jurisdiction: row.jurisdiction, status: row.status, onboardingDate: row.onboarding_date, notes: row.notes,
           street1: row.street1 || "", street2: row.street2 || "", city: row.city || "", state: row.state || "",
@@ -2004,7 +2094,7 @@ async function reloadCreditNotes() {
     if (cnRes.data) {
       CREDIT_NOTES_DB.length = 0;
       cnRes.data.forEach(function(row) {
-        CREDIT_NOTES_DB.push({
+        CREDIT_NOTES_DB.push({ version: row.version,
           creditNoteId: row.credit_note_id, amount: parseFloat(row.amount) || 0,
           currency: row.currency, date: row.date, reference: row.reference || "",
           supplierName: row.supplier_name, supplierId: rowEntityId(row), buyerName: row.buyer_name, buyerId: rowBuyerEntityId(row),
@@ -2600,7 +2690,7 @@ export default function FactoringDashboard() {
           }
         }
         if (applyRowChange(payload, SUPPLIER_PAYMENT_QUEUE, "id", function(row) {
-          return { id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
+          return { version: row.version, id: row.id, type: row.type, invoiceId: row.invoice_id, invoiceIds: row.invoice_ids || [],
             supplierName: row.supplier_name, supplierId: rowEntityId(row),
             bankName: row.bank_name, bankDetails: row.bank_details,
             amount: parseFloat(row.amount) || 0, currency: row.currency, status: row.status,
@@ -3711,12 +3801,20 @@ export default function FactoringDashboard() {
     try {
       var _q = supabase.from("invoices");
       var _res = isPurchasedFlow
-        ? await _q.update({ funding_status: "funded" })
+        // Claims on version as well as status, so a concurrent EDIT is caught
+        // alongside a concurrent funding — and so the write carries a version
+        // bump, which 002 will require of every update.
+        ? await _q.update({ funding_status: "funded", version: (typeof raw.version === "number" ? raw.version + 1 : undefined) })
             .eq("id", invId).eq("funding_status", "purchased").select("id")
         : await _q.update({ pending_top_up_amount: 0 })
             .eq("id", invId).gt("pending_top_up_amount", 0).select("id");
       if (_res && _res.error) _claimErr = _res.error;
-      else _claimed = (_res && _res.data) ? _res.data.length : 0;
+      else {
+        _claimed = (_res && _res.data) ? _res.data.length : 0;
+        // Keep the local copy in step so the saveInvoice that follows does not
+        // immediately conflict with the row this claim just wrote.
+        if (_claimed === 1 && typeof raw.version === "number") raw.version = raw.version + 1;
+      }
     } catch (e) { _claimErr = e; }
 
     if (_claimErr) {
