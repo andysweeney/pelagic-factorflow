@@ -964,11 +964,38 @@ async function saveVersioned(opts) {
   // overwrite a colleague without warning. Say so loudly: a guard that quietly
   // does not run is worse than no guard, because it is trusted.
   if (v === null) {
-    console.warn("[saveVersioned] UNGUARDED WRITE: " + opts.table + " " + opts.id +
-      " has no version in memory — falling back to an unconditional upsert. " +
-      "If 001a is applied, the loader for this table is not copying the column.");
+    // Three ways to get here, and they are not equally serious:
+    //   1. The record was created in memory this session and has never been
+    //      written. Expected -- there is no version to guard against yet.
+    //   2. The loader for this table does not copy the column.
+    //   3. Migration 001a has not been applied to this table at all.
+    // Cases 2 and 3 mean the guard is silently off. Case 1 is benign ONLY if
+    // the record adopts its version afterwards; without that it stays
+    // unguarded for the rest of the session and every later write to it is
+    // unprotected too. So: write, then read the version back and adopt it.
     var plain = await supabase.from(opts.table).upsert([opts.row], { onConflict: opts.keyCol });
-    return { ok: !(plain && plain.error), res: plain };
+    if (plain && plain.error) {
+      console.warn("[saveVersioned] UNGUARDED WRITE FAILED: " + opts.table + " " + opts.id + " - " + plain.error.message);
+      return { ok: false, res: plain };
+    }
+    // Best-effort: a table with no version column simply errors here, which is
+    // itself the diagnosis. Never let this probe fail the save that succeeded.
+    var adopted = null;
+    try {
+      var vr = await supabase.from(opts.table).select("version").eq(opts.keyCol, opts.id).maybeSingle();
+      if (vr && !vr.error && vr.data && typeof vr.data.version === "number") adopted = vr.data.version;
+    } catch (e) { /* fall through to the loud warning below */ }
+    if (adopted !== null) {
+      opts.obj.version = adopted;
+      console.log("[saveVersioned] " + opts.table + " " + opts.id +
+        " had no version in memory (new record); adopted version " + adopted + " - guarded from here.");
+    } else {
+      console.warn("[saveVersioned] UNGUARDED WRITE: " + opts.table + " " + opts.id +
+        " has no version in memory and none could be read back. The optimistic-concurrency " +
+        "guard is OFF for this record. Check that migration 001a added a version column to " +
+        opts.table + " and that its loader copies it.");
+    }
+    return { ok: true, res: plain };
   }
 
   console.log("[saveVersioned] " + opts.table + " " + opts.id + " writing from version " + v);
@@ -2985,11 +3012,19 @@ export default function FactoringDashboard() {
           // toISOString() with a "Z" suffix, so string === comparison fails and the
           // entry gets added twice. Normalise to epoch ms (and tolerate 1ms skew from
           // precision truncation) and also match on action+details as a secondary key.
+          // The DB column is event_type; there is no row.action. Comparing against
+          // row.action made this test undefined on every entry, so the dedupe
+          // always failed and every locally-created entry was added a second time
+          // when its own INSERT echoed back over realtime.
+          var rowAction = row.event_type;
           var rowMs = Date.parse(row.timestamp);
           var exists = AUDIT_LOG.some(function(a) {
-            if (a.action !== row.action) return false;
+            if (a.action !== rowAction) return false;
             if (a.details !== row.details) return false;
             var aMs = Date.parse(a.timestamp);
+            // Tolerate sub-ms precision differences between Postgres timestamptz
+            // and JS toISOString(), but keep the window tight enough that two
+            // genuinely distinct identical actions are not collapsed into one.
             return Math.abs(aMs - rowMs) < 2;
           });
           if (!exists) {
